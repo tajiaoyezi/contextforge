@@ -2,10 +2,10 @@
 
 > ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: tajiaoyezi
 **Related Phase**: Phase 3 (agent-importers)
 **Dependencies**: Phase 1（canonical schema + proto）
 
@@ -21,15 +21,26 @@ Phase 3 框架 task：定义 importer 抽象 + canonical record 映射 + 通用 
 
 ### In Scope
 
-- `<TBD-by-user>`
+- `Importer` 接口抽象（`Detect` / `Import`）及注册表
+- `ContextRecord` 映射器（将原始来源映射为 `contextforge.v1.ContextRecord`）
+- 通用 `FileFallbackImporter`（file / markdown / config / log 的保底导入）
+- Importer 版本探测钩子框架
+- 未识别 schema 的安全降级机制（fallback + warning）
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- Hermes `MEMORY.md` / `USER.md` 具体适配器（task-3.2）
+- OpenClaw workspace 具体适配器（task-3.3）
+- Agent-rules（`AGENTS.md` / `CLAUDE.md`）具体适配器（task-3.4）
+- 写回第三方 Agent memory（PRD Out of Scope）
+- Embedding 生成与向量索引（Phase 2 / Phase 4）
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- `contextforge import` CLI 命令（调用方）
+- Go daemon 导入调度器（调用方）
+- 下游具体 importer：hermes-importer、openclaw-importer、agent-rules-importer（实现方）
+- `FileFallbackImporter`（保底实现方）
 
 ## 5. Behavior Contract
 
@@ -43,11 +54,28 @@ Phase 3 框架 task：定义 importer 抽象 + canonical record 映射 + 通用 
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- `proto/contextforge/v1`（`ContextRecord`、`Provenance` 等生成类型）
+- stdlib: `fmt`, `io`, `os`, `path/filepath`, `strings`, `errors`, `sync`, `hash/crc32`, `time`
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+```go
+// Importer 是 Agent 导入器的抽象接口。
+type Importer interface {
+    Name() string
+    Detect(path string) (confidence float64, ok bool)
+    Import(path string, collectionID string) ([]*contextforgev1.ContextRecord, error)
+}
+
+// Register 注册一个 importer 实现到全局注册表。
+func Register(importer Importer)
+
+// Resolve 按路径探测并返回最佳匹配的 importer；若无匹配则返回 FileFallbackImporter。
+func Resolve(path string) (Importer, error)
+
+// NewFileFallbackImporter 创建通用文件保底导入器。
+func NewFileFallbackImporter() Importer
+```
 
 ## 6. Acceptance Criteria
 
@@ -63,11 +91,11 @@ Phase 3 框架 task：定义 importer 抽象 + canonical record 映射 + 通用 
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 Importer 抽象只读 | SCEN-3.1.1 | TEST-3.1.1 | - | unit-test | Not Started |
-| AC2 通用 fallback 保底 | SCEN-3.1.2 | TEST-3.1.2 | - | unit-test | Not Started |
-| AC3 未识别降级+warning | SCEN-3.1.3 | TEST-3.1.3 | - | unit-test | Not Started |
-| AC4 映射核心字段完整 | SCEN-3.1.4 | TEST-3.1.4 | - | unit-test | Not Started |
-| AC5 importer/record 解耦 | SCEN-3.1.5 | TEST-3.1.5 | - | unit-test | Not Started |
+| AC1 Importer 抽象只读 | SCEN-3.1.1 | TEST-3.1.1 | - | unit-test | Done |
+| AC2 通用 fallback 保底 | SCEN-3.1.2 | TEST-3.1.2 | - | unit-test | Done |
+| AC3 未识别降级+warning | SCEN-3.1.3 | TEST-3.1.3 | - | unit-test | Done |
+| AC4 映射核心字段完整 | SCEN-3.1.4 | TEST-3.1.4 | - | unit-test | Done |
+| AC5 importer/record 解耦 | SCEN-3.1.5 | TEST-3.1.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -83,12 +111,25 @@ Phase 3 框架 task：定义 importer 抽象 + canonical record 映射 + 通用 
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-17
+- **改动文件**：
+  - `internal/importer/importer.go`（新增：Importer 接口、Register/Resolve 注册表）
+  - `internal/importer/fallback.go`（新增：FileFallbackImporter 保底实现）
+  - `internal/importer/record.go`（新增：buildRecord 映射辅助 + language/content-hash 探测）
+  - `internal/importer/importer_test.go`（新增：5 个单元测试对应 5 个 AC）
+  - `test/features/importer.feature`（更新：SCEN-3.1.1~3.1.5 Given/When/Then）
+  - `docs/specs/tasks/task-3.1-importer-core.md`（Status → Ready → Done，§7 追踪表推进，§10 回填）
+- **commit 列表**：
+  - `a9e58ca` test(importer): 加 SCEN-3.1.1~3.1.5 共 5 个 RED 测试
+  - `3b3ae46` feat(importer): 实现 importer 框架 + fallback + record 映射通过全部 5 个测试
+  - `12d7b0d` refactor(importer): 去掉 registerOnce 副作用，Resolve 无匹配时直接返回 fallback 实例
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅
+  - typecheck: ✅
+  - unit-test: 15 passed / 0 failed（Go: internal/config 5 + internal/contract 5 + internal/importer 5）/ 9 passed / 0 failed（Rust: core skeleton 4 + proto contract 5）
+- **剩余风险 / 未做项**：
+  - registry 全局可变，多测试并行时可能交叉干扰；当前测试通过路径名隔离 mock 规避，后续如需高度并行可引入 registry reset hook。
+- **下游 task 影响**：
+  - task-3.2 importer-hermes（依赖 Importer 接口 + fallback 机制）
+  - task-3.3 importer-openclaw（依赖 Importer 接口 + fallback 机制）
+  - task-3.4 importer-agent-rules（依赖 Importer 接口 + fallback 机制）

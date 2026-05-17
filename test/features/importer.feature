@@ -16,29 +16,29 @@ Feature: importer
   # ---
   # Maps to: docs/specs/tasks/task-3.1-importer-core.md
   Scenario: SCEN-3.1.1 — 对应 AC1（Importer 抽象只读）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 全局 importer 注册表为空
+    When 注册名为 "mock-test" 的 importer 并 Resolve 路径 "/any/path/mock-test.txt"
+    Then 返回的 importer Name() 等于 "mock-test"
 
   Scenario: SCEN-3.1.2 — 对应 AC2（通用 fallback 保底）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在文件 "note.md" 内容为 "# Hello"
+    When 用 FileFallbackImporter 导入该文件到 collection "default"
+    Then 返回 1 条 ContextRecord，Content 等于 "# Hello"
 
   Scenario: SCEN-3.1.3 — 对应 AC3（未识别降级 + warning）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在文件 "weird.xyz" 内容为 "data"
+    When Resolve 该路径
+    Then 返回 Name() 为 "fallback" 的 importer，Import 不返回 error
 
   Scenario: SCEN-3.1.4 — 对应 AC4（映射核心字段完整）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在文件 "config.yaml" 内容为 "key: val"
+    When 用 FileFallbackImporter 导入到 collection "proj-a"
+    Then ContextRecord 的 SchemaVersion、CollectionId、SourceType、SourceProvider、SourceUri、FilePath、Language、ContentHash、Provenance 均非空，且 LineStart 等于 1
 
   Scenario: SCEN-3.1.5 — 对应 AC5（importer/record 解耦）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 注册两个 mock importer "low"(confidence 0.3) 和 "high"(confidence 0.9)
+    When Resolve 路径 "/any/path/high.txt"
+    Then 返回 "high" importer；且 low 与 high 产生的 ContextRecord SchemaVersion 相同
 
   # ---
   # Maps to: docs/specs/tasks/task-3.2-importer-hermes.md
