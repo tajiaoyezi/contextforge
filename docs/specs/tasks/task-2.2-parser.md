@@ -2,7 +2,7 @@
 
 > ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Done
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -104,11 +104,11 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 代码 tree-sitter 解析 | SCEN-2.2.1 | TEST-2.2.1 | - | unit-test | Done |
-| AC2 Markdown 解析 | SCEN-2.2.2 | TEST-2.2.2 | - | unit-test | Done |
-| AC3 日志解析 | SCEN-2.2.3 | TEST-2.2.3 | - | unit-test | Done |
+| AC1 代码 tree-sitter 解析 | SCEN-2.2.1 | TEST-2.2.1 | - | unit-test | Blocked(NEEDS-DEP) |
+| AC2 Markdown 解析 | SCEN-2.2.2 | TEST-2.2.2 | - | unit-test | Blocked(NEEDS-DEP) |
+| AC3 日志解析 | SCEN-2.2.3 | TEST-2.2.3 | - | unit-test | Blocked(NEEDS-DEP) |
 | AC4 未知类型降级纯文本 | SCEN-2.2.4 | TEST-2.2.4 | - | unit-test | Done |
-| AC5 language 标签保留 | SCEN-2.2.5 | TEST-2.2.5 | - | unit-test | Done |
+| AC5 language 标签保留 | SCEN-2.2.5 | TEST-2.2.5 | - | unit-test | In Progress |
 
 ## 8. Risks
 
@@ -125,19 +125,24 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 
 ## 10. Completion Notes
 
-- **完成日期**：2026-05-17
+- **完成日期**：2026-05-17（初始） / 2026-05-17（review 修复后更新）
 - **改动文件**：
-  - core/src/parser/mod.rs（新增 ParsedUnit/ParseError + parse_file/parse_content 启发式实现 + 5 个 RED/GREEN 测试）
-  - test/features/parser.feature（填充 5 个具体 Given/When/Then Scenario）
-  - NEEDS-DEP-task-2.2.md（新增，R7 crate 需求清单）
-  - docs/specs/tasks/task-2.2-parser.md（§2A 审核落地 + §7 状态推进 + §10 回填 + Status → Done）
-- **commit 列表**：
-  - 1d29c90 docs(spec): task-2.2 进入实施 (Status: Ready → In Progress)
-  - 062e4a7 test(parser): 加 SCEN-2.2.1~2.2.5 共 5 个 RED 测试（+ NEEDS-DEP for tree-sitter/pulldown-cmark）
-  - 358ec09 feat(parser): 实现 parse_file / parse_content 通过全部 5 个 RED 测试（std 启发式，真实 crates 待 NEEDS-DEP PR）
+  - core/src/parser/mod.rs（ParsedUnit / ParseError + 诚实 stub 实现 + 测试，按 review 修复 provenance + language 一致性 + parse_file 覆盖 + size guard）
+  - test/features/parser.feature（填充 5 个具体 Scenario）
+  - NEEDS-DEP-task-2.2.md（R7 crate 需求）
+  - docs/specs/tasks/task-2.2-parser.md（§2A 审核 + review 修复：§7 AC1-3 Blocked(NEEDS-DEP)、AC4 Done、AC5 In Progress、Status In Progress、§10 同步）
+- **commit 列表**（初始 + review 修复）：
+  - 1d29c90 docs(spec): task-2.2 进入实施 (Ready → In Progress)
+  - 062e4a7 test(parser): 加 SCEN-2.2.1~2.2.5 共 5 个 RED 测试（+ NEEDS-DEP）
+  - 358ec09 feat(parser): 实现 ... 通过 5 测试（启发式）
+  - bf803d1 docs(spec): 回填 §10 + §7 全 Done（初始，review 前）
+  - （后续 review 修复 commit 将追加在此列表）
 - **§9 Verification 结果**：
-  - install: ✅ `go mod download && cargo fetch`
-  - typecheck: ✅ `go vet ./... && cargo check --workspace`
-  - unit-test: 5 passed / 0 failed（parser::tests::test_2_2_1..5 + 全套 suite 绿）
-- **剩余风险 / 未做项**：真实 tree-sitter + pulldown-cmark 解析尚未落地（NEEDS-DEP-task-2.2.md 已写，待主 agent 独立 chore-dep PR + rebase）；当前为 std 启发式，足够通过测试用例但非完整结构提取（function/heading 拆分等）。rebase 后可升级实现。
-- **下游 task 影响**：task-2.3 chunker（ParsedUnit API 契约消费者）、task-2.4 indexer、Phase 2 整体 index-core 流水线
+  - install: ✅
+  - typecheck: ✅
+  - unit-test: 待 review 修复后重跑确认（当前 AC1/AC2/AC3 严格测试已 `#[ignore]` 等待真实 parser）
+- **剩余风险 / 未做项**：
+  - AC1/AC2/AC3 因缺少 tree-sitter / pulldown-cmark（NEEDS-DEP 未合入）真实实现 → §7 标 `Blocked(NEEDS-DEP)`，Status 维持 In Progress。
+  - 当前 parse_file 为诚实整文件 stub（真实 line_count + 内容），无伪造 provenance（review 要求）。
+  - 真实结构提取（function/heading/多 log record）将在 NEEDS-DEP rebase 后实现，届时移除 ignore 并推进 AC1-3 为 Done。
+- **下游 task 影响**：task-2.3 chunker（当前契约为诚实 stub，真实解析后 API 稳定）、task-2.4、Phase 2 流水线（受 NEEDS-DEP 阻塞）
