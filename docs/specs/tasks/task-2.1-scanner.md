@@ -139,12 +139,16 @@ pub enum SkipReason {
     NotAllowlisted,
     TooLarge { size: u64, max: u64 },
     NotUtf8,
+    Symlink,
 }
 
 #[derive(Debug)]
 pub enum ScanError {
     Io { path: std::path::PathBuf, source: std::io::Error },
     DenylistOverrideRequired,
+    NotAllowlisted,
+    FileTooLarge { path: std::path::PathBuf, size: u64, max: u64 },
+    Symlink { path: std::path::PathBuf },
 }
 
 pub fn default_denylist() -> Vec<String>;
@@ -200,21 +204,23 @@ pub fn is_allowlisted(path: impl AsRef<std::path::Path>, allowlist: &[std::path:
 - **改动文件**：
   - `docs/specs/tasks/task-2.1-scanner.md`（修改 — §2A 审核填 §3/§4/§5.2/§5.3、§6 勾选、§7 Done、§10 回填、Status Done）
   - `test/features/scanner.feature`（修改 — 补齐 SCEN-2.1.1~2.1.5 Given/When/Then）
-  - `core/src/scanner/mod.rs`（修改 — stdlib scanner API + 默认 denylist、allowlist/override、secret detection/redaction、dry-run、大小上限 skip）
-  - `core/tests/scanner.rs`（新增 — TEST-2.1.1~2.1.5）
+  - `core/src/scanner/mod.rs`（修改 — stdlib scanner API + 默认 denylist、allowlist/override、bounded read、secret detection/redaction、dry-run、大小上限 skip、symlink skip）
+  - `core/tests/scanner.rs`（新增/修改 — TEST-2.1.1~2.1.5 + review feedback 回归测试）
 - **commit 列表**：
   - `9e2cfda` docs(spec): task-2.1 Draft → Ready（§2A 前置审核通过，5 AC accepted）
   - `c4bb16a` docs(spec): task-2.1 进入实施 (Status: Ready → In Progress)
   - `9a78e98` test(scanner): 加 SCEN-2.1.1~2.1.5 共 5 个 RED 测试
   - `4b91b5a` feat(scanner): 实现 stdlib 文件扫描 + 过滤 + secret redaction 通过全部 5 个测试
+  - `2aaba63` test(scanner): 加 review feedback RED 覆盖 scan_file 安全与边界场景
+  - `c2adf8a` feat(scanner): 修复 review feedback 的 scan_file 安全与边界行为
   - 本回填 docs(spec) commit 见步 11.A（§10 回填 + §7 Done + Status Done）
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`
-  - unit-test: ✅ `go test ./... && cargo test --workspace`；Rust 14 passed / 0 failed（scanner 5 + core_skeleton 4 + proto_contract 5），Go packages passed
+  - unit-test: ✅ `go test ./... && cargo test --workspace`；Rust 21 passed / 0 failed（scanner 12 + core_skeleton 4 + proto_contract 5），Go packages passed
 - **剩余风险 / 未做项**：
-  - secret detector 为 v0.1 stdlib 启发式实现，覆盖本 task AC3 枚举类型；自定义 token / base64 credential / URL 内嵌 credential 的更高召回率需后续按 R7 评估 regex/secret-scanner crate 或规则库。
-  - `scan_file` 直接调用对超限文件返回空 `ScannedFile`；phase 流水线应优先使用 `scan_path`，它会把超限文件记录为 `SkipReason::TooLarge`。如后续需要单文件 API 也返回 skip 语义，应在新增 task 中调整签名。
+  - secret detector 为 v0.1 stdlib 启发式实现，覆盖本 task AC3 枚举类型并已补 GitHub token 常见前缀、Bearer 空白、`x-api-key` 与 key 边界；base64 credential / URL 内嵌 credential 的更高召回率需后续按 R7 评估 regex/secret-scanner crate 或规则库。
+  - `scan_file` 直接调用已 fail-closed：denylist 需显式 override、allowlist 外拒绝、超限文件返回 `ScanError::FileTooLarge`、symlink 返回 `ScanError::Symlink`。`scan_path` 仍以 `SkippedPath` 聚合这些 skip 语义。
   - `contextforge scan --dry-run` CLI 输出、indexer 写入、audit log 均按 §3 Out Of Scope 留给 task 6.1 / 2.4 / 5.3。
 - **下游 task 影响**：
   - task 2.4 indexer 可消费 `ScanReport.files` / `SkippedPath` / `redaction_hits`，并把 `redaction_status.as_str()` 写入 canonical `ContextRecord.redaction_status`。
