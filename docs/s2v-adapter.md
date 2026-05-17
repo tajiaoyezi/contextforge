@@ -204,7 +204,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | Task | 模块 | Spec 文件 | Status | 依赖 / Phase 内顺序 | Worktree（仅 team）|
 |---|---|---|---|---|---|
 | 1.1 | proto | docs/specs/tasks/task-1.1-proto.md | Done | Phase1 #1 | `../ContextForge-wt-foundation` |
-| 1.2 | config | docs/specs/tasks/task-1.2-config.md | Draft | Phase1 #2（dep 1.1）| `../ContextForge-wt-foundation` |
+| 1.2 | config | docs/specs/tasks/task-1.2-config.md | Done | Phase1 #2（dep 1.1）| `../ContextForge-wt-foundation` |
 | 1.3 | core | docs/specs/tasks/task-1.3-core-skeleton.md | Draft | Phase1 #3（dep 1.1）| `../ContextForge-wt-foundation` |
 | 1.4 | cli | docs/specs/tasks/task-1.4-cli-init.md | Draft | Phase1 #4（dep 1.1,1.2,1.3）| `../ContextForge-wt-foundation` |
 | 2.1 | scanner | docs/specs/tasks/task-2.1-scanner.md | Draft | Phase2 #1 | `../ContextForge-wt-index-core` |
