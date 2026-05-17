@@ -41,22 +41,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func repoRoot() (string, error) {
-	d, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
-			return d, nil
-		}
-		parent := filepath.Dir(d)
-		if parent == d {
-			return "", fmt.Errorf("go.mod not found walking up from cwd")
-		}
-		d = parent
-	}
-}
+// repoRoot is the package-internal walk-up helper defined in daemon.go (same
+// package); reused here by TestMain to locate the cargo workspace root.
 
 func freeAddr(t *testing.T) string {
 	t.Helper()

@@ -8,26 +8,86 @@
 // task-3.1; cobra (PRD §Technical Approach / D8) is deferred to a later dep PR.
 package cli
 
-import "io"
+import (
+	"flag"
+	"fmt"
+	"io"
 
-// task-1.4 RED skeleton (§2.5.1 compilable bridge): signatures exist so the
-// AC tests compile and fail on *behaviour* (unimplemented) — not on a compile
-// error. GREEN replaces these bodies.
+	"github.com/tajiaoyezi/contextforge/internal/config"
+)
+
+// subcommands is the registered subcommand set in stable order (AC4). Only
+// "init" is implemented in task-1.4; the rest are Phase 2+/6/7/8 and return an
+// explicit not-implemented message (task-1.4 §3 Out-of-Scope).
+var subcommands = []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export"}
+
+// SubcommandNames returns a copy of the registered subcommand names (AC4).
+func SubcommandNames() []string {
+	out := make([]string, len(subcommands))
+	copy(out, subcommands)
+	return out
+}
+
+func known(sub string) bool {
+	for _, s := range subcommands {
+		if s == sub {
+			return true
+		}
+	}
+	return false
+}
 
 // Execute parses args, dispatches the subcommand and returns the process exit
 // code. Unknown / unimplemented subcommands write to stderr and return a
 // non-zero code — never panic (AC4).
 func Execute(args []string, stdout, stderr io.Writer) int {
-	panic("unimplemented: cli.Execute (task-1.4 RED skeleton)")
-}
+	if len(args) == 0 {
+		fmt.Fprintf(stderr, "contextforge: expected a subcommand, one of %v\n", subcommands)
+		return 2
+	}
+	sub, rest := args[0], args[1:]
 
-// SubcommandNames returns the registered subcommand names in stable order (AC4).
-func SubcommandNames() []string {
-	panic("unimplemented: cli.SubcommandNames (task-1.4 RED skeleton)")
+	switch sub {
+	case "init":
+		fs := flag.NewFlagSet("init", flag.ContinueOnError)
+		fs.SetOutput(stderr)
+		root := fs.String("root", "", "data root (default ~/.contextforge)")
+		if err := fs.Parse(rest); err != nil {
+			return 2
+		}
+		if err := runInit(*root, stdout); err != nil {
+			fmt.Fprintf(stderr, "contextforge init: %v\n", err)
+			return 1
+		}
+		return 0
+
+	default:
+		if known(sub) {
+			fmt.Fprintf(stderr, "contextforge %s: not implemented "+
+				"(Phase 2+/6/7/8; task-1.4 registers the skeleton only)\n", sub)
+			return 2
+		}
+		fmt.Fprintf(stderr, "contextforge: unknown subcommand %q; want one of %v\n", sub, subcommands)
+		return 2
+	}
 }
 
 // runInit orchestrates config.Init to generate the default config + data-dir
-// scaffold; root=="" resolves to config.DefaultRootDir(); idempotent (AC1).
+// scaffold; root=="" resolves to config.DefaultRootDir(); idempotent because
+// config.Init does not overwrite an existing config.toml (AC1).
 func runInit(root string, stdout io.Writer) error {
-	panic("unimplemented: cli.runInit (task-1.4 RED skeleton)")
+	if root == "" {
+		r, err := config.DefaultRootDir()
+		if err != nil {
+			return err
+		}
+		root = r
+	}
+	cfg, err := config.Init(root)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "contextforge: initialized %s (schema_version %s)\n",
+		cfg.DataDir, cfg.SchemaVersion)
+	return nil
 }
