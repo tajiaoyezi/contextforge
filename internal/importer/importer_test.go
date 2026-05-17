@@ -117,6 +117,9 @@ func TestContextRecordCoreFields(t *testing.T) {
 	if r.LineStart != 1 {
 		t.Errorf("expected line_start=1, got %d", r.LineStart)
 	}
+	if r.RedactionStatus != "pending" {
+		t.Errorf("expected RedactionStatus=pending (downstream scanner/indexer responsible), got %q", r.RedactionStatus)
+	}
 }
 
 // TEST-3.1.5a / SCEN-3.1.5 / AC5: buildRecord schema 不变性 — 不同 source 输入产生结构一致的 canonical record。
