@@ -1,11 +1,11 @@
 # Task `1.2`: `config — TOML 配置 + denylist/allowlist`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前：① 清零 `<TBD-by-user>`（§3/§4/§5.2/§5.3）② 审 §6/§7/§9 ③ Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-17）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、Owner=tajiaoyezi、TOML 采 stdlib 手写（不引第三方依赖，规避 R7）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: tajiaoyezi
 **Related Phase**: Phase 1 (foundation)
 **Dependencies**: 1.1 (proto/canonical schema)
 
@@ -21,15 +21,28 @@ ContextForge 默认本地优先、隐私基线（PRD §Constraints / §Decisions
 
 ### In Scope
 
-- `<TBD-by-user>`
+- `internal/config/` Go 包：默认配置数据结构 + 生成默认 `~/.contextforge/config.toml` 及本地数据目录骨架（`collections/` `logs/` `runtime/`，PRD §Technical Approach 本地数据目录结构 v0.1）
+- TOML 序列化/反序列化：写默认 config 后可被读回，往返字段一致（AC1）
+- 默认 denylist：内置 PRD §Constraints 安全列出的全部敏感路径（AC2 枚举的 16 项），可被 CLI / 下游读取
+- allowlist 路径导入模型 + `collection` / `agent_scope` 配置结构（AC3）
+- config.toml 及 config 模块写入文件的权限 `0600`、数据目录 `0700`（AC4）
+- 远程 provider 配置结构：默认 `enabled=false`，须显式 opt-in 字段才启用（AC5）
+- 用户覆盖默认 denylist 需显式确认标志（AC3 后半）
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- 实际文件扫描 / denylist·allowlist 匹配执行（`scanner`，Phase 2）
+- secret pattern 检测 / redaction（Phase 2）
+- 随机 REST token 的生成 / 轮转、daemon 监听绑定（task 1.3 / Phase 6 task 6.2；本 task 仅定义 `runtime/contextforge.token` 路径与 0600 权限策略，不生成 token 值）
+- `contextforge init` CLI 子命令编排与终端交互（task 1.4；本 task 只提供 config 库能力）
+- 远程 provider 实际网络调用 / 凭证管理（P1，v0.1 不强依赖）
+- viper / koanf 等完整配置框架多源合并（env / flag override）—— v0.1 仅 TOML 文件、stdlib 实现
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- `contextforge` CLI（Go 控制面）：`init` 生成默认配置；`import` / `index` / `search` 等子命令读取 denylist/allowlist/collection/provider 配置（下游 task 1.4 / Phase 2+ 消费）
+- 索引 / 导入流程（`scanner` / `agent-importer`，下游 phase）：消费默认 denylist + allowlist 路径模型 + collection / agent_scope
+- 本地优先 / 隐私敏感开发者（最终受益人）：受默认 denylist + 0600 权限 + 远程 provider 默认关闭保护（ADR-004 隐私基线）
 
 ## 5. Behavior Contract
 
@@ -43,11 +56,59 @@ ContextForge 默认本地优先、隐私基线（PRD §Constraints / §Decisions
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- Go 标准库：`os` / `path/filepath` / `strings` / `strconv` / `fmt` / `errors`（手写最小 TOML 编解码 + 文件/目录权限）
+- 本 task **不引入新第三方依赖**：v0.1 config schema 简单（string / []string / bool），stdlib 实现规避 R7（go.mod 不改 — 经 §2A 用户决策）
+- 契约上游：task-1.1 冻结的 `proto/contextforge/v1`（仅在 collection / agent_scope 概念对齐层面参考，不直接 import 生成包；config 是纯 Go 控制面配置，无 proto 运行期依赖）
+- 测试侧：`testing` / `os` / `path/filepath`（temp dir 隔离 + 权限断言）
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+> Go 包 `config`，落 `internal/config/`（adapter §Source areas `internal/`）。
+
+```go
+package config
+
+const (
+    SchemaVersion = "0.1"
+    FileMode      = 0o600 // AC4：config.toml / token 文件
+    DirMode       = 0o700 // AC4：数据目录
+)
+
+type Config struct {
+    SchemaVersion         string             // "0.1"
+    DataDir               string             // ~/.contextforge
+    Denylist              []string           // 默认含 AC2 全部敏感路径
+    AllowDenylistOverride bool               // AC3：用户显式覆盖默认 denylist 的确认位（默认 false）
+    Collections           []CollectionConfig // AC3：allowlist 路径导入模型
+    Remote                RemoteProviderConfig
+}
+
+type CollectionConfig struct {
+    ID         string
+    Allowlist  []string // 允许导入的路径前缀
+    AgentScope []string
+}
+
+type RemoteProviderConfig struct {
+    Enabled  bool   // AC5：默认 false，显式 opt-in 才 true
+    Provider string // 默认 ""
+    Endpoint string // 默认 ""
+}
+
+func DefaultRootDir() (string, error)  // ~/.contextforge（基于 os.UserHomeDir）
+func DefaultDenylist() []string        // AC2：返回 16 项敏感路径默认 denylist
+func DefaultConfig() Config            // AC1/AC2/AC5：含默认 denylist、Remote.Enabled=false
+func Init(root string) (Config, error) // AC1/AC4：生成 config.toml + collections/ logs/ runtime/ 骨架（文件 0600 / 目录 0700）；已存在则不覆盖直接 Load
+func Load(root string) (Config, error) // AC1：读取 root/config.toml（与 Save 往返一致）
+func Save(root string, c Config) error // AC4：写 root/config.toml，权限 0600
+func (c Config) RemoteEnabled() bool   // AC5：远程 provider 是否已显式启用
+```
+
+- SCEN/TEST-1.2.1 → `Init` 生成 config.toml + `collections/`·`logs/`·`runtime/` 目录骨架（AC1）
+- SCEN/TEST-1.2.2 → `DefaultDenylist()` 含 AC2 枚举的全部 16 项（AC2）
+- SCEN/TEST-1.2.3 → allowlist/collection 模型 + `AllowDenylistOverride` 默认 false、覆盖需显式置 true（AC3）
+- SCEN/TEST-1.2.4 → `Init`/`Save` 落盘后 config.toml 权限 == 0600、数据目录 == 0700（AC4）
+- SCEN/TEST-1.2.5 → `DefaultConfig().Remote.Enabled == false`，opt-in 后 `RemoteEnabled()==true`（AC5）
 
 ## 6. Acceptance Criteria
 
