@@ -11,3 +11,14 @@ pub mod pb {
 }
 
 pub mod contract;
+
+// task-1.3: tonic gRPC server skeleton + health (AC1/AC2/AC3).
+pub mod server;
+
+// task-1.3 (AC4): Phase 2+ data-plane module placeholders (compile, no logic).
+pub mod chunker;
+pub mod indexer;
+pub mod memoryops;
+pub mod parser;
+pub mod retriever;
+pub mod scanner;

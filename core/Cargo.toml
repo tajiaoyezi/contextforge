@@ -8,10 +8,23 @@ description = "ContextForge Rust data-plane (scan/parse/chunk/index/retrieve). t
 name = "contextforge_core"
 path = "src/lib.rs"
 
+# task-1.3 (AC1): contextforge-core data-plane binary.
+[[bin]]
+name = "contextforge-core"
+path = "src/main.rs"
+
 [dependencies]
 prost = "0.13"
 prost-types = "0.13"
 tonic = "0.12"
+# task-1.3 §2A R7 decision: tokio + serde promoted to DIRECT deps (AC1/AC3-
+# mandated for the tonic gRPC server; both already in Cargo.lock transitively
+# via tonic 0.12 — no new supply-chain surface; folded into this task, §10-disclosed).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
 
 [build-dependencies]
 tonic-build = "0.12"
