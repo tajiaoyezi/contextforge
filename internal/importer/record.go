@@ -39,7 +39,7 @@ func buildRecord(in recordInput) *contextforgev1.ContextRecord {
 		Title:           filepath.Base(in.path),
 		Content:         in.content,
 		ContentHash:     contentHash(in.content),
-		RedactionStatus: "none",
+		RedactionStatus: "pending",
 		Language:        detectLanguage(in.path),
 		FilePath:        in.path,
 		LineStart:       1,
