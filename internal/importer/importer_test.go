@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +46,12 @@ func TestFileFallbackImporter(t *testing.T) {
 	}
 }
 
-// TEST-3.1.3 / SCEN-3.1.3 / AC3: 未识别 schema 降级 + warning — Resolve 对未知路径不 error，返回 fallback。
+// TEST-3.1.3 / SCEN-3.1.3 / AC3: 未识别 schema 降级 + warning — Resolve 对未知路径不 error，返回 fallback，且输出显式 warning。
 func TestUnrecognizedSchemaFallback(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
 	tmp := t.TempDir()
 	unknown := filepath.Join(tmp, "weird.xyz")
 	if err := os.WriteFile(unknown, []byte("data"), 0o644); err != nil {
@@ -62,6 +68,11 @@ func TestUnrecognizedSchemaFallback(t *testing.T) {
 	_, err = imp.Import(unknown, "default")
 	if err != nil {
 		t.Fatalf("Import should not error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "warning") && !strings.Contains(out, "fallback") {
+		t.Errorf("expected warning log for unrecognized schema, got: %q", out)
 	}
 }
 
