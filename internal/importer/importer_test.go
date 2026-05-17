@@ -108,7 +108,43 @@ func TestContextRecordCoreFields(t *testing.T) {
 	}
 }
 
-// TEST-3.1.5 / SCEN-3.1.5 / AC5: importer/record 解耦 — 不同 importer 产生同 schema 的 ContextRecord，注册表按 confidence 排序。
+// TEST-3.1.5a / SCEN-3.1.5 / AC5: buildRecord schema 不变性 — 不同 source 输入产生结构一致的 canonical record。
+func TestBuildRecordSchemaInvariant(t *testing.T) {
+	r1 := buildRecord(recordInput{
+		path: "/a.md", collectionID: "c", content: "# A",
+		lineCount: 1, sourceType: "file", provider: "local", importerName: "fallback",
+	})
+	r2 := buildRecord(recordInput{
+		path: "/b.go", collectionID: "c", content: "package b",
+		lineCount: 1, sourceType: "memory", provider: "hermes", importerName: "hermes",
+	})
+
+	for _, r := range []*contextforgev1.ContextRecord{r1, r2} {
+		if r.SchemaVersion != "0.1" {
+			t.Errorf("SchemaVersion should be 0.1, got %q", r.SchemaVersion)
+		}
+		if r.CollectionId != "c" {
+			t.Errorf("CollectionId mismatch: %q", r.CollectionId)
+		}
+		if r.SourceType == "" || r.SourceProvider == "" || r.SourceUri == "" {
+			t.Error("core source fields must be present")
+		}
+		if r.ContentHash == "" {
+			t.Error("ContentHash must be present")
+		}
+		if len(r.Provenance) != 1 {
+			t.Errorf("Provenance must have 1 entry, got %d", len(r.Provenance))
+		}
+	}
+	if r1.Id == r2.Id {
+		t.Error("different inputs should yield different Ids")
+	}
+	if r1.ContentHash == r2.ContentHash {
+		t.Error("different content should yield different ContentHash")
+	}
+}
+
+// TEST-3.1.5 / SCEN-3.1.5 / AC5: importer/record 解耦 — 注册表按 confidence 排序，不同 importer 产出同 schema record。
 func TestImporterRecordDecoupling(t *testing.T) {
 	// 注册两个 mock，confidence 不同
 	low := &mockImporter{name: "low", detectOK: true, confidence: 0.3}

@@ -81,11 +81,11 @@ func NewFileFallbackImporter() Importer
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Decisions Log D5): 定义 `Importer` 抽象（探测 → 解析 → 映射为 `ContextRecord`），只读导入，不写回任何第三方 Agent memory。
-- [ ] **AC2** (PRD §Technical Risks R5): 通用 file/markdown/config/log fallback 永远可用，作为分层 importer 的保底层。
-- [ ] **AC3** (PRD §Implementation Phases Phase 3 Exit Criteria): 不识别 schema → 降级为通用文件导入 + 显式 warning，不中断整个导入。
-- [ ] **AC4** (PRD §Technical Approach Canonical Record v0.1): 映射产出的 ContextRecord 含 source_type/source_provider/source_uri/agent_scope/provenance 等核心字段，未识别字段进 metadata.extra。
-- [ ] **AC5** (PRD §Technical Risks R5 / 本 task 新增): 每个 importer 可声明版本探测钩子，canonical record 与 importer 解耦（更换 importer 不动 record schema）。
+- [x] **AC1** (PRD §Decisions Log D5): 定义 `Importer` 抽象（探测 → 解析 → 映射为 `ContextRecord`），只读导入，不写回任何第三方 Agent memory。
+- [x] **AC2** (PRD §Technical Risks R5): 通用 file/markdown/config/log fallback 永远可用，作为分层 importer 的保底层。
+- [x] **AC3** (PRD §Implementation Phases Phase 3 Exit Criteria): 不识别 schema → 降级为通用文件导入 + 显式 warning，不中断整个导入。
+- [x] **AC4** (PRD §Technical Approach Canonical Record v0.1): 映射产出的 ContextRecord 含 source_type/source_provider/source_uri/agent_scope/provenance 等核心字段，未识别字段进 metadata.extra。
+- [x] **AC5** (PRD §Technical Risks R5 / 本 task 新增): 每个 importer 可声明版本探测钩子，canonical record 与 importer 解耦（更换 importer 不动 record schema）。
 
 ## 7. SDD / BDD / TDD Traceability
 
