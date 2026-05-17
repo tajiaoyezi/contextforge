@@ -158,20 +158,24 @@ func (d *Daemon) Stop() error
 - **改动文件**：
   - `cmd/contextforge/main.go`（新增 — `contextforge` 二进制入口，委托 `internal/cli`）
   - `internal/cli/cli.go`（新增 — stdlib `flag` 子命令分发 + `Execute`/`SubcommandNames`/`runInit`，编排 task-1.2 `config.Init`）
-  - `internal/cli/cli_test.go`（新增 — TEST-1.4.1 init 幂等 / TEST-1.4.4 子命令注册+未实现非 panic）
-  - `internal/daemon/daemon.go`（新增 — `Options`/`Daemon` + `Start`/`HealthCheck`/`Restarts`/`Stop` + 重启监督 + `ensureLoopback` 禁 0.0.0.0）
-  - `internal/daemon/daemon_test.go`（新增 — `TestMain` cargo build core + TEST-1.4.2/1.4.3/1.4.5）
-  - `docs/specs/tasks/task-1.4-cli-init.md`（修改 — §2A 审核填 §3/§4/§5.2/§5.3 + AC4 措辞、§6 勾选、§7→Done、§10 回填、Status）
+  - `internal/cli/cli_test.go`（新增 — TEST-1.4.1 init 幂等+0600/0700 权限断言（评审 FIX-3）/ TEST-1.4.4 子命令注册+未实现非 panic）
+  - `internal/daemon/daemon.go`（新增 — `Options`/`Daemon` + `Start`/`HealthCheck`/`Restarts`/`Stop` + 重启监督 + `ensureLoopback` 禁 0.0.0.0 + `clientConn` 复用单个 gRPC conn（评审 FIX-4a））
+  - `internal/daemon/daemon_test.go`（新增 — `TestMain` cargo build core + TEST-1.4.2/1.4.3/1.4.5；TEST-1.4.3 容忍 ESRCH（评审 FIX-4b））
+  - `docs/specs/tasks/task-1.4-cli-init.md`（修改 — §2A 审核填 §3/§4/§5.2/§5.3 + AC4 措辞、§6 勾选、§7→Done、§10 回填+评审留痕、Status）
+  - `docs/s2v-adapter.md`（修改 — §Task 总索引 task-1.4 行 Status Draft→Done，commit `c9ba330`；评审 Nit 补列）
 - **commit 列表**：
   - `f3b56f7` docs(spec): task-1.4 Draft → Ready（§2A 前置审核通过，5 AC accepted）
   - `2bea1a8` docs(spec): task-1.4 进入实施 (Status: Ready → In Progress)
   - `a063b23` test(cli): 加 SCEN-1.4.1~1.4.5 共 5 个 RED 测试（§2.5.1 可编译 panic 骨架）
   - `1be6514` feat(cli): 实现 stdlib flag CLI + contextforge init 编排 + daemon 拉起 core/gRPC Health/基础自动重启 通过全部 5 个测试
-  - 本回填 docs(spec) commit 见步 11.A（§10 回填 + §6 勾选 + §7 Done + Status → Done）
+  - `df6cdca` docs(spec): 回填 task-1.4 §10 Completion Notes (Status: Done)
+  - `c9ba330` docs(adapter): 标记 task-1.4 为 Done
+  - `70ccc8b` fix(cli): 评审 FIX-3/FIX-4 — TEST-1.4.1 加 0600/0700 断言 + daemon 复用单 gRPC conn + TEST-1.4.3 容忍 ESRCH
+  - 本 §10 评审留痕增补 docs(spec) commit（评审后更新，紧随 `70ccc8b`）
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`
-  - unit-test: 5 passed / 0 failed（本 task TEST-1.4.1~1.4.5：internal/cli 2 + internal/daemon 3；全量 `go test ./...` + `cargo test --workspace` 全绿，task-1.1/1.2/1.3 无回归：Rust core_skeleton 4 + proto_contract 5、Go config/contract 全过）
+  - unit-test: 5 passed / 0 failed（本 task TEST-1.4.1~1.4.5：internal/cli 2 + internal/daemon 3；TEST-1.4.1 评审 FIX-3 后并断言 0600/0700；internal/daemon 评审后 3 连跑稳定无 flake；全量 `go test ./...` + `cargo test --workspace` 全绿，task-1.1/1.2/1.3 无回归：Rust core_skeleton 4 + proto_contract 5、Go config/contract 全过）
 - **剩余风险 / 未做项**：
   - AC3 自动重启为「基础版」（固定 200ms backoff + launch 失败即停止监督）；生产级监督（信号转发 / 优雅停机 / 指数退避+jitter / systemd 服务化）属 Phase 8 reliability，本 task §3 Out-of-Scope，非缺陷。
   - daemon 走 task-1.3 loopback TCP 127.0.0.1 路径；Unix domain socket 传输 task-1.3 已显式推迟（需新增 Rust tokio-stream，触发 R7），本 task §3 Out-of-Scope。
@@ -180,6 +184,8 @@ func (d *Daemon) Stop() error
   - import/index/search/serve/mcp/eval/export 子命令返回明确 not-implemented（Phase 2+ / 6 / 7 / 8；本 task §3 Out-of-Scope，非缺陷）。
   - 步 3 基线 helper 因 Unit test areas 含当时未创建的 `cmd/contextforge/` 未按冷启动跳过而**实跑** install/typecheck/unit-test 实证基线真绿（非 skip，未掩盖真红）；本 task 创建 `cmd/contextforge/` 后该误判消失，§9 三项均实跑全绿。
   - 本 task 为 Phase 1 最后 task：phase-1 spec §6 端到端 smoke 仍为占位，属 phase 业务契约（主 agent + 用户域），本 task 不编辑 phase spec；AC5 已提供可执行落点（TEST-1.4.5：init → core 拉起 → gRPC health SERVING）。§6 smoke 填实 + team §4 Gate 3 phase smoke gate 由主 agent 合并前处理。
+  - **评审处置（PR #8 只读评审，无 Blocker）**：FIX-3（TEST-1.4.1 加 0600/0700 断言）+ FIX-4a（daemon 复用单 gRPC conn）+ FIX-4b（TEST-1.4.3 容忍 ESRCH PID 复用窗口）已在 `70ccc8b` 修复并 3 连跑验证；评审 Nit「§10 漏列 `docs/s2v-adapter.md`」已补。**FIX-1（PR scope-bleed：分支基点 `6e0a1d2` 携带越界的 task-2.2 §2A）+ FIX-2（phase-1 §6 + §4 Gate 3）经评审协议判定属主 agent 域，task agent 不自行处理 —— 主 agent §4 合并前须将 PR #8 rebase 到 origin/master 丢弃 `6e0a1d2`（task-2.2 §2A 归还 PR#6/独立 chore），并填 phase-1 §6 + 跑 Gate 3，不可 self-merge。**
+  - FIX-4a 复用单 conn 后 HealthCheck 首呼/重启后经 gRPC 重连退避约 1s（原每次新建 conn 约 0.2s）；仍远在轮询窗口内、3 连跑稳定，评审认可 v0.1，效率换数十个短连接消除。
 - **下游 task 影响**：
   - Phase 1 收口：本 task 串通 `contextforge init` + daemon 拉起 `contextforge-core` + gRPC Health SERVING，端到端验证 PRD §Technical Risks R1 缓解。
   - Phase 6 task-6.1 / 6.2：在 `internal/cli` 子命令骨架上落 search / export 实现 + REST；daemon 骨架供 serve 子命令复用。
