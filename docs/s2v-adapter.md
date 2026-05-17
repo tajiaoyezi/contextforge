@@ -218,7 +218,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 1.2 | config | docs/specs/tasks/task-1.2-config.md | Done | Phase1 #2（dep 1.1）| `../ContextForge-wt-foundation` |
 | 1.3 | core | docs/specs/tasks/task-1.3-core-skeleton.md | Done | Phase1 #3（dep 1.1）| `../ContextForge-wt-foundation` |
 | 1.4 | cli | docs/specs/tasks/task-1.4-cli-init.md | Draft | Phase1 #4（dep 1.1,1.2,1.3）| `../ContextForge-wt-foundation` |
-| 2.1 | scanner | docs/specs/tasks/task-2.1-scanner.md | Draft | Phase2 #1 | `../ContextForge-wt-index-core` |
+| 2.1 | scanner | docs/specs/tasks/task-2.1-scanner.md | Done | Phase2 #1 | `../ContextForge-wt-index-core` |
 | 2.2 | parser | docs/specs/tasks/task-2.2-parser.md | Draft | Phase2 #2 | `../ContextForge-wt-index-core` |
 | 2.3 | chunker | docs/specs/tasks/task-2.3-chunker.md | Draft | Phase2 #3（dep 2.2）| `../ContextForge-wt-index-core` |
 | 2.4 | indexer | docs/specs/tasks/task-2.4-indexer.md | Draft | Phase2 #4（dep 2.1,2.3）| `../ContextForge-wt-index-core` |
