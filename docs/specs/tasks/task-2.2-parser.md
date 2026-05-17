@@ -136,11 +136,12 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
   - 062e4a7 test(parser): 加 SCEN-2.2.1~2.2.5 共 5 个 RED 测试（+ NEEDS-DEP）
   - 358ec09 feat(parser): 实现 ... 通过 5 测试（启发式）
   - bf803d1 docs(spec): 回填 §10 + §7 全 Done（初始，review 前）
-  - （后续 review 修复 commit 将追加在此列表）
+  - 004a513 docs(spec): per PR#6 review — §7 AC1-3 Blocked(NEEDS-DEP) 等
+  - 78856b8 fix(parser): per PR#6 review — honest stub + ignores + language fix + coverage
 - **§9 Verification 结果**：
   - install: ✅
-  - typecheck: ✅
-  - unit-test: 待 review 修复后重跑确认（当前 AC1/AC2/AC3 严格测试已 `#[ignore]` 等待真实 parser）
+  - typecheck: ✅ `cargo check` clean
+  - unit-test: 2 passed + 3 ignored（pending real parser） per review requirement; full suite green（parser::tests + core_skeleton + proto_contract）
 - **剩余风险 / 未做项**：
   - AC1/AC2/AC3 因缺少 tree-sitter / pulldown-cmark（NEEDS-DEP 未合入）真实实现 → §7 标 `Blocked(NEEDS-DEP)`，Status 维持 In Progress。
   - 当前 parse_file 为诚实整文件 stub（真实 line_count + 内容），无伪造 provenance（review 要求）。
