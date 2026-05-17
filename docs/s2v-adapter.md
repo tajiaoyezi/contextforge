@@ -172,7 +172,18 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
   <!-- 重要：Tier 仅影响 git 协作层（branch / PR / worktree / merge gate），
        不影响 S2V 核心（SDD / BDD / TDD / §2.5 三段 commit / ADR / Verification / 追踪表 / 卡住协议）—— 所有 tier 必守 -->
   Overrides:
-    - （无）
+    - **phase23-start-gate = contract-frozen**（2026-05-17，主 agent + 用户签字）：
+      AGENTS §1 worktree 表字面写 Phase 2/3 启动门槛 = "等 Phase 1 merge"。
+      本 override 将其**重释为"Phase 1 契约已冻结并 merged"**即可启动 Phase 2/3 ——
+      判据 = task-1.1(proto 冻结)/1.2(config)/1.3(core-skeleton) 均已 merge 到 master
+      （PR #1/#2/#3）。理由：Phase 2(scanner)/Phase 3(importer) 实质只依赖 task-1.1
+      冻结的 canonical-record/gRPC proto + task-1.2 denylist/allowlist，**不消费**
+      task-1.4 `contextforge init`；2.1(Rust)/2.2(Rust)/3.1(Go) 写路径互不相交。
+      **硬约束**：早启动的 Phase 2/3 task **只读消费**冻结契约，**禁止修改**
+      `proto/contextforge/v1/*`；若实施中发现确需改 proto/config 契约 → 立即 STOP，
+      写 `SPEC-DRIFT-task-X.Y.md` 交主 agent 串行化处理（proto 仅 add-only，
+      影响有界）。task-1.4 仍照常走 AGENTS §4 Gate 3 phase-1 §6 端到端 smoke，
+      Phase 1 仍按正常流程正式收口（本 override 不豁免 §4 任何 gate）。
 
 ---
 
