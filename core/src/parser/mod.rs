@@ -49,142 +49,140 @@ impl From<std::io::Error> for ParseError {
     fn from(e: std::io::Error) -> Self { ParseError::Io(e) }
 }
 
-/// GREEN: improved std heuristic (no external crates yet — real tree-sitter/pulldown after NEEDS-DEP rebase).
-/// Satisfies all 5 RED tests + AC shape. Richer splitting (functions, headings, log records) added here.
+/// Honest stub (pre-NEEDS-DEP rebase per PR#6 review).
+/// - parse_file: always returns **one** unit with **actual** file content + **actual** line count (no fabricated content/line numbers/kinds).
+/// - Language normalized to canonical names per §5.3 (e.g. "rs" → "rust").
+/// - Real tree-sitter/pulldown-cmark will replace this after the chore-dep PR + rebase.
+/// - This is the correct provenance for task-2.3 until then.
 pub fn parse_file(path: &Path) -> Result<Vec<ParsedUnit>, ParseError> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let language = match ext {
-        "go" | "rs" | "py" | "ts" | "tsx" | "js" | "jsx" => ext.to_string(),
-        "md" | "markdown" => "markdown".to_string(),
-        "log" | "jsonl" => "log".to_string(),
-        "txt" | "json" | "yaml" | "yml" | "toml" => ext.to_string(),
-        _ => "text".to_string(),
-    };
+    // Basic size guard (FIX-6)
+    const MAX_SIZE: u64 = 100 * 1024 * 1024; // 100MB
+    let meta = std::fs::metadata(path)?;
+    if meta.len() > MAX_SIZE {
+        return Err(ParseError::Other(format!("file too large for parser stub (> {} bytes), skipped", MAX_SIZE)));
+    }
 
     let content = std::fs::read_to_string(path)?;
-    let lines: Vec<&str> = content.lines().collect();
-    let line_count = lines.len().max(1);
+    let line_count = content.lines().count().max(1);
 
-    let mut units = Vec::new();
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let language = match ext {
+        "go" => "go".to_string(),
+        "rs" => "rust".to_string(),
+        "py" => "python".to_string(),
+        "ts" | "tsx" => "typescript".to_string(),
+        "js" | "jsx" => "javascript".to_string(),
+        "md" | "markdown" => "markdown".to_string(),
+        "log" | "jsonl" => "log".to_string(),
+        "json" => "json".to_string(),
+        "yaml" | "yml" => "yaml".to_string(),
+        "toml" => "toml".to_string(),
+        "txt" | "" => "text".to_string(),
+        other => other.to_string(),
+    };
 
-    if language == "rust" || language == "rs" {
-        // Very simple heuristic for the RED test src
-        if content.contains("fn main") {
-            units.push(ParsedUnit { language: language.clone(), line_start: 1, line_end: 1, content: "fn main() {}".to_string(), kind: Some("function".to_string()), metadata: HashMap::new() });
-        }
-        if content.contains("struct Foo") {
-            units.push(ParsedUnit { language: language.clone(), line_start: 2, line_end: 2, content: "struct Foo {}".to_string(), kind: Some("struct".to_string()), metadata: HashMap::new() });
-        }
-    } else if language == "markdown" {
-        for (i, line) in lines.iter().enumerate() {
-            let lnum = i + 1;
-            if line.starts_with("# ") {
-                units.push(ParsedUnit { language: language.clone(), line_start: lnum, line_end: lnum, content: line.to_string(), kind: Some("heading".to_string()), metadata: HashMap::new() });
-            } else if line.starts_with("```") {
-                units.push(ParsedUnit { language: language.clone(), line_start: lnum, line_end: lnum + 2, content: line.to_string(), kind: Some("code_block".to_string()), metadata: HashMap::new() });
-            }
-        }
-        if units.is_empty() {
-            units.push(ParsedUnit { language: language.clone(), line_start: 1, line_end: line_count, content: content.clone(), kind: Some("text".to_string()), metadata: HashMap::new() });
-        }
-    } else if language == "log" {
-        for (i, line) in lines.iter().enumerate() {
-            units.push(ParsedUnit { language: language.clone(), line_start: i+1, line_end: i+1, content: line.to_string(), kind: Some("log_entry".to_string()), metadata: HashMap::new() });
-        }
-    } else {
-        units.push(ParsedUnit { language: language.clone(), line_start: 1, line_end: line_count, content: content.clone(), kind: Some("text".to_string()), metadata: HashMap::new() });
-    }
-
-    if units.is_empty() {
-        units.push(ParsedUnit { language, line_start: 1, line_end: line_count, content: content.clone(), kind: Some("text".to_string()), metadata: HashMap::new() });
-    }
-    Ok(units)
+    Ok(vec![ParsedUnit {
+        language,
+        line_start: 1,
+        line_end: line_count,
+        content,
+        kind: Some("file".to_string()),
+        metadata: HashMap::new(),
+    }])
 }
 
-/// Explicit language version (used by tests).
+/// parse_content kept for test convenience (no disk IO). Also normalizes language.
 pub fn parse_content(_path: &Path, source: &str, language_hint: &str) -> Result<Vec<ParsedUnit>, ParseError> {
-    let lines: Vec<&str> = source.lines().collect();
-    let line_count = lines.len().max(1);
-    let mut units = Vec::new();
+    let line_count = source.lines().count().max(1);
+    // Normalize common aliases
+    let language = match language_hint {
+        "rs" => "rust",
+        "py" => "python",
+        "ts" | "tsx" => "typescript",
+        "js" | "jsx" => "javascript",
+        other => other,
+    }.to_string();
 
-    if language_hint == "rust" {
-        if source.contains("fn main") { units.push(ParsedUnit { language: "rust".into(), line_start: 1, line_end: 1, content: "fn main() {}".into(), kind: Some("function".into()), metadata: HashMap::new() }); }
-        if source.contains("struct Foo") { units.push(ParsedUnit { language: "rust".into(), line_start: 2, line_end: 2, content: "struct Foo {}".into(), kind: Some("struct".into()), metadata: HashMap::new() }); }
-    } else if language_hint == "markdown" {
-        for (i, line) in lines.iter().enumerate() {
-            if line.starts_with("# ") { units.push(ParsedUnit { language: "markdown".into(), line_start: i+1, line_end: i+1, content: line.to_string(), kind: Some("heading".into()), metadata: HashMap::new() }); }
-        }
-    } else if language_hint == "log" {
-        for (i, line) in lines.iter().enumerate() {
-            units.push(ParsedUnit { language: "log".into(), line_start: i+1, line_end: i+1, content: line.to_string(), kind: Some("log_entry".into()), metadata: HashMap::new() });
-        }
-    }
-
-    if units.is_empty() {
-        units.push(ParsedUnit { language: language_hint.to_string(), line_start: 1, line_end: line_count, content: source.to_string(), kind: Some("text".to_string()), metadata: HashMap::new() });
-    }
-    Ok(units)
+    Ok(vec![ParsedUnit {
+        language,
+        line_start: 1,
+        line_end: line_count,
+        content: source.to_string(),
+        kind: Some("content".to_string()),
+        metadata: HashMap::new(),
+    }])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // All RED tests use parse_content (std-only) to avoid any new crate in this branch (R7/NEEDS-DEP).
-    // Real tree-sitter/pulldown bodies + parse_file rich splitting come after dep rebase.
+    // Honest state per PR#6 review (FIX-2/3/5).
+    // Strict AC1/AC2/AC3 tests are ignored until real parser lands.
 
-    // TEST-2.2.1 / SCEN-2.2.1 (AC1): code → language tag + range
+    // TEST-2.2.1 / SCEN-2.2.1 (AC1)
     #[test]
+    #[ignore = "pending NEEDS-DEP-task-2.2 tree-sitter/pulldown-cmark rebase (PR#6 review)"]
     fn test_2_2_1_code_parses_with_language_and_range() {
         let src = "fn main() {}\nstruct Foo {}";
         let units = parse_content(std::path::Path::new("main.rs"), src, "rust").expect("parse");
-        assert!(!units.is_empty(), "AC1: must return at least one unit");
-        let u = &units[0];
-        assert_eq!(u.language, "rust", "AC1: language rust");
-        assert!(u.line_end >= u.line_start);
-        // RED expectation (fails on current stub): real tree-sitter must produce richer units
-        assert!(units.len() > 1 || u.kind.as_deref() == Some("function"), "RED: expecting function/struct units from real parser (AC1)");
+        assert!(!units.is_empty());
+        assert!(units.len() > 1, "AC1: real parser must split >1 units");
+        assert!(units.iter().any(|u| u.kind.as_deref() == Some("function")), "AC1: must detect function");
     }
 
-    // TEST-2.2.2 / SCEN-2.2.2 (AC2): markdown structure
+    // TEST-2.2.2 / SCEN-2.2.2 (AC2)
     #[test]
+    #[ignore = "pending NEEDS-DEP-task-2.2 tree-sitter/pulldown-cmark rebase (PR#6 review)"]
     fn test_2_2_2_markdown_detects_structure() {
         let src = "# Title\n\n```rust\nfn x(){}\n```\n\npara";
         let units = parse_content(std::path::Path::new("doc.md"), src, "markdown").expect("parse");
-        assert!(!units.is_empty());
-        let u = &units[0];
-        assert_eq!(u.language, "markdown");
-        assert!(u.line_end >= 1);
-        // RED: real pulldown-cmark must detect heading + code_block as separate units
-        assert!(units.iter().any(|u| u.kind.as_deref() == Some("heading") || u.content.contains("# Title")), "RED: expecting heading/code_block (AC2)");
+        assert!(units.iter().any(|u| u.kind.as_deref() == Some("heading")), "AC2: must detect heading");
+        assert!(units.iter().any(|u| u.kind.as_deref() == Some("code_block")), "AC2: must detect code_block");
     }
 
-    // TEST-2.2.3 / SCEN-2.2.3 (AC3): logs
+    // TEST-2.2.3 / SCEN-2.2.3 (AC3)
     #[test]
+    #[ignore = "pending NEEDS-DEP-task-2.2 tree-sitter/pulldown-cmark rebase (PR#6 review)"]
     fn test_2_2_3_log_and_jsonl() {
         let src = "2026-05-18 ERROR something\n{\"level\":\"info\"}";
         let units = parse_content(std::path::Path::new("app.log"), src, "log").expect("parse");
-        assert!(!units.is_empty());
-        assert_eq!(units[0].language, "log");
-        // RED: real log parser would split into multiple timestamped/JSON records
-        assert!(units.len() > 1, "RED: expecting multiple log entries (AC3)");
+        assert!(units.len() >= 2, "AC3: real parser must split into >=2 records");
     }
 
-    // TEST-2.2.4 / SCEN-2.2.4 (AC4): unknown fallback
+    // TEST-2.2.4 / SCEN-2.2.4 (AC4) — passes with honest stub
     #[test]
     fn test_2_2_4_unknown_ext_falls_back_to_text() {
         let src = "random content";
         let units = parse_content(std::path::Path::new("data.bin"), src, "text").expect("fallback");
         assert_eq!(units[0].language, "text");
-        // This one can stay mostly passing for fallback guarantee; the "no panic + correct tag" is the AC
     }
 
-    // TEST-2.2.5 / SCEN-2.2.5 (AC5): language retained
+    // TEST-2.2.5 / SCEN-2.2.5 (AC5) + parse_file coverage (FIX-5)
     #[test]
     fn test_2_2_5_language_label_is_retained() {
         let src = "hello";
-        let units = parse_content(std::path::Path::new("x.py"), src, "python").unwrap();
-        assert_eq!(units[0].language, "python", "AC5: language survives");
-        // RED: in real run with many files the label must be accurate for tokenizer boost (R8)
+        let units_c = parse_content(std::path::Path::new("x.py"), src, "python").unwrap();
+        assert_eq!(units_c[0].language, "python");
+
+        // Exercise the main entry parse_file (was missing coverage)
+        use std::io::Write;
+        let mut tmp = std::env::temp_dir();
+        tmp.push(format!("cf-test-{}.py", std::process::id()));
+        { let mut f = std::fs::File::create(&tmp).unwrap(); f.write_all(src.as_bytes()).unwrap(); }
+        let units_f = parse_file(&tmp).expect("parse_file");
+        assert_eq!(units_f[0].language, "python", "AC5 + FIX-5: parse_file must return canonical name");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    // Explicit parse_file error path test (FIX-5)
+    #[test]
+    fn test_parse_file_io_error() {
+        let bad = std::path::Path::new("/no/such/path/ever.rs");
+        let e = parse_file(bad).unwrap_err();
+        match e {
+            ParseError::Io(_) => {}
+            _ => panic!("expected Io error"),
+        }
     }
 }
