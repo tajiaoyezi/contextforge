@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+// FROZEN at schema_version "0.1" — see context.proto CONTRACT FREEZE RULE.
+// Internal Go(control-plane) <-> Rust(data-plane) gRPC contract (ADR-001/003).
+// Method bodies are OUT OF SCOPE for task-1.1 (contract freeze only).
+package contextforge.v1;
+
+import "contextforge/v1/search.proto";
+
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
+
+message HealthRequest {}
+
+// HealthResponse.status == "SERVING" once contextforge-core is up
+// (supports Phase 1 §6 local gRPC health check).
+message HealthResponse {
+  string status = 1;
+}
+
+service ContextService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}

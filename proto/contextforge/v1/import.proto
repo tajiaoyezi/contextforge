@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+// FROZEN at schema_version "0.1" — see context.proto CONTRACT FREEZE RULE.
+// Minimal import-family contract (read-only import → canonical records).
+package contextforge.v1;
+
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
+
+message ImportRequest {
+  string collection_id = 1;
+  string source_provider = 2;
+  string root_path = 3;
+}
+
+message ImportResponse {
+  int64 source_count = 1;
+  int64 context_count = 2;
+  int64 redaction_count = 3;
+}
