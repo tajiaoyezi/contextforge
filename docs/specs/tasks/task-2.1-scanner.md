@@ -1,11 +1,11 @@
 # Task `2.1`: `scanner — 文件扫描 + denylist/allowlist 过滤 + secret 扫描`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-17）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实施硬约束：只读消费 task-1.1 冻结 proto + task-1.2 denylist/allowlist 契约，禁止修改 `proto/`；scanner 先用 Rust stdlib 实现，避免 R7 新依赖冲突。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: tajiaoyezi
 **Related Phase**: Phase 2 (index-core)
 **Dependencies**: Phase 1（canonical schema + proto）
 
@@ -21,15 +21,27 @@
 
 ### In Scope
 
-- `<TBD-by-user>`
+- `core/src/scanner/` Rust 模块：本地目录递归扫描、文件发现、路径规范化与确定性排序（供后续 parser/chunker/indexer 消费）。
+- 默认 denylist 过滤：等价消费 task-1.2 `DefaultDenylist()` 契约列出的敏感路径/模式；命中路径不读取内容、不进入扫描结果，并在 skip 列表中记录原因。
+- allowlist 路径导入模型：支持按 collection 配置 allowlist 前缀；未显式 allow 的路径跳过；覆盖默认 denylist 必须显式确认。
+- secret pattern 检测与 redaction：覆盖 API key / Bearer token / private key / AWS / GitHub token / 通用 password / cookie；产出 redacted 内容、`redaction_status` 与命中明细，不修改原文件。
+- `dry_run` 扫描模式：返回将被 redact 的命中与跳过/扫描统计，但不产出用于索引的 redacted content。
+- 单文件大小上限与流式读保护：默认 100MiB 上限，超限文件跳过且不一次性读入内存；普通文件按 bounded reader 读取。
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- `contextforge scan --dry-run` CLI 子命令参数解析与终端输出（Phase 6 CLI / task 6.1；本 task 只提供 Rust scanner `dry_run` 能力）。
+- parser/chunker/indexer 写入、SQLite/Tantivy 持久化、增量索引调度（task 2.2/2.3/2.4）。
+- audit log 写入与 redaction override 审计（task 5.3；本 task 暴露 override 事实供下游审计）。
+- 新增第三方扫描/ignore/regex crate 或修改 `Cargo.toml` / `Cargo.lock`（若后续确认必须引入，按 R7 独立 chore-dep PR）。
+- 修改 `proto/contextforge/v1/*` 或 canonical record 契约（若确需改动，立即写 `SPEC-DRIFT-task-2.1.md` 停止实施）。
+- 二进制文件语义解析、语言识别、chunk metadata/provenance 细化（后续 parser/chunker/indexer）。
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- Phase 2 `indexer` / `parser` / `chunker`：消费 scanner 输出的可索引文件、redacted content 与 skip/redaction metadata。
+- Go CLI / daemon（后续 task）：通过 gRPC/内部编排触发 Rust scanner 能力，读取 task-1.2 config 产生的 denylist/allowlist 后传入 scanner。
+- 本地优先 / 隐私敏感开发者：依赖默认 denylist + secret redaction 避免敏感内容明文进入索引。
 
 ## 5. Behavior Contract
 
@@ -44,11 +56,111 @@
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- Rust 标准库：`std::fs` / `std::io::{BufRead, BufReader, Read}` / `std::path::{Path, PathBuf, Component}` / `std::collections::BTreeSet` / `std::fmt` / `std::error::Error`（递归扫描、bounded read、路径匹配、错误类型）。
+- 上游契约（只读）：task-1.2 `DefaultDenylist()` 的 16 项默认 denylist / allowlist 模型语义；Rust 侧复制等价默认值，不 import Go 包。
+- 上游契约（只读）：task-1.1 冻结的 `ContextRecord.redaction_status` 取值语义（`none|partial|full`）；本 task 不修改 proto。
+- 测试侧：Rust 标准库 `std::fs` + `std::env::temp_dir()` 生成隔离 fixture；不新增 dev-dependency。
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+> Rust crate `contextforge_core::scanner`，落 `core/src/scanner/mod.rs`（adapter §Source areas `core/`）。
+
+```rust
+pub const DEFAULT_MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanOptions {
+    pub denylist: Vec<String>,
+    pub allowlist: Vec<std::path::PathBuf>,
+    pub allow_denylist_override: bool,
+    pub dry_run: bool,
+    pub max_file_bytes: u64,
+}
+
+impl Default for ScanOptions;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanReport {
+    pub root: std::path::PathBuf,
+    pub files: Vec<ScannedFile>,
+    pub skipped: Vec<SkippedPath>,
+    pub redaction_hits: Vec<SecretMatch>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScannedFile {
+    pub path: std::path::PathBuf,
+    pub original_size_bytes: u64,
+    pub content: Option<String>,
+    pub redacted_content: Option<String>,
+    pub redaction_status: RedactionStatus,
+    pub redactions: Vec<SecretMatch>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedactionStatus { None, Partial, Full }
+
+impl RedactionStatus {
+    pub fn as_str(self) -> &'static str; // "none" | "partial" | "full"
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SecretKind {
+    ApiKey,
+    BearerToken,
+    PrivateKey,
+    AwsAccessKey,
+    AwsSecretKey,
+    GithubToken,
+    Password,
+    Cookie,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretMatch {
+    pub kind: SecretKind,
+    pub path: Option<std::path::PathBuf>,
+    pub line: usize,
+    pub start: usize,
+    pub end: usize,
+    pub redaction: &'static str, // e.g. "[REDACTED:GITHUB_TOKEN]"
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedPath {
+    pub path: std::path::PathBuf,
+    pub reason: SkipReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SkipReason {
+    Denylisted(String),
+    NotAllowlisted,
+    TooLarge { size: u64, max: u64 },
+    NotUtf8,
+}
+
+#[derive(Debug)]
+pub enum ScanError {
+    Io { path: std::path::PathBuf, source: std::io::Error },
+    DenylistOverrideRequired,
+}
+
+pub fn default_denylist() -> Vec<String>;
+pub fn scan_path(root: impl AsRef<std::path::Path>, options: &ScanOptions) -> Result<ScanReport, ScanError>;
+pub fn scan_file(path: impl AsRef<std::path::Path>, options: &ScanOptions) -> Result<ScannedFile, ScanError>;
+pub fn detect_secrets(content: &str) -> Vec<SecretMatch>;
+pub fn redact_content(content: &str) -> (String, RedactionStatus, Vec<SecretMatch>);
+pub fn is_denied(path: impl AsRef<std::path::Path>, denylist: &[String]) -> Option<String>;
+pub fn is_allowlisted(path: impl AsRef<std::path::Path>, allowlist: &[std::path::PathBuf]) -> bool;
+```
+
+- SCEN/TEST-2.1.1 → `scan_path` 默认跳过 `.env` / `.ssh/` / `.git/objects/` / `node_modules/` / `target/`（AC1）
+- SCEN/TEST-2.1.2 → `ScanOptions.allowlist` 限定导入路径；denylist override 未显式确认时报 `DenylistOverrideRequired`（AC2）
+- SCEN/TEST-2.1.3 → `redact_content` / `scan_file` 检测并 redacts API key / Bearer / private key / AWS / GitHub token / password / cookie，不改原文件（AC3）
+- SCEN/TEST-2.1.4 → `ScanOptions.dry_run=true` 时返回 `redaction_hits`，`ScannedFile.redacted_content=None`，不产出索引内容（AC4）
+- SCEN/TEST-2.1.5 → `scan_file` 对 `metadata.len() > max_file_bytes` 返回 `TooLarge` skip，不读取内容；普通文件用 bounded reader（AC5）
 
 ## 6. Acceptance Criteria
 
