@@ -1,8 +1,9 @@
 package importer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"hash/crc32"
 	"path/filepath"
 	"strings"
 	"time"
@@ -57,10 +58,12 @@ func buildRecord(in recordInput) *contextforgev1.ContextRecord {
 	}
 }
 
-// makeID builds a deterministic ID from path + content hash. Not cryptographically
-// secure — v0.1 uses it for dedup correlation (task-5.1).
+// makeID builds a deterministic ID from path + content hash (sha256) to avoid
+// 32-bit collisions at 100k-chunk scale (task-5.1 dedup safety).
 func makeID(in recordInput) string {
-	return fmt.Sprintf("ctx_%08x", crc32.ChecksumIEEE([]byte(in.path+":"+in.content)))
+	h := sha256.New()
+	fmt.Fprint(h, in.path, ":", in.content)
+	return "ctx_" + hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // sourceURI turns an absolute path into a file:// URI.
@@ -71,10 +74,11 @@ func sourceURI(abs string) string {
 	return abs
 }
 
-// contentHash returns a CRC32 hex checksum of content. Fast and sufficient for
-// v0.1 exact-duplicate detection.
+// contentHash returns a sha256 hex checksum of content. 256-bit strength avoids
+// birthday collisions at 100k-chunk scale (PRD §Constraints 性能 / task-5.1).
 func contentHash(content string) string {
-	return fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(content)))
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:])
 }
 
 // detectLanguage maps common extensions to the Language enum/string used in
