@@ -49,11 +49,29 @@ impl From<std::io::Error> for ParseError {
     fn from(e: std::io::Error) -> Self { ParseError::Io(e) }
 }
 
+/// Single source of truth for language canonicalization (FIX-R2 per PR#6 round-2 review).
+/// Both parse_file and parse_content must use this to prevent future drift (AC5 / R8).
+fn canonicalize_language(hint: &str) -> String {
+    match hint {
+        "go" => "go",
+        "rs" => "rust",
+        "py" => "python",
+        "ts" | "tsx" => "typescript",
+        "js" | "jsx" => "javascript",
+        "md" | "markdown" => "markdown",
+        "log" | "jsonl" => "log",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        "txt" | "" => "text",
+        other => other,
+    }.to_string()
+}
+
 /// Honest stub (pre-NEEDS-DEP rebase per PR#6 review).
-/// - parse_file: always returns **one** unit with **actual** file content + **actual** line count (no fabricated content/line numbers/kinds).
-/// - Language normalized to canonical names per §5.3 (e.g. "rs" → "rust").
+/// - parse_file: always returns **one** unit with **actual** file content + **actual** line count.
+/// - Uses canonicalize_language single source.
 /// - Real tree-sitter/pulldown-cmark will replace this after the chore-dep PR + rebase.
-/// - This is the correct provenance for task-2.3 until then.
 pub fn parse_file(path: &Path) -> Result<Vec<ParsedUnit>, ParseError> {
     // Basic size guard (FIX-6)
     const MAX_SIZE: u64 = 100 * 1024 * 1024; // 100MB
@@ -66,20 +84,7 @@ pub fn parse_file(path: &Path) -> Result<Vec<ParsedUnit>, ParseError> {
     let line_count = content.lines().count().max(1);
 
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let language = match ext {
-        "go" => "go".to_string(),
-        "rs" => "rust".to_string(),
-        "py" => "python".to_string(),
-        "ts" | "tsx" => "typescript".to_string(),
-        "js" | "jsx" => "javascript".to_string(),
-        "md" | "markdown" => "markdown".to_string(),
-        "log" | "jsonl" => "log".to_string(),
-        "json" => "json".to_string(),
-        "yaml" | "yml" => "yaml".to_string(),
-        "toml" => "toml".to_string(),
-        "txt" | "" => "text".to_string(),
-        other => other.to_string(),
-    };
+    let language = canonicalize_language(ext);
 
     Ok(vec![ParsedUnit {
         language,
@@ -91,17 +96,11 @@ pub fn parse_file(path: &Path) -> Result<Vec<ParsedUnit>, ParseError> {
     }])
 }
 
-/// parse_content kept for test convenience (no disk IO). Also normalizes language.
+/// parse_content kept for test convenience (no disk IO).
+/// Delegates to the single canonicalize_language.
 pub fn parse_content(_path: &Path, source: &str, language_hint: &str) -> Result<Vec<ParsedUnit>, ParseError> {
     let line_count = source.lines().count().max(1);
-    // Normalize common aliases
-    let language = match language_hint {
-        "rs" => "rust",
-        "py" => "python",
-        "ts" | "tsx" => "typescript",
-        "js" | "jsx" => "javascript",
-        other => other,
-    }.to_string();
+    let language = canonicalize_language(language_hint);
 
     Ok(vec![ParsedUnit {
         language,

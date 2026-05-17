@@ -141,7 +141,7 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 - **§9 Verification 结果**：
   - install: ✅
   - typecheck: ✅ `cargo check` clean
-  - unit-test: 2 passed + 3 ignored（pending real parser） per review requirement; full suite green（parser::tests + core_skeleton + proto_contract）
+  - unit-test: 3 passed / 0 failed / 3 ignored（parser::tests；AC1-3 待 NEEDS-DEP rebase）；full suite green（parser + core_skeleton 4 + proto_contract 5）
 - **剩余风险 / 未做项**：
   - AC1/AC2/AC3 因缺少 tree-sitter / pulldown-cmark（NEEDS-DEP 未合入）真实实现 → §7 标 `Blocked(NEEDS-DEP)`，Status 维持 In Progress。
   - 当前 parse_file 为诚实整文件 stub（真实 line_count + 内容），无伪造 provenance（review 要求）。
