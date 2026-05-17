@@ -3,6 +3,7 @@
 package importer
 
 import (
+	"log"
 	"sync"
 
 	contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"
@@ -37,7 +38,8 @@ func Register(importer Importer) {
 }
 
 // Resolve selects the best Importer for path. If no registered importer reports
-// ok, FileFallbackImporter is returned so that import never hard-fails (AC2/AC3).
+// ok, FileFallbackImporter is returned with an explicit warning so that import
+// never hard-fails (AC2/AC3).
 func Resolve(path string) (Importer, error) {
 	registryMu.RLock()
 	imps := make([]Importer, len(registry))
@@ -54,6 +56,7 @@ func Resolve(path string) (Importer, error) {
 		}
 	}
 	if best == nil {
+		log.Printf("[warning] no schema-aware importer matched %q; falling back to generic file importer", path)
 		return NewFileFallbackImporter(), nil
 	}
 	return best, nil
