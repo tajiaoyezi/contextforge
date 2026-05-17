@@ -202,7 +202,10 @@ fn test_2_1_5_oversized_file_is_skipped() {
         ..ScanOptions::default()
     };
     let report = scan_path(&root, &options).expect("scan succeeds with oversized skip");
-    assert!(report.files.is_empty(), "oversized file must not be scanned");
+    assert!(
+        report.files.is_empty(),
+        "oversized file must not be scanned"
+    );
     assert!(
         report.skipped.iter().any(|s| {
             rel(&s.path, &root) == "large.log"
