@@ -2,7 +2,7 @@
 
 > ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi
