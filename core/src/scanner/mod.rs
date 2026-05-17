@@ -3,5 +3,5 @@
 
 /// True once this placeholder module is wired into the crate (AC4 test anchor).
 pub fn placeholder_ready() -> bool {
-    unimplemented!("task-1.3 GREEN: scanner placeholder wired")
+    true
 }
