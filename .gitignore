@@ -1,0 +1,37 @@
+# 依赖与构建产物（通用 + 多生态）
+node_modules/
+dist/
+build/
+coverage/
+target/
+vendor/
+
+# 日志与临时文件
+*.log
+*.tmp
+.DS_Store
+
+# S2V fixture 是测试事实源 —— 必须入库，豁免上面的通用忽略（*.log/*.tmp 等）
+# （含 secret-redaction 用的伪造 .env/.log fixture：内容为假凭证，作为测试事实源须 track）
+!test/fixtures/
+!test/fixtures/**
+
+# IDE / 编辑器配置
+.idea/
+.vscode/
+*.swp
+
+# 语言特定（本项目 = Go 控制面 + Rust 数据面，按步 2 解析技术栈补全）
+# Go:
+#   仓库根锚定二进制名（前导 / 防止误吞 cmd/contextforge/ 同名源码目录 — init.md 步 11 警告）
+/contextforge
+/contextforge-core
+*.test
+*.out
+# 注意：go.sum 必须入库（依赖完整性），不忽略
+# Rust:
+#   target/ 已在上方；Cargo.lock 对二进制应用须入库（不忽略）
+**/*.rs.bk
+
+# S2V 协作临时文件（team 档）
+STATUS-MAIN.md
