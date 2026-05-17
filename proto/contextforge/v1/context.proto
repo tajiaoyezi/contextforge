@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+// ContextForge canonical-record contract — FROZEN at schema_version "0.1".
+//
+// CONTRACT FREEZE RULE (task-1.1 / PRD §Technical Risks R1 / ADR-001):
+//   schema_version = "0.1". This contract is FROZEN: only add new fields with
+//   new tag numbers; never delete a field, and never reuse or renumber an
+//   existing tag. Unrecognized fields are tolerated via ContextRecord.metadata
+//   and must not affect core retrieval / export / audit fields.
+package contextforge.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
+
+// Provenance records where an imported record originally came from.
+message Provenance {
+  string importer = 1;
+  string original_path = 2;
+  google.protobuf.Timestamp imported_at = 3;
+  google.protobuf.Timestamp source_modified_at = 4;
+}
+
+// SourceRecord — a raw source: file, memory file, log file, rule file.
+message SourceRecord {
+  string id = 1;
+  string schema_version = 2;
+  string collection_id = 3;
+  string source_type = 4;
+  string source_provider = 5;
+  string source_uri = 6;
+  string content_hash = 7;
+  google.protobuf.Timestamp discovered_at = 8;
+}
+
+// ContextRecord — governed context record (migration / audit / export).
+// Minimal field set per PRD §Technical Approach Canonical Record v0.1.
+message ContextRecord {
+  string id = 1;
+  string schema_version = 2;
+  string collection_id = 3;
+  string source_type = 4;
+  string source_provider = 5;
+  string source_uri = 6;
+  repeated string agent_scope = 7;
+  string title = 8;
+  string content = 9;
+  string content_hash = 10;
+  string redaction_status = 11;
+  string language = 12;
+  string file_path = 13;
+  int64 line_start = 14;
+  int64 line_end = 15;
+  repeated string tags = 16;
+  repeated Provenance provenance = 17;
+  repeated string security_labels = 18;
+  google.protobuf.Timestamp created_at = 19;
+  google.protobuf.Timestamp updated_at = 20;
+  google.protobuf.Timestamp expires_at = 21;
+  int64 version = 22;
+  google.protobuf.Struct metadata = 23;
+}
+
+// Chunk — retrieval slice for Tantivy / metadata search.
+message Chunk {
+  string chunk_id = 1;
+  string context_id = 2;
+  string collection_id = 3;
+  string content = 4;
+  string language = 5;
+  string file_path = 6;
+  int64 line_start = 7;
+  int64 line_end = 8;
+  int64 ordinal = 9;
+  string redaction_status = 10;
+}

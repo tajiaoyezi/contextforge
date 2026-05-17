@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+// FROZEN at schema_version "0.1" — see context.proto CONTRACT FREEZE RULE.
+// Minimal recall-eval contract (golden questions → hit-rate stats).
+package contextforge.v1;
+
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
+
+message EvalRequest {
+  string collection_id = 1;
+  string golden_path = 2;
+}
+
+message EvalResponse {
+  int64 total = 1;
+  int64 strong_hits = 2;
+  int64 weak_hits = 3;
+  int64 misses = 4;
+}

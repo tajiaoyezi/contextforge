@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// FROZEN at schema_version "0.1" — see context.proto CONTRACT FREEZE RULE
+// (only add fields, never delete or renumber tags).
+package contextforge.v1;
+
+import "contextforge/v1/context.proto";
+
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
+
+// SearchFilters mirrors PRD §REST/MCP 最小接口契约草案 filters object.
+message SearchFilters {
+  repeated string source_type = 1;
+  repeated string language = 2;
+}
+
+// SearchRequest — POST /v1/search request (PRD §REST/MCP 草案).
+message SearchRequest {
+  string query = 1;
+  repeated string collections = 2;
+  repeated string agent_scope = 3;
+  int32 top_k = 4;
+  SearchFilters filters = 5;
+  bool explain = 6;
+}
+
+// RetrievalResult — explainable result returned to CLI / REST / MCP.
+// Fields kept identical across REST and MCP (ADR-003 single-source schema).
+message RetrievalResult {
+  string chunk_id = 1;
+  string context_id = 2;
+  string source_type = 3;
+  string file_path = 4;
+  int64 line_start = 5;
+  int64 line_end = 6;
+  double score = 7;
+  string retrieval_method = 8;
+  string reason = 9;
+  repeated string agent_scope = 10;
+  string redaction_status = 11;
+  repeated Provenance provenance = 12;
+}
+
+// SearchResponse — POST /v1/search response (PRD §REST/MCP 草案).
+message SearchResponse {
+  repeated RetrievalResult results = 1;
+}
