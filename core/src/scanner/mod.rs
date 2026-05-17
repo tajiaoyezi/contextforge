@@ -3,8 +3,8 @@
 
 use std::error::Error;
 use std::fmt;
-use std::fs;
-use std::io;
+use std::fs::{self, File};
+use std::io::{self, BufReader, Read};
 use std::path::{Component, Path, PathBuf};
 
 pub const DEFAULT_MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
@@ -207,28 +207,11 @@ pub fn scan_path(root: impl AsRef<Path>, options: &ScanOptions) -> Result<ScanRe
 
 pub fn scan_file(path: impl AsRef<Path>, options: &ScanOptions) -> Result<ScannedFile, ScanError> {
     let path = path.as_ref();
-    let metadata = fs::metadata(path).map_err(|source| ScanError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    if metadata.len() > options.max_file_bytes {
-        return Ok(ScannedFile {
-            path: path.to_path_buf(),
-            original_size_bytes: metadata.len(),
-            content: None,
-            redacted_content: None,
-            redaction_status: RedactionStatus::None,
-            redactions: Vec::new(),
-        });
-    }
-
-    let content = fs::read_to_string(path).map_err(|source| ScanError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
+    validate_scan_file_path(path, options)?;
+    let (content, size) = read_utf8_bounded(path, options.max_file_bytes)?;
     Ok(scan_content(
         path.to_path_buf(),
-        metadata.len(),
+        size,
         content,
         options.dry_run,
     ))
@@ -249,6 +232,11 @@ pub fn redact_content(content: &str) -> (String, RedactionStatus, Vec<SecretMatc
     for span in spans.iter().rev() {
         redacted.replace_range(span.start..span.end, span.kind.label());
     }
+    let status = if spans_cover_trimmed(content, &spans) {
+        RedactionStatus::Full
+    } else {
+        RedactionStatus::Partial
+    };
     let matches = spans
         .into_iter()
         .map(|span| SecretMatch {
@@ -260,7 +248,7 @@ pub fn redact_content(content: &str) -> (String, RedactionStatus, Vec<SecretMatc
             redaction: span.kind.label(),
         })
         .collect();
-    (redacted, RedactionStatus::Partial, matches)
+    (redacted, status, matches)
 }
 
 pub fn is_denied(path: impl AsRef<Path>, denylist: &[String]) -> Option<String> {
@@ -343,6 +331,13 @@ fn walk(path: &Path, options: &ScanOptions, report: &mut ScanReport) -> Result<(
             path: p.clone(),
             source,
         })?;
+        if metadata.file_type().is_symlink() {
+            report.skipped.push(SkippedPath {
+                path: p,
+                reason: SkipReason::Symlink,
+            });
+            continue;
+        }
 
         if let Some(pattern) = is_denied(&p, &options.denylist) {
             let explicit_override =
@@ -374,32 +369,29 @@ fn walk(path: &Path, options: &ScanOptions, report: &mut ScanReport) -> Result<(
         if !metadata.is_file() {
             continue;
         }
-        if metadata.len() > options.max_file_bytes {
-            report.skipped.push(SkippedPath {
-                path: p,
-                reason: SkipReason::TooLarge {
-                    size: metadata.len(),
-                    max: options.max_file_bytes,
-                },
-            });
-            continue;
-        }
-
-        match fs::read_to_string(&p) {
-            Ok(content) => {
-                let scanned = scan_content(p, metadata.len(), content, options.dry_run);
+        match read_utf8_bounded(&p, options.max_file_bytes) {
+            Ok((content, size)) => {
+                let scanned = scan_content(p, size, content, options.dry_run);
                 report
                     .redaction_hits
                     .extend(scanned.redactions.iter().cloned());
                 report.files.push(scanned);
             }
-            Err(err) if err.kind() == io::ErrorKind::InvalidData => {
+            Err(ScanError::FileTooLarge { size, max, .. }) => report.skipped.push(SkippedPath {
+                path: p,
+                reason: SkipReason::TooLarge { size, max },
+            }),
+            Err(ScanError::Symlink { .. }) => report.skipped.push(SkippedPath {
+                path: p,
+                reason: SkipReason::Symlink,
+            }),
+            Err(ScanError::Io { source, .. }) if source.kind() == io::ErrorKind::InvalidData => {
                 report.skipped.push(SkippedPath {
                     path: p,
                     reason: SkipReason::NotUtf8,
                 })
             }
-            Err(source) => return Err(ScanError::Io { path: p, source }),
+            Err(err) => return Err(err),
         }
     }
     Ok(())
@@ -436,43 +428,74 @@ fn mark_tree_skipped(
     reason: SkipReason,
     report: &mut ScanReport,
 ) -> Result<(), ScanError> {
-    let metadata = fs::metadata(path).map_err(|source| ScanError::Io {
+    report.skipped.push(SkippedPath {
+        path: path.to_path_buf(),
+        reason,
+    });
+    Ok(())
+}
+
+fn validate_scan_file_path(path: &Path, options: &ScanOptions) -> Result<(), ScanError> {
+    let metadata = fs::symlink_metadata(path).map_err(|source| ScanError::Io {
         path: path.to_path_buf(),
         source,
     })?;
-    if metadata.is_file() {
-        report.skipped.push(SkippedPath {
+    if metadata.file_type().is_symlink() {
+        return Err(ScanError::Symlink {
             path: path.to_path_buf(),
-            reason,
         });
-        return Ok(());
     }
-    if !metadata.is_dir() {
-        return Ok(());
+    if let Some(_pattern) = is_denied(path, &options.denylist) {
+        let explicitly_confirmed = options.allow_denylist_override
+            && (options.allowlist.is_empty() || is_allowlisted(path, &options.allowlist));
+        if !explicitly_confirmed {
+            return Err(ScanError::DenylistOverrideRequired);
+        }
+    }
+    if !options.allowlist.is_empty() && !is_allowlisted(path, &options.allowlist) {
+        return Err(ScanError::NotAllowlisted);
+    }
+    Ok(())
+}
+
+fn read_utf8_bounded(path: &Path, max_file_bytes: u64) -> Result<(String, u64), ScanError> {
+    let metadata = fs::symlink_metadata(path).map_err(|source| ScanError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(ScanError::Symlink {
+            path: path.to_path_buf(),
+        });
+    }
+    if metadata.len() > max_file_bytes {
+        return Err(ScanError::FileTooLarge {
+            path: path.to_path_buf(),
+            size: metadata.len(),
+            max: max_file_bytes,
+        });
     }
 
-    let mut entries = fs::read_dir(path)
-        .map_err(|source| ScanError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?
-        .collect::<Result<Vec<_>, _>>()
+    let file = File::open(path).map_err(|source| ScanError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let mut reader = BufReader::new(file).take(max_file_bytes.saturating_add(1));
+    let mut content = String::new();
+    let read = reader
+        .read_to_string(&mut content)
         .map_err(|source| ScanError::Io {
             path: path.to_path_buf(),
             source,
         })?;
-    entries.sort_by_key(|e| e.path());
-    if entries.is_empty() {
-        report.skipped.push(SkippedPath {
+    if read as u64 > max_file_bytes {
+        return Err(ScanError::FileTooLarge {
             path: path.to_path_buf(),
-            reason,
+            size: read as u64,
+            max: max_file_bytes,
         });
-        return Ok(());
     }
-    for entry in entries {
-        mark_tree_skipped(&entry.path(), reason.clone(), report)?;
-    }
-    Ok(())
+    Ok((content, metadata.len()))
 }
 
 fn is_ancestor_of_allowlist(path: &Path, allowlist: &[PathBuf]) -> bool {
@@ -562,8 +585,8 @@ fn find_private_key(content: &str, spans: &mut Vec<SecretSpan>) {
 fn find_line_secret(line: &str, line_offset: usize, line_no: usize, spans: &mut Vec<SecretSpan>) {
     let lower = line.to_ascii_lowercase();
 
-    if let Some(pos) = lower.find("bearer ") {
-        let start = pos + "bearer ".len();
+    if let Some(pos) = find_bearer_token_start(&lower) {
+        let start = pos;
         push_token_span(
             line,
             line_offset,
@@ -574,23 +597,26 @@ fn find_line_secret(line: &str, line_offset: usize, line_no: usize, spans: &mut 
         );
     }
     if let Some(pos) = find_token_prefix(line, "AKIA", 20) {
-        spans.push(span(
-            line_offset,
-            line_no,
-            pos,
-            pos + 20,
-            SecretKind::AwsAccessKey,
-        ));
-    }
-    if let Some(pos) = find_token_prefix(line, "ghp_", 20) {
         let end = token_end(line, pos);
         spans.push(span(
             line_offset,
             line_no,
             pos,
             end,
-            SecretKind::GithubToken,
+            SecretKind::AwsAccessKey,
         ));
+    }
+    for prefix in ["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"] {
+        if let Some(pos) = find_token_prefix(line, prefix, prefix.len() + 16) {
+            let end = token_end(line, pos);
+            spans.push(span(
+                line_offset,
+                line_no,
+                pos,
+                end,
+                SecretKind::GithubToken,
+            ));
+        }
     }
     if let Some(start) = value_start_after_key(&lower, "aws_secret_access_key") {
         push_value_span(
@@ -601,6 +627,8 @@ fn find_line_secret(line: &str, line_offset: usize, line_no: usize, spans: &mut 
             SecretKind::AwsSecretKey,
             spans,
         );
+    } else if let Some(start) = value_start_after_key(&lower, "x-api-key") {
+        push_value_span(line, line_offset, line_no, start, SecretKind::ApiKey, spans);
     } else if let Some(start) = value_start_after_key(&lower, "api_key") {
         push_value_span(line, line_offset, line_no, start, SecretKind::ApiKey, spans);
     } else if let Some(start) = value_start_after_key(&lower, "apikey") {
@@ -623,10 +651,19 @@ fn find_line_secret(line: &str, line_offset: usize, line_no: usize, spans: &mut 
 }
 
 fn value_start_after_key(lower: &str, key: &str) -> Option<usize> {
-    let key_pos = lower.find(key)?;
-    let rest = &lower[key_pos + key.len()..];
-    let sep_rel = rest.find(['=', ':'])?;
-    Some(skip_space(lower, key_pos + key.len() + sep_rel + 1))
+    let mut search = 0;
+    while let Some(rel) = lower[search..].find(key) {
+        let key_pos = search + rel;
+        let after_key = key_pos + key.len();
+        if is_key_boundary(lower, key_pos, after_key) {
+            let sep = skip_space(lower, after_key);
+            if sep < lower.len() && matches!(lower.as_bytes()[sep], b'=' | b':') {
+                return Some(skip_space(lower, sep + 1));
+            }
+        }
+        search = after_key;
+    }
+    None
 }
 
 fn push_token_span(
@@ -689,6 +726,33 @@ fn find_token_prefix(line: &str, prefix: &str, min_len: usize) -> Option<usize> 
     None
 }
 
+fn find_bearer_token_start(lower: &str) -> Option<usize> {
+    let mut search = 0;
+    while let Some(rel) = lower[search..].find("bearer") {
+        let pos = search + rel;
+        let after = pos + "bearer".len();
+        let before_ok = pos == 0 || !is_key_char(lower.as_bytes()[pos - 1]);
+        let after_ok = after < lower.len() && lower.as_bytes()[after].is_ascii_whitespace();
+        if before_ok && after_ok {
+            return Some(skip_space(lower, after));
+        }
+        search = after;
+    }
+    None
+}
+
+fn is_key_boundary(s: &str, start: usize, end: usize) -> bool {
+    let bytes = s.as_bytes();
+    let before_ok = start == 0 || !is_key_char(bytes[start - 1]);
+    let after = skip_space(s, end);
+    let after_ok = after < bytes.len() && matches!(bytes[after], b'=' | b':');
+    before_ok && after_ok
+}
+
+fn is_key_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-')
+}
+
 fn token_end(line: &str, start: usize) -> usize {
     line[start..]
         .char_indices()
@@ -737,6 +801,40 @@ fn line_for_offset(content: &str, offset: usize) -> (usize, usize) {
         }
     }
     (line, offset - line_start)
+}
+
+fn spans_cover_trimmed(content: &str, spans: &[SecretSpan]) -> bool {
+    let Some((start, end)) = trimmed_bounds(content) else {
+        return false;
+    };
+    let mut covered_until = start;
+    for span in spans {
+        if span.end <= start || span.start >= end {
+            continue;
+        }
+        if span.start > covered_until {
+            let gap = &content[covered_until..span.start];
+            if gap.chars().any(|c| !c.is_whitespace()) {
+                return false;
+            }
+        }
+        covered_until = covered_until.max(span.end.min(end));
+    }
+    if covered_until < end {
+        return content[covered_until..end]
+            .chars()
+            .all(|c| c.is_whitespace());
+    }
+    true
+}
+
+fn trimmed_bounds(s: &str) -> Option<(usize, usize)> {
+    let start = s.find(|c: char| !c.is_whitespace())?;
+    let end = s
+        .char_indices()
+        .rev()
+        .find_map(|(i, c)| (!c.is_whitespace()).then_some(i + c.len_utf8()))?;
+    Some((start, end))
 }
 
 fn dedup_overlapping(spans: Vec<SecretSpan>) -> Vec<SecretSpan> {
