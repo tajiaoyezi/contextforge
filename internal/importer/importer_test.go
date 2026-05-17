@@ -3,6 +3,7 @@ package importer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"
@@ -13,7 +14,7 @@ func TestImporterRegistry(t *testing.T) {
 	mock := &mockImporter{name: "mock-test", detectOK: true, confidence: 1.0}
 	Register(mock)
 
-	imp, err := Resolve("/any/path/mock.txt")
+	imp, err := Resolve("/any/path/mock-test.txt")
 	if err != nil {
 		t.Fatalf("Resolve failed: %v", err)
 	}
@@ -115,7 +116,7 @@ func TestImporterRecordDecoupling(t *testing.T) {
 	Register(low)
 	Register(high)
 
-	imp, err := Resolve("/any/path/mock.txt")
+	imp, err := Resolve("/any/path/high.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,12 @@ type mockImporter struct {
 
 func (m *mockImporter) Name() string { return m.name }
 func (m *mockImporter) Detect(path string) (float64, bool) {
-	return m.confidence, m.detectOK
+	// Match only when the path contains the importer's own name so that
+	// multiple mocks can coexist without cross-interference.
+	if strings.Contains(path, m.name) {
+		return m.confidence, m.detectOK
+	}
+	return 0, false
 }
 func (m *mockImporter) Import(path string, collectionID string) ([]*contextforgev1.ContextRecord, error) {
 	return []*contextforgev1.ContextRecord{{
