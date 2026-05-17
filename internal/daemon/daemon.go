@@ -45,6 +45,7 @@ type Daemon struct {
 	opts   Options
 	mu     sync.Mutex
 	cmd    *exec.Cmd
+	conn   *grpc.ClientConn // reused gRPC client conn (lazy; closed by Stop)
 	closed bool
 	starts int // launches after the first (= auto-restart count)
 	doneCh chan struct{}
@@ -85,22 +86,37 @@ func Start(ctx context.Context, opts Options) (*Daemon, error) {
 // status string (expected "SERVING") (AC2). Loopback plaintext is allowed by
 // the v0.1 local-service security baseline (TLS/auth is Phase 6).
 func (d *Daemon) HealthCheck(ctx context.Context) (string, error) {
-	d.mu.Lock()
-	addr := d.opts.ListenAddr
-	d.mu.Unlock()
-
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := d.clientConn()
 	if err != nil {
-		return "", fmt.Errorf("daemon: gRPC client %s: %w", addr, err)
+		return "", err
 	}
-	defer conn.Close()
-
 	resp, err := contextforgev1.NewContextServiceClient(conn).
 		Health(ctx, &contextforgev1.HealthRequest{})
 	if err != nil {
 		return "", err
 	}
 	return resp.GetStatus(), nil
+}
+
+// clientConn lazily creates and reuses a single gRPC client conn to core.
+// gRPC transparently reconnects to the same target across core auto-restarts,
+// so one conn is correct and avoids a new conn per health poll.
+func (d *Daemon) clientConn() (*grpc.ClientConn, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return nil, fmt.Errorf("daemon: stopped")
+	}
+	if d.conn != nil {
+		return d.conn, nil
+	}
+	conn, err := grpc.NewClient(d.opts.ListenAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("daemon: gRPC client %s: %w", d.opts.ListenAddr, err)
+	}
+	d.conn = conn
+	return conn, nil
 }
 
 // Restarts returns the cumulative auto-restart count (AC3).
@@ -119,8 +135,12 @@ func (d *Daemon) Stop() error {
 	}
 	d.closed = true
 	cmd := d.cmd
+	conn := d.conn
 	d.mu.Unlock()
 
+	if conn != nil {
+		_ = conn.Close()
+	}
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}

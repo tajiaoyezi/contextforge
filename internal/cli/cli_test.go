@@ -19,13 +19,23 @@ func TestTask14_AC1_InitGeneratesConfigIdempotent(t *testing.T) {
 	}
 	root := filepath.Join(home, ".contextforge")
 	cfg := filepath.Join(root, "config.toml")
-	if _, err := os.Stat(cfg); err != nil {
+	cfgFI, err := os.Stat(cfg)
+	if err != nil {
 		t.Fatalf("config.toml not generated: %v", err)
+	}
+	// §5.3 SCEN-1.4.1: config.toml == 0600 (guards the task-1.2 config.Init
+	// 0600/0700 enforcement against future regression — ADR-004 baseline).
+	if got := cfgFI.Mode().Perm(); got != 0o600 {
+		t.Fatalf("config.toml perm = %o, want 0600", got)
 	}
 	for _, d := range []string{"collections", "logs", "runtime"} {
 		fi, err := os.Stat(filepath.Join(root, d))
 		if err != nil || !fi.IsDir() {
 			t.Fatalf("scaffold dir %q missing: %v", d, err)
+		}
+		// §5.3 SCEN-1.4.1: scaffold dirs == 0700.
+		if got := fi.Mode().Perm(); got != 0o700 {
+			t.Fatalf("scaffold dir %q perm = %o, want 0700", d, got)
 		}
 	}
 

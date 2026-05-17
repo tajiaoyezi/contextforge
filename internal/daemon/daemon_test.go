@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -110,7 +111,11 @@ func TestTask14_AC3_AutoRestartAfterCrash(t *testing.T) {
 	if pid <= 0 {
 		t.Fatalf("currentPID = %d, want > 0", pid)
 	}
-	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+	// The supervisor may reap+restart between currentPID() and Kill(); a
+	// stale PID then yields ESRCH, which is benign here — the process is
+	// already gone (exactly the crash we want); the auto-restart assertions
+	// below still validate AC3. Only a non-ESRCH error is a real failure.
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
 		t.Fatalf("SIGKILL core pid %d: %v", pid, err)
 	}
 
