@@ -115,12 +115,16 @@ pub enum SkipReason {
     NotAllowlisted,
     TooLarge { size: u64, max: u64 },
     NotUtf8,
+    Symlink,
 }
 
 #[derive(Debug)]
 pub enum ScanError {
     Io { path: PathBuf, source: io::Error },
     DenylistOverrideRequired,
+    NotAllowlisted,
+    FileTooLarge { path: PathBuf, size: u64, max: u64 },
+    Symlink { path: PathBuf },
 }
 
 impl fmt::Display for ScanError {
@@ -132,6 +136,13 @@ impl fmt::Display for ScanError {
             ScanError::DenylistOverrideRequired => {
                 write!(f, "denylist override requires explicit confirmation")
             }
+            ScanError::NotAllowlisted => write!(f, "path is outside configured allowlist"),
+            ScanError::FileTooLarge { path, size, max } => write!(
+                f,
+                "scanner file too large at {}: {size} bytes exceeds {max} bytes",
+                path.display()
+            ),
+            ScanError::Symlink { path } => write!(f, "scanner refuses symlink {}", path.display()),
         }
     }
 }
@@ -140,7 +151,10 @@ impl Error for ScanError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             ScanError::Io { source, .. } => Some(source),
-            ScanError::DenylistOverrideRequired => None,
+            ScanError::DenylistOverrideRequired
+            | ScanError::NotAllowlisted
+            | ScanError::FileTooLarge { .. }
+            | ScanError::Symlink { .. } => None,
         }
     }
 }

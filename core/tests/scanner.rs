@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use contextforge_core::scanner::{
-    scan_file, scan_path, ScanError, ScanOptions, SecretKind, SkipReason,
+    redact_content, scan_file, scan_path, RedactionStatus, ScanError, ScanOptions, SecretKind,
+    SkipReason,
 };
 
 fn temp_root(name: &str) -> PathBuf {
@@ -88,7 +89,7 @@ fn test_2_1_2_allowlist_and_denylist_override_confirmation() {
         report
             .skipped
             .iter()
-            .any(|s| rel(&s.path, &root) == "outside/drop.md"
+            .any(|s| rel(&s.path, &root) == "outside"
                 && matches!(s.reason, SkipReason::NotAllowlisted)),
         "outside allowlist path should be skipped"
     );
@@ -213,4 +214,162 @@ fn test_2_1_5_oversized_file_is_skipped() {
         }),
         "oversized file should be recorded with TooLarge"
     );
+}
+
+// Review FIX-1 / AC1+AC3: public scan_file must not bypass denylist.
+#[test]
+fn test_2_1_review_scan_file_rejects_denylisted_path_without_override() {
+    let root = temp_root("scan-file-denylist");
+    let file = root.join(".env");
+    write_file(&file, "DB_HOST=internal.corp\nDBPASS=not-patterned\n");
+
+    let err = scan_file(&file, &ScanOptions::default())
+        .expect_err("scan_file must fail closed on denylisted paths");
+    assert!(
+        matches!(err, ScanError::DenylistOverrideRequired),
+        "scan_file should require explicit denylist override"
+    );
+
+    let options = ScanOptions {
+        allowlist: vec![file.clone()],
+        allow_denylist_override: true,
+        ..ScanOptions::default()
+    };
+    let scanned = scan_file(&file, &options).expect("explicit override should allow scan_file");
+    assert_eq!(
+        scanned.content.as_deref(),
+        Some("DB_HOST=internal.corp\nDBPASS=not-patterned\n")
+    );
+}
+
+// Review FIX-1 / AC2: public scan_file must honor explicit allowlist scopes.
+#[test]
+fn test_2_1_review_scan_file_rejects_not_allowlisted_path() {
+    let root = temp_root("scan-file-allowlist");
+    let file = root.join("outside.md");
+    let allowed = root.join("allowed");
+    write_file(&file, "outside\n");
+    fs::create_dir_all(&allowed).unwrap();
+
+    let options = ScanOptions {
+        allowlist: vec![allowed],
+        ..ScanOptions::default()
+    };
+    let err = scan_file(&file, &options).expect_err("scan_file must honor allowlist");
+    assert!(matches!(err, ScanError::NotAllowlisted));
+}
+
+// Review FIX-2 / AC5: scan_file should report TooLarge instead of a zero-content success.
+#[test]
+fn test_2_1_review_scan_file_too_large_errors_before_read() {
+    let root = temp_root("scan-file-too-large");
+    let file = root.join("large.log");
+    write_file(&file, "larger than configured limit\n");
+
+    let options = ScanOptions {
+        max_file_bytes: 1,
+        ..ScanOptions::default()
+    };
+    let err =
+        scan_file(&file, &options).expect_err("scan_file should fail closed on too-large file");
+    assert!(
+        matches!(err, ScanError::FileTooLarge { size, max, .. } if size > max && max == 1),
+        "too-large scan_file should surface exact size/max"
+    );
+}
+
+// Review FIX-3: denylisted directories should be pruned as one skip entry.
+#[test]
+fn test_2_1_review_denylisted_directory_is_pruned() {
+    let root = temp_root("prune-denylisted-dir");
+    write_file(&root.join("node_modules/a/index.js"), "a\n");
+    write_file(&root.join("node_modules/b/index.js"), "b\n");
+    write_file(&root.join("src/main.rs"), "fn main() {}\n");
+
+    let report = scan_path(&root, &ScanOptions::default()).expect("scan succeeds");
+    assert_eq!(
+        report
+            .skipped
+            .iter()
+            .filter(|s| rel(&s.path, &root).starts_with("node_modules"))
+            .count(),
+        1,
+        "denylisted directory should be recorded once and pruned"
+    );
+    assert!(report
+        .skipped
+        .iter()
+        .any(|s| rel(&s.path, &root) == "node_modules"
+            && matches!(s.reason, SkipReason::Denylisted(_))));
+}
+
+// Review FIX-4: symlinks should be visible as skipped and never followed.
+#[cfg(unix)]
+#[test]
+fn test_2_1_review_symlink_is_recorded_and_not_followed() {
+    let root = temp_root("symlink");
+    let outside = temp_root("symlink-outside");
+    let outside_secret = outside.join("secret.txt");
+    let link = root.join("linked-secret.txt");
+    write_file(&outside_secret, "password = \"should-not-be-read\"\n");
+    std::os::unix::fs::symlink(&outside_secret, &link).unwrap();
+
+    let report = scan_path(&root, &ScanOptions::default()).expect("scan succeeds");
+    assert!(
+        report.files.is_empty(),
+        "symlink target must not be scanned"
+    );
+    assert!(
+        report.redaction_hits.is_empty(),
+        "symlink target must not be read"
+    );
+    assert!(report
+        .skipped
+        .iter()
+        .any(|s| rel(&s.path, &root) == "linked-secret.txt"
+            && matches!(s.reason, SkipReason::Symlink)));
+}
+
+// Review FIX-5 / AC3: cover common token edges and avoid substring false positives.
+#[test]
+fn test_2_1_review_secret_pattern_edges_and_key_boundaries() {
+    let content = concat!(
+        "Authorization: Bearer\tabc.def.ghi\n",
+        "x-api-key: edge-api-key-value\n",
+        "github fine = github_pat_11AA22BB33CC44DD55EE_66FF77GG88HH99II00JJ\n",
+        "github oauth = gho_1234567890abcdefghijklmnopqrstuv\n",
+        "my_api_keyword = \"not-secret\"\n",
+        "password_hint: do-not-redact-this\n",
+    );
+
+    let (redacted, status, hits) = redact_content(content);
+    assert_eq!(status, RedactionStatus::Partial);
+    assert!(redacted.contains("[REDACTED:BEARER_TOKEN]"));
+    assert!(redacted.contains("[REDACTED:API_KEY]"));
+    assert_eq!(
+        hits.iter()
+            .filter(|h| h.kind == SecretKind::GithubToken)
+            .count(),
+        2,
+        "both github_pat_ and gho_ tokens should be redacted"
+    );
+    assert!(
+        redacted.contains("my_api_keyword = \"not-secret\""),
+        "key matching should not redact substrings inside longer identifiers"
+    );
+    assert!(
+        redacted.contains("password_hint: do-not-redact-this"),
+        "password_hint is not a password assignment"
+    );
+}
+
+// Review FIX-5: a file whose meaningful content is one private key is fully redacted.
+#[test]
+fn test_2_1_review_private_key_only_is_full_redaction() {
+    let private_key = "-----BEGIN PRIVATE KEY-----\nabc123\n-----END PRIVATE KEY-----\n";
+    let (redacted, status, hits) = redact_content(private_key);
+    assert_eq!(status, RedactionStatus::Full);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].kind, SecretKind::PrivateKey);
+    assert_eq!(redacted.trim(), "[REDACTED:PRIVATE_KEY]");
 }
