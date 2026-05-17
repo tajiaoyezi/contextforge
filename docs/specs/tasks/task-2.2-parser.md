@@ -2,10 +2,10 @@
 
 > ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: tajiaoyezi
 **Related Phase**: Phase 2 (index-core)
 **Dependencies**: Phase 1（canonical schema）
 
@@ -21,15 +21,26 @@
 
 ### In Scope
 
-- `<TBD-by-user>`
+- 实现 AC1–AC5：tree-sitter 解析 P0 代码（.go/.rs/.py/.ts/.tsx/.js/.jsx），pulldown-cmark 解析 Markdown（标题层级/段落/代码块），日志按行 + JSONL 解析
+- 产出 `ParsedUnit` 结构（language + line_start/line_end + content + kind + metadata），与 PRD canonical ContextRecord 字段（language、file_path、line_*）对齐
+- 未知扩展名降级为纯文本 + `language: "text"` 标记，不中断解析
+- 所有解析保留原始位置信息，供 chunker（task-2.3）消费
+- 模块入口：`core/src/parser/mod.rs`（在 task-1.3 占位上实现，编译通过）
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- embedding / 向量检索 / hybrid search（P1，Phase 4）
+- chunking 策略与切片逻辑（task-2.3 负责）
+- 写回源文件或任何第三方 Agent memory（只读导入 + draft 导出）
+- 二进制 / 图片 / 超大单文件（>100MB）的特殊流式处理（基础降级 + 大小保护即可）
+- 完整 symbol 提取 / CJK tokenizer 调优（R8 仅要求 language + 位置保留，boost 留 Phase 4）
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- scanner（task-2.1 并行）：提供文件路径 + 原始内容 + 初步 lang 猜测
+- chunker（task-2.3，强依赖）：消费 ParsedUnit 流，执行切片 + provenance 合并
+- core 集成测试 / 未来 indexer（2.4）/ eval harness（8.1）
+- CLI / daemon / MCP 经内部 gRPC 间接调用 parser 能力
 
 ## 5. Behavior Contract
 
@@ -47,11 +58,37 @@
 - `pulldown-cmark = "0.13.3"`
 - `thiserror = "2.0.18"`（错误定义）
 - 标准库：`std::path::Path`, `std::fs`, `std::collections::HashMap`
-- **R7 严格处理**：本 task 通过独立 `chore/dep-parser-crates` PR#11（merged 2026-05-19）引入依赖（R7 单一通道，主 agent 域），task agent 仅消费 master `core/Cargo.toml` / `Cargo.lock` 已锁定版本（实证 cargo add 解析为当前互兼容集，pulldown-cmark 0.13 与 0.11 API 不兼容 — `Tag::Heading`/`Tag::CodeBlock` 由 tuple struct 改为 named-field struct，代码须按 0.13 编写）；task agent 绝不直接修改 lockfile。
+- **R7 严格处理**：本 task 通过独立 `chore/dep-parser-crates` PR#11（merged 2026-05-19）引入依赖（R7 单一通道，主 agent 域），task agent 仅消费 master `core/Cargo.toml` / `Cargo.lock` 已锁定版本（实证 cargo add 解析为当前互兼容集，pulldown-cmark 0.13 与 0.11 API 不兼容 — `Tag::Heading`/`Tag::CodeBlock` 由 tuple struct 改为 named-field struct，代码须按 0.13 编写）；task agent 绝不直接修改 lockfile。: task-2.2 业务承诺 (Draft → Ready))
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+```rust
+use std::path::Path;
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedUnit {
+    pub language: String,                    // "go" | "rust" | "markdown" | "log" | "json" | "yaml" | "text"
+    pub line_start: usize,
+    pub line_end: usize,
+    pub content: String,
+    pub kind: Option<String>,                // "heading" | "code_block" | "function" | "log_entry" | "text" ...
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ParseError {
+    #[error("io: {0}")] Io(#[from] std::io::Error),
+    #[error("unsupported language for {path:?}: {lang}")] Unsupported { path: std::path::PathBuf, lang: String },
+    #[error("parse failed: {0}")] Other(String),
+}
+
+/// 主入口：根据扩展名自动选择解析策略（tree-sitter / pulldown-cmark / log / text fallback）
+pub fn parse_file(path: &Path) -> Result<Vec<ParsedUnit>, ParseError>;
+
+/// 显式指定 language 的解析（便于测试与特殊场景）
+pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<Vec<ParsedUnit>, ParseError>;
+```
 
 ## 6. Acceptance Criteria
 
