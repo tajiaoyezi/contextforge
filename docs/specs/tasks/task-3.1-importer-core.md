@@ -1,6 +1,6 @@
 # Task `3.1`: `importer-core — canonical record 映射 + importer 框架 + fallback`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> ✅ **已过 §2A 前置审核** — 用户确认选项 A 推进（Owner/Scope/Actors/Imports/函数签名由用户派工确认），Status 经用户确认后推进至 Done。详见 commit `6377d3d` 与 `fe4ff94` 留痕。
 
 **Status**: Done
 
@@ -116,20 +116,31 @@ func NewFileFallbackImporter() Importer
   - `internal/importer/importer.go`（新增：Importer 接口、Register/Resolve 注册表）
   - `internal/importer/fallback.go`（新增：FileFallbackImporter 保底实现）
   - `internal/importer/record.go`（新增：buildRecord 映射辅助 + language/content-hash 探测）
-  - `internal/importer/importer_test.go`（新增：5 个单元测试对应 5 个 AC）
+  - `internal/importer/importer_test.go`（新增：6 个单元测试对应 5 个 AC）
   - `test/features/importer.feature`（更新：SCEN-3.1.1~3.1.5 Given/When/Then）
-  - `docs/specs/tasks/task-3.1-importer-core.md`（Status → Ready → Done，§7 追踪表推进，§10 回填）
+  - `docs/specs/tasks/task-3.1-importer-core.md`（Status 推进、§7 追踪表推进、§10 回填）
 - **commit 列表**：
   - `a9e58ca` test(importer): 加 SCEN-3.1.1~3.1.5 共 5 个 RED 测试
   - `3b3ae46` feat(importer): 实现 importer 框架 + fallback + record 映射通过全部 5 个测试
   - `12d7b0d` refactor(importer): 去掉 registerOnce 副作用，Resolve 无匹配时直接返回 fallback 实例
+  - `08c7240` fix(importer): Id/content_hash 改用 sha256 避免 100k chunk 生日碰撞
+  - `fe4ff94` test(importer): AC5 改用真实 buildRecord 断言 schema 不变性 + §6 勾 [x]
+  - `26eecee` test(importer): TEST-3.1.3 补 warning 断言（RED：Resolve 未输出显式 warning）
+  - `4b03d1b` feat(importer): Resolve 对未识别 schema 输出显式 warning 后降级 fallback（AC3）
 - **§9 Verification 结果**：
   - install: ✅
   - typecheck: ✅
-  - unit-test: 15 passed / 0 failed（Go: internal/config 5 + internal/contract 5 + internal/importer 5）/ 9 passed / 0 failed（Rust: core skeleton 4 + proto contract 5）
+  - unit-test: 16 passed / 0 failed（Go: internal/config 5 + internal/contract 5 + internal/importer 6）/ 9 passed / 0 failed（Rust: core skeleton 4 + proto contract 5）
 - **剩余风险 / 未做项**：
   - registry 全局可变，多测试并行时可能交叉干扰；当前测试通过路径名隔离 mock 规避，后续如需高度并行可引入 registry reset hook。
 - **下游 task 影响**：
   - task-3.2 importer-hermes（依赖 Importer 接口 + fallback 机制）
   - task-3.3 importer-openclaw（依赖 Importer 接口 + fallback 机制）
   - task-3.4 importer-agent-rules（依赖 Importer 接口 + fallback 机制）
+- **Waiver 登记**：
+  - **§2.5.1 RED 编译失败 Waived**：
+    - 豁免对象：RED commit `a9e58ca` 为编译失败（undefined: Register/Resolve/NewFileFallbackImporter）而非功能性红测试
+    - 原因：已 push 到 origin 的 feat 分支禁止 force-push 改历史（R6）；重做 RED 会要求重写已发布 commit 历史，违反 AGENTS.md §2 R6「禁止 git push --force 到任何已发布分支」。评审 Blocker 要求「重做 RED 或 Waive」，在不可改历史约束下选择 Waive。
+    - 替代验证：GREEN commit `3b3ae46` 已包含完整实现并一次性通过全部 5 个功能性测试；后续 fix commit `08c7240`/`fe4ff94`/`4b03d1b` 均遵循先 RED 后 GREEN 节律（warning 断言先红后绿）。
+    - 补齐条件：后续 task（3.2/3.3/3.4 及后续 phase）严格执行 §2.5.1「RED 为可编译+功能失败」
+    - 负责人：主 agent / 评审 Agent（用户确认修复方案）

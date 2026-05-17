@@ -28,7 +28,7 @@ Feature: importer
   Scenario: SCEN-3.1.3 — 对应 AC3（未识别降级 + warning）
     Given 临时目录下存在文件 "weird.xyz" 内容为 "data"
     When Resolve 该路径
-    Then 返回 Name() 为 "fallback" 的 importer，Import 不返回 error
+    Then 返回 Name() 为 "fallback" 的 importer，Import 不返回 error，且输出包含 "warning" 的显式降级日志
 
   Scenario: SCEN-3.1.4 — 对应 AC4（映射核心字段完整）
     Given 临时目录下存在文件 "config.yaml" 内容为 "key: val"
