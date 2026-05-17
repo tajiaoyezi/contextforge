@@ -1,11 +1,11 @@
 # Task `1.3`: `core-skeleton — contextforge-core Rust 骨架 + gRPC server + health`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-17）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC（4 条）经用户审定接受、Owner=tajiaoyezi、R7 决策=tokio/serde 直接依赖折入本 task 并透明披露（已在 Cargo.lock 传递依赖图，无新增供应链面）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: tajiaoyezi
 **Related Phase**: Phase 1 (foundation)
 **Dependencies**: 1.1 (proto)
 
@@ -21,15 +21,29 @@
 
 ### In Scope
 
-- `<TBD-by-user>`
+- `core/src/main.rs` + `core/Cargo.toml` `[[bin]] contextforge-core`：二进制可独立 `cargo build` 并启动（AC1）
+- tonic gRPC server：监听 local gRPC —— 默认 Unix domain socket，或 `127.0.0.1:<port>`；**显式拒绝默认 `0.0.0.0`**（PRD §Constraints Local service security baseline）
+- 实现 task-1.1 冻结的 `ContextService.Health` RPC → 返回 `HealthResponse{ status: "SERVING" }`（AC2）
+- `ContextService.Search` 留 `Status::unimplemented` stub（业务属 Phase 2+，本 task 仅骨架，不实现）
+- `tokio` 异步运行时（`#[tokio::main]`）+ 最小 `serde` 接入；二者提升为 `core/Cargo.toml` 直接依赖（§2A 用户决策：折入本 task 并透明披露 —— AC1/AC3 强制需要，且 tokio/serde 已在 Cargo.lock 经 tonic 0.12 传递依赖图，无新增供应链面）
+- `core/src/{scanner,parser,chunker,indexer,retriever,memoryops}/mod.rs` 空模块占位（编译通过、无逻辑、doc 注释标注 Phase 归属）（AC4）
+- 监听地址解析逻辑：默认安全地址 + 拒绝 `0.0.0.0`，可被单测直接调用
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- `ContextService.Search` 等业务方法实现（Phase 2+ retriever）
+- Go daemon 拉起 core 进程 / Go gRPC client 健康检查编排（task 1.4 端到端）
+- 从 task-1.2 `config` 包读监听地址（task 1.4 串联；本 task server 用启动参数 / 内建安全默认，依赖仅 1.1）
+- scanner/parser/chunker/indexer/retriever/memoryops 的任何实际逻辑（仅空模块占位，Phase 2+）
+- tantivy / tree-sitter / pulldown-cmark / SQLite 等数据面库接入（Phase 2，ADR-008；本 task 不引入）
+- 进程崩溃自动重启 / 信号处理 / 长任务硬化（Phase 8 reliability）
+- gRPC TLS / 鉴权（v0.1 本地 Unix socket / 127.0.0.1 + 后续 token 由 daemon 层负责）
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- Go 控制面 `contextforge` daemon（task 1.4 起）：拉起 `contextforge-core` 进程 + 经 local gRPC 调 `ContextService.Health`
+- Phase 2+ 数据面实施 agent：在本 task 落位的 `core/src/{scanner,parser,chunker,indexer,retriever,memoryops}` 模块占位上实现扫描/解析/索引/检索
+- 本地优先 / 隐私敏感用户（间接受益）：受"禁默认 `0.0.0.0`、默认 Unix socket / 127.0.0.1"本地服务安全基线保护（ADR-004 / PRD Local service security baseline）
 
 ## 5. Behavior Contract
 
@@ -44,11 +58,66 @@
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- proto 生成产物：`contextforge_core::pb`（task-1.1 冻结契约，`core/build.rs` tonic-build 构建期生成；`pb::context_service_server::{ContextService, ContextServiceServer}` + `HealthRequest` / `HealthResponse` / `SearchRequest` / `SearchResponse`）
+- Rust crate（`core/Cargo.toml`）：`tonic`（已有，server transport）、`tokio`（**新增直接依赖** — 异步运行时，features `rt-multi-thread`/`macros`/`net`）、`serde`（**新增直接依赖** — 最小，`derive`；为监听配置 / Phase 2+ 序列化预留）、`prost`/`prost-types`（已有）
+- Rust 标准库：`std::net::SocketAddr`、`std::path::PathBuf`、`std::error::Error`（监听地址 / Unix socket 路径）
+- 本 task 不 import 任何 Go `internal/*` 或 task-1.2 `config` 包（跨进程，仅 proto 契约耦合）
+- ⚠️ R7：`tokio`/`serde` 提升为直接依赖 → §2A 用户决策"折入本 task + 透明披露"（二者已在 Cargo.lock 传递依赖图，无新增供应链面；§10 如实记录）
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+> Rust crate `contextforge-core`：新增 `core/src/main.rs`（bin）+ `core/src/server.rs`（lib 模块）+ 6 个空占位模块；`core/src/lib.rs` 追加 `pub mod`。
+
+```rust
+// core/src/server.rs
+use crate::pb::context_service_server::{ContextService, ContextServiceServer};
+use crate::pb::{HealthRequest, HealthResponse, SearchRequest, SearchResponse};
+use tonic::{Request, Response, Status};
+
+#[derive(Debug, Default)]
+pub struct CoreService;
+
+#[tonic::async_trait]
+impl ContextService for CoreService {
+    // AC2：health 返回 SERVING
+    async fn health(&self, _req: Request<HealthRequest>)
+        -> Result<Response<HealthResponse>, Status>;
+    // 本 task Out-of-Scope：Search 业务属 Phase 2+
+    async fn search(&self, _req: Request<SearchRequest>)
+        -> Result<Response<SearchResponse>, Status>; // Err(Status::unimplemented(..))
+}
+
+/// AC1：监听地址；默认安全（Unix socket 或 127.0.0.1），拒绝 0.0.0.0。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListenAddr {
+    Unix(std::path::PathBuf),
+    Tcp(std::net::SocketAddr),
+}
+
+/// 解析监听地址：None → 默认 127.0.0.1:50? (内建安全默认)；
+/// "unix:/path" → Unix；"127.0.0.1:p"/"[::1]:p" → Tcp；
+/// "0.0.0.0[:p]" / 任意全零绑定 → Err（禁默认 0.0.0.0）。
+pub fn resolve_listen_addr(arg: Option<&str>) -> Result<ListenAddr, AddrError>;
+
+/// AC1/AC2：在 addr 上起 tonic server 提供 ContextService（可被集成测试调用）。
+pub async fn serve(addr: ListenAddr) -> Result<(), Box<dyn std::error::Error>>;
+
+pub fn context_service() -> ContextServiceServer<CoreService>; // AC3：codegen server 装配
+```
+
+```rust
+// core/src/main.rs  (AC1：[[bin]] contextforge-core)
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>>; // resolve_listen_addr → serve
+
+// core/src/{scanner,parser,chunker,indexer,retriever,memoryops}/mod.rs  (AC4)
+//! Phase 2+ 占位模块（编译通过、无逻辑）。
+```
+
+- SCEN/TEST-1.3.1 → `resolve_listen_addr`：默认非 0.0.0.0；`"0.0.0.0:50051"` → Err；`serve` 能在临时地址绑定（AC1）
+- SCEN/TEST-1.3.2 → 起 `serve`，gRPC client 调 `Health` → `HealthResponse.status == "SERVING"`（AC2）
+- SCEN/TEST-1.3.3 → `context_service()` 可构造 + `Search` 返回 `Status::unimplemented`（tonic codegen 接入、无 FFI）（AC3）
+- SCEN/TEST-1.3.4 → `contextforge_core::{scanner,parser,chunker,indexer,retriever,memoryops}` 路径均可引用（占位模块编译通过）（AC4）
 
 ## 6. Acceptance Criteria
 
