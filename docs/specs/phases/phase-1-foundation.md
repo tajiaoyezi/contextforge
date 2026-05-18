@@ -1,9 +1,11 @@
 # Phase 1 · foundation
 
-**Status**: Draft
+**Status**: In Progress
 
-> Phase Spec（s2v full-standard §8.2）。本文件由 `/s2v-init` 生成，Status=Draft。
-> §6 含 `<TBD-by-user>` 端到端 smoke 占位 —— 本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1 集成兜底门禁，team §4 Gate 3 强制）。
+> Phase Spec（s2v full-standard §8.2）。本文件由 `/s2v-init` 生成。
+> Phase 1 收口进行中（chore/phase-1-closeout，主 agent 域）：§6 端到端 smoke 已填实，
+> Status Draft→In Progress；task-1.4（最后一个 task）经 team §4 Gate 3 phase smoke gate
+> 通过并 merge 后，再经 chore/phase-1-done 推进 Status→Done（§8 DoD）。
 
 ## 1. 阶段目标
 
@@ -47,7 +49,32 @@
 - canonical record schema v0.1 与 proto 契约冻结（字段见 PRD §Technical Approach Canonical Record v0.1 最小 schema）
 - denylist / allowlist 默认配置可被 CLI 读取
 
-**端到端 smoke**：`<TBD-by-user>`（本 phase 最后一个 task=1.4 完工/合并前填实，例：`contextforge init && contextforge-core 由 daemon 拉起 + gRPC health 返回 SERVING` 的可执行 smoke 命令序列）
+**端到端 smoke**（主 agent 在 team §4 Gate 3 对 task-1.4 PR 分支执行，须全过；落点 = task-1.4 AC5/TEST-1.4.5，真集成非 mock）：
+
+```bash
+# 前置：Go toolchain + Rust stable/cargo（见 docs/s2v-adapter.md §Constraints Runtime target）
+set -euo pipefail
+
+# (1) 双二进制可构建
+cargo build -p contextforge-core
+go build -o /tmp/cf-smoke ./cmd/contextforge
+
+# (2) AC1 — contextforge init 在隔离 HOME 生成 ~/.contextforge/ 配置+目录，不联网，幂等可重跑
+SMOKE_HOME="$(mktemp -d)"
+HOME="$SMOKE_HOME" /tmp/cf-smoke init
+HOME="$SMOKE_HOME" /tmp/cf-smoke init            # 二次重跑须幂等不报错
+test -f "$SMOKE_HOME/.contextforge/config.toml"
+
+# (3) AC2/AC3/AC5 — daemon 拉起 contextforge-core → local gRPC Health=SERVING；
+#     core 异常退出基础版自动重启；端到端 init→core→health 串通。
+#     internal/daemon TestMain 真 `cargo build -p contextforge-core` + 真子进程
+#     + 真 Go↔Rust gRPC（非 mock）：
+go test ./internal/daemon/ -run 'TestTask14_AC[235]' -count=1 -v
+
+# (4) 清理
+rm -rf "$SMOKE_HOME" /tmp/cf-smoke
+echo "Phase 1 端到端 smoke: PASS"
+```
 
 ## 7. 阶段级风险
 

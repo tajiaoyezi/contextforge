@@ -195,7 +195,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 
 | # | Phase | Phase Spec | Status | Tasks | Worktree（仅 team）|
 |---|---|---|---|---|---|
-| 1 | `foundation` | `docs/specs/phases/phase-1-foundation.md` | Draft | 4 | `../ContextForge-wt-foundation` |
+| 1 | `foundation` | `docs/specs/phases/phase-1-foundation.md` | In Progress | 4 | `../ContextForge-wt-foundation` |
 | 2 | `index-core` | `docs/specs/phases/phase-2-index-core.md` | Draft | 4 | `../ContextForge-wt-index-core` |
 | 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | Draft | 4 | `../ContextForge-wt-agent-importers` |
 | 4 | `retrieval-explain` | `docs/specs/phases/phase-4-retrieval-explain.md` | Draft | 2 | `../ContextForge-wt-retrieval-explain` |
