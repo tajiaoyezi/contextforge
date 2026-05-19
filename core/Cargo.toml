@@ -22,6 +22,22 @@ tonic = "0.12"
 # via tonic 0.12 — no new supply-chain surface; folded into this task, §10-disclosed).
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 serde = { version = "1", features = ["derive"] }
+# task-2.2 (parser) R7 NEEDS-DEP — main-agent chore PR `chore/dep-parser-crates`.
+# 源: NEEDS-DEP-task-2.2.md（feat/task-2.2-parser）。版本由 `cargo add` 自 crates.io
+# 实证解析为当前互兼容集，`cargo check --workspace` exit 0 确证 ABI 兼容（5 个
+# tree-sitter 语言 grammar 编译 C 并 link tree-sitter 0.26 成功）、`cargo test
+# --workspace` 零回归。NEEDS 建议号（ts 0.22 / 语言 0.20 / pulldown 0.11 /
+# thiserror 1）已过时——以实证锁定为准；精确 pin 见 Cargo.lock（R7 单一事实源）。
+# 用途：AC1 tree-sitter 代码解析(.go/.rs/.py/.ts/.tsx/.js/.jsx)、AC2 pulldown-cmark
+# Markdown、ParseError(thiserror)。task-2.2 rebase 后用真解析替换 honest stub。
+tree-sitter = "0.26.8"
+pulldown-cmark = "0.13.3"
+thiserror = "2.0.18"
+tree-sitter-go = "0.25.0"
+tree-sitter-rust = "0.24.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-javascript = "0.25.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
