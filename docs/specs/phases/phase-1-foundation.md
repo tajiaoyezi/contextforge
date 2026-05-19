@@ -1,11 +1,13 @@
 # Phase 1 · foundation
 
-**Status**: In Progress
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本文件由 `/s2v-init` 生成。
-> Phase 1 收口进行中（chore/phase-1-closeout，主 agent 域）：§6 端到端 smoke 已填实，
-> Status Draft→In Progress；task-1.4（最后一个 task）经 team §4 Gate 3 phase smoke gate
-> 通过并 merge 后，再经 chore/phase-1-done 推进 Status→Done（§8 DoD）。
+> **Phase 1 已收口（chore/phase-1-done，主 agent 域，2026-05-19）**：1.1/1.2/1.3/1.4
+> 全 Done 并 merge；§6 端到端 smoke 已填实且经 team §4 Gate 3 实跑全绿；R1 缓解
+> 落地（proto/canonical schema 冻结 + Go↔Rust gRPC 端到端打通）。§8 DoD 全满足。
+> 收口三步：PR#9 chore-closeout（§6+Status→In Progress）→ PR#8 task-1.4（§4 Gate 0-4）
+> → 本 chore-done（Status→Done + DoD）。
 
 ## 1. 阶段目标
 
@@ -82,8 +84,8 @@ echo "Phase 1 端到端 smoke: PASS"
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done 或 Waived（按 §12.3 登记）
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（`s2v_preflight_phase` 通过）
-- [ ] 关联风险 R1 缓解措施已落地（proto/canonical schema 版本化冻结）
-- [ ] adapter §Phase 状态索引该行 Status 同步更新
-- [ ] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task
+- [x] 本 phase 全部 task spec Status=Done 或 Waived（按 §12.3 登记）—— 1.1/1.2/1.3/1.4 均 Done 且 merge（PR#1/2/3/8）；无 Waived
+- [x] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（`s2v_preflight_phase` 通过）—— PR#9 填实；PR#8 §4 Gate 3 实跑：`s2v_preflight_phase` exit 0 + §6 smoke 全过（init 幂等 + AC2/AC3/AC5 真集成 PASS）
+- [x] 关联风险 R1 缓解措施已落地（proto/canonical schema 版本化冻结）—— task-1.1 proto/canonical schema v0.1 冻结；task-1.4 端到端验证 Go↔Rust local gRPC（health SERVING + 崩溃自动重启）
+- [x] adapter §Phase 状态索引该行 Status 同步更新 —— 本 chore-done 同步 phase-1 → Done
+- [x] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task —— task-1.4 §4 Gate 0-4 全过后 merge（master `2a083b8`）
