@@ -196,8 +196,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | # | Phase | Phase Spec | Status | Tasks | Worktree（仅 team）|
 |---|---|---|---|---|---|
 | 1 | `foundation` | `docs/specs/phases/phase-1-foundation.md` | Done | 4 | `../ContextForge-wt-foundation` |
-| 2 | `index-core` | `docs/specs/phases/phase-2-index-core.md` | Draft | 4 | `../ContextForge-wt-index-core` |
-| 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | Draft | 4 | `../ContextForge-wt-agent-importers` |
+| 2 | `index-core` | `docs/specs/phases/phase-2-index-core.md` | In Progress | 4 | `../ContextForge-wt-index-core` |
+| 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | In Progress | 4 | `../ContextForge-wt-agent-importers` |
 | 4 | `retrieval-explain` | `docs/specs/phases/phase-4-retrieval-explain.md` | Draft | 2 | `../ContextForge-wt-retrieval-explain` |
 | 5 | `memoryops` | `docs/specs/phases/phase-5-memoryops.md` | Draft | 3 | `../ContextForge-wt-memoryops` |
 | 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Draft | 3 | `../ContextForge-wt-cli-api-export` |
@@ -219,7 +219,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 1.3 | core | docs/specs/tasks/task-1.3-core-skeleton.md | Done | Phase1 #3（dep 1.1）| `../ContextForge-wt-foundation` |
 | 1.4 | cli | docs/specs/tasks/task-1.4-cli-init.md | Done | Phase1 #4（dep 1.1,1.2,1.3）| `../ContextForge-wt-foundation` |
 | 2.1 | scanner | docs/specs/tasks/task-2.1-scanner.md | Done | Phase2 #1 | `../ContextForge-wt-index-core` |
-| 2.2 | parser | docs/specs/tasks/task-2.2-parser.md | Draft | Phase2 #2 | `../ContextForge-wt-index-core` |
+| 2.2 | parser | docs/specs/tasks/task-2.2-parser.md | Done | Phase2 #2 | `../ContextForge-wt-index-core` |
 | 2.3 | chunker | docs/specs/tasks/task-2.3-chunker.md | Draft | Phase2 #3（dep 2.2）| `../ContextForge-wt-index-core` |
 | 2.4 | indexer | docs/specs/tasks/task-2.4-indexer.md | Draft | Phase2 #4（dep 2.1,2.3）| `../ContextForge-wt-index-core` |
 | 3.1 | importer | docs/specs/tasks/task-3.1-importer-core.md | Done | Phase3 #1 | `../ContextForge-wt-agent-importers` |
