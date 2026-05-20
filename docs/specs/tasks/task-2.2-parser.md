@@ -1,8 +1,6 @@
 # Task `2.2`: `parser — 代码(tree-sitter)/Markdown(pulldown-cmark)/日志解析`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
-
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -94,21 +92,21 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Constraints 兼容性): 代码文件经 tree-sitter 解析（.go/.rs/.py/.ts/.tsx/.js/.jsx），产出带行号区间的结构单元。
-- [ ] **AC2** (PRD §Constraints 兼容性): Markdown 经 pulldown-cmark 解析（标题层级 + 段落 + 代码块），保留 line_start/line_end。
-- [ ] **AC3** (PRD §Constraints 兼容性): 日志 .log/.jsonl/.txt 按行 / JSONL 记录解析。
-- [ ] **AC4** (PRD §Technical Risks R5 / 本 task 新增): 不支持的扩展名降级为纯文本解析并标记，不中断（与 importer 分层 fallback 一致理念）。
-- [ ] **AC5** (PRD §Technical Risks R8): 解析单元保留原始 `language` 标签，为后续 tokenizer/检索按语言区分提供依据。
+- [x] **AC1** (PRD §Constraints 兼容性): 代码文件经 tree-sitter 解析（.go/.rs/.py/.ts/.tsx/.js/.jsx），产出带行号区间的结构单元。
+- [x] **AC2** (PRD §Constraints 兼容性): Markdown 经 pulldown-cmark 解析（标题层级 + 段落 + 代码块），保留 line_start/line_end。
+- [x] **AC3** (PRD §Constraints 兼容性): 日志 .log/.jsonl/.txt 按行 / JSONL 记录解析。
+- [x] **AC4** (PRD §Technical Risks R5 / 本 task 新增): 不支持的扩展名降级为纯文本解析并标记，不中断（与 importer 分层 fallback 一致理念）。
+- [x] **AC5** (PRD §Technical Risks R8): 解析单元保留原始 `language` 标签，为后续 tokenizer/检索按语言区分提供依据。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 代码 tree-sitter 解析 | SCEN-2.2.1 | TEST-2.2.1 | - | unit-test | Blocked(NEEDS-DEP) |
-| AC2 Markdown 解析 | SCEN-2.2.2 | TEST-2.2.2 | - | unit-test | Blocked(NEEDS-DEP) |
-| AC3 日志解析 | SCEN-2.2.3 | TEST-2.2.3 | - | unit-test | Blocked(NEEDS-DEP) |
+| AC1 代码 tree-sitter 解析 | SCEN-2.2.1 | TEST-2.2.1 | - | unit-test | Done |
+| AC2 Markdown 解析 | SCEN-2.2.2 | TEST-2.2.2 | - | unit-test | Done |
+| AC3 日志解析 | SCEN-2.2.3 | TEST-2.2.3 | - | unit-test | Done |
 | AC4 未知类型降级纯文本 | SCEN-2.2.4 | TEST-2.2.4 | - | unit-test | Done |
-| AC5 language 标签保留 | SCEN-2.2.5 | TEST-2.2.5 | - | unit-test | In Progress |
+| AC5 language 标签保留 | SCEN-2.2.5 | TEST-2.2.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -125,25 +123,17 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 
 ## 10. Completion Notes
 
-- **完成日期**：2026-05-17（初始） / 2026-05-17（review 修复后更新）
+- **完成日期**：2026-05-20
 - **改动文件**：
-  - core/src/parser/mod.rs（ParsedUnit / ParseError + 诚实 stub 实现 + 测试，按 review 修复 provenance + language 一致性 + parse_file 覆盖 + size guard）
-  - test/features/parser.feature（填充 5 个具体 Scenario）
-  - NEEDS-DEP-task-2.2.md（R7 crate 需求）
-  - docs/specs/tasks/task-2.2-parser.md（§2A 审核 + review 修复：§7 AC1-3 Blocked(NEEDS-DEP)、AC4 Done、AC5 In Progress、Status In Progress、§10 同步）
-- **commit 列表**（初始 + review 修复）：
-  - 1d29c90 docs(spec): task-2.2 进入实施 (Ready → In Progress)
-  - 062e4a7 test(parser): 加 SCEN-2.2.1~2.2.5 共 5 个 RED 测试（+ NEEDS-DEP）
-  - 358ec09 feat(parser): 实现 ... 通过 5 测试（启发式）
-  - bf803d1 docs(spec): 回填 §10 + §7 全 Done（初始，review 前）
-  - 004a513 docs(spec): per PR#6 review — §7 AC1-3 Blocked(NEEDS-DEP) 等
-  - 78856b8 fix(parser): per PR#6 review — honest stub + ignores + language fix + coverage
+  - core/src/parser/mod.rs（real tree-sitter AC1 5 语言 + pulldown-cmark AC2 + log/JSONL AC3 实现；ParseError 改用 thiserror derive 匹配 §5.3；placeholder_ready 保留兼容；un-ignore AC1-3 测试）
+  - docs/specs/tasks/task-2.2-parser.md（Status→Done；§6 五 AC 全部勾选；§7 AC1-3/AC5 → Done；§10 终态回填 + §5.2 版本说明）
+- **commit 列表**：
+  - db4366b merge: chore R7 dep PR — task-2.2 parser crates（PR#11，master 基线）
+  - cd08e15 feat(parser): AC1-3 real-impl — tree-sitter 多语言 + pulldown-cmark Markdown + JSONL/log 解析；un-ignore TEST-2.2.1-3（6 passed / 0 ignored）
 - **§9 Verification 结果**：
-  - install: ✅
-  - typecheck: ✅ `cargo check` clean
-  - unit-test: 3 passed / 0 failed / 3 ignored（parser::tests；AC1-3 待 NEEDS-DEP rebase）；full suite green（parser + core_skeleton 4 + proto_contract 5）
-- **剩余风险 / 未做项**：
-  - AC1/AC2/AC3 因缺少 tree-sitter / pulldown-cmark（NEEDS-DEP 未合入）真实实现 → §7 标 `Blocked(NEEDS-DEP)`，Status 维持 In Progress。
-  - 当前 parse_file 为诚实整文件 stub（真实 line_count + 内容），无伪造 provenance（review 要求）。
-  - 真实结构提取（function/heading/多 log record）将在 NEEDS-DEP rebase 后实现，届时移除 ignore 并推进 AC1-3 为 Done。
-- **下游 task 影响**：task-2.3 chunker（当前契约为诚实 stub，真实解析后 API 稳定）、task-2.4、Phase 2 流水线（受 NEEDS-DEP 阻塞）
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean，tree-sitter/pulldown-cmark 0.26/0.13 编译通过）
+  - unit-test: ✅ `go test ./... && cargo test --workspace` — parser::tests 6 passed / 0 failed / 0 ignored（AC1-3 real green）；full suite green（含 core_skeleton 4 + proto 5 + scanner 12）
+- **剩余风险 / 未做项**：无（NEEDS-DEP 已解锁，AC1-5 全部落地并验证）
+- **下游 task 影响**：task-2.3 chunker、task-2.4 indexer、Phase 2 整体流水线（parser 真实输出已就绪）
+- **§5.2 Imports 版本说明**（业务契约字段属主 agent 域，仅 §10 标注）：spec §5.2 所写 tree-sitter="0.22" / pulldown-cmark="0.11" / thiserror 旧号已过时；以 master core/Cargo.toml + Cargo.lock 实证锁定版本为准（tree-sitter 0.26.8 + 5 语言 grammar、pulldown-cmark 0.13.3、thiserror 2.0.18）。R7 流程已由 PR#11 完成，task-2.2 未改 lockfile。
