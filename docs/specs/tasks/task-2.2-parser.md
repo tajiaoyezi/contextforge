@@ -43,7 +43,11 @@
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- `tree-sitter = "0.26.8"` + 对应 language crate（`tree-sitter-go = "0.25.0"` / `tree-sitter-rust = "0.24.2"` / `tree-sitter-python = "0.25.0"` / `tree-sitter-typescript = "0.23.2"` / `tree-sitter-javascript = "0.25.0"`）
+- `pulldown-cmark = "0.13.3"`
+- `thiserror = "2.0.18"`（错误定义）
+- 标准库：`std::path::Path`, `std::fs`, `std::collections::HashMap`
+- **R7 严格处理**：本 task 通过独立 `chore/dep-parser-crates` PR#11（merged 2026-05-19）引入依赖（R7 单一通道，主 agent 域），task agent 仅消费 master `core/Cargo.toml` / `Cargo.lock` 已锁定版本（实证 cargo add 解析为当前互兼容集，pulldown-cmark 0.13 与 0.11 API 不兼容 — `Tag::Heading`/`Tag::CodeBlock` 由 tuple struct 改为 named-field struct，代码须按 0.13 编写）；task agent 绝不直接修改 lockfile。
 
 ### 5.3 函数签名
 
