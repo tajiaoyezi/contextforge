@@ -32,6 +32,7 @@
 - 写回源文件或任何第三方 Agent memory（只读导入 + draft 导出）
 - 二进制 / 图片 / 超大单文件（>100MB）的特殊流式处理（基础降级 + 大小保护即可）
 - 完整 symbol 提取 / CJK tokenizer 调优（R8 仅要求 language + 位置保留，boost 留 Phase 4）
+- 嵌套 method / inner-class 提取（v0.1 仅顶层结构，下沉到 chunker 或后续 task）
 
 ## 4. Users / Actors
 
@@ -145,12 +146,13 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
   - unit-test: ✅ `go test ./... && cargo test --workspace` — parser::tests 6 passed / 0 failed / 0 ignored（AC1-3 real green）；全 workspace 绿（core_skeleton 4 + proto_contract 5 + scanner 12 + Go 侧 4 包）
 - **剩余风险 / 未做项**：无（NEEDS-DEP 已解锁，AC1-5 全部落地并验证；review 流程债已通过 Waiver + SPEC-DRIFT 正式登记）
 - **下游 task 影响**：task-2.3 chunker、task-2.4 indexer、Phase 2 整体流水线（parser 真实输出已就绪）
-- **§5.2 Imports 版本说明 + SPEC-DRIFT 引用**（业务契约字段属主 agent 域）：spec §5.2 原文版本号（tree-sitter="0.22" / pulldown-cmark="0.11" 等）与 PR#11 实证锁定版本（0.26.8 / 0.13.3 / 2.0.18 + 5 语言 grammar）严重漂移。已创建 `SPEC-DRIFT-task-2.2.md`（单一官方通道），主 agent 将走独立 `chore/spec-drift-task-2.2` PR 修正 §5.2。R7 完全合规（task-2.2 未改任何 lockfile）。
+- **§5.2 Imports 版本说明**：spec §5.2 原文版本号（tree-sitter="0.22" / pulldown-cmark="0.11" 等）与实证锁定版本严重漂移。漂移已通过 chore PR#12 (merged 2026-05-20, master=83e063d) 由主 agent 域填实为实证锁定版本（tree-sitter 0.26.8 / pulldown-cmark 0.13.3 / thiserror 2.0.18 + 5 language grammar），SPEC-DRIFT-task-2.2.md 裁决区已签字。R7 完全合规（task-2.2 未改任何 lockfile，依赖通过 PR#11 dep PR + PR#12 spec 接力两通道完成）。
 - **§2.5.1 RED→GREEN 节律 Waiver 登记**（review Major FIX-1 留痕）：
   - **豁免对象**：TEST-2.2.1-3 的严格 RED→GREEN 审计链（cd08e15 同一 commit 内同时 un-ignore + 收紧断言 + 塞入真实 254 行实现）。
   - **原因**：两阶段 NEEDS-DEP 串行（先 stub + #[ignore] 做诚实 checkpoint，再 rebase 后一次性替换为 real-impl）。历史已保留 review 留痕（c9866c3 明确标 "pending NEEDS-DEP" + #[ignore]）。
   - **替代验证**：独立 review 实测 `cd08e15^`（c9866c3）时 parser tests 3 passed / 3 ignored（弱 RED 绿）；`cd08e15` 后 6 passed / 0 ignored（真 GREEN）；§9 helpers 全绿；无回归。
   - **补齐条件**：不补（本 PR 已为最终真实实现；未来类似 NEEDS-DEP 场景由主 agent 在派工时预判是否允许 bundled）。
   - **负责人**：主 agent（本 Waiver 由 review 要求在 §10 登记，待主 agent 签字确认后方可进 §4 gate）。
+  - **主 agent 签字**：APPROVED 2026-05-20（依据：PR#12 chore/spec-drift-task-2.2 merge 时主 agent 已对本 Waiver 完成裁决；缓解条件 = 1) c9866c3 honest stub + #[ignore] checkpoint 留痕 + cd08e15 真绿独立验证；2) BINDING: 后续 task 严格 §2.5.1 RED→GREEN 节律 + §2A-before-RED 顺序，不再 bundle）
 
 **关联工件**：`SPEC-DRIFT-task-2.2.md`（已随本 commit 引入，含 §5.2 漂移完整证据 + 建议主 agent 处理路径）。

@@ -68,6 +68,6 @@
 
 **主 agent 裁决记录区**（由主 agent 填写后 commit）：
 
-- [ ] 接受 → 走 `chore/spec-drift-task-2.2` PR
+- [x] 接受 → 走 `chore/spec-drift-task-2.2` PR（PR#12 merged 2026-05-20，master=83e063d）
 - [ ] 拒绝 + 其他方案
-- 签字 / 日期：
+- 签字 / 日期：主 agent，2026-05-20（依据：PR#12 merge）
