@@ -122,17 +122,22 @@ func NewFileFallbackImporter() Importer
   - `docs/specs/tasks/task-3.1-importer-core.md`（Status 推进、§7 追踪表推进、§10 回填）
   - `SPEC-DRIFT-task-3.1.md`（新增：redaction 数据流漂移记录，选项 A 已裁定）
 - **commit 列表**：
-  - `a9e58ca` test(importer): 加 SCEN-3.1.1~3.1.5 共 5 个 RED 测试
-  - `3b3ae46` feat(importer): 实现 importer 框架 + fallback + record 映射通过全部 5 个测试
-  - `12d7b0d` refactor(importer): 去掉 registerOnce 副作用，Resolve 无匹配时直接返回 fallback 实例
-  - `08c7240` fix(importer): Id/content_hash 改用 sha256 避免 100k chunk 生日碰撞
-  - `fe4ff94` test(importer): AC5 改用真实 buildRecord 断言 schema 不变性 + §6 勾 [x]
-  - `26eecee` test(importer): TEST-3.1.3 补 warning 断言（RED：Resolve 未输出显式 warning）
-  - `4b03d1b` feat(importer): Resolve 对未识别 schema 输出显式 warning 后降级 fallback（AC3）
+  - `cc37fea` test(importer): 加 SCEN-3.1.1~3.1.5 共 5 个 RED 测试
+  - `b8c65f1` feat(importer): 实现 importer 框架 + fallback + record 映射通过全部 5 个测试
+  - `1f4c213` refactor(importer): 去掉 registerOnce 副作用，Resolve 无匹配时直接返回 fallback 实例
+  - `9ce4e68` docs(spec): 回填 task-3.1 §10 Completion Notes + feature 场景 + Status → Done
+  - `5861e98` fix(importer): Id/content_hash 改用 sha256 避免 100k chunk 生日碰撞
+  - `cb8b6de` test(importer): AC5 改用真实 buildRecord 断言 schema 不变性 + §6 勾 [x]
+  - `23d5ce7` test(importer): TEST-3.1.3 补 warning 断言（RED：Resolve 未输出显式 warning）
+  - `c20e7a1` feat(importer): Resolve 对未识别 schema 输出显式 warning 后降级 fallback（AC3）
+  - `50ca049` docs(spec): FIX-1 修正 Draft banner + §10 如实记述 + §2.5.1 Waiver 登记；FIX-4 SPEC-DRIFT redaction 数据流
+  - `c2f0e29` test(importer): TEST-3.1.4 补 redaction_status=pending 断言（RED：仍为 none）
+  - `549aaef` feat(importer): buildRecord RedactionStatus none→pending，明示下游 scanner/indexer 脱敏（FIX-4′ 选项 A）
+  - `0e2b61b` docs(spec): D-1/D-2/D-3/D-4/D-6 据实落地（主 agent 裁决工单照抄；SPEC-DRIFT 加裁决标题；§10 Waiver 据实记述；§3/§5.2 据实修正；banner 替换为主 agent 追认 §2A 事后回填）
 - **§9 Verification 结果**：
   - install: ✅
   - typecheck: ✅
-  - unit-test: 16 passed / 0 failed（Go: internal/config 5 + internal/contract 5 + internal/importer 6）/ 9 passed / 0 failed（Rust: core skeleton 4 + proto contract 5）
+  - unit-test: 21 passed / 0 failed（Go: cli 2 + config 5 + contract 5 + daemon 3 + importer 6）/ 21 passed / 0 failed（Rust: core skeleton 4 + proto contract 5 + scanner 12）
 - **剩余风险 / 未做项**：
   - registry 全局可变，多测试并行时可能交叉干扰；当前测试通过路径名隔离 mock 规避，后续如需高度并行可引入 registry reset hook。
 - **下游 task 影响**：
@@ -145,4 +150,5 @@ func NewFileFallbackImporter() Importer
     - 原因：已 push 到 origin 的 feat 分支禁止 force-push 改历史（R6）；重做 RED 会要求重写已发布 commit 历史，违反 AGENTS.md §2 R6「禁止 git push --force 到任何已发布分支」。评审 Blocker 要求「重做 RED 或 Waive」，在不可改历史约束下选择 Waive。
     - 替代验证：GREEN commit `3b3ae46` 已包含完整实现并一次性通过全部 5 个功能性测试；后续 fix commit `08c7240`/`fe4ff94`/`26eecee→4b03d1b` 均遵循先 RED 后 GREEN 节律（warning 断言先红后绿）。
     - 补齐条件：后续 task（3.2/3.3/3.4 及后续 phase）严格执行 §2.5.1「RED 为可编译+功能失败」
+    - §2A 必须在 worktree/feat 分支于 RED **之前**完成（流程根因纠正——本次 task-3.1 直接进实施、跳过 §2A/Ready gate 是病根）
     - 负责人：主 agent 已正式批准（依据：PR#7 主 agent 裁决评论 2026-05-17）
