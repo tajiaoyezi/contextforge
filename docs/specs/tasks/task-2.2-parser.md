@@ -128,7 +128,7 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 - **改动文件**：
   - core/src/parser/mod.rs（real tree-sitter AC1 5 语言 + pulldown-cmark AC2 + log/JSONL AC3 实现；ParseError 改用 thiserror derive 匹配 §5.3；placeholder_ready 保留兼容；un-ignore AC1-3 测试）
   - docs/specs/tasks/task-2.2-parser.md（Status→Done；§6 五 AC 全部勾选；§7 AC1-3/AC5 → Done；§10 终态回填 + §5.2 版本说明）
-- **commit 列表**（本 task 全部相关 11 个，按时间顺序；不含纯 master 基线 merge）：
+- **commit 列表**（本 task 全部相关 12 个，按时间顺序；不含纯 master 基线 merge）：
   - 01dbf33 docs(spec): task-2.2 业务承诺 (Draft → Ready)
   - 2b6b3ff docs(spec): task-2.2 进入实施 (Status: Ready → In Progress)
   - a44e383 test(parser): 加 SCEN-2.2.1~2.2.5 共 5 个 RED 测试（+ NEEDS-DEP for tree-sitter/pulldown-cmark）
@@ -140,6 +140,7 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
   - 1a2576b fix(parser,spec): per PR#6 round-2 review — extract canonicalize_language() single source (FIX-R2) + correct §10 unit-test count
   - cd08e15 feat(parser): AC1-3 real-impl — tree-sitter 多语言 + pulldown-cmark Markdown + JSONL/log 解析；un-ignore TEST-2.2.1-3（6 passed / 0 ignored）
   - 9022e6f docs(spec): task-2.2 Status In Progress → Done；§6 AC1-5 全部 ☑；§7 全 Done；§10 终态回填 + review 修复（§2.5.1 Waiver + SPEC-DRIFT 引用）
+  - 09a63d6 docs(spec): PR#6 round-2 review cleanup — remove stray commit message fragment from §5.2 R7 line (leftover from first rebase conflict resolution)
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean，tree-sitter/pulldown-cmark 0.26/0.13 编译通过）
