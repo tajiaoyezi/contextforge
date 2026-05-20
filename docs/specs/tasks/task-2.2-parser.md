@@ -127,13 +127,30 @@ pub fn parse_content(path: &Path, source: &str, language_hint: &str) -> Result<V
 - **改动文件**：
   - core/src/parser/mod.rs（real tree-sitter AC1 5 语言 + pulldown-cmark AC2 + log/JSONL AC3 实现；ParseError 改用 thiserror derive 匹配 §5.3；placeholder_ready 保留兼容；un-ignore AC1-3 测试）
   - docs/specs/tasks/task-2.2-parser.md（Status→Done；§6 五 AC 全部勾选；§7 AC1-3/AC5 → Done；§10 终态回填 + §5.2 版本说明）
-- **commit 列表**：
-  - db4366b merge: chore R7 dep PR — task-2.2 parser crates（PR#11，master 基线）
+- **commit 列表**（本 task 全部相关 11 个，按时间顺序；不含纯 master 基线 merge）：
+  - 01dbf33 docs(spec): task-2.2 业务承诺 (Draft → Ready)
+  - 2b6b3ff docs(spec): task-2.2 进入实施 (Status: Ready → In Progress)
+  - a44e383 test(parser): 加 SCEN-2.2.1~2.2.5 共 5 个 RED 测试（+ NEEDS-DEP for tree-sitter/pulldown-cmark）
+  - d250f9d feat(parser): 实现 parse_file / parse_content 通过全部 5 个 RED 测试（std 启发式，真实 crates 待 NEEDS-DEP PR）
+  - 724dfc6 docs(spec): 首次 §10 回填（Status: Done）
+  - d9f1736 docs(spec): per PR#6 review — §7 AC1-3 → Blocked(NEEDS-DEP)、AC5 In Progress、Status In Progress
+  - c9866c3 fix(parser): per PR#6 review — honest stub + #[ignore] on AC1-3 + language canonicalization (FIX-2/3/4/5/6)
+  - 3a3c8bb docs(spec): final §10 update after PR#6 review code fixes (hashes + honest test state)
+  - 1a2576b fix(parser,spec): per PR#6 round-2 review — extract canonicalize_language() single source (FIX-R2) + correct §10 unit-test count
   - cd08e15 feat(parser): AC1-3 real-impl — tree-sitter 多语言 + pulldown-cmark Markdown + JSONL/log 解析；un-ignore TEST-2.2.1-3（6 passed / 0 ignored）
+  - 9022e6f docs(spec): task-2.2 Status In Progress → Done；§6 AC1-5 全部 ☑；§7 全 Done；§10 终态回填 + review 修复（§2.5.1 Waiver + SPEC-DRIFT 引用）
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean，tree-sitter/pulldown-cmark 0.26/0.13 编译通过）
-  - unit-test: ✅ `go test ./... && cargo test --workspace` — parser::tests 6 passed / 0 failed / 0 ignored（AC1-3 real green）；full suite green（含 core_skeleton 4 + proto 5 + scanner 12）
-- **剩余风险 / 未做项**：无（NEEDS-DEP 已解锁，AC1-5 全部落地并验证）
+  - unit-test: ✅ `go test ./... && cargo test --workspace` — parser::tests 6 passed / 0 failed / 0 ignored（AC1-3 real green）；全 workspace 绿（core_skeleton 4 + proto_contract 5 + scanner 12 + Go 侧 4 包）
+- **剩余风险 / 未做项**：无（NEEDS-DEP 已解锁，AC1-5 全部落地并验证；review 流程债已通过 Waiver + SPEC-DRIFT 正式登记）
 - **下游 task 影响**：task-2.3 chunker、task-2.4 indexer、Phase 2 整体流水线（parser 真实输出已就绪）
-- **§5.2 Imports 版本说明**（业务契约字段属主 agent 域，仅 §10 标注）：spec §5.2 所写 tree-sitter="0.22" / pulldown-cmark="0.11" / thiserror 旧号已过时；以 master core/Cargo.toml + Cargo.lock 实证锁定版本为准（tree-sitter 0.26.8 + 5 语言 grammar、pulldown-cmark 0.13.3、thiserror 2.0.18）。R7 流程已由 PR#11 完成，task-2.2 未改 lockfile。
+- **§5.2 Imports 版本说明 + SPEC-DRIFT 引用**（业务契约字段属主 agent 域）：spec §5.2 原文版本号（tree-sitter="0.22" / pulldown-cmark="0.11" 等）与 PR#11 实证锁定版本（0.26.8 / 0.13.3 / 2.0.18 + 5 语言 grammar）严重漂移。已创建 `SPEC-DRIFT-task-2.2.md`（单一官方通道），主 agent 将走独立 `chore/spec-drift-task-2.2` PR 修正 §5.2。R7 完全合规（task-2.2 未改任何 lockfile）。
+- **§2.5.1 RED→GREEN 节律 Waiver 登记**（review Major FIX-1 留痕）：
+  - **豁免对象**：TEST-2.2.1-3 的严格 RED→GREEN 审计链（cd08e15 同一 commit 内同时 un-ignore + 收紧断言 + 塞入真实 254 行实现）。
+  - **原因**：两阶段 NEEDS-DEP 串行（先 stub + #[ignore] 做诚实 checkpoint，再 rebase 后一次性替换为 real-impl）。历史已保留 review 留痕（c9866c3 明确标 "pending NEEDS-DEP" + #[ignore]）。
+  - **替代验证**：独立 review 实测 `cd08e15^`（c9866c3）时 parser tests 3 passed / 3 ignored（弱 RED 绿）；`cd08e15` 后 6 passed / 0 ignored（真 GREEN）；§9 helpers 全绿；无回归。
+  - **补齐条件**：不补（本 PR 已为最终真实实现；未来类似 NEEDS-DEP 场景由主 agent 在派工时预判是否允许 bundled）。
+  - **负责人**：主 agent（本 Waiver 由 review 要求在 §10 登记，待主 agent 签字确认后方可进 §4 gate）。
+
+**关联工件**：`SPEC-DRIFT-task-2.2.md`（已随本 commit 引入，含 §5.2 漂移完整证据 + 建议主 agent 处理路径）。
