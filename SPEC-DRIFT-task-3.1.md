@@ -1,5 +1,7 @@
 # SPEC-DRIFT — task-3.1 importer-core
 
+## 裁决：选项 A（主 agent，2026-05-17，用户授权）—— 已落地 task-3.1 §3；task-2.1/2.4 承接 redaction 责任
+
 ## 漂移项
 
 importer 产出 ContextRecord 的 redaction 责任边界未在 task-3.1 spec 中澄清。
