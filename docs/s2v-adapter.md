@@ -185,6 +185,41 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
       影响有界）。task-1.4 仍照常走 AGENTS §4 Gate 3 phase-1 §6 端到端 smoke，
       Phase 1 仍按正常流程正式收口（本 override 不豁免 §4 任何 gate）。
 
+### Agent Roster（本项目固定 agent 名册 + 会话派工前置确认协议）
+
+> 本项目 multi-agent 协作的**固定 agent 名册**。**主 agent 在新会话首次涉及派工 / 多 agent 协作之前**，必须按本节协议确认本次"备选"是否在岗。常驻 agent 默认在岗，不必每次问。
+
+#### 固定 agent 名册
+
+| Agent | 角色 | 在岗 | Worker 派工优先级 |
+|---|---|---|---|
+| **reviewer**     | 代码评审 | ✅ 常驻必在 | — （**不进** worker 派工序列）         |
+| **claude-work1** | Worker   | ✅ 常驻必在 | 1                                       |
+| **codex**        | Worker   | ✅ 常驻必在 | 2                                       |
+| **grok**         | Worker   | ⏳ 备选     | 3（**不能代替** claude-work1 / codex）  |
+| **droid**        | Worker   | ⏳ 备选     | 4（**不能代替** claude-work1 / codex）  |
+| **kimi**         | Worker   | ⏳ 备选     | 5（**不能代替** claude-work1 / codex）  |
+
+- **Worker 派工优先级**：claude-work1 → codex → grok → droid → kimi
+- **reviewer**：评审角色，**与 worker 派工是不同维度** — 不参与 worker 优先级排序；仅在需要代码评审 / PR review / RED-review 时使用
+- **备选不能顶替常驻 worker 槽位** — 不要因为某备选更熟某领域就跳过 claude-work1 / codex
+
+#### 主 agent 会话首派工前置 checklist
+
+新会话首次出现任何派工动作（spawn worker / 跑评审 / 多 agent 协作）**之前**：
+
+1. **AskUserQuestion 只问备选**（grok / droid / kimi）哪些在岗 — reviewer / claude-work1 / codex 默认在岗，不必问
+2. 收到答复后，**把本次会话生效名单写进首条派工 prompt** 的 `[本次在岗 agent]` 字段（见 §派工模板）
+3. 派工时按 Worker 优先级 + "备选不顶常驻"规则选 agent
+
+> **跳过条件**：单 agent 任务（只有主 agent 在做，不外派 / 不评审）不必触发。但**任何"派给 X agent"或"让 reviewer 走一轮"动作前都必须先确认过本次名单**。
+
+#### 与既有协议的关系
+
+- 派工后的执行流程继续遵守 R6 PR-only + AGENTS §4 PR 合入流程
+- 派工 prompt 持久化：派工 .md 必须落盘到 `_dispatch/`（与既有约定一致）
+- worker 不得自走：reviewer → 主 agent → worker 单一决策链不变（worker 看到 review 评论也不得自行修复 + push，必须等主 agent 派工）
+
 ---
 
 ## Phase 状态索引
@@ -287,6 +322,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 `team` 档使用此精确 prompt 格式（避免 agent 自创 task spec + 衔接 PR-only 流程）：
 
 ```
+[本次在岗 agent] reviewer ✅ / claude-work1 ✅ / codex ✅ / grok <Y/N> / droid <Y/N> / kimi <Y/N>
 [派工目标] task-<X.Y>（spec: docs/specs/tasks/task-<X.Y>-<name>.md）
 [Worktree] <worktree-path>（按 AGENTS.md §1 拓扑）
 [Branch]   feat/task-<X.Y>-<name>
