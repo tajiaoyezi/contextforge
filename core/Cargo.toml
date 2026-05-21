@@ -38,6 +38,16 @@ tree-sitter-rust = "0.24.2"
 tree-sitter-python = "0.25.0"
 tree-sitter-typescript = "0.23.2"
 tree-sitter-javascript = "0.25.0"
+# task-2.3 (chunker) SPEC-DRIFT 裁决 → main-agent chore PR `chore/dep-sha2`。
+# 源: PR #16 (feat/task-2.3-chunker) §2A worker 选 FNV-1a-64 std-only 避 R7 sha2
+# 串行 → 主 agent 裁决 Blocker 级 SPEC-DRIFT（content_hash 算法跨模块不一致：
+# task-3.1 importer 已用 sha256 — commit 5861e98 显式"避免 100k chunk 生日碰撞"；
+# Phase 5 memoryops 去重锚点依赖一致 hash）→ sha256 一致化。
+# 用途：Chunk.content_hash 用 sha256 与 ContextRecord.content_hash 跨模块对齐；
+# task-2.3 rebase 后把 FNV-1a-64 替换为 sha256，保留 algo-prefix 格式
+# (`sha256:<64-hex>`) forward-compat。版本 0.11.0 由 `cargo add sha2` 自 crates.io
+# 实证锁定为当前互兼容集（sha2 0.11 + digest 0.11 transitive 共 8 个包）。
+sha2 = "0.11.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
