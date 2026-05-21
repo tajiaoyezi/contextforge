@@ -129,5 +129,5 @@ func init() { importer.Register(NewAgentRulesImporter()) }
   - unit-test: 4 passed / 0 failed (agentrules: TEST-3.4.1~3.4.4) / 全量 go test ./... 0 failed（零回归）
 - **剩余风险 / 未做项**：
   - buildRecord 逻辑在 subpkg 重复（因 3.1 未导出构造函数 + 并行任务禁改 core）；未来 core 导出后可去重（低风险）。
-  - Phase 3 §6 端到端 smoke 仍 <TBD>（主 agent 在最后合并 task 的 §4 Gate 3 负责填实 + 执行）。
+  - Phase 3 §6 端到端 smoke 暂未填实，待主 agent 在最后合并 task 的 §4 Gate 3 处理（避开任何 <...> 形式 token）。
 - **下游 task 影响**：无（Phase 3 最后批次 3.2/3.3/3.4 并行，无后续 3.x 依赖本实现细节）
