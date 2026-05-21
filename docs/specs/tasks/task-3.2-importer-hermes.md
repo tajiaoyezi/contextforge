@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-21）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -115,19 +115,19 @@ func (h *hermesImporter) Import(path, collectionID string) ([]*contextforgev1.Co
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 3 Exit Criteria): Hermes `MEMORY.md` / `USER.md` 能导入为 canonical ContextRecord。
-- [ ] **AC2** (PRD §Technical Approach Canonical Record v0.1): source_provider=`hermes`、agent_scope 含 `hermes`、provenance.importer=`hermes-memory`、保留 original_path / source_modified_at。
-- [ ] **AC3** (PRD §Decisions Log D5): 只读导入，不修改/写回 Hermes `MEMORY.md` / `USER.md`。
-- [ ] **AC4** (PRD §Technical Risks R5): Hermes schema 不识别/版本差异时降级通用 markdown 导入 + warning（复用 3.1 fallback），不中断。
+- [x] **AC1** (PRD §Implementation Phases Phase 3 Exit Criteria): Hermes `MEMORY.md` / `USER.md` 能导入为 canonical ContextRecord。
+- [x] **AC2** (PRD §Technical Approach Canonical Record v0.1): source_provider=`hermes`、agent_scope 含 `hermes`、provenance.importer=`hermes-memory`、保留 original_path / source_modified_at。
+- [x] **AC3** (PRD §Decisions Log D5): 只读导入，不修改/写回 Hermes `MEMORY.md` / `USER.md`。
+- [x] **AC4** (PRD §Technical Risks R5): Hermes schema 不识别/版本差异时降级通用 markdown 导入 + warning（复用 3.1 fallback），不中断。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 Hermes 导入为 record | SCEN-3.2.1 | TEST-3.2.1 | - | unit-test | Verified |
-| AC2 provider/scope/provenance | SCEN-3.2.2 | TEST-3.2.2 | - | unit-test | Verified |
-| AC3 只读不写回 | SCEN-3.2.3 | TEST-3.2.3 | - | unit-test | Verified |
-| AC4 schema 差异降级 | SCEN-3.2.4 | TEST-3.2.4 | - | unit-test | Verified |
+| AC1 Hermes 导入为 record | SCEN-3.2.1 | TEST-3.2.1 | - | unit-test | Done |
+| AC2 provider/scope/provenance | SCEN-3.2.2 | TEST-3.2.2 | - | unit-test | Done |
+| AC3 只读不写回 | SCEN-3.2.3 | TEST-3.2.3 | - | unit-test | Done |
+| AC4 schema 差异降级 | SCEN-3.2.4 | TEST-3.2.4 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -143,12 +143,37 @@ func (h *hermesImporter) Import(path, collectionID string) ([]*contextforgev1.Co
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-21
+- **改动文件**：
+  - internal/importer/hermes/hermes.go（新增子包：hermesImporter + Detect/Import + buildHermesRecord/makeID/sourceURI/contentHash/fallbackImport 5 helpers；与 task-3.3/3.4 物理隔离）
+  - internal/importer/hermes/hermes_test.go（新增：TEST-3.2.1~4 external test package hermes_test 仅用公开 API；含强断言阻挡 do-nothing stub 假绿）
+  - docs/specs/tasks/task-3.2-importer-hermes.md（Status: Draft→Ready→In Progress→Done；§3/§4/§5.2/§5.3 §2A 填实；§6 AC1-4 全部勾选；§7 4 行 → Done；§10 终态回填）
+  - test/features/importer.feature（SCEN-3.2.1~4 Given/When/Then 填实）
+- **commit 列表**（本 task 全部 4 个，按时间顺序）：
+  - 655716b docs(spec): task-3.2 业务承诺 (Draft → Ready)
+  - cab703f test(importer): 加 SCEN-3.2.1~4 共 4 个 RED 测试 + Status: Ready → In Progress
+  - f880a97 feat(importer): 实现 hermes importer 通过全部 4 个测试
+  - 本回填 docs(spec) commit（§6/§7/§10 终态 + Status → Done）
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean，新增 hermes 子包编译通过；无新依赖引入）
+  - unit-test: ✅ `go test ./... && cargo test --workspace`
+    - hermes 4 passed / 0 failed / 0 ignored（AC1-4 全绿；包含 BINDING redaction=pending 断言）
+    - 全 Go 6 包绿（cli / config / contract / daemon / importer 3.1 / importer/hermes 3.2）
+    - 全 Rust 32 passed（parser 6 + chunker 5 + core_skeleton 4 + proto_contract 5 + scanner 12）— 无回归
+- **剩余风险 / 未做项**：
+  - **Detect 仅文件名**（v0.1 §2A 决策）：任意 MEMORY.md / USER.md 都会被识别为 Hermes，包括非 Hermes 来源的同名文件。用户显式 `import hermes [path]` 时意图明确；自动 Resolve 派发时如同目录有多个 importer 候选，按 confidence 仲裁（hermes 0.9 > fallback 0.1）。PRD §O3 实测 Hermes 样本后可加内容标记 / 路径上下文检查。
+  - **AC4 fallback 触发仅 content 空**（v0.1 §2A 决策）：未来 schema 漂移（Hermes v2 不同 layout）当前会进入正常 buildHermesRecord 路径，由 chunker / retriever 容忍非典型 markdown 结构；PRD §O3 实测后可加 `<!-- hermes-version: vN -->` marker 检测。
+  - **真实 Hermes 样本 fixture 待 v0.2 补**：v0.1 用合成 markdown 覆盖 AC1-4（PRD §O3 / phase-3 §6 端到端 smoke 待 task-3.4 完工前由主 agent 决定是否合 golden-hermes-memory/ fixture）。
+  - **跨 importer 共享 record 构造 helper 未抽取**（§3 Out-of-Scope）：本 task 在子包内重新实现了 ~30 行 makeID/sourceURI/contentHash/lineCount 等。如 3 个 importer (3.2/3.3/3.4) 完工后重复明显，可由主 agent 走独立 refactor PR 抽取 `internal/importer.BuildRecord` 公共 API。
+- **下游 task 影响**：
+  - **task-3.3 importer-openclaw / task-3.4 importer-agent-rules**（3-way 并行同 phase）：可参考本 task 的子包模式 + AC4 fallback 委托 task-3.1 NewFileFallbackImporter 的实现模板。
+  - **task-6.x CLI**（`contextforge import hermes [path]`）：调用方需在启动期 `importer.Register(hermes.New())`，或直接调用 `hermes.New().Import(path, collectionID)`。
+  - **chunker (task-2.3, ✅ done)**：消费 `ContextRecord.Content` 切片；本 task 输出 markdown 类型 + redaction_status=pending 状态符合 chunker 输入契约。
+  - **indexer (task-2.4)**：写 SQLite metadata + Tantivy；本 task 输出 ContextRecord 字段集与 task-1.1 frozen contract 完全对齐。
+  - **Phase 5 memoryops**：content_hash 与 task-2.3 chunker (algo-prefix `sha256:<64-hex>`) / task-3.1 importer (裸 `<64-hex>`) 同 sha256；本 task 沿用 task-3.1 裸 hex 格式 — Phase 5 桥接时按格式分流即可。
+- **§2A Decisions**（2026-05-21 用户答题）：
+  - **Detect 策略 = 仅文件名（选项 A）**：v0.1 最小依赖；PRD §O3 实测 Hermes 样本前不引入路径/内容启发式检查
+  - **AC4 fallback 触发 = 仅内容空 / 读不到（选项 A）**：v0.1 保守；未来 schema 版本 marker 留 §O3 实测后引入
+  - **不引入新依赖**（R7 严格 — task agent 不改 go.mod / go.sum / Cargo.toml / Cargo.lock）
+  - **新子包 internal/importer/hermes/ 物理隔离**：3-way 并行写路径不冲突；与 task-3.3/3.4 互不影响
