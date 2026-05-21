@@ -1,8 +1,8 @@
 # Task `3.4`: `importer-agent-rules — AGENTS.md / CLAUDE.md / Cursor·Zed rules 导入`
 
-> ⚠️ **Status: Ready** — §2A 已完成，Owner/§3/§4/§5.2/§5.3 已填实，无 `<TBD-by-user>` 残留。进入 RED 阶段（AGENTS §3 step 5）。
+> **Status: Done** — RED/GREEN/REFACTOR + §9 验证全绿 + §10 回填完成。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P1
 **Owner**: grok (per dispatch 2026-05-21; §2A fill)
@@ -85,19 +85,19 @@ func init() { importer.Register(NewAgentRulesImporter()) }
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 3 Exit Criteria): `AGENTS.md` / `CLAUDE.md` 能作为 `agent_rule` source 导入为 ContextRecord。
-- [ ] **AC2** (PRD §Constraints 兼容性): Cursor / Zed 规则类 Markdown 能导入（路径/格式 TBD → 走通用 markdown + agent_rule 标记）。
-- [ ] **AC3** (PRD §Decisions Log D5 / §Core Capabilities Out of Scope): 只读导入，不写回 AGENTS.md/CLAUDE.md/Cursor·Zed rules，不做深度语义写回。
-- [ ] **AC4** (PRD §Open Questions O3): Cursor/Zed 具体路径与格式标 TBD，v0.1 不识别即走通用 fallback + warning，不中断。
+- [x] **AC1** (PRD §Implementation Phases Phase 3 Exit Criteria): `AGENTS.md` / `CLAUDE.md` 能作为 `agent_rule` source 导入为 ContextRecord。
+- [x] **AC2** (PRD §Constraints 兼容性): Cursor / Zed 规则类 Markdown 能导入（路径/格式 TBD → 走通用 markdown + agent_rule 标记）。
+- [x] **AC3** (PRD §Decisions Log D5 / §Core Capabilities Out of Scope): 只读导入，不写回 AGENTS.md/CLAUDE.md/Cursor·Zed rules，不做深度语义写回。
+- [x] **AC4** (PRD §Open Questions O3): Cursor/Zed 具体路径与格式标 TBD，v0.1 不识别即走通用 fallback + warning，不中断。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 AGENTS/CLAUDE 导入 | SCEN-3.4.1 | TEST-3.4.1 | - | unit-test | Not Started |
-| AC2 Cursor/Zed rules 导入 | SCEN-3.4.2 | TEST-3.4.2 | - | unit-test | Not Started |
-| AC3 只读不写回 | SCEN-3.4.3 | TEST-3.4.3 | - | unit-test | Not Started |
-| AC4 路径 TBD 走 fallback | SCEN-3.4.4 | TEST-3.4.4 | - | unit-test | Not Started |
+| AC1 AGENTS/CLAUDE 导入 | SCEN-3.4.1 | TEST-3.4.1 | - | unit-test | Done |
+| AC2 Cursor/Zed rules 导入 | SCEN-3.4.2 | TEST-3.4.2 | - | unit-test | Done |
+| AC3 只读不写回 | SCEN-3.4.3 | TEST-3.4.3 | - | unit-test | Done |
+| AC4 路径 TBD 走 fallback | SCEN-3.4.4 | TEST-3.4.4 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -113,12 +113,21 @@ func init() { importer.Register(NewAgentRulesImporter()) }
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-21
+- **改动文件**：
+  - `internal/importer/agentrules/agentrules.go`（新增：AgentRulesImporter + Detect/Import + build + init 注册）
+  - `internal/importer/agentrules/agentrules_test.go`（新增：TEST-3.4.1~3.4.4 覆盖 4 AC / SCEN）
+  - `test/features/importer.feature`（更新：SCEN-3.4.1~3.4.4 Given/When/Then 填实）
+  - `docs/specs/tasks/task-3.4-importer-agent-rules.md`（§2A 填实 §3/§4/§5.2/§5.3/Owner/Status Ready→Done + §6 [x] + §7 追踪 Done + §10 回填）
+  - `NEEDS-DEP-task-3.4.md`（新增：R7 声明无新依赖）
+- **commit 列表**：
+  - `c2c8684` test(agentrules): 加 SCEN-3.4.1~3.4.4 4 个 RED 测试 + stub 骨架；§2A 填实 + NEEDS-DEP + feature
+  - `6172278` feat(agentrules): 实现 AgentRulesImporter 通过全部 4 个测试 (AC1-4)
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ (go mod download && cargo fetch)
+  - typecheck: ✅ (go vet ./... && cargo check --workspace)
+  - unit-test: 4 passed / 0 failed (agentrules: TEST-3.4.1~3.4.4) / 全量 go test ./... 0 failed（零回归）
+- **剩余风险 / 未做项**：
+  - buildRecord 逻辑在 subpkg 重复（因 3.1 未导出构造函数 + 并行任务禁改 core）；未来 core 导出后可去重（低风险）。
+  - Phase 3 §6 端到端 smoke 仍 <TBD>（主 agent 在最后合并 task 的 §4 Gate 3 负责填实 + 执行）。
+- **下游 task 影响**：无（Phase 3 最后批次 3.2/3.3/3.4 并行，无后续 3.x 依赖本实现细节）
