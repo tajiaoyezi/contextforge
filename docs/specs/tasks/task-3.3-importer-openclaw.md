@@ -83,10 +83,10 @@ func ImportWorkspace(path string, collectionID string, agentName string) ([]*con
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 workspace 通用导入 | SCEN-3.3.1 | TEST-3.3.1 | - | unit-test | Not Started |
-| AC2 collection/字段保留 | SCEN-3.3.2 | TEST-3.3.2 | - | unit-test | Not Started |
-| AC3 不复刻/不写回 | SCEN-3.3.3 | TEST-3.3.3 | - | unit-test | Not Started |
-| AC4 schema TBD 走 fallback | SCEN-3.3.4 | TEST-3.3.4 | - | unit-test | Not Started |
+| AC1 workspace 通用导入 | SCEN-3.3.1 | TEST-3.3.1 | - | unit-test | Test Red |
+| AC2 collection/字段保留 | SCEN-3.3.2 | TEST-3.3.2 | - | unit-test | Test Red |
+| AC3 不复刻/不写回 | SCEN-3.3.3 | TEST-3.3.3 | - | unit-test | Test Red |
+| AC4 schema TBD 走 fallback | SCEN-3.3.4 | TEST-3.3.4 | - | unit-test | Test Red |
 
 ## 8. Risks
 
