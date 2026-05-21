@@ -232,7 +232,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 |---|---|---|---|---|---|
 | 1 | `foundation` | `docs/specs/phases/phase-1-foundation.md` | Done | 4 | `../ContextForge-wt-foundation` |
 | 2 | `index-core` | `docs/specs/phases/phase-2-index-core.md` | In Progress | 4 | `../ContextForge-wt-index-core` |
-| 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | In Progress | 4 | `../ContextForge-wt-agent-importers` |
+| 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | Done | 4 | `../ContextForge-wt-agent-importers` |
 | 4 | `retrieval-explain` | `docs/specs/phases/phase-4-retrieval-explain.md` | Draft | 2 | `../ContextForge-wt-retrieval-explain` |
 | 5 | `memoryops` | `docs/specs/phases/phase-5-memoryops.md` | Draft | 3 | `../ContextForge-wt-memoryops` |
 | 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Draft | 3 | `../ContextForge-wt-cli-api-export` |
@@ -255,12 +255,12 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 1.4 | cli | docs/specs/tasks/task-1.4-cli-init.md | Done | Phase1 #4（dep 1.1,1.2,1.3）| `../ContextForge-wt-foundation` |
 | 2.1 | scanner | docs/specs/tasks/task-2.1-scanner.md | Done | Phase2 #1 | `../ContextForge-wt-index-core` |
 | 2.2 | parser | docs/specs/tasks/task-2.2-parser.md | Done | Phase2 #2 | `../ContextForge-wt-index-core` |
-| 2.3 | chunker | docs/specs/tasks/task-2.3-chunker.md | Draft | Phase2 #3（dep 2.2）| `../ContextForge-wt-index-core` |
+| 2.3 | chunker | docs/specs/tasks/task-2.3-chunker.md | Done | Phase2 #3（dep 2.2）| `../ContextForge-wt-index-core` |
 | 2.4 | indexer | docs/specs/tasks/task-2.4-indexer.md | Draft | Phase2 #4（dep 2.1,2.3）| `../ContextForge-wt-index-core` |
 | 3.1 | importer | docs/specs/tasks/task-3.1-importer-core.md | Done | Phase3 #1 | `../ContextForge-wt-agent-importers` |
-| 3.2 | importer | docs/specs/tasks/task-3.2-importer-hermes.md | Draft | Phase3 #2（dep 3.1）| `../ContextForge-wt-agent-importers` |
+| 3.2 | importer | docs/specs/tasks/task-3.2-importer-hermes.md | Done | Phase3 #2（dep 3.1）| `../ContextForge-wt-agent-importers` |
 | 3.3 | importer | docs/specs/tasks/task-3.3-importer-openclaw.md | Done | Phase3 #3（dep 3.1）| `../ContextForge-wt-agent-importers` |
-| 3.4 | importer | docs/specs/tasks/task-3.4-importer-agent-rules.md | Draft | Phase3 #4（dep 3.1）| `../ContextForge-wt-agent-importers` |
+| 3.4 | importer | docs/specs/tasks/task-3.4-importer-agent-rules.md | Done | Phase3 #4（dep 3.1）| `../ContextForge-wt-agent-importers` |
 | 4.1 | retriever | docs/specs/tasks/task-4.1-retriever.md | Draft | Phase4 #1 | `../ContextForge-wt-retrieval-explain` |
 | 4.2 | retriever | docs/specs/tasks/task-4.2-explain.md | Draft | Phase4 #2（dep 4.1）| `../ContextForge-wt-retrieval-explain` |
 | 5.1 | memoryops | docs/specs/tasks/task-5.1-dedup.md | Draft | Phase5 #1 | `../ContextForge-wt-memoryops` |
