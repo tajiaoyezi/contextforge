@@ -1,17 +1,20 @@
 //! task-2.3 (Phase 2): chunker — chunking + metadata 抽取 + provenance 维护.
 //!
-//! GREEN: 真实实现替换 RED stub。
 //! - `chunk_units`: 按 ChunkPolicy.<lang> 切片；respect_parsed_units=true 时尽量按
 //!   ParsedUnit 边界保留 1:1 映射；否则按 max_chunk_lines 定长 + overlap 切。
 //! - `chunk_file`: parser::parse_file → chunk_units 串接。
-//! - `content_hash`: std-only FNV-1a-64（§2A 决策，避开 R7 sha2 依赖）+ normalize
-//!   最小集（CRLF→LF + 行末 trailing whitespace + 整体 trim）→ "fnv1a64:<16-hex>"。
+//! - `content_hash`: sha256（chore PR #17 加 sha2 v0.11.0；与 task-3.1 importer
+//!   一致 — 跨模块 Phase 5 memoryops 去重锚点统一）+ normalize 最小集（CRLF→LF +
+//!   行末 trailing whitespace + 整体 trim）→ "sha256:<64-hex>"（algo-prefix 保留
+//!   forward-compat）。
 //!
+//! Rework (2026-05-21): SPEC-DRIFT 裁决后 content_hash 从 FNV-1a-64 → sha256。
 //! 后续 task-2.4 (indexer) 消费 Vec<Chunk>。
 
 use std::collections::HashMap;
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::parser::ParsedUnit;
@@ -207,25 +210,22 @@ fn normalize_for_hash(s: &str) -> String {
     joined.trim().to_string()
 }
 
-/// AC5: FNV-1a-64 hash. 不依赖外部 crate（§2A 决策，避开 R7 sha2 串行 chore PR）。
-/// 常量与 std 中 fnv 算法实现保持一致：
-///   FNV_OFFSET_BASIS_64 = 0xcbf29ce484222325
-///   FNV_PRIME_64        = 0x100000001b3
-fn fnv1a_64(bytes: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for &b in bytes {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
-
 /// 公开：算 content_hash（memoryops 去重锚点；AC5 跨来源一致）。
-/// 算法 v0.1 = FNV-1a-64；返回 "fnv1a64:<16-hex>"。
+///
+/// 算法 = sha256（与 task-3.1 importer `internal/importer/record.go:80`
+/// `sha256.Sum256` 一致，跨模块 Phase 5 memoryops 去重锚点统一）。返回
+/// `sha256:<64-hex>`（algo-prefix 保留 forward-compat — Phase 5 memoryops 按前缀
+/// 分流即可与任一模块对接）。
 pub fn content_hash(content: &str) -> String {
     let normalized = normalize_for_hash(content);
-    let h = fnv1a_64(normalized.as_bytes());
-    format!("fnv1a64:{:016x}", h)
+    let digest = Sha256::digest(normalized.as_bytes());
+    // sha2 0.11 / digest 0.11 — 输出 hex 用逐字节格式化（不依赖 hex crate）
+    let mut hex_str = String::with_capacity(64);
+    for byte in digest.iter() {
+        use std::fmt::Write;
+        write!(hex_str, "{:02x}", byte).expect("write to String never fails");
+    }
+    format!("sha256:{}", hex_str)
 }
 
 #[cfg(test)]
@@ -262,12 +262,12 @@ mod tests {
             assert_eq!(c.language, "rust", "AC1: language");
             assert!(!c.content.is_empty(), "AC1: content non-empty");
             assert!(
-                c.content_hash.starts_with("fnv1a64:"),
+                c.content_hash.starts_with("sha256:"),
                 "AC1: content_hash algo-prefixed (got '{}')",
                 c.content_hash
             );
-            // Hash hex part length: 16 chars (64-bit)
-            assert_eq!(c.content_hash.len(), "fnv1a64:".len() + 16, "AC1: hash hex length");
+            // Hash hex part length: 64 chars (256-bit sha256)
+            assert_eq!(c.content_hash.len(), "sha256:".len() + 64, "AC1: hash hex length");
         }
     }
 
@@ -412,7 +412,9 @@ mod tests {
         let h1 = content_hash(src);
         let h2 = content_hash(src);
         assert_eq!(h1, h2, "AC5: 同内容同 hash");
-        assert!(h1.starts_with("fnv1a64:"), "AC5: algo 前缀");
+        assert!(h1.starts_with("sha256:"), "AC5: algo 前缀");
+        // sha256 hex length = 64 + "sha256:".len() (7) = 71
+        assert_eq!(h1.len(), "sha256:".len() + 64, "AC5: sha256 hex 长度 = 64");
 
         // CRLF / LF 归一
         let crlf = "hello world\r\nthis is content\r\n";
@@ -422,7 +424,7 @@ mod tests {
         let trailing = "hello world   \nthis is content   \n";
         assert_eq!(content_hash(trailing), h1, "AC5: 行末空白归一化等价");
 
-        // 内容不同 → hash 不同（戳穿 RED stub 常量 hash）
+        // 内容不同 → hash 不同
         let different = "totally different content";
         assert_ne!(
             content_hash(different),

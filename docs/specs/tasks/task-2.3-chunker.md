@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-21）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Done
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi
