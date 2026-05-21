@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-21）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -154,21 +154,21 @@ pub fn content_hash(content: &str) -> String;
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Technical Approach Canonical Record v0.1): 每个 `Chunk` 含 chunk_id / file_path / line_start / line_end / language / content / content_hash。
-- [ ] **AC2** (PRD §Technical Approach Canonical Record v0.1): `provenance[]` 写入 importer / original_path / imported_at / source_modified_at，可承载多来源。
-- [ ] **AC3** (PRD §Technical Risks R3): chunking 策略可配置，对 code / markdown / log 分别可调参。
-- [ ] **AC4** (PRD §User Flow 边界场景): 超大文件分块不爆内存（与 scanner 流式协同）。
-- [ ] **AC5** (本 task 新增): content_hash 为后续 memoryops 去重锚点（normalized content hash），保证同内容跨来源 hash 一致。
+- [x] **AC1** (PRD §Technical Approach Canonical Record v0.1): 每个 `Chunk` 含 chunk_id / file_path / line_start / line_end / language / content / content_hash。
+- [x] **AC2** (PRD §Technical Approach Canonical Record v0.1): `provenance[]` 写入 importer / original_path / imported_at / source_modified_at，可承载多来源。
+- [x] **AC3** (PRD §Technical Risks R3): chunking 策略可配置，对 code / markdown / log 分别可调参。
+- [x] **AC4** (PRD §User Flow 边界场景): 超大文件分块不爆内存（与 scanner 流式协同）。
+- [x] **AC5** (本 task 新增): content_hash 为后续 memoryops 去重锚点（normalized content hash），保证同内容跨来源 hash 一致。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 Chunk 字段完整 | SCEN-2.3.1 | TEST-2.3.1 | - | unit-test | Verified |
-| AC2 provenance 多来源 | SCEN-2.3.2 | TEST-2.3.2 | - | unit-test | Verified |
-| AC3 chunking 可配置 | SCEN-2.3.3 | TEST-2.3.3 | - | unit-test | Verified |
-| AC4 大文件分块不爆内存 | SCEN-2.3.4 | TEST-2.3.4 | - | unit-test | Verified |
-| AC5 content_hash 一致性 | SCEN-2.3.5 | TEST-2.3.5 | - | unit-test | Verified |
+| AC1 Chunk 字段完整 | SCEN-2.3.1 | TEST-2.3.1 | - | unit-test | Done |
+| AC2 provenance 多来源 | SCEN-2.3.2 | TEST-2.3.2 | - | unit-test | Done |
+| AC3 chunking 可配置 | SCEN-2.3.3 | TEST-2.3.3 | - | unit-test | Done |
+| AC4 大文件分块不爆内存 | SCEN-2.3.4 | TEST-2.3.4 | - | unit-test | Done |
+| AC5 content_hash 一致性 | SCEN-2.3.5 | TEST-2.3.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -185,12 +185,31 @@ pub fn content_hash(content: &str) -> String;
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-21
+- **改动文件**：
+  - core/src/chunker/mod.rs（real impl：Chunk / Provenance / ChunkConfig / ChunkPolicy / ChunkError + chunk_units / chunk_file / content_hash + 5 unit tests；保留 placeholder_ready() 供 task-1.3 core_skeleton AC4 anchor）
+  - docs/specs/tasks/task-2.3-chunker.md（Status: Draft→Ready→In Progress→Done；§3/§4/§5.2/§5.3 §2A 填实；§6 AC1-5 全部勾选；§7 5 行 → Done；§10 终态回填）
+  - test/features/chunker.feature（§2A 后回填 In order to / As / SCEN-2.3.1~5 的 Given/When/Then）
+- **commit 列表**（本 task 全部 5 个，按时间顺序）：
+  - b9155f9 docs(spec): task-2.3 业务承诺 (Draft → Ready)
+  - 6401516 docs(spec): task-2.3 进入实施 (Status: Ready → In Progress) + chunker.feature Given/When/Then 填实
+  - 2fe8680 test(chunker): 加 SCEN-2.3.1~5 共 5 个 RED 测试
+  - d1189b8 feat(chunker): 实现 chunk_units / chunk_file / content_hash 通过全部 5 个测试
+  - 本回填 docs(spec) commit 见 §3 注释 步 5.5（回填 §10 + Status → Done）
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean，新增 chunker 真实现编译通过；无新依赖引入）
+  - unit-test: ✅ `go test ./... && cargo test --workspace` —— chunker::tests 5 passed / 0 failed / 0 ignored（AC1-5 全绿）；parser::tests 6 + core_skeleton 4 + proto_contract 5 + scanner 12 + Go 侧 5 包 全绿
+- **剩余风险 / 未做项**：
+  - content_hash 算法 v0.1 = FNV-1a-64（非密码学强度）。§2A 决策：避开 R7 新增 sha2 crate 的串行 chore-dep PR 成本；存储格式 `fnv1a64:<16-hex>` 已 algo-prefix，未来升级 sha256/blake3 时旧 hash 字面量仍可识别 + 分流（走未来独立 ADR + chore-dep PR）。AC5 v0.1 锚点功能（同内容跨来源等价）已完整满足，与密码学强度无关。
+  - normalize 规则保守最小集（CRLF→LF + 行末 trailing whitespace + 整体 trim）。CJK / Unicode NFC / 注释剥离 / stop-word 等进阶归一化留 Phase 4 retriever / 召回评估时按需加，按 §3 Out-of-Scope。
+  - chunk_units 流式安全 = 当前一次性传入 ParsedUnit 切片 + 内部按 max_chunk_lines 分段；真正"分块读 + 并发"的流式接口（返回 Iterator of Chunk）留 Phase 8 性能硬化（与 scanner 流式衔接，R6 大仓库性能基准）。
+- **下游 task 影响**：
+  - **task-2.4 indexer**（强依赖）：消费 Chunk 切片向量写 SQLite metadata + Tantivy 全文索引 — Chunk 字段集已冻结契约（§5.3 + AC1）。
+  - **Phase 5 memoryops**（AC5 锚点）：基于 content_hash 做去重 / 冲突 / 过期；algo-prefix 设计允许未来切换算法时按前缀分流（不破坏旧索引）。
+  - **task-3.x importers**（跨 phase 并行）：调用 chunker 前注入 Provenance 切片向量；importer/original_path/imported_at/source_modified_at 字段集已与 PRD §Canonical Record provenance[] 对齐。
+  - **Phase 4 retriever**（间接）：通过 indexer 消费 chunker 输出，line_start/line_end 单调 + 不重叠（overlap=0 时）保证可解释 line range 复原。
+- **§2A Decisions**：
+  - content_hash 算法 = std-only 手写 FNV-1a-64（用户 2026-05-21 答题选项 A）；放弃 sha2 crate 的 R7 串行 chore-dep PR。存储格式 `fnv1a64:<16-hex>` algo-prefixed，未来升级有迁移空间。
+  - 与 PRD §Canonical Record JSON 示例 `"content_hash": "sha256..."` 字面偏差：PRD 例值仅示意，proto contract（task-1.1 frozen）`string content_hash = 7;` 无算法约束 — 本 task v0.1 用 FNV 不违反冻结契约。
+  - 不修改 Cargo.toml / Cargo.lock（R7 严格 — task agent 不引入新依赖）。
