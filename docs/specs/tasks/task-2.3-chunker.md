@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-21）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -60,16 +60,18 @@
 
 ### 5.2 Imports
 
-- 标准库：`std::path::{Path, PathBuf}`、`std::collections::HashMap`、`std::hash::{Hash, Hasher}`（其实手写 FNV，未用 std::hash trait，但保留以备 §10 注释参考）
+- 标准库：`std::path::Path`、`std::collections::HashMap`、`std::fmt::Write`（hex 输出逐字节格式化）
 - 内部：`crate::parser::ParsedUnit`（task-2.2 §5.3 已冻结产出类型）
-- 错误类型：复用项目已有 `thiserror = "2.0.18"`（task-2.2 chore PR#11 引入，本 task 不引入新依赖）
-- **R7 严格处理**：本 task **不引入新 crate**（content_hash 用 std-only 手写 FNV-1a-64；§2A 决策见 §10 §2A Decisions）；task agent 不修改 `core/Cargo.toml` / `Cargo.lock`
+- 错误类型：复用项目已有 `thiserror = "2.0.18"`（task-2.2 chore PR#11 引入）
+- **content_hash 依赖**：`sha2 = "0.11.0"`（chore PR #17 `chore/dep-sha2` merged，master `4b7dadd`）。用 `sha2::{Digest, Sha256}` 二符号；输出 hex 不引入 `hex` crate（逐字节 `{:02x}` 格式化）
+- **R7 严格处理**：本 task 通过独立 `chore/dep-sha2` PR #17（merged 2026-05-21）引入 sha2 依赖（R7 单一通道，主 agent 域）；task agent 仅消费 master `core/Cargo.toml` / `Cargo.lock` 已锁定版本，绝不直接修改 lockfile
 
 ### 5.3 函数签名
 
 ```rust
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::collections::HashMap;
+use sha2::{Digest, Sha256};
 use crate::parser::ParsedUnit;
 
 /// 检索切片（chunker 产出 → 喂给 indexer）。字段集对应 PRD §Technical Approach
@@ -82,7 +84,7 @@ pub struct Chunk {
     pub line_end: usize,
     pub language: String,            // 沿用 ParsedUnit.language（"go"/"rust"/"markdown"/"log"/...）
     pub content: String,             // 原始内容（未 normalize；normalize 仅用于算 hash）
-    pub content_hash: String,        // "fnv1a64:<16-hex>" — algo-prefixed (v0.1 stub, AC5 跨来源一致)
+    pub content_hash: String,        // "sha256:<64-hex>" — algo-prefixed，跨模块 task-3.1 importer 一致
     pub kind: Option<String>,        // 沿用 ParsedUnit.kind（"heading"/"function"/"log_entry"/...）
     pub provenance: Vec<Provenance>, // AC2: 单 chunk 可承载多来源
     pub metadata: HashMap<String, String>,
@@ -146,7 +148,9 @@ pub fn chunk_file(
 ) -> Result<Vec<Chunk>, ChunkError>;
 
 /// 公开：用同样规则计算 content_hash（memoryops 去重锚点；AC5 跨来源一致）。
-/// 算法 v0.1 = FNV-1a-64；返回 "fnv1a64:<16-hex>"。normalize 见 §3 In-Scope 最小集。
+/// 算法 = sha256（与 task-3.1 importer `internal/importer/record.go:80` 一致）；返回
+/// "sha256:<64-hex>"。normalize 见 §3 In-Scope 最小集（CRLF→LF + 行末 trailing
+/// whitespace + 整体 trim — rework 后未变）。
 pub fn content_hash(content: &str) -> String;
 ```
 
@@ -185,31 +189,41 @@ pub fn content_hash(content: &str) -> String;
 
 ## 10. Completion Notes
 
-- **完成日期**：2026-05-21
+- **完成日期**：2026-05-21（初版 + 同日 SPEC-DRIFT rework — content_hash FNV-1a-64 → sha256）
 - **改动文件**：
-  - core/src/chunker/mod.rs（real impl：Chunk / Provenance / ChunkConfig / ChunkPolicy / ChunkError + chunk_units / chunk_file / content_hash + 5 unit tests；保留 placeholder_ready() 供 task-1.3 core_skeleton AC4 anchor）
-  - docs/specs/tasks/task-2.3-chunker.md（Status: Draft→Ready→In Progress→Done；§3/§4/§5.2/§5.3 §2A 填实；§6 AC1-5 全部勾选；§7 5 行 → Done；§10 终态回填）
-  - test/features/chunker.feature（§2A 后回填 In order to / As / SCEN-2.3.1~5 的 Given/When/Then）
-- **commit 列表**（本 task 全部 5 个，按时间顺序）：
-  - b9155f9 docs(spec): task-2.3 业务承诺 (Draft → Ready)
-  - 6401516 docs(spec): task-2.3 进入实施 (Status: Ready → In Progress) + chunker.feature Given/When/Then 填实
-  - 2fe8680 test(chunker): 加 SCEN-2.3.1~5 共 5 个 RED 测试
-  - d1189b8 feat(chunker): 实现 chunk_units / chunk_file / content_hash 通过全部 5 个测试
-  - 本回填 docs(spec) commit 见 §3 注释 步 5.5（回填 §10 + Status → Done）
+  - core/src/chunker/mod.rs（real impl：Chunk / Provenance / ChunkConfig / ChunkPolicy / ChunkError + chunk_units / chunk_file + content_hash sha256 实现 + normalize 最小集；保留 placeholder_ready() 供 task-1.3 core_skeleton AC4 anchor；rework 后用 sha2::Sha256 替换 FNV-1a-64，algo-prefix 格式 sha256:<64-hex> 保留 forward-compat）
+  - docs/specs/tasks/task-2.3-chunker.md（Status: Draft→Ready→In Progress→Done→In Progress→Done；§4 / §5.2 / §5.3 §2A 填实并 rework 同步到 sha256；§6 AC1-5 全部勾选；§7 5 行 → Done；§10 终态回填 + Rework 段；§2A Decisions 加 Rework 块）
+  - test/features/chunker.feature（§2A 后回填 In order to / As / SCEN-2.3.1~5 的 Given/When/Then；BDD 语义跨 rework 不变）
+- **commit 列表**（本 task 全部 7 个，按时间顺序；rebase 后 hash 与 PR #16 描述里的 5 个原 commit 不同 — 见 commit 5/6 行外注释）：
+  - 7f350c9 docs(spec): task-2.3 业务承诺 (Draft → Ready)
+  - 1b33326 docs(spec): task-2.3 进入实施 (Status: Ready → In Progress) + chunker.feature Given/When/Then 填实
+  - 1245521 test(chunker): 加 SCEN-2.3.1~5 共 5 个 RED 测试
+  - 9021b53 feat(chunker): 实现 chunk_units / chunk_file / content_hash 通过全部 5 个测试
+  - 1d2b6c2 docs(spec): task-2.3 Status In Progress → Done；§6 AC1-5 全部 ☑；§7 全 Done；§10 终态回填
+  - a2ecd9f fix(chunker): SPEC-DRIFT rework — content_hash FNV-1a-64 → sha256（依赖 chore PR #17）
+  - 本回填 docs(spec) commit（§10 + §2A Decisions Rework 同步 + Status → Done）
 - **§9 Verification 结果**：
-  - install: ✅ `go mod download && cargo fetch`
-  - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean，新增 chunker 真实现编译通过；无新依赖引入）
-  - unit-test: ✅ `go test ./... && cargo test --workspace` —— chunker::tests 5 passed / 0 failed / 0 ignored（AC1-5 全绿）；parser::tests 6 + core_skeleton 4 + proto_contract 5 + scanner 12 + Go 侧 5 包 全绿
+  - install: ✅ `go mod download && cargo fetch`（sha2 v0.11.0 + 7 transitive 已从 chore PR #17 锁定）
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean；sha2 0.11 + digest 0.11 + hybrid-array 0.4 编译通过）
+  - unit-test: ✅ `go test ./... && cargo test --workspace` —— chunker::tests 5 passed / 0 failed / 0 ignored（AC1-5 全绿，sha256 hash 长度 71 = "sha256:" + 64 hex 断言通过；CRLF/LF + trailing whitespace + 跨来源一致 全过）；parser::tests 6 + core_skeleton 4 + proto_contract 5 + scanner 12 + Go 侧 5 包（含 task-3.1 importer，sha256 已对齐）全绿，零回归
 - **剩余风险 / 未做项**：
-  - content_hash 算法 v0.1 = FNV-1a-64（非密码学强度）。§2A 决策：避开 R7 新增 sha2 crate 的串行 chore-dep PR 成本；存储格式 `fnv1a64:<16-hex>` 已 algo-prefix，未来升级 sha256/blake3 时旧 hash 字面量仍可识别 + 分流（走未来独立 ADR + chore-dep PR）。AC5 v0.1 锚点功能（同内容跨来源等价）已完整满足，与密码学强度无关。
   - normalize 规则保守最小集（CRLF→LF + 行末 trailing whitespace + 整体 trim）。CJK / Unicode NFC / 注释剥离 / stop-word 等进阶归一化留 Phase 4 retriever / 召回评估时按需加，按 §3 Out-of-Scope。
   - chunk_units 流式安全 = 当前一次性传入 ParsedUnit 切片 + 内部按 max_chunk_lines 分段；真正"分块读 + 并发"的流式接口（返回 Iterator of Chunk）留 Phase 8 性能硬化（与 scanner 流式衔接，R6 大仓库性能基准）。
+  - **跨模块 hash 存储格式微差**：本 task chunker 输出 `sha256:<64-hex>` algo-prefix；task-3.1 importer (`internal/importer/record.go:80`) 输出裸 `<64-hex>` 无 prefix。Phase 5 memoryops 桥接时需按前缀剥离再比较（实际 hash bytes 一致 — 同 sha256 算法 + 同 raw content；normalize 路径目前两侧不一定 1:1 — 后续 memoryops 跨模块对齐时再校验）。
+  - **§3 In/Out Scope 文字仍含 FNV-1a-64 字面提及**：原 §2A 填空记录（PR #16 初版），按本 rework 派工硬约束（§3 业务契约字段禁动），未在 rework commit 中修订；权威算法以 §5.2 / §5.3 / §10 / 实现为准。后续若需要彻底清理 §3 文字，由主 agent 走独立 spec-drift PR。
 - **下游 task 影响**：
   - **task-2.4 indexer**（强依赖）：消费 Chunk 切片向量写 SQLite metadata + Tantivy 全文索引 — Chunk 字段集已冻结契约（§5.3 + AC1）。
-  - **Phase 5 memoryops**（AC5 锚点）：基于 content_hash 做去重 / 冲突 / 过期；algo-prefix 设计允许未来切换算法时按前缀分流（不破坏旧索引）。
+  - **Phase 5 memoryops**（AC5 锚点）：基于 content_hash 做去重 / 冲突 / 过期；sha256 与 task-3.1 importer 一致（统一密码学锚点，PRD §Technical Risks R5 缓解）；algo-prefix 设计允许未来切换算法时按前缀分流。
   - **task-3.x importers**（跨 phase 并行）：调用 chunker 前注入 Provenance 切片向量；importer/original_path/imported_at/source_modified_at 字段集已与 PRD §Canonical Record provenance[] 对齐。
   - **Phase 4 retriever**（间接）：通过 indexer 消费 chunker 输出，line_start/line_end 单调 + 不重叠（overlap=0 时）保证可解释 line range 复原。
 - **§2A Decisions**：
-  - content_hash 算法 = std-only 手写 FNV-1a-64（用户 2026-05-21 答题选项 A）；放弃 sha2 crate 的 R7 串行 chore-dep PR。存储格式 `fnv1a64:<16-hex>` algo-prefixed，未来升级有迁移空间。
-  - 与 PRD §Canonical Record JSON 示例 `"content_hash": "sha256..."` 字面偏差：PRD 例值仅示意，proto contract（task-1.1 frozen）`string content_hash = 7;` 无算法约束 — 本 task v0.1 用 FNV 不违反冻结契约。
-  - 不修改 Cargo.toml / Cargo.lock（R7 严格 — task agent 不引入新依赖）。
+  - **初版（2026-05-21，已被 rework 撤销）**：content_hash 算法 = std-only 手写 FNV-1a-64（worker 答题选项 A）；意图是放弃 sha2 crate 的 R7 串行 chore-dep PR。
+  - 不修改 Cargo.toml / Cargo.lock（R7 严格 — task agent 不引入新依赖）— **rework 后仍守此约束**，sha2 由主 agent 域 chore PR #17 引入，task agent 仍未改 lockfile。
+  - **Rework (2026-05-21, 主 agent SPEC-DRIFT 裁决后)**：content_hash 算法：FNV-1a-64 → **sha256**
+    - **裁决理由**：
+      1. 与 task-3.1 importer (PR #7, commit `5861e98`) 已用 sha256 一致；Phase 5 memoryops 跨来源去重锚点要求一致 hash — FNV vs sha256 对不上则去重失效
+      2. 64-bit FNV 在 10M chunk 规模碰撞概率 ~10⁻⁶ 不可接受（PRD §Constraints 性能阈值）
+      3. "避 R7 流程开销" 不应成为降级算法的理由 — 正确做法是发 NEEDS-DEP，让主 agent 串行加 sha2 crate
+    - **依赖通道**：chore-dep PR #17 加 sha2 v0.11.0（+ 7 transitive：block-buffer / const-oid / cpufeatures / crypto-common / digest / hybrid-array / typenum）→ merged master `4b7dadd`（commit `2d3aa84`）
+    - **本 rebase 后用 sha256 替换**；algo-prefix 格式 `sha256:<64-hex>` 保留 (forward-compat 不变)
+    - **与 PRD §Canonical Record JSON 示例 `"content_hash": "sha256..."` 现已字面一致**（初版偏差通过 rework 修复）
