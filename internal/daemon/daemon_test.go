@@ -2,14 +2,12 @@ package daemon
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 
@@ -34,7 +32,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "task-1.4 daemon test: cargo build -p contextforge-core:", err)
 		os.Exit(1)
 	}
-	coreBin = filepath.Join(root, "target", "debug", "contextforge-core")
+	coreBin = filepath.Join(root, "target", "debug", coreBinName())
 	if _, err := os.Stat(coreBin); err != nil {
 		fmt.Fprintln(os.Stderr, "task-1.4 daemon test: core binary missing:", err)
 		os.Exit(1)
@@ -111,12 +109,13 @@ func TestTask14_AC3_AutoRestartAfterCrash(t *testing.T) {
 	if pid <= 0 {
 		t.Fatalf("currentPID = %d, want > 0", pid)
 	}
-	// The supervisor may reap+restart between currentPID() and Kill(); a
-	// stale PID then yields ESRCH, which is benign here — the process is
-	// already gone (exactly the crash we want); the auto-restart assertions
-	// below still validate AC3. Only a non-ESRCH error is a real failure.
-	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
-		t.Fatalf("SIGKILL core pid %d: %v", pid, err)
+	// Cross-platform kill: os.FindProcess+Kill works on Unix (SIGKILL) and
+	// Windows (TerminateProcess). syscall.Kill is Unix-only. The supervisor
+	// may reap+restart between currentPID() and Kill(); a stale PID is benign
+	// — the process is already gone, which is exactly the crash we want, and
+	// the auto-restart assertions below still validate AC3.
+	if p, err := os.FindProcess(pid); err == nil {
+		_ = p.Kill()
 	}
 
 	deadline := time.Now().Add(30 * time.Second)
@@ -139,6 +138,8 @@ func TestTask14_AC3_AutoRestartAfterCrash(t *testing.T) {
 func TestTask14_AC5_EndToEndSmoke(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// See cli_test.go TestTask14_AC1: Windows os.UserHomeDir needs USERPROFILE.
+	t.Setenv("USERPROFILE", home)
 
 	if code := cli.Execute([]string{"init"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("contextforge init exit = %d, want 0", code)
