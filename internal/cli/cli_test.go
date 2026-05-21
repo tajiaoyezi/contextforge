@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -13,6 +14,9 @@ import (
 func TestTask14_AC1_InitGeneratesConfigIdempotent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Windows os.UserHomeDir reads USERPROFILE first; HOME-only setenv leaks
+	// into the real %USERPROFILE%\.contextforge and breaks the sandbox.
+	t.Setenv("USERPROFILE", home)
 
 	if err := runInit("", io.Discard); err != nil {
 		t.Fatalf("runInit #1: %v", err)
@@ -25,17 +29,27 @@ func TestTask14_AC1_InitGeneratesConfigIdempotent(t *testing.T) {
 	}
 	// §5.3 SCEN-1.4.1: config.toml == 0600 (guards the task-1.2 config.Init
 	// 0600/0700 enforcement against future regression — ADR-004 baseline).
-	if got := cfgFI.Mode().Perm(); got != 0o600 {
-		t.Fatalf("config.toml perm = %o, want 0600", got)
+	// Windows Go stdlib does not implement POSIX chmod; Stat().Mode().Perm()
+	// reports 0666/0777 regardless. ACL-equivalent enforcement is Phase 8 /
+	// v0.3 Windows-preview scope; skip the bit check here.
+	if runtime.GOOS == "windows" {
+		t.Logf("SCEN-1.4.1: POSIX perm bits not asserted on Windows " +
+			"(Go stdlib reports 0666/0777); ACL enforcement deferred to Phase 8 / v0.3")
+	} else {
+		if got := cfgFI.Mode().Perm(); got != 0o600 {
+			t.Fatalf("config.toml perm = %o, want 0600", got)
+		}
 	}
 	for _, d := range []string{"collections", "logs", "runtime"} {
 		fi, err := os.Stat(filepath.Join(root, d))
 		if err != nil || !fi.IsDir() {
 			t.Fatalf("scaffold dir %q missing: %v", d, err)
 		}
-		// §5.3 SCEN-1.4.1: scaffold dirs == 0700.
-		if got := fi.Mode().Perm(); got != 0o700 {
-			t.Fatalf("scaffold dir %q perm = %o, want 0700", d, got)
+		// §5.3 SCEN-1.4.1: scaffold dirs == 0700 (see Windows note above).
+		if runtime.GOOS != "windows" {
+			if got := fi.Mode().Perm(); got != 0o700 {
+				t.Fatalf("scaffold dir %q perm = %o, want 0700", d, got)
+			}
 		}
 	}
 

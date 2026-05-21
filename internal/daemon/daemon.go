@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -215,16 +216,27 @@ func resolveCoreBin(p string) (string, error) {
 		}
 		return p, nil
 	}
+	// exec.LookPath on Windows already appends PATHEXT (.exe/.com/...), so
+	// the bare name is correct here.
 	if lp, err := exec.LookPath("contextforge-core"); err == nil {
 		return lp, nil
 	}
 	if root, err := repoRoot(); err == nil {
-		cand := filepath.Join(root, "target", "debug", "contextforge-core")
+		cand := filepath.Join(root, "target", "debug", coreBinName())
 		if _, err := os.Stat(cand); err == nil {
 			return cand, nil
 		}
 	}
 	return "", fmt.Errorf("daemon: contextforge-core not found (set Options.CoreBinPath)")
+}
+
+// coreBinName returns the contextforge-core binary file name with the
+// platform's executable suffix. Cargo emits contextforge-core.exe on Windows.
+func coreBinName() string {
+	if runtime.GOOS == "windows" {
+		return "contextforge-core.exe"
+	}
+	return "contextforge-core"
 }
 
 func repoRoot() (string, error) {
