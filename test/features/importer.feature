@@ -87,21 +87,21 @@ Feature: importer
   # ---
   # Maps to: docs/specs/tasks/task-3.4-importer-agent-rules.md
   Scenario: SCEN-3.4.1 — 对应 AC1（AGENTS/CLAUDE 导入）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在 "AGENTS.md" 内容为 "# Project Rules\n\n- Always run tests"
+    When 用 AgentRulesImporter 直接导入该文件到 collection "default"
+    Then 返回 1 条 ContextRecord，SourceType=agent_rule、provider=claude-code、Content 含规则文本、Tags 含 agent_rule、redaction_status=pending
 
   Scenario: SCEN-3.4.2 — 对应 AC2（Cursor/Zed rules 导入）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在 ".cursorrules" 内容为 "# Cursor Rules"
+    When 用 AgentRulesImporter 直接 Import（bypass Resolve）
+    Then SourceType=agent_rule、provider=cursor、内容被保留为 markdown
 
   Scenario: SCEN-3.4.3 — 对应 AC3（只读不写回）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在 "CLAUDE.md" 内容为 "# Memory"
+    When 用 AgentRulesImporter 导入
+    Then 导入成功且原 CLAUDE.md 文件字节未被修改（只读保证）
 
   Scenario: SCEN-3.4.4 — 对应 AC4（路径 TBD 走 fallback）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在 "zed/project-rules.md"（非 AGENTS/CLAUDE 命名）
+    When Resolve 该路径
+    Then 返回 fallback importer，Import 成功，日志包含 "warning" + "fallback"，record SourceType=file（非 agent_rule）

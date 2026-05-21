@@ -1,11 +1,11 @@
 # Task `3.4`: `importer-agent-rules — AGENTS.md / CLAUDE.md / Cursor·Zed rules 导入`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> ⚠️ **Status: Ready** — §2A 已完成，Owner/§3/§4/§5.2/§5.3 已填实，无 `<TBD-by-user>` 残留。进入 RED 阶段（AGENTS §3 step 5）。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P1
-**Owner**: `<TBD-by-user>`
+**Owner**: grok (per dispatch 2026-05-21; §2A fill)
 **Related Phase**: Phase 3 (agent-importers)
 **Dependencies**: 3.1 (importer-core)
 
@@ -21,15 +21,28 @@
 
 ### In Scope
 
-- `<TBD-by-user>`
+- `internal/importer/agentrules/` 子包实现 `AgentRulesImporter`（实现 `Importer` 接口）
+- `Detect`：对 `AGENTS.md` / `CLAUDE.md`（及大小写变体）返回高 confidence（AC1）
+- `Import`：读取文件内容作为 markdown，调用 `buildRecord`（复用 task-3.1）设置 `source_type=agent_rule`、`provider=claude-code|cursor|zed|local`、`tags` 含类型、`redaction_status=pending`（AC1/AC2）
+- 支持直接构造 agent-rules importer 导入任意规则类 Markdown（包括 Cursor/Zed TBD 路径），标记为 agent_rule（AC2）
+- `Resolve` 未匹配的 Cursor/Zed 路径走 `FileFallbackImporter` + 显式 warning（AC4，复用 3.1 框架）
+- 只读导入，`init()` 注册到全局 registry（供未来 CLI/daemon 空白导入触发）
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- 深度语义解析规则文件（指令、优先级、tool-use 提取等，PRD Out of Scope）
+- 自动发现或硬编码 Cursor/Zed 工作区具体路径（O3 TBD，v0.1 由 `import agent-rules <path>` 手动指定）
+- 写回或修改原 AGENTS.md / CLAUDE.md / Cursor·Zed 文件（ADR-005 / AC3）
+- 任何新外部依赖（R7，已声明 NEEDS-DEP-task-3.4.md 无增量）
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- `contextforge import agent-rules <path>` CLI 子命令（Phase 6 消费，直接调用或 Resolve 后的 agent-rules importer）
+- Go daemon 导入调度器（未来通过 registry 解析 agent-rules 路径）
+- `AgentRulesImporter`（实现方，Name="agent-rules"）
+- `FileFallbackImporter`（TBD 路径保底，AC4）
+- 下游 `scanner` / `indexer`（消费 record，redaction 标记为 pending 由 2.1/2.4 处理）
+- 项目规则维护者（用户提供 AGENTS.md / CLAUDE.md / Cursor rules 路径）
 
 ## 5. Behavior Contract
 
@@ -43,11 +56,30 @@
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- `internal/importer`（`Importer` 接口、`Register`、`buildRecord`、`recordInput`、`NewFileFallbackImporter` 复用）
+- `proto/contextforge/v1`（`ContextRecord`、`Provenance` 生成类型，frozen by 1.1）
+- stdlib: `os`, `path/filepath`, `strings`, `log`, `fmt`
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+```go
+// AgentRulesImporter 实现 project instruction / agent rule 文件的只读 importer。
+// Detect 仅匹配稳定文件名 AGENTS.md / CLAUDE.md（高 confidence）；
+// Cursor/Zed 路径 TBD → 不匹配（Resolve 走 fallback + warning，AC4）。
+// 直接构造时支持任意规则 Markdown 并标记 source_type=agent_rule（AC2）。
+type AgentRulesImporter struct{ /* ... */ }
+
+// NewAgentRulesImporter 创建 agent-rules importer 实例（init() 自动 Register）。
+func NewAgentRulesImporter() Importer
+
+// 满足 Importer 接口：
+func (a *AgentRulesImporter) Name() string
+func (a *AgentRulesImporter) Detect(path string) (confidence float64, ok bool)
+func (a *AgentRulesImporter) Import(path string, collectionID string) ([]*contextforgev1.ContextRecord, error)
+
+// init 触发注册（供 CLI/daemon 侧 `_ "github.com/tajiaoyezi/contextforge/internal/importer/agentrules"` 激活）
+func init() { importer.Register(NewAgentRulesImporter()) }
+```
 
 ## 6. Acceptance Criteria
 
