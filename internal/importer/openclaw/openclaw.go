@@ -24,22 +24,12 @@ type openClawImporter struct {
 
 // NewImporter creates an OpenClaw workspace importer.
 func NewImporter(agentName string) importer.Importer {
-	if strings.TrimSpace(agentName) == "" {
-		agentName = Provider
-	}
-	return &openClawImporter{agentName: agentName}
+	return &openClawImporter{agentName: normalizeAgentName(agentName)}
 }
 
 // CollectionID derives the default collection id from agent name and workspace name.
 func CollectionID(workspacePath string, agentName string) string {
-	if strings.TrimSpace(agentName) == "" {
-		agentName = Provider
-	}
-	workspace := filepath.Base(filepath.Clean(workspacePath))
-	if workspace == "." || workspace == string(filepath.Separator) || workspace == "" {
-		workspace = "workspace"
-	}
-	return fmt.Sprintf("%s/%s", agentName, workspace)
+	return fmt.Sprintf("%s/%s", normalizeAgentName(agentName), workspaceName(workspacePath))
 }
 
 // ImportWorkspace imports an OpenClaw workspace with the default importer.
@@ -77,7 +67,7 @@ func (o *openClawImporter) Import(path string, collectionID string) ([]*contextf
 	}
 
 	fallback := importer.NewFileFallbackImporter()
-	workspaceName := filepath.Base(filepath.Clean(path))
+	workspaceName := workspaceName(path)
 	records := make([]*contextforgev1.ContextRecord, 0, len(files))
 	for _, file := range files {
 		sourceType, ok := classify(file)
@@ -103,20 +93,43 @@ func (o *openClawImporter) applyOpenClawFields(rec *contextforgev1.ContextRecord
 	rec.CollectionId = collectionID
 	rec.SourceType = sourceType
 	rec.SourceProvider = Provider
-	rec.AgentScope = []string{o.agentName, "workspace:" + workspaceName}
+	rec.AgentScope = agentScope(o.agentName, workspaceName)
 	rec.Tags = []string{sourceType, Provider}
 
-	info, err := os.Stat(file)
-	var modified *timestamppb.Timestamp
-	if err == nil {
-		modified = timestamppb.New(info.ModTime().UTC())
-	}
 	if len(rec.Provenance) == 0 {
 		rec.Provenance = []*contextforgev1.Provenance{{}}
 	}
 	rec.Provenance[0].Importer = o.Name()
 	rec.Provenance[0].OriginalPath = file
-	rec.Provenance[0].SourceModifiedAt = modified
+	rec.Provenance[0].SourceModifiedAt = sourceModifiedAt(file)
+}
+
+func normalizeAgentName(agentName string) string {
+	agentName = strings.TrimSpace(agentName)
+	if agentName == "" {
+		return Provider
+	}
+	return agentName
+}
+
+func workspaceName(workspacePath string) string {
+	workspace := filepath.Base(filepath.Clean(workspacePath))
+	if workspace == "." || workspace == string(filepath.Separator) || workspace == "" {
+		return "workspace"
+	}
+	return workspace
+}
+
+func agentScope(agentName string, workspaceName string) []string {
+	return []string{normalizeAgentName(agentName), "workspace:" + workspaceName}
+}
+
+func sourceModifiedAt(path string) *timestamppb.Timestamp {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	return timestamppb.New(info.ModTime().UTC())
 }
 
 func collectImportableFiles(path string) ([]string, error) {
