@@ -65,24 +65,24 @@ Feature: importer
   # ---
   # Maps to: docs/specs/tasks/task-3.3-importer-openclaw.md
   Scenario: SCEN-3.3.1 — 对应 AC1（workspace 通用导入）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given an OpenClaw workspace with markdown, config, log, and memory-like files
+    When the OpenClaw importer imports the workspace
+    Then each supported file is returned as a ContextRecord through the generic fallback path
 
   Scenario: SCEN-3.3.2 — 对应 AC2（collection/字段保留）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given an OpenClaw workspace named "proj-a" for agent "openclaw"
+    When records are imported without an explicit collection id
+    Then the collection id is derived from the agent and workspace names, and file_path, source_modified_at, source_type, and agent_scope are preserved
 
   Scenario: SCEN-3.3.3 — 对应 AC3（不复刻/不写回）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given an OpenClaw workspace file with known original contents
+    When the OpenClaw importer imports the workspace
+    Then the source file contents are unchanged and no OpenClaw backend write path is invoked
 
   Scenario: SCEN-3.3.4 — 对应 AC4（schema TBD 走 fallback）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given an OpenClaw memory-like file whose schema is not recognised
+    When the OpenClaw importer imports it
+    Then it is imported as a generic ContextRecord and a fallback warning is emitted
 
   # ---
   # Maps to: docs/specs/tasks/task-3.4-importer-agent-rules.md

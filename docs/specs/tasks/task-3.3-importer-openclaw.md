@@ -1,11 +1,11 @@
 # Task `3.3`: `importer-openclaw — OpenClaw workspace 导入（通用 file/md/config/log）`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> **Status: Ready** — §2A 前置审核已完成，按 PRD O3 裁定仅做通用 workspace 导入。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: codex
 **Related Phase**: Phase 3 (agent-importers)
 **Dependencies**: 3.1 (importer-core)
 
@@ -21,15 +21,24 @@ OpenClaw 是 PRD 列出的 P0 导入源。OpenClaw 具体 memory schema 为 PRD 
 
 ### In Scope
 
-- `<TBD-by-user>`
+- 新增 `internal/importer/openclaw` Go 子包，实现 OpenClaw workspace importer。
+- 复用 task-3.1 `Importer` 抽象与 `FileFallbackImporter`，按通用 file / markdown / config / log / memory-like 文件导入为 `ContextRecord`。
+- 设置 `source_provider=openclaw`、OpenClaw agent scope、workspace-derived collection id，并保留 `file_path`、`source_modified_at`、`source_type`。
+- 对 OpenClaw schema-aware 解析保持 TBD：无法识别的 schema 走通用 fallback 并输出 warning。
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- OpenClaw 内部 memory schema-aware 解析、版本私有字段语义解析。
+- 复刻、替换或写回 OpenClaw memory backend / workspace 文件。
+- 修改 canonical proto 契约、lockfile 或新增依赖。
+- CLI wiring / daemon API / indexer 端到端写入（后续 Phase 6 / Phase 4 集成）。
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- `contextforge import openclaw <ws>` CLI 调用方（后续接入）
+- Go daemon 导入调度器（后续接入）
+- `openclaw` importer 子包（本 task 实现方）
+- task-3.1 fallback importer（本 task 复用方）
 
 ## 5. Behavior Contract
 
@@ -43,11 +52,23 @@ OpenClaw 是 PRD 列出的 P0 导入源。OpenClaw 具体 memory schema 为 PRD 
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- `github.com/tajiaoyezi/contextforge/internal/importer`
+- `github.com/tajiaoyezi/contextforge/proto/contextforge/v1`
+- stdlib: `fmt`, `log`, `os`, `path/filepath`, `sort`, `strings`
+- protobuf: `google.golang.org/protobuf/types/known/timestamppb`
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+```go
+// NewImporter creates an OpenClaw workspace importer.
+func NewImporter(agentName string) importer.Importer
+
+// CollectionID derives the default collection id from agent name and workspace name.
+func CollectionID(workspacePath string, agentName string) string
+
+// ImportWorkspace imports an OpenClaw workspace with the default importer.
+func ImportWorkspace(path string, collectionID string, agentName string) ([]*contextforgev1.ContextRecord, error)
+```
 
 ## 6. Acceptance Criteria
 
