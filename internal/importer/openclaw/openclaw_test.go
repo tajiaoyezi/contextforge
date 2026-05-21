@@ -74,6 +74,9 @@ func TestCollectionAndProvenanceFields(t *testing.T) {
 	if !contains(rec.AgentScope, "openclaw") || !contains(rec.AgentScope, "workspace:proj-a") {
 		t.Errorf("AgentScope = %#v, want openclaw and workspace:proj-a", rec.AgentScope)
 	}
+	if rec.RedactionStatus != "pending" {
+		t.Errorf("expected RedactionStatus=pending (task-3.1 §10 Waiver BINDING), got %q", rec.RedactionStatus)
+	}
 	if len(rec.Provenance) != 1 || rec.Provenance[0].SourceModifiedAt == nil {
 		t.Fatalf("source_modified_at must be preserved in provenance, got %#v", rec.Provenance)
 	}
