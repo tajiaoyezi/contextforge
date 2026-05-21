@@ -1,8 +1,8 @@
 # Task `3.3`: `importer-openclaw — OpenClaw workspace 导入（通用 file/md/config/log）`
 
-> **Status: Ready** — §2A 前置审核已完成，按 PRD O3 裁定仅做通用 workspace 导入。
+> **Status: Done** — 已按 PRD O3 裁定完成通用 workspace 导入；schema-aware 解析仍为后续增量。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: codex
@@ -83,10 +83,10 @@ func ImportWorkspace(path string, collectionID string, agentName string) ([]*con
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 workspace 通用导入 | SCEN-3.3.1 | TEST-3.3.1 | - | unit-test | Verified |
-| AC2 collection/字段保留 | SCEN-3.3.2 | TEST-3.3.2 | - | unit-test | Verified |
-| AC3 不复刻/不写回 | SCEN-3.3.3 | TEST-3.3.3 | - | unit-test | Verified |
-| AC4 schema TBD 走 fallback | SCEN-3.3.4 | TEST-3.3.4 | - | unit-test | Verified |
+| AC1 workspace 通用导入 | SCEN-3.3.1 | TEST-3.3.1 | - | unit-test | Done |
+| AC2 collection/字段保留 | SCEN-3.3.2 | TEST-3.3.2 | - | unit-test | Done |
+| AC3 不复刻/不写回 | SCEN-3.3.3 | TEST-3.3.3 | - | unit-test | Done |
+| AC4 schema TBD 走 fallback | SCEN-3.3.4 | TEST-3.3.4 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -102,12 +102,24 @@ func ImportWorkspace(path string, collectionID string, agentName string) ([]*con
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-21
+- **改动文件**：
+  - `internal/importer/openclaw/openclaw.go`（新增：OpenClaw workspace importer）
+  - `internal/importer/openclaw/openclaw_test.go`（新增：TEST-3.3.1~3.3.4）
+  - `test/features/importer.feature`（更新：SCEN-3.3.1~3.3.4 Given/When/Then）
+  - `docs/specs/tasks/task-3.3-importer-openclaw.md`（Status / §7 / §10 回填）
+  - `docs/s2v-adapter.md`（更新：Task 3.3 索引状态）
+  - `NEEDS-DEP-task-3.3.md`（新增：R7 依赖审计，未请求新依赖）
+- **commit 列表**：
+  - `f4f1d83` docs(spec): task-3.3 §2A 审核通过 (Status: Draft → Ready)
+  - `2f56b4c` docs(spec): task-3.3 进入实施 (Status: Ready → In Progress)
+  - `d98ba2f` test(importer): 加 SCEN-3.3.1~3.3.4 共 4 个 RED 测试
+  - `8857f32` feat(importer): 实现 OpenClaw workspace 通用导入通过全部 4 个测试
+  - `dd025a0` refactor(importer): 提取 OpenClaw scope 与 provenance helpers
+  - `本 docs commit` docs(spec): 回填 task-3.3 §10 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ go mod download && cargo fetch
+  - typecheck: ✅ go vet ./... && cargo check --workspace
+  - unit-test: Go 27 passed / 0 failed；Rust 32 passed / 0 failed
+- **剩余风险 / 未做项**：OpenClaw schema-aware memory parsing 仍按 PRD O3 保持 TBD；本 task 仅做通用 fallback importer，CLI/daemon wiring 留给后续集成 task。
+- **下游 task 影响**：Phase 6 `contextforge import openclaw WORKSPACE` CLI/API wiring 可直接调用 `openclaw.ImportWorkspace` / `openclaw.NewImporter`；Phase 4/6 下游消费 `source_provider=openclaw`、`agent_scope`、`source_modified_at` 字段。
