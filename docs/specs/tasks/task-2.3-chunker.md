@@ -25,13 +25,13 @@
 - 消费 task-2.2 `parser::ParsedUnit`，产出 `Vec<Chunk>`（Chunk 携 chunk_id / file_path / line_start / line_end / language / content / content_hash / kind / provenance / metadata）
 - chunking 策略按 language 分组独立可配（code / markdown / log / text fallback）：含 `max_chunk_lines` 行数上限 + `overlap_lines` 重叠 + `respect_parsed_units` 是否尽量按解析边界（heading / function / log_entry）切（直接缓解 PRD §Technical Risks R3）
 - 维护 `Vec<Provenance>`：单 Chunk 可承载多来源（importer / original_path / imported_at / source_modified_at）
-- content_hash 算法 v0.1 = **std-only FNV-1a-64**（手写，无新依赖），存储格式 `fnv1a64:<16-hex>`；算法名作前缀使未来升级 sha256/blake3 时旧 hash 仍可识别
+- content_hash 算法 = **sha256**（依赖 `sha2 = "0.11.0"`，由主 agent 域 chore PR #17 单一通道引入；与 task-3.1 importer `internal/importer/record.go:80` 一致，跨模块 Phase 5 memoryops 去重锚点统一），存储格式 `sha256:<64-hex>`；算法名作前缀使未来切换其他算法时旧 hash 仍可识别 + 按前缀分流
 - normalize 规则（最小集，AC5 跨来源一致需要）：CRLF→LF + 去除整体首尾空白 + 行末 trailing whitespace 折叠
 - 文件锚点：`core/src/chunker/mod.rs`（在 task-1.3 placeholder `placeholder_ready()` 上实现，编译通过）
 
 ### Out Of Scope
 
-- 实际 SHA-256 / BLAKE3（v0.1 用 FNV-1a-64 stub；真正密码学 hash 升级走未来 ADR + 独立 chore-dep PR；§10 下游影响记 memoryops）
+- 其他 hash 算法（BLAKE3 / xxHash / 多算法切换 / 同一 chunk 多 hash 并存等）— v0.1 锁定 sha256（与 task-3.1 importer 一致）；后续算法切换走未来 ADR + 独立 chore-dep PR + 按 algo-prefix 分流（不破坏旧索引）
 - 写回 SQLite / Tantivy（task-2.4 indexer 负责，本 task 只产 in-memory Chunk）
 - gRPC `Chunk` proto wire 表示与 in-memory Chunk struct 的 1:1 映射（本 task 富于 wire — 多 content_hash / provenance / metadata / kind 字段，wire encoder 留 indexer / exporter）
 - 全文检索 tokenizer / embedding / boost / 召回评估（Phase 4 retriever / Phase 8 eval）
@@ -210,7 +210,6 @@ pub fn content_hash(content: &str) -> String;
   - normalize 规则保守最小集（CRLF→LF + 行末 trailing whitespace + 整体 trim）。CJK / Unicode NFC / 注释剥离 / stop-word 等进阶归一化留 Phase 4 retriever / 召回评估时按需加，按 §3 Out-of-Scope。
   - chunk_units 流式安全 = 当前一次性传入 ParsedUnit 切片 + 内部按 max_chunk_lines 分段；真正"分块读 + 并发"的流式接口（返回 Iterator of Chunk）留 Phase 8 性能硬化（与 scanner 流式衔接，R6 大仓库性能基准）。
   - **跨模块 hash 存储格式微差**：本 task chunker 输出 `sha256:<64-hex>` algo-prefix；task-3.1 importer (`internal/importer/record.go:80`) 输出裸 `<64-hex>` 无 prefix。Phase 5 memoryops 桥接时需按前缀剥离再比较（实际 hash bytes 一致 — 同 sha256 算法 + 同 raw content；normalize 路径目前两侧不一定 1:1 — 后续 memoryops 跨模块对齐时再校验）。
-  - **§3 In/Out Scope 文字仍含 FNV-1a-64 字面提及**：原 §2A 填空记录（PR #16 初版），按本 rework 派工硬约束（§3 业务契约字段禁动），未在 rework commit 中修订；权威算法以 §5.2 / §5.3 / §10 / 实现为准。后续若需要彻底清理 §3 文字，由主 agent 走独立 spec-drift PR。
 - **下游 task 影响**：
   - **task-2.4 indexer**（强依赖）：消费 Chunk 切片向量写 SQLite metadata + Tantivy 全文索引 — Chunk 字段集已冻结契约（§5.3 + AC1）。
   - **Phase 5 memoryops**（AC5 锚点）：基于 content_hash 做去重 / 冲突 / 过期；sha256 与 task-3.1 importer 一致（统一密码学锚点，PRD §Technical Risks R5 缓解）；algo-prefix 设计允许未来切换算法时按前缀分流。
