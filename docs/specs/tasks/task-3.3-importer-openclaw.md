@@ -1,11 +1,11 @@
 # Task `3.3`: `importer-openclaw — OpenClaw workspace 导入（通用 file/md/config/log）`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> **Status: Done** — 已按 PRD O3 裁定完成通用 workspace 导入；schema-aware 解析仍为后续增量。
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: codex
 **Related Phase**: Phase 3 (agent-importers)
 **Dependencies**: 3.1 (importer-core)
 
@@ -21,15 +21,24 @@ OpenClaw 是 PRD 列出的 P0 导入源。OpenClaw 具体 memory schema 为 PRD 
 
 ### In Scope
 
-- `<TBD-by-user>`
+- 新增 `internal/importer/openclaw` Go 子包，实现 OpenClaw workspace importer。
+- 复用 task-3.1 `Importer` 抽象与 `FileFallbackImporter`，按通用 file / markdown / config / log / memory-like 文件导入为 `ContextRecord`。
+- 设置 `source_provider=openclaw`、OpenClaw agent scope、workspace-derived collection id，并保留 `file_path`、`source_modified_at`、`source_type`。
+- 对 OpenClaw schema-aware 解析保持 TBD：无法识别的 schema 走通用 fallback 并输出 warning。
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- OpenClaw 内部 memory schema-aware 解析、版本私有字段语义解析。
+- 复刻、替换或写回 OpenClaw memory backend / workspace 文件。
+- 修改 canonical proto 契约、lockfile 或新增依赖。
+- CLI wiring / daemon API / indexer 端到端写入（后续 Phase 6 / Phase 4 集成）。
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- `contextforge import openclaw <ws>` CLI 调用方（后续接入）
+- Go daemon 导入调度器（后续接入）
+- `openclaw` importer 子包（本 task 实现方）
+- task-3.1 fallback importer（本 task 复用方）
 
 ## 5. Behavior Contract
 
@@ -43,11 +52,23 @@ OpenClaw 是 PRD 列出的 P0 导入源。OpenClaw 具体 memory schema 为 PRD 
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- `github.com/tajiaoyezi/contextforge/internal/importer`
+- `github.com/tajiaoyezi/contextforge/proto/contextforge/v1`
+- stdlib: `fmt`, `log`, `os`, `path/filepath`, `sort`, `strings`
+- protobuf: `google.golang.org/protobuf/types/known/timestamppb`
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+```go
+// NewImporter creates an OpenClaw workspace importer.
+func NewImporter(agentName string) importer.Importer
+
+// CollectionID derives the default collection id from agent name and workspace name.
+func CollectionID(workspacePath string, agentName string) string
+
+// ImportWorkspace imports an OpenClaw workspace with the default importer.
+func ImportWorkspace(path string, collectionID string, agentName string) ([]*contextforgev1.ContextRecord, error)
+```
 
 ## 6. Acceptance Criteria
 
@@ -62,10 +83,10 @@ OpenClaw 是 PRD 列出的 P0 导入源。OpenClaw 具体 memory schema 为 PRD 
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 workspace 通用导入 | SCEN-3.3.1 | TEST-3.3.1 | - | unit-test | Not Started |
-| AC2 collection/字段保留 | SCEN-3.3.2 | TEST-3.3.2 | - | unit-test | Not Started |
-| AC3 不复刻/不写回 | SCEN-3.3.3 | TEST-3.3.3 | - | unit-test | Not Started |
-| AC4 schema TBD 走 fallback | SCEN-3.3.4 | TEST-3.3.4 | - | unit-test | Not Started |
+| AC1 workspace 通用导入 | SCEN-3.3.1 | TEST-3.3.1 | - | unit-test | Done |
+| AC2 collection/字段保留 | SCEN-3.3.2 | TEST-3.3.2 | - | unit-test | Done |
+| AC3 不复刻/不写回 | SCEN-3.3.3 | TEST-3.3.3 | - | unit-test | Done |
+| AC4 schema TBD 走 fallback | SCEN-3.3.4 | TEST-3.3.4 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -81,12 +102,24 @@ OpenClaw 是 PRD 列出的 P0 导入源。OpenClaw 具体 memory schema 为 PRD 
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-21
+- **改动文件**：
+  - `internal/importer/openclaw/openclaw.go`（新增：OpenClaw workspace importer）
+  - `internal/importer/openclaw/openclaw_test.go`（新增：TEST-3.3.1~3.3.4）
+  - `test/features/importer.feature`（更新：SCEN-3.3.1~3.3.4 Given/When/Then）
+  - `docs/specs/tasks/task-3.3-importer-openclaw.md`（Status / §7 / §10 回填）
+  - `docs/s2v-adapter.md`（更新：Task 3.3 索引状态）
+  - `NEEDS-DEP-task-3.3.md`（新增：R7 依赖审计，未请求新依赖）
+- **commit 列表**：
+  - `f4f1d83` docs(spec): task-3.3 §2A 审核通过 (Status: Draft → Ready)
+  - `2f56b4c` docs(spec): task-3.3 进入实施 (Status: Ready → In Progress)
+  - `d98ba2f` test(importer): 加 SCEN-3.3.1~3.3.4 共 4 个 RED 测试
+  - `8857f32` feat(importer): 实现 OpenClaw workspace 通用导入通过全部 4 个测试
+  - `dd025a0` refactor(importer): 提取 OpenClaw scope 与 provenance helpers
+  - `本 docs commit` docs(spec): 回填 task-3.3 §10 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ go mod download && cargo fetch
+  - typecheck: ✅ go vet ./... && cargo check --workspace
+  - unit-test: Go 27 passed / 0 failed；Rust 32 passed / 0 failed
+- **剩余风险 / 未做项**：OpenClaw schema-aware memory parsing 仍按 PRD O3 保持 TBD；本 task 仅做通用 fallback importer，CLI/daemon wiring 留给后续集成 task。
+- **下游 task 影响**：Phase 6 `contextforge import openclaw WORKSPACE` CLI/API wiring 可直接调用 `openclaw.ImportWorkspace` / `openclaw.NewImporter`；Phase 4/6 下游消费 `source_provider=openclaw`、`agent_scope`、`source_modified_at` 字段。

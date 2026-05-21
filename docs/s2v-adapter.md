@@ -259,7 +259,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 2.4 | indexer | docs/specs/tasks/task-2.4-indexer.md | Draft | Phase2 #4（dep 2.1,2.3）| `../ContextForge-wt-index-core` |
 | 3.1 | importer | docs/specs/tasks/task-3.1-importer-core.md | Done | Phase3 #1 | `../ContextForge-wt-agent-importers` |
 | 3.2 | importer | docs/specs/tasks/task-3.2-importer-hermes.md | Draft | Phase3 #2（dep 3.1）| `../ContextForge-wt-agent-importers` |
-| 3.3 | importer | docs/specs/tasks/task-3.3-importer-openclaw.md | Draft | Phase3 #3（dep 3.1）| `../ContextForge-wt-agent-importers` |
+| 3.3 | importer | docs/specs/tasks/task-3.3-importer-openclaw.md | Done | Phase3 #3（dep 3.1）| `../ContextForge-wt-agent-importers` |
 | 3.4 | importer | docs/specs/tasks/task-3.4-importer-agent-rules.md | Draft | Phase3 #4（dep 3.1）| `../ContextForge-wt-agent-importers` |
 | 4.1 | retriever | docs/specs/tasks/task-4.1-retriever.md | Draft | Phase4 #1 | `../ContextForge-wt-retrieval-explain` |
 | 4.2 | retriever | docs/specs/tasks/task-4.2-explain.md | Draft | Phase4 #2（dep 4.1）| `../ContextForge-wt-retrieval-explain` |
