@@ -43,24 +43,24 @@ Feature: importer
   # ---
   # Maps to: docs/specs/tasks/task-3.2-importer-hermes.md
   Scenario: SCEN-3.2.1 — 对应 AC1（Hermes 导入为 record）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 临时目录下存在 "MEMORY.md" 内容为合法 markdown "# Project memories\n- rule 1"
+    When  用 hermes.New() Import 该文件到 collection "default"
+    Then  返回 1 条 ContextRecord，Content 原文保留，SchemaVersion="0.1"，CollectionId="default"
 
   Scenario: SCEN-3.2.2 — 对应 AC2（provider/scope/provenance）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 同上 "MEMORY.md" 内容非空
+    When  Import 该文件
+    Then  ContextRecord 字段：SourceProvider="hermes"、AgentScope 含 "hermes"、Provenance[0].Importer="hermes-memory"、OriginalPath 等于原始路径、SourceModifiedAt 非空（取文件 mtime）；SourceType="memory"、Language="markdown"、RedactionStatus="pending"（BINDING）
 
   Scenario: SCEN-3.2.3 — 对应 AC3（只读不写回）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given "USER.md" 文件存在，记录 import 前的 mtime 与字节大小
+    When  Import 该文件
+    Then  Import 完成后文件 mtime 与字节大小不变（仅读取，无 Write/Truncate/Chmod 操作）
 
   Scenario: SCEN-3.2.4 — 对应 AC4（schema 差异降级）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given "MEMORY.md" 文件内容为空（仅含空白字符 / 0 字节）
+    When  Import 该文件
+    Then  返回 1 条 ContextRecord（来自 task-3.1 NewFileFallbackImporter），不返回 error；log 输出包含 "warning" + "fallback" 字样；不中断整体 import 流程
 
   # ---
   # Maps to: docs/specs/tasks/task-3.3-importer-openclaw.md
