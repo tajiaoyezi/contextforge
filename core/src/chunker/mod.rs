@@ -1,14 +1,16 @@
 //! task-2.3 (Phase 2): chunker — chunking + metadata 抽取 + provenance 维护.
 //!
-//! RED checkpoint: types per §5.3 contract; function bodies are deliberate stubs
-//! (return Ok(vec![]) / constant hash) so the 5 RED tests below compile + fail
-//! with descriptive assertions. GREEN commit replaces stubs with real impl.
+//! GREEN: 真实实现替换 RED stub。
+//! - `chunk_units`: 按 ChunkPolicy.<lang> 切片；respect_parsed_units=true 时尽量按
+//!   ParsedUnit 边界保留 1:1 映射；否则按 max_chunk_lines 定长 + overlap 切。
+//! - `chunk_file`: parser::parse_file → chunk_units 串接。
+//! - `content_hash`: std-only FNV-1a-64（§2A 决策，避开 R7 sha2 依赖）+ normalize
+//!   最小集（CRLF→LF + 行末 trailing whitespace + 整体 trim）→ "fnv1a64:<16-hex>"。
 //!
-//! 后续 task-2.4 (indexer) 消费 Vec<Chunk>。content_hash v0.1 = std-only FNV-1a-64
-//! (§2A 决策)；存储格式 "fnv1a64:<16-hex>"。
+//! 后续 task-2.4 (indexer) 消费 Vec<Chunk>。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use thiserror::Error;
 
@@ -82,37 +84,148 @@ pub enum ChunkError {
     InvalidConfig(String),
 }
 
-/// 主入口：把 parser 产出的解析单元切片为 Chunk。
-///
-/// RED stub: returns empty Vec → 5 个 RED 测试断言会失败。GREEN commit 替换。
-pub fn chunk_units(
-    _units: &[ParsedUnit],
-    _file_path: &Path,
-    _policy: &ChunkPolicy,
-    _provenance: Vec<Provenance>,
-) -> Result<Vec<Chunk>, ChunkError> {
-    Ok(Vec::new())
+/// 把 ParsedUnit.language 映射到 ChunkPolicy 的子配置（与 parser 的语言派发一致）。
+fn select_config<'a>(lang: &str, policy: &'a ChunkPolicy) -> &'a ChunkConfig {
+    match lang {
+        "go" | "rust" | "python" | "typescript" | "javascript" => &policy.code,
+        "markdown" => &policy.markdown,
+        "log" | "json" => &policy.log,
+        _ => &policy.text,
+    }
 }
 
-/// 便利入口：直接读文件 + 调 parser + chunk。
-///
-/// RED stub: 返回空 Vec（GREEN 替换）。
-pub fn chunk_file(
-    _path: &Path,
-    _policy: &ChunkPolicy,
-    _provenance: Vec<Provenance>,
+/// 从 content_hash 构造 chunk_id："chk_<8-hex-prefix>_<ordinal>"。
+fn make_chunk_id(hash: &str, ordinal: usize) -> String {
+    let prefix = hash
+        .split(':')
+        .nth(1)
+        .map(|h| &h[..8.min(h.len())])
+        .unwrap_or("00000000");
+    format!("chk_{}_{}", prefix, ordinal)
+}
+
+/// 主入口（AC1/AC2/AC3/AC4/AC5）：把 parser 产出的解析单元切片为 Chunk。
+pub fn chunk_units(
+    units: &[ParsedUnit],
+    file_path: &Path,
+    policy: &ChunkPolicy,
+    provenance: Vec<Provenance>,
 ) -> Result<Vec<Chunk>, ChunkError> {
-    // Suppress unused PathBuf import warning in RED stub
-    let _: Option<PathBuf> = None;
-    Ok(Vec::new())
+    let file_path_str = file_path.to_string_lossy().to_string();
+    let mut chunks: Vec<Chunk> = Vec::new();
+    let mut ordinal: usize = 0;
+
+    for unit in units {
+        let cfg = select_config(&unit.language, policy);
+        if cfg.max_chunk_lines == 0 {
+            return Err(ChunkError::InvalidConfig(format!(
+                "max_chunk_lines must be > 0 (language={})",
+                unit.language
+            )));
+        }
+
+        // 单 ParsedUnit 的行数（按 '\n' 计数；保留 parser 给的 line_start 起点用于 file-relative line 区间）
+        let unit_lines: Vec<&str> = unit.content.split('\n').collect();
+        let n_lines = unit_lines.len();
+
+        // 路径一：尽量保留 ParsedUnit 边界 → 1 unit = 1 chunk（kind 透传）
+        if cfg.respect_parsed_units && n_lines <= cfg.max_chunk_lines {
+            let content = unit.content.clone();
+            let hash = content_hash(&content);
+            chunks.push(Chunk {
+                chunk_id: make_chunk_id(&hash, ordinal),
+                file_path: file_path_str.clone(),
+                line_start: unit.line_start,
+                line_end: unit.line_end,
+                language: unit.language.clone(),
+                content,
+                content_hash: hash,
+                kind: unit.kind.clone(),
+                provenance: provenance.clone(),
+                metadata: unit.metadata.clone(),
+            });
+            ordinal += 1;
+            continue;
+        }
+
+        // 路径二：按 max_chunk_lines 定长切（含 overlap） — AC3 / AC4
+        // step 必 ≥ 1，避免无限循环：overlap < max 时 step = max - overlap，否则 step = max
+        let overlap = cfg.overlap_lines.min(cfg.max_chunk_lines.saturating_sub(1));
+        let step = cfg.max_chunk_lines - overlap;
+        let step = if step == 0 { cfg.max_chunk_lines } else { step };
+
+        let mut i: usize = 0;
+        while i < n_lines {
+            let end = (i + cfg.max_chunk_lines).min(n_lines);
+            let segment = unit_lines[i..end].join("\n");
+            // file-relative line numbers (unit.line_start 是该 ParsedUnit 的起始行号)
+            let line_start = unit.line_start + i;
+            let line_end = unit.line_start + end - 1;
+            let hash = content_hash(&segment);
+            chunks.push(Chunk {
+                chunk_id: make_chunk_id(&hash, ordinal),
+                file_path: file_path_str.clone(),
+                line_start,
+                line_end,
+                language: unit.language.clone(),
+                content: segment,
+                content_hash: hash,
+                kind: None, // 拆分后不再承诺 unit.kind 语义
+                provenance: provenance.clone(),
+                metadata: unit.metadata.clone(),
+            });
+            ordinal += 1;
+            if end >= n_lines {
+                break;
+            }
+            i += step;
+        }
+    }
+
+    Ok(chunks)
+}
+
+/// 便利入口（AC1/AC2/AC3）：parser::parse_file → chunk_units 串接。
+pub fn chunk_file(
+    path: &Path,
+    policy: &ChunkPolicy,
+    provenance: Vec<Provenance>,
+) -> Result<Vec<Chunk>, ChunkError> {
+    let units = crate::parser::parse_file(path).map_err(|e| ChunkError::Parse(e.to_string()))?;
+    chunk_units(&units, path, policy, provenance)
+}
+
+/// AC5：normalize content for hashing — CRLF→LF + 行末 trailing whitespace + 整体 trim。
+/// 不归一化 leading whitespace / 内部空行 — 这些影响代码语义；行末空白与 CRLF 不影响。
+fn normalize_for_hash(s: &str) -> String {
+    // 1. CRLF → LF
+    let s = s.replace("\r\n", "\n");
+    // 2. 行末 trailing whitespace（每行）
+    let trimmed_lines: Vec<&str> = s.split('\n').map(|l| l.trim_end()).collect();
+    let joined = trimmed_lines.join("\n");
+    // 3. 整体 trim（首尾空白）
+    joined.trim().to_string()
+}
+
+/// AC5: FNV-1a-64 hash. 不依赖外部 crate（§2A 决策，避开 R7 sha2 串行 chore PR）。
+/// 常量与 std 中 fnv 算法实现保持一致：
+///   FNV_OFFSET_BASIS_64 = 0xcbf29ce484222325
+///   FNV_PRIME_64        = 0x100000001b3
+fn fnv1a_64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// 公开：算 content_hash（memoryops 去重锚点；AC5 跨来源一致）。
 /// 算法 v0.1 = FNV-1a-64；返回 "fnv1a64:<16-hex>"。
-///
-/// RED stub: 返回常量 → TEST-2.3.5 "different content → different hash" 会断言失败。
-pub fn content_hash(_content: &str) -> String {
-    "fnv1a64:0000000000000000".to_string()
+pub fn content_hash(content: &str) -> String {
+    let normalized = normalize_for_hash(content);
+    let h = fnv1a_64(normalized.as_bytes());
+    format!("fnv1a64:{:016x}", h)
 }
 
 #[cfg(test)]

@@ -164,11 +164,11 @@ pub fn content_hash(content: &str) -> String;
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 Chunk 字段完整 | SCEN-2.3.1 | TEST-2.3.1 | - | unit-test | Test Red |
-| AC2 provenance 多来源 | SCEN-2.3.2 | TEST-2.3.2 | - | unit-test | Test Red |
-| AC3 chunking 可配置 | SCEN-2.3.3 | TEST-2.3.3 | - | unit-test | Test Red |
-| AC4 大文件分块不爆内存 | SCEN-2.3.4 | TEST-2.3.4 | - | unit-test | Test Red |
-| AC5 content_hash 一致性 | SCEN-2.3.5 | TEST-2.3.5 | - | unit-test | Test Red |
+| AC1 Chunk 字段完整 | SCEN-2.3.1 | TEST-2.3.1 | - | unit-test | Verified |
+| AC2 provenance 多来源 | SCEN-2.3.2 | TEST-2.3.2 | - | unit-test | Verified |
+| AC3 chunking 可配置 | SCEN-2.3.3 | TEST-2.3.3 | - | unit-test | Verified |
+| AC4 大文件分块不爆内存 | SCEN-2.3.4 | TEST-2.3.4 | - | unit-test | Verified |
+| AC5 content_hash 一致性 | SCEN-2.3.5 | TEST-2.3.5 | - | unit-test | Verified |
 
 ## 8. Risks
 
