@@ -2,7 +2,7 @@
 
 > **Status: Ready** — §2A 前置审核已完成，按 PRD O3 裁定仅做通用 workspace 导入。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: codex
