@@ -32,7 +32,10 @@ func TestTask14_AC1_InitGeneratesConfigIdempotent(t *testing.T) {
 	// Windows Go stdlib does not implement POSIX chmod; Stat().Mode().Perm()
 	// reports 0666/0777 regardless. ACL-equivalent enforcement is Phase 8 /
 	// v0.3 Windows-preview scope; skip the bit check here.
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS == "windows" {
+		t.Logf("SCEN-1.4.1: POSIX perm bits not asserted on Windows " +
+			"(Go stdlib reports 0666/0777); ACL enforcement deferred to Phase 8 / v0.3")
+	} else {
 		if got := cfgFI.Mode().Perm(); got != 0o600 {
 			t.Fatalf("config.toml perm = %o, want 0600", got)
 		}

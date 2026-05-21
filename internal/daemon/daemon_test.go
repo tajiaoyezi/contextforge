@@ -113,9 +113,12 @@ func TestTask14_AC3_AutoRestartAfterCrash(t *testing.T) {
 	// Windows (TerminateProcess). syscall.Kill is Unix-only. The supervisor
 	// may reap+restart between currentPID() and Kill(); a stale PID is benign
 	// — the process is already gone, which is exactly the crash we want, and
-	// the auto-restart assertions below still validate AC3.
+	// the auto-restart assertions below still validate AC3. Log non-nil Kill
+	// errors so a real failure (EPERM etc.) stays diagnosable.
 	if p, err := os.FindProcess(pid); err == nil {
-		_ = p.Kill()
+		if kerr := p.Kill(); kerr != nil {
+			t.Logf("kill core pid %d (benign if already reaped): %v", pid, kerr)
+		}
 	}
 
 	deadline := time.Now().Add(30 * time.Second)

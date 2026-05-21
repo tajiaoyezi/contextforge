@@ -157,7 +157,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 ## Constraints
 
 - **Runtime target**: `<RUNTIME_TARGET>` <!-- PRD §Constraints 运行时：Go toolchain (建议 Go 1.22+) + Rust stable (建议 1.75+, cargo)；双二进制 contextforge / contextforge-core；无 JVM/Node；CPU-only 须可完成基础索引与检索 -->
-- **Supported platforms**: `<SUPPORTED_PLATFORMS>` <!-- PRD §Constraints 平台：v0.1 P0 = Linux x86_64 (Ubuntu 22.04/24.04/26.04 / WSL2)；macOS arm64/x86_64 源码构建 nice-to-have；Windows v0.3 preview -->
+- **Supported platforms**: `<SUPPORTED_PLATFORMS>` <!-- PRD §Constraints 平台：v0.1 P0 = Linux x86_64 (Ubuntu 22.04/24.04/26.04 / WSL2)；macOS arm64/x86_64 源码构建 nice-to-have；Windows v0.3 preview。注：PR#15 后 Windows native 测试套可跑通（go vet + go test ./internal/... 全绿），仅作 nice-to-have 开发者体验改进；P0 release gate 仍按 PRD = Linux/WSL2，0600/0700 安全基线在 Linux/WSL2 硬断言、Windows ACL 等价仍待 Phase 8 / v0.3 -->
 - **Security requirements**: `<SECURITY_REQUIREMENTS>` <!-- PRD §Constraints 安全 + Local service security baseline：默认本地不上传 / 远程 provider 显式 opt-in / denylist + secret redaction / daemon 默认 127.0.0.1 或 unix socket、禁 0.0.0.0 / REST 本地随机 token (0600) / MCP client allowlist / audit log 脱敏 -->
 - **Performance requirements**: `<PERFORMANCE_REQUIREMENTS>` <!-- PRD §Constraints 性能：10 万 chunk BM25/metadata/filter P95 <500ms（不含 embedding/reranker/远程）/ 1 万文件索引 <10min / 单文件增量 <5s / daemon idle <300MB -->
 - **Compatibility requirements**: `<COMPATIBILITY_REQUIREMENTS>` <!-- PRD §Constraints 兼容性：只读导入 + 导出 draft/bundle 不写回；P0 导入源见 PRD；OpenClaw/Cursor/Zed schema、MCP 版本 TBD -->
