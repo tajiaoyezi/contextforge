@@ -2,7 +2,7 @@
 
 > **Status: Ready** — §2A 前置审核已完成，按 v0.1 MemoryOps 边界仅做 exact duplicate 去重。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: codex
