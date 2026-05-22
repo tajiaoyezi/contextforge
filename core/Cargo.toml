@@ -48,6 +48,17 @@ tree-sitter-javascript = "0.25.0"
 # (`sha256:<64-hex>`) forward-compat。版本 0.11.0 由 `cargo add sha2` 自 crates.io
 # 实证锁定为当前互兼容集（sha2 0.11 + digest 0.11 transitive 共 8 个包）。
 sha2 = "0.11.0"
+# task-2.4 (indexer) R7 NEEDS-DEP → main-agent chore PR `chore/dep-indexer-crates`。
+# 源: NEEDS-DEP-task-2.4.md (feat/task-2.4-indexer)。版本由 `cargo add` 实证锁定
+# (worker 申请 tantivy=0.22 / rusqlite=0.32 已过时 — 以 latest compatible 为准)。
+# 用途：AC2 SQLite (rusqlite, bundled 避 libsqlite3-dev 系统依赖) + Tantivy (全文
+# 倒排 BM25) 分层存储 (ADR-002 / PRD §Decisions Log D2)；AC4 增量更新；AC5 Phase-2
+# 端到端 smoke (core/tests/phase2_smoke.rs)。
+# 验证：cargo check --workspace 干净 / cargo test --workspace 零回归（scanner 12 +
+# 其他 packages 全绿）；transitive 含 zstd 0.13 / sqlite-wasm-rs 0.5 / vcpkg 0.2 等
+# +872 行 Cargo.lock。
+tantivy = "0.26.1"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
