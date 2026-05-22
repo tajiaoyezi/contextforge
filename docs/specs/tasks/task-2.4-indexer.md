@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-22）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -189,21 +189,21 @@ CREATE TABLE IF NOT EXISTS provenance (
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 2 Exit Criteria): `contextforge index ./sample_project` 能索引 ≥ 1000 个文件。
-- [ ] **AC2** (PRD §Decisions Log D2): SQLite 存 metadata/chunk/provenance 可查询；Tantivy 全文可搜索到基础结果。
-- [ ] **AC3** (PRD §Implementation Phases Phase 2 Exit Criteria): 索引链路尊重 denylist + secret redaction（denylist 路径不入索引、secret 已 redact）。
-- [ ] **AC4** (PRD §Constraints 性能 / Phase 2 Exit Criteria): 单文件变更触发基础增量更新（工程目标 < 5s；不重建全量）。
-- [ ] **AC5** (本 task 新增): Phase 2 端到端 smoke 可执行（index fixture → SQLite chunk 计数 + Tantivy 命中 + secret fixture 已 redact），为 phase spec §6 端到端 smoke 提供落点。
+- [x] **AC1** (PRD §Implementation Phases Phase 2 Exit Criteria): `contextforge index ./sample_project` 能索引 ≥ 1000 个文件。
+- [x] **AC2** (PRD §Decisions Log D2): SQLite 存 metadata/chunk/provenance 可查询；Tantivy 全文可搜索到基础结果。
+- [x] **AC3** (PRD §Implementation Phases Phase 2 Exit Criteria): 索引链路尊重 denylist + secret redaction（denylist 路径不入索引、secret 已 redact）。
+- [x] **AC4** (PRD §Constraints 性能 / Phase 2 Exit Criteria): 单文件变更触发基础增量更新（工程目标 < 5s；不重建全量）。
+- [x] **AC5** (本 task 新增): Phase 2 端到端 smoke 可执行（index fixture → SQLite chunk 计数 + Tantivy 命中 + secret fixture 已 redact），为 phase spec §6 端到端 smoke 提供落点。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 索引 ≥1000 文件 | SCEN-2.4.1 | TEST-2.4.1 | - | unit-test | Verified |
-| AC2 SQLite+Tantivy 可查 | SCEN-2.4.2 | TEST-2.4.2 | - | unit-test | Verified |
-| AC3 denylist+redaction 生效 | SCEN-2.4.3 | TEST-2.4.3 | - | unit-test | Verified |
-| AC4 基础增量更新 | SCEN-2.4.4 | TEST-2.4.4 | - | unit-test | Verified |
-| AC5 Phase2 端到端 smoke | SCEN-2.4.5 | TEST-2.4.5 | core/tests/phase2_smoke.rs | unit-test | Verified |
+| AC1 索引 ≥1000 文件 | SCEN-2.4.1 | TEST-2.4.1 | - | unit-test | Done |
+| AC2 SQLite+Tantivy 可查 | SCEN-2.4.2 | TEST-2.4.2 | - | unit-test | Done |
+| AC3 denylist+redaction 生效 | SCEN-2.4.3 | TEST-2.4.3 | - | unit-test | Done |
+| AC4 基础增量更新 | SCEN-2.4.4 | TEST-2.4.4 | - | unit-test | Done |
+| AC5 Phase2 端到端 smoke | SCEN-2.4.5 | TEST-2.4.5 | core/tests/phase2_smoke.rs | unit-test | Done |
 
 ## 8. Risks
 
@@ -220,12 +220,45 @@ CREATE TABLE IF NOT EXISTS provenance (
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-22
+- **改动文件**：
+  - core/src/indexer/mod.rs（real impl: IndexSession + open/index_path/reindex_file/commit + sqlite_chunk_count/tantivy_search testing helpers + IndexError + IndexStats + 5 helpers parse_and_chunk/write_chunks/delete_chunks_for_file/lang_hint_from_path/build_tantivy_schema + 4 unit tests TEST-2.4.1~4；保留 placeholder_ready() 供 task-1.3 core_skeleton AC4 anchor）
+  - core/tests/phase2_smoke.rs（新增集成测试：TEST-2.4.5 / AC5 phase_2_end_to_end_smoke — 主 agent §4 Gate 3 phase-2 smoke gate 调用入口）
+  - docs/specs/tasks/task-2.4-indexer.md（Status: Draft→Ready→In Progress→Done；§3/§4/§5.2/§5.3 §2A 填实；§6 AC1-5 全部勾选；§7 5 行 → Done；§10 终态回填）
+  - test/features/indexer.feature（SCEN-2.4.1~5 Given/When/Then 填实）
+- **commit 列表**（本 task 全部 7 个，按时间顺序）：
+  - 4025e7f docs(spec): task-2.4 业务承诺 (Draft → Ready)
+  - 64578d0 blocked(deps): NEEDS-DEP-task-2.4 — R7 申请引入 tantivy + rusqlite
+  - c2db743 chore(task-2.4): 删 NEEDS-DEP-task-2.4.md (chore PR #23 已 merged)
+  - 8790007 docs(spec): task-2.4 进入实施 (Status: Ready → In Progress)
+  - 206d1ac test(indexer): 加 SCEN-2.4.1~5 共 5 个 RED 测试
+  - c6f8738 feat(indexer): 实现 Tantivy 全文索引 + SQLite metadata 存储 + 增量 + Phase 2 smoke
+  - 本回填 docs(spec) commit（§6/§7/§10 终态 + Status → Done）
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`（tantivy 0.26.1 + rusqlite 0.39.0 bundled 已锁定 — 来自 chore PR #23）
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`（tantivy + rusqlite + 新增 indexer 模块编译通过）
+  - unit-test: ✅ `go test ./... && cargo test --workspace`
+    - indexer 单元 4/4 passed (TEST-2.4.1~4 / AC1-4) — 含 AC1 1010 文件索引 0.37s
+    - phase2_smoke 集成 1/1 passed (TEST-2.4.5 / AC5) — `cargo test --test phase2_smoke` 入口
+    - 全 Rust 37 passed: lib 15 (parser 6 + chunker 5 + indexer 4) + core_skeleton 4 + phase2_smoke 1 + proto_contract 5 + scanner 12
+    - 全 Go 8 包 (cli / config / contract / daemon / importer + 3 个 importer 子包) 全 ok
+    - 零回归（task-2.1/2.2/2.3 / task-3.1/3.2/3.3/3.4 / task-1.x 全绿）
+- **剩余风险 / 未做项**：
+  - **AC4 增量性能基线非硬测**：spec §6 说"工程目标 < 5s"。本 task 测试覆盖功能正确性（单文件 reindex 删旧重插 + 新 token 命中 + 旧 token 已删），未做严格性能压测。真实大仓库压测留 Phase 8 (R6 缓解)。
+  - **Tantivy IndexWriter Mutex 包装**：v0.1 单线程使用 — Mutex 仅满足 IndexSession 内部 `&mut` ergonomics。未来 daemon 多请求并发 / 后台增量 watcher (Phase 8) 时需评估是否升级 RwLock 或 dedicated worker thread。
+  - **SQLite ON DELETE CASCADE 依赖 PRAGMA**：rusqlite 默认不开启外键约束，本 task 在 delete_chunks_for_file 手动 DELETE provenance（NOT IN subquery）兜底。未来如需严格 FK，应 `conn.execute("PRAGMA foreign_keys = ON", [])`。
+  - **Tantivy meta.json 探测**：用 `tantivy_dir.join("meta.json").exists()` 决定 open vs create — 简单可靠，但若 tantivy 未来改 lifeline 文件名会失效。tantivy::Index::exists API 需要 Directory trait + 错误转换繁琐故未用。后续兼容性升级时复审。
+  - **数据目录布局 (`[data_dir]/collections/[id]/{metadata.sqlite, tantivy/}`)**：v0.1 锁定 PRD 规定布局；future migration（v0.2 schema 演进）另起 task。
+- **下游 task 影响**：
+  - **Phase 2 收口 ✅**：本 task 是 Phase 2 最后 1/4。task-2.1 scanner / task-2.2 parser / task-2.3 chunker / task-2.4 indexer 全 Done → Phase 2 整体 Done → Phase 4 retrieval-explain 可启动（依赖 Phase 2 merge）。
+  - **task-4.1 retriever** (Phase 4, 下游强依赖)：消费 Tantivy 5 字段 schema (chunk_id PK / content TEXT / file_path STRING / language STRING / line_start I64 / line_end I64) + SQLite chunks 表联表查询；本 task 已冻结存储 schema。
+  - **task-4.2 explain** (Phase 4, 下游)：基于 Tantivy 结果 + SQLite chunks 表读 file_path/line_range → 回放原文位置可解释 trace；本 task 已存 STORED 字段支持。
+  - **Phase 5 memoryops** (下游)：基于 SQLite `idx_chunks_content_hash` 索引做跨 collection 去重 + content_hash 跨模块对齐（task-2.3 chunker `sha256:<64-hex>` algo-prefix / task-3.1 importer 裸 hex — 桥接由 Phase 5 处理；本 task SQLite 字段保留原 algo-prefix 不剥离 forward-compat）。
+  - **task-6.x CLI** (`contextforge index [path]`)：调用方实例化 IndexSession::open + index_path；本 task 提供完整公开 API。
+  - **task-6.2 daemon** (Phase 6)：daemon idle 内存 budget (PRD §Constraints < 300MB) — Tantivy IndexWriter 50MB + SQLite Connection 小开销 + Tantivy IndexReader buffer = v0.1 估算 ~150MB；future watcher 增量需 evaluate。
+  - **主 agent §4 Gate 3 phase-2 smoke gate**：调用入口 `cargo test --test phase2_smoke`；本 task 已实现 + 跑通；phase-2 spec §6 端到端 smoke 字段可填实为此命令（建议主 agent 走 chore-spec PR 收口）。
+- **§2A Decisions**（2026-05-21 用户答题）：
+  - **AC5 smoke 形式 = Rust 集成测试（选项 A）**：`core/tests/phase2_smoke.rs` 含 `#[test] fn phase_2_end_to_end_smoke()`，被 `cargo test --workspace` 自动收纳；主 agent §4 Gate 3 可 `cargo test --test phase2_smoke` 精准抓。
+  - **R7 严格通道**：tantivy + rusqlite 通过主 agent chore PR #23 (`chore/dep-indexer-crates`, merged master `5611836`, commit `696b564`) 引入；task agent 不修改 Cargo.toml / Cargo.lock。
+  - **依赖版本据实更新**：申请 tantivy 0.22 / rusqlite 0.32 已过时，主 agent cargo add 实证选 latest stable (tantivy 0.26.1 / rusqlite 0.39.0 bundled)；§5.2 spec 据实。
+  - **tantivy 0.26 API 差异**：`TopDocs::with_limit(N)` 在 0.26 不再直接实现 Collector — 必须链 `.order_by_score()` (或其他 order_by_*) 才能传给 `Searcher::search`。已正确使用。
