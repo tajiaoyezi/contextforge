@@ -42,11 +42,7 @@ func Records(records []*contextforgev1.ContextRecord) Result {
 		if representativeIndex, ok := representativeByHash[hash]; ok {
 			representative := result.Records[representativeIndex]
 			mergeInto(representative, record)
-			result.Duplicates = append(result.Duplicates, Duplicate{
-				RepresentativeID: representative.GetId(),
-				DuplicateID:      record.GetId(),
-				ContentHash:      hash,
-			})
+			result.addDuplicate(representative, record, hash)
 			continue
 		}
 
@@ -55,6 +51,14 @@ func Records(records []*contextforgev1.ContextRecord) Result {
 	}
 
 	return result
+}
+
+func (r *Result) addDuplicate(representative *contextforgev1.ContextRecord, duplicate *contextforgev1.ContextRecord, hash string) {
+	r.Duplicates = append(r.Duplicates, Duplicate{
+		RepresentativeID: representative.GetId(),
+		DuplicateID:      duplicate.GetId(),
+		ContentHash:      hash,
+	})
 }
 
 func cloneRecord(record *contextforgev1.ContextRecord) *contextforgev1.ContextRecord {
