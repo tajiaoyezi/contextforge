@@ -144,7 +144,9 @@ fn build_tantivy_schema() -> (Schema, [Field; 6]) {
     )
 }
 
-fn rfc3339_now() -> String {
+// FIX-2 (PR #24 reviewer): 名实不符 — 实际返回 unix epoch seconds (decimal string),
+// 不是 RFC3339。改名 indexed_at_now_str() 避免误导.
+fn indexed_at_now_str() -> String {
     let now = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
@@ -177,6 +179,9 @@ impl IndexSession {
         fs::create_dir_all(&tantivy_dir)?;
 
         let sqlite = Connection::open(&sqlite_path)?;
+        // FIX-1 (PR #24 reviewer): rusqlite 默认 PRAGMA foreign_keys=OFF — 显式打开让
+        // provenance 的 FOREIGN KEY ... ON DELETE CASCADE 生效，无需手动级联清理.
+        sqlite.execute_batch("PRAGMA foreign_keys = ON;")?;
         sqlite.execute_batch(SQL_SCHEMA)?;
 
         let (schema, fields) = build_tantivy_schema();
@@ -369,7 +374,7 @@ impl IndexSession {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let now_iso = rfc3339_now();
+        let now_iso = indexed_at_now_str();
 
         let tx = self.sqlite.unchecked_transaction()?;
         // chunks insert (use INSERT OR REPLACE to make incremental retries idempotent)
@@ -439,14 +444,14 @@ impl IndexSession {
     }
 
     /// 删某 file_path 的所有 chunks（SQLite + Tantivy）。返回删除的 SQLite 行数.
+    ///
+    /// FIX-1 (PR #24 reviewer): IndexSession::open 现在 `PRAGMA foreign_keys=ON`，
+    /// provenance 通过 `FOREIGN KEY ... ON DELETE CASCADE` 由 SQLite 自动级联清理.
     fn delete_chunks_for_file(&mut self, file_path: &str) -> Result<usize, IndexError> {
         let n: usize = self.sqlite.execute(
             "DELETE FROM chunks WHERE file_path = ?1",
             params![file_path],
         )?;
-        // provenance 由 FK ON DELETE CASCADE 自动清理（rusqlite 默认开启 FK，需手动 PRAGMA）
-        self.sqlite
-            .execute("DELETE FROM provenance WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)", [])?;
         // Tantivy delete by file_path term
         let writer = self
             .tantivy_writer
