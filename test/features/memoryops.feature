@@ -8,31 +8,31 @@
 # 占位场景由 task agent 实施时填 Given/When/Then。
 
 Feature: memoryops
-  In order to <TBD-by-user>
-  As <TBD-by-user>
+  In order to avoid duplicate memory pollution while preserving source traceability
+  As a multi-agent ContextForge user
   I want 去重 / 冲突检测 / 过期标记 / provenance 合并 / 审计事件（v0.1 能力边界内）
 
   # ---
   # Maps to: docs/specs/tasks/task-5.1-dedup.md
   Scenario: SCEN-5.1.1 — 对应 AC1（exact duplicate 去重）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given two ContextRecords with the same normalized content_hash from different sources
+    When MemoryOps dedup runs on the records
+    Then only one representative record remains and the duplicate is reported
 
   Scenario: SCEN-5.1.2 — 对应 AC2（provenance 链合并）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given duplicate ContextRecords with different importer, original_path, and source_modified_at provenance entries
+    When MemoryOps dedup merges them
+    Then the representative record keeps all distinct provenance entries
 
   Scenario: SCEN-5.1.3 — 对应 AC3（不做语义去重 边界）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given two records that are semantically similar but have different literal content_hash values
+    When MemoryOps dedup runs
+    Then both records remain because v0.1 does not perform semantic deduplication
 
   Scenario: SCEN-5.1.4 — 对应 AC4（content_hash 锚点）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given records carrying chunker-produced content_hash values in sha256-prefixed format
+    When MemoryOps dedup groups records
+    Then it uses the provided content_hash as the dedup anchor without recalculating content
 
   # ---
   # Maps to: docs/specs/tasks/task-5.2-lifecycle.md
