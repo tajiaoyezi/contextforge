@@ -35,3 +35,7 @@ vendor/
 
 # S2V 协作临时文件（team 档）
 STATUS-MAIN.md
+
+# _dispatch 子目录约定：顶层 README + reviewer template tracked（规范文档）；
+# sessions/ 仅本地（worker 派工 prompts 动态内容，每个 session 自维护，不污染主线）
+_dispatch/sessions/

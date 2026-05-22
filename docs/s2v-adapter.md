@@ -185,40 +185,46 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
       影响有界）。task-1.4 仍照常走 AGENTS §4 Gate 3 phase-1 §6 端到端 smoke，
       Phase 1 仍按正常流程正式收口（本 override 不豁免 §4 任何 gate）。
 
-### Agent Roster（本项目固定 agent 名册 + 会话派工前置确认协议）
+### Agent Roster（本项目固定 worker 名册 + 主 agent 内部 review subagent 协议）
 
-> 本项目 multi-agent 协作的**固定 agent 名册**。**主 agent 在新会话首次涉及派工 / 多 agent 协作之前**，必须按本节协议确认本次"备选"是否在岗。常驻 agent 默认在岗，不必每次问。
+> 本项目 multi-agent 协作分两层：(a) **外部 worker** 独立 Claude / Agent 终端跑 worktree 实施；(b) **主 agent 内部 review subagent** 用 Agent tool spawn 完成评审。主 agent 在新会话首次涉及 **worker 派工** 之前，必须按本节协议确认本次"备选 worker"是否在岗。
 
-#### 固定 agent 名册
+#### Worker 名册（外部独立终端）
 
-| Agent | 角色 | 在岗 | Worker 派工优先级 |
-|---|---|---|---|
-| **reviewer**     | 代码评审 | ✅ 常驻必在 | — （**不进** worker 派工序列）         |
-| **claude-work1** | Worker   | ✅ 常驻必在 | 1                                       |
-| **codex**        | Worker   | ✅ 常驻必在 | 2                                       |
-| **grok**         | Worker   | ⏳ 备选     | 3（**不能代替** claude-work1 / codex）  |
-| **droid**        | Worker   | ⏳ 备选     | 4（**不能代替** claude-work1 / codex）  |
-| **kimi**         | Worker   | ⏳ 备选     | 5（**不能代替** claude-work1 / codex）  |
+| Worker | 在岗 | 派工优先级 |
+|---|---|---|
+| **claude-work1** | ✅ 常驻必在 | 1 |
+| **codex**        | ✅ 常驻必在 | 2 |
+| **grok**         | ⏳ 备选     | 3（**不能代替** claude-work1 / codex）  |
+| **droid**        | ⏳ 备选     | 4（**不能代替** claude-work1 / codex）  |
+| **kimi**         | ⏳ 备选     | 5（**不能代替** claude-work1 / codex）  |
 
 - **Worker 派工优先级**：claude-work1 → codex → grok → droid → kimi
-- **reviewer**：评审角色，**与 worker 派工是不同维度** — 不参与 worker 优先级排序；仅在需要代码评审 / PR review / RED-review 时使用
 - **备选不能顶替常驻 worker 槽位** — 不要因为某备选更熟某领域就跳过 claude-work1 / codex
 
-#### 主 agent 会话首派工前置 checklist
+#### Review subagent（主 agent 内部，2026-05-22 起）
 
-新会话首次出现任何派工动作（spawn worker / 跑评审 / 多 agent 协作）**之前**：
+- **Reviewer 不再是独立终端**；改为**主 agent 用 Agent tool spawn 子 agent** 在主 agent context 内完成代码评审
+- 主 agent 根据 PR 复杂度 / 并行需要 **自行决定** subagent 数量（简单 PR 1 个；复杂多模块 PR 多维度可 2-3 个并行；多 PR 同时评可 N 个一对一）
+- subagent 跑 review → return 结构化结论给主 agent → 主 agent 直接评判 + 决策（merge / 派 worker fix）
+- **省掉** "reviewer 终端评 → 主 agent 接 review 报告 → 主 agent 写 fix 工单 → 用户中转" 的双向中转
+- subagent 引用的 prompt template 见 `_dispatch/reviewer__per-PR.md`（保留文件名；内容已改为 subagent 模式）
 
-1. **AskUserQuestion 只问备选**（grok / droid / kimi）哪些在岗 — reviewer / claude-work1 / codex 默认在岗，不必问
-2. 收到答复后，**把本次会话生效名单写进首条派工 prompt** 的 `[本次在岗 agent]` 字段（见 §派工模板）
-3. 派工时按 Worker 优先级 + "备选不顶常驻"规则选 agent
+#### 主 agent 会话首 worker 派工前置 checklist
 
-> **跳过条件**：单 agent 任务（只有主 agent 在做，不外派 / 不评审）不必触发。但**任何"派给 X agent"或"让 reviewer 走一轮"动作前都必须先确认过本次名单**。
+新会话首次出现 **worker 派工** 动作之前：
+
+1. **AskUserQuestion 只问备选 worker**（grok / droid / kimi）哪些在岗 — claude-work1 / codex 默认在岗，不必问
+2. 收到答复后，把本次会话生效 worker 名单写进首条派工 prompt 的 `[本次在岗 worker]` 字段（见 §派工模板）
+3. 派工 worker 时按优先级 + "备选不顶常驻"规则选
+
+> **跳过条件**：单 agent 任务（只主 agent 在做，不外派 worker）不必触发。**Review 由主 agent 自行 spawn subagent，不计入 worker 派工**，不需 AskUserQuestion。
 
 #### 与既有协议的关系
 
-- 派工后的执行流程继续遵守 R6 PR-only + AGENTS §4 PR 合入流程
-- 派工 prompt 持久化：派工 .md 必须落盘到 `_dispatch/`（与既有约定一致）
-- worker 不得自走：reviewer → 主 agent → worker 单一决策链不变（worker 看到 review 评论也不得自行修复 + push，必须等主 agent 派工）
+- worker 派工后继续遵守 R6 PR-only + AGENTS §4 PR 合入流程
+- worker 派工 prompt 持久化：必须落盘到 `_dispatch/sessions/.../`（review subagent 调用是主 agent context 内行为，**不落盘** — Agent tool log 已审计）
+- worker 不得自走：**主 agent（含内部 review subagent）→ worker** 单一决策链不变（worker 看到 PR 评论 / review 结果不得自行修复 + push，必须等主 agent 派工 fix）
 
 ---
 
@@ -322,7 +328,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 `team` 档使用此精确 prompt 格式（避免 agent 自创 task spec + 衔接 PR-only 流程）：
 
 ```
-[本次在岗 agent] reviewer ✅ / claude-work1 ✅ / codex ✅ / grok <Y/N> / droid <Y/N> / kimi <Y/N>
+[本次在岗 worker] claude-work1 ✅ / codex ✅ / grok <Y/N> / droid <Y/N> / kimi <Y/N>
 [派工目标] task-<X.Y>（spec: docs/specs/tasks/task-<X.Y>-<name>.md）
 [Worktree] <worktree-path>（按 AGENTS.md §1 拓扑）
 [Branch]   feat/task-<X.Y>-<name>
