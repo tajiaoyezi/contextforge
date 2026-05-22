@@ -24,6 +24,9 @@ func TestExactDuplicateRecordsAreDeduped(t *testing.T) {
 	if result.Records[0].Id != "ctx-hermes" {
 		t.Errorf("expected first-seen representative ctx-hermes, got %q", result.Records[0].Id)
 	}
+	if got := result.Records[0].RedactionStatus; got != "pending" {
+		t.Errorf("expected RedactionStatus=pending (task-3.1 §10 Waiver BINDING), got %q", got)
+	}
 	if len(result.Duplicates) != 1 {
 		t.Fatalf("expected 1 duplicate report, got %d", len(result.Duplicates))
 	}
