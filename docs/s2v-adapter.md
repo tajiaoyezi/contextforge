@@ -263,7 +263,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 3.4 | importer | docs/specs/tasks/task-3.4-importer-agent-rules.md | Done | Phase3 #4（dep 3.1）| `../ContextForge-wt-agent-importers` |
 | 4.1 | retriever | docs/specs/tasks/task-4.1-retriever.md | Draft | Phase4 #1 | `../ContextForge-wt-retrieval-explain` |
 | 4.2 | retriever | docs/specs/tasks/task-4.2-explain.md | Draft | Phase4 #2（dep 4.1）| `../ContextForge-wt-retrieval-explain` |
-| 5.1 | memoryops | docs/specs/tasks/task-5.1-dedup.md | Draft | Phase5 #1 | `../ContextForge-wt-memoryops` |
+| 5.1 | memoryops | docs/specs/tasks/task-5.1-dedup.md | Done | Phase5 #1 | `../ContextForge-wt-memoryops` |
 | 5.2 | memoryops | docs/specs/tasks/task-5.2-lifecycle.md | Draft | Phase5 #2（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 5.3 | memoryops | docs/specs/tasks/task-5.3-audit.md | Draft | Phase5 #3（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Draft | Phase6 #1 | `../ContextForge-wt-cli-api-export` |

@@ -1,8 +1,8 @@
 # Task `5.1`: `dedup — content/source hash 去重 + provenance 合并`
 
-> **Status: Ready** — §2A 前置审核已完成，按 v0.1 MemoryOps 边界仅做 exact duplicate 去重。
+> **Status: Done** — 已按 v0.1 MemoryOps 边界完成 exact duplicate 去重与 provenance 合并。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: codex
@@ -90,10 +90,10 @@ func Records(records []*contextforgev1.ContextRecord) Result
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 exact duplicate 去重 | SCEN-5.1.1 | TEST-5.1.1 | - | unit-test | Verified |
-| AC2 provenance 链合并 | SCEN-5.1.2 | TEST-5.1.2 | - | unit-test | Verified |
-| AC3 不做语义去重(边界) | SCEN-5.1.3 | TEST-5.1.3 | - | unit-test | Verified |
-| AC4 content_hash 锚点 | SCEN-5.1.4 | TEST-5.1.4 | - | unit-test | Verified |
+| AC1 exact duplicate 去重 | SCEN-5.1.1 | TEST-5.1.1 | - | unit-test | Done |
+| AC2 provenance 链合并 | SCEN-5.1.2 | TEST-5.1.2 | - | unit-test | Done |
+| AC3 不做语义去重(边界) | SCEN-5.1.3 | TEST-5.1.3 | - | unit-test | Done |
+| AC4 content_hash 锚点 | SCEN-5.1.4 | TEST-5.1.4 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -109,12 +109,23 @@ func Records(records []*contextforgev1.ContextRecord) Result
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-22
+- **改动文件**：
+  - `internal/memoryops/dedup/dedup.go`（新增：exact duplicate 去重 + provenance / scope / tag / security label 合并）
+  - `internal/memoryops/dedup/dedup_test.go`（新增：TEST-5.1.1~5.1.4）
+  - `test/features/memoryops.feature`（更新：SCEN-5.1.1~5.1.4 Given/When/Then）
+  - `docs/specs/tasks/task-5.1-dedup.md`（Status / §7 / §10 回填）
+  - `docs/s2v-adapter.md`（更新：Task 5.1 索引状态）
+- **commit 列表**：
+  - `4f75803` docs(spec): task-5.1 §2A 审核通过 (Status: Draft → Ready)
+  - `35a01cf` docs(spec): task-5.1 进入实施 (Status: Ready → In Progress)
+  - `0d7a9e6` test(memoryops): 加 SCEN-5.1.1~5.1.4 共 4 个 RED 测试
+  - `8eee177` feat(memoryops): 实现 exact duplicate 去重 + provenance 合并
+  - `335aae9` refactor(memoryops): 提取 duplicate report helper
+  - `本 docs commit` docs(spec): 回填 task-5.1 §10 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ go mod download && cargo fetch
+  - typecheck: ✅ go vet ./... && cargo check --workspace
+  - unit-test: Go 39 passed / 0 failed；Rust 37 tests listed and final `cargo test --workspace` run passed
+- **剩余风险 / 未做项**：不做语义相似去重、冲突判断、stale 生命周期、审计事件写入；这些仍按 v0.1 MemoryOps 边界留给 task-5.2 / task-5.3 或后续 phase。
+- **下游 task 影响**：task-5.2 lifecycle 可消费 `dedup.Result.Records` 和 `Duplicates` 继续做 stale / conflict；task-5.3 audit 可基于 `Duplicates` 记录去重事件；Phase 6 export/search 链路可消费合并后的 provenance。
