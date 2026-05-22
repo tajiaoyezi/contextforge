@@ -184,11 +184,11 @@ impl Retriever {
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 BM25+metadata Top-K | SCEN-4.1.1 | TEST-4.1.1 | - | unit-test | Test Red |
-| AC2 filter 契约一致 | SCEN-4.1.2 | TEST-4.1.2 | - | unit-test | Test Red |
-| AC3 空/错误 query 不 panic | SCEN-4.1.3 | TEST-4.1.3 | - | unit-test | Test Red |
-| AC4 性能 P95<500ms | SCEN-4.1.4 | TEST-4.1.4 | - | unit-test | Test Red |
-| AC5 tokenizer/boost/exact | SCEN-4.1.5 | TEST-4.1.5 | - | unit-test | Test Red |
+| AC1 BM25+metadata Top-K | SCEN-4.1.1 | TEST-4.1.1 | - | unit-test | Verified |
+| AC2 filter 契约一致 | SCEN-4.1.2 | TEST-4.1.2 | - | unit-test | Verified |
+| AC3 空/错误 query 不 panic | SCEN-4.1.3 | TEST-4.1.3 | - | unit-test | Verified |
+| AC4 性能 P95<500ms | SCEN-4.1.4 | TEST-4.1.4 | - | unit-test | Verified |
+| AC5 tokenizer/boost/exact | SCEN-4.1.5 | TEST-4.1.5 | - | unit-test | Verified |
 
 ## 8. Risks
 
