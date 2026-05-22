@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-22）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -184,11 +184,11 @@ impl Retriever {
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 BM25+metadata Top-K | SCEN-4.1.1 | TEST-4.1.1 | - | unit-test | Not Started |
-| AC2 filter 契约一致 | SCEN-4.1.2 | TEST-4.1.2 | - | unit-test | Not Started |
-| AC3 空/错误 query 不 panic | SCEN-4.1.3 | TEST-4.1.3 | - | unit-test | Not Started |
-| AC4 性能 P95<500ms | SCEN-4.1.4 | TEST-4.1.4 | - | unit-test | Not Started |
-| AC5 tokenizer/boost/exact | SCEN-4.1.5 | TEST-4.1.5 | - | unit-test | Not Started |
+| AC1 BM25+metadata Top-K | SCEN-4.1.1 | TEST-4.1.1 | - | unit-test | Test Red |
+| AC2 filter 契约一致 | SCEN-4.1.2 | TEST-4.1.2 | - | unit-test | Test Red |
+| AC3 空/错误 query 不 panic | SCEN-4.1.3 | TEST-4.1.3 | - | unit-test | Test Red |
+| AC4 性能 P95<500ms | SCEN-4.1.4 | TEST-4.1.4 | - | unit-test | Test Red |
+| AC5 tokenizer/boost/exact | SCEN-4.1.5 | TEST-4.1.5 | - | unit-test | Test Red |
 
 ## 8. Risks
 
