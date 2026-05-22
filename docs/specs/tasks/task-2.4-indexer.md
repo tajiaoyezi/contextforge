@@ -199,11 +199,11 @@ CREATE TABLE IF NOT EXISTS provenance (
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 索引 ≥1000 文件 | SCEN-2.4.1 | TEST-2.4.1 | - | unit-test | Test Red |
-| AC2 SQLite+Tantivy 可查 | SCEN-2.4.2 | TEST-2.4.2 | - | unit-test | Test Red |
-| AC3 denylist+redaction 生效 | SCEN-2.4.3 | TEST-2.4.3 | - | unit-test | Test Red |
-| AC4 基础增量更新 | SCEN-2.4.4 | TEST-2.4.4 | - | unit-test | Test Red |
-| AC5 Phase2 端到端 smoke | SCEN-2.4.5 | TEST-2.4.5 | core/tests/phase2_smoke.rs | unit-test | Test Red |
+| AC1 索引 ≥1000 文件 | SCEN-2.4.1 | TEST-2.4.1 | - | unit-test | Verified |
+| AC2 SQLite+Tantivy 可查 | SCEN-2.4.2 | TEST-2.4.2 | - | unit-test | Verified |
+| AC3 denylist+redaction 生效 | SCEN-2.4.3 | TEST-2.4.3 | - | unit-test | Verified |
+| AC4 基础增量更新 | SCEN-2.4.4 | TEST-2.4.4 | - | unit-test | Verified |
+| AC5 Phase2 端到端 smoke | SCEN-2.4.5 | TEST-2.4.5 | core/tests/phase2_smoke.rs | unit-test | Verified |
 
 ## 8. Risks
 
