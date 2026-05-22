@@ -90,10 +90,10 @@ func Records(records []*contextforgev1.ContextRecord) Result
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 exact duplicate 去重 | SCEN-5.1.1 | TEST-5.1.1 | - | unit-test | Test Red |
-| AC2 provenance 链合并 | SCEN-5.1.2 | TEST-5.1.2 | - | unit-test | Test Red |
-| AC3 不做语义去重(边界) | SCEN-5.1.3 | TEST-5.1.3 | - | unit-test | Test Red |
-| AC4 content_hash 锚点 | SCEN-5.1.4 | TEST-5.1.4 | - | unit-test | Test Red |
+| AC1 exact duplicate 去重 | SCEN-5.1.1 | TEST-5.1.1 | - | unit-test | Verified |
+| AC2 provenance 链合并 | SCEN-5.1.2 | TEST-5.1.2 | - | unit-test | Verified |
+| AC3 不做语义去重(边界) | SCEN-5.1.3 | TEST-5.1.3 | - | unit-test | Verified |
+| AC4 content_hash 锚点 | SCEN-5.1.4 | TEST-5.1.4 | - | unit-test | Verified |
 
 ## 8. Risks
 
