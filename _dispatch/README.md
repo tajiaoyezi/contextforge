@@ -1,7 +1,10 @@
-# _dispatch — 本地派工 prompt（主 agent 协调用，永不入 git）
+# _dispatch — worker 派工 prompt 留痕 + review subagent template
 
-> 本目录已通过 `.git/info/exclude` 排除（非 .gitignore，不改 tracked 文件、无 commit）。
-> `git status` 不会显示它；`git check-ignore _dispatch/` 可验证（exit 0）。
+> 顶层 `README.md`（本文件）+ `reviewer__per-PR.md` **tracked 入库**作为规范文档（项目级 source-of-truth）；`sessions/` 子目录 **仅本地**（worker 派工 prompts 动态内容，每个 session 自维护）。
+>
+> Ignore 机制：`.gitignore` 含 `_dispatch/sessions/`（项目级 — 所有 dev clone 后自动生效；fresh clone `git check-ignore _dispatch/sessions/anything.md` exit 0，而 `_dispatch/README.md` 不被忽略）。
+>
+> 主 agent 本地可能在 `.git/info/exclude` 也有 `_dispatch/` 旧规则（2026-05-22 之前残留）— 对 tracked 文件无效，可保留可清理；不影响他人 clone。
 
 ## 规范：worker 派工 prompt 必须落盘
 
