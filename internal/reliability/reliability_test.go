@@ -68,15 +68,15 @@ func TestTask82_AC3_SafetyRegressionRequiresRedactionExportAuditSignals(t *testi
 	ok := SafetySignals{
 		RedactionRegressionPassed: true,
 		ExportSecretScanPassed:    true,
-		AuditMetadataOnlyPassed:    true,
+		AuditMetadataOnlyPassed:   true,
 	}
 	if err := CheckSafetyRegression(ok); err != nil {
 		t.Fatalf("all safety signals should pass: %v", err)
 	}
 	for name, signals := range map[string]SafetySignals{
 		"redaction": {ExportSecretScanPassed: true, AuditMetadataOnlyPassed: true},
-		"export":   {RedactionRegressionPassed: true, AuditMetadataOnlyPassed: true},
-		"audit":    {RedactionRegressionPassed: true, ExportSecretScanPassed: true},
+		"export":    {RedactionRegressionPassed: true, AuditMetadataOnlyPassed: true},
+		"audit":     {RedactionRegressionPassed: true, ExportSecretScanPassed: true},
 	} {
 		err := CheckSafetyRegression(signals)
 		if err == nil || !strings.Contains(err.Error(), name) {
