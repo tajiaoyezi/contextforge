@@ -83,20 +83,36 @@ s2v_preflight_input() {
 # "review / 完工后无需删除"**：
 #   (a) §6 渲染规则 / §9 字段的 `<!-- ... -->` 注释（可跨行）
 #   (b) 顶部 Draft 提示 + §10 schema 指引的 `^>` blockquote
-# 二者合法含尖括号字面（`<TBD-by-user>` / `<TBD-after-impl>` / 示例 token）。
-# 任何对 spec 做 `<...>` 占位 grep 的门（preflight TBD 门 + §10 token 门）
+#   (c) markdown code spans（inline `...` + fenced ```...``` / ~~~...~~~）——
+#       §10 Completion Notes 常含代码示例里的 Rust/Go 类型字面 `Option<String>` /
+#       `Vec<u8>` / `HashMap<K,V>` 等，**必须**从 placeholder 检测中剥除，否则宽
+#       口径 `<...>` grep 会 false-positive（chore-agents 根治的 Gate 4 缺陷）。
+# 二者（a/b）合法含尖括号字面（`<TBD-by-user>` / `<TBD-after-impl>` / 示例 token）。
+# 任何对 spec 做 `<...>` 占位 grep 的门（preflight TBD 门 + §10 token 门 + phase §6）
 # 若不先剥这两类，就会把保留字面误判为"用户漏填 / 未替换" → 合规 spec 被误杀：
 #   DEFECT-1   ：合规 Ready spec rc=2，init→填空→Ready→implement 主链路阻断
 #   DEFECT-P3-C：正确完工的 §10 被 team Gate 4 / solo 升档预检误 BLOCK
+#   DEFECT-chore-agents：Gate 4 第2道把 `Option<String>` 等反引号内类型误判为
+#       未替换 <token>（PR#29 实证），所有含代码例的 PR 都会反复踩。
 #
 # 剥除逻辑只此一份（下方两个 helper 复用同一 preamble）；任何新增的、对 spec
 # 做 `<...>` / `<TBD...>` 占位 grep 的门**必须走这两个 helper 之一，禁止再就地
 # 裸 grep** —— DEFECT-1 已立此规，DEFECT-P3-C 即因 §10 token 门未遵守而回归。
+# 本次 chore 扩展 (c) code span 剥除后，Gate 4 宽 regex 仍保留（§10 模板需捕获
+# 任意 <source-file-1> / <hash1> / <RISK_OR_NONE> 等），但 code 里的 <T> 安全放过。
 _S2V_STRIP_PREAMBLE='
+  BEGIN { in_c=0; in_fence=0 }
   { line = $0; gsub(/<!--.*-->/, "", line) }                       # 单行注释剥除
   in_c == 0 && line ~ /<!--/ { in_c = 1; sub(/<!--.*/, "", line) } # 进多行注释
   in_c == 1 { if (line ~ /-->/) { in_c = 0; sub(/.*-->/, "", line) } else next }
+  # 剥除 fenced code block（``` 或 ~~~ 起始的代码围栏，整块跳过，包括定界行本身）
+  # 这样 §10 示例代码块 / phase §6 示例里的 <Type> 不会进入下游 <...> 检测
+  line ~ /^[[:space:]]*```/ || line ~ /^[[:space:]]*~~~/ { in_fence = !in_fence; next }
+  in_fence { next }
   line ~ /^[[:space:]]*>/ { next }                                 # blockquote 跳过
+  # 剥除行内 code span `...`（支持一行多个），使 `Option<String>` / `Result<T,E>` 等
+  # 合法类型字面不被 Gate 4 / 其他宽 <[A-Za-z_]...> 检测误杀（chore-agents fix）
+  { gsub(/`[^`]*`/, "", line) }
 '
 
 # _s2v_real_tbd_hits <task-spec>
@@ -110,9 +126,10 @@ _s2v_real_tbd_hits() {
 }
 
 # _s2v_strip_retained [file]
-# 把"剥除保留字面后的真实内容"逐行输出（保留字面行被丢弃 / 注释 span 被抹空），
+# 把"剥除保留字面后的真实内容"逐行输出（保留字面行被丢弃 / 注释/blockquote/code span 被抹空），
 # 供下游对 §10 做 `grep -oE "<...>" | sort -u` 占位检测（team Gate 4 第 2 道 /
-# solo 升档预检）。无 file 参数则读 stdin（awk 无文件名即读 stdin，最可移植）。
+# solo 升档预检 / phase §6 占位）。无 file 参数则读 stdin（awk 无文件名即读 stdin，最可移植）。
+# 现已包含 fenced code block + inline `...` 剥除（chore-agents Gate 4 根治）。
 _s2v_strip_retained() {
   if [ -n "${1:-}" ]; then
     awk "${_S2V_STRIP_PREAMBLE}"' { print line }' "$1"
@@ -217,8 +234,8 @@ s2v_preflight_ready() {
 # task 完工/合并前，phase §6 必须已填实，且 phase Status 是 §10.5.1 合法值。
 #
 # §6 按**章节号**范围抽取（与 §6 标题文字无关，防标题漂移）；空/占位判定
-# 复用单一源 _s2v_strip_retained（**禁止裸 grep**，与 DEFECT-1 / P3-C 同规 —
-# 见上方 _S2V_STRIP_PREAMBLE 注释）。容忍 **Status**: 与 Status: 两种渲染。
+# 复用单一源 _s2v_strip_retained（**禁止裸 grep**，与 DEFECT-1 / P3-C / chore-agents 同规 —
+# 见上方 _S2V_STRIP_PREAMBLE 注释，已含 code span 剥除）。容忍 **Status**: 与 Status: 两种渲染。
 #
 # 退出码：0=§6 已填实且 Status 合法（放行最后 task 完工/合并）
 #         2=硬性 STOP（路径非法/文件不存在/Status 缺失或非法/§6 空/§6 含未替换占位）
