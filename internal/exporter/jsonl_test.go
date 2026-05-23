@@ -75,7 +75,7 @@ func TestTask63_AC1_JSONLFormatAndRecordCount(t *testing.T) {
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(buf.Bytes()))
-	decoded := make([]contextforgev1.ContextRecord, 0, len(records))
+	decoded := make([]*contextforgev1.ContextRecord, 0, len(records))
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(bytes.TrimSpace(line)) == 0 {
@@ -85,7 +85,7 @@ func TestTask63_AC1_JSONLFormatAndRecordCount(t *testing.T) {
 		if err := json.Unmarshal(line, &rec); err != nil {
 			t.Fatalf("jsonl line is not a ContextRecord JSON object: %v\nline=%s", err, line)
 		}
-		decoded = append(decoded, rec)
+		decoded = append(decoded, &rec)
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatalf("scan jsonl: %v", err)
