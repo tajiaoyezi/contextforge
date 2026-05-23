@@ -1,11 +1,9 @@
 # Task `8.1`: `eval-harness — golden questions + recall eval (contextforge eval run)`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
-
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: main agent（ADR-012 自治）
 **Related Phase**: Phase 8 (eval-and-reliability)
 **Dependencies**: Phase 6 (cli-api-export), Phase 7 (mcp-adapter)
 
@@ -21,15 +19,21 @@
 
 ### In Scope
 
-- `<TBD-by-user>`
+- 内置 v0.1 golden questions 数据集（6 类 × 每类 5 条 = 30 条）与 JSONL 加载/校验。
+- Strong / Weak / Miss 命中判定与 Top-5 / Top-10 Strong hit rate 统计。
+- `contextforge eval run` CLI，复用现有 Search backend，对每条 query 执行 Top-10 explain search 并输出报告。
+- Eval dataset JSONL 导出，便于后续回归和外部工具复用。
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- 远程 embedding / reranker / provider API 计时与调用。
+- 人工标注平台、持续评测服务、CI 阈值阻断。
+- 真实 10 万 chunk 性能压测（由 task-8.3 release-smoke 收口）。
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- v0.1 发布负责人 / main agent：生成并运行 recall eval。
+- 本地开发者：用 JSONL dataset 复现实验并查看 miss cases。
 
 ## 5. Behavior Contract
 
@@ -44,11 +48,19 @@
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- `internal/cli` 复用 task-6.1 的 `SearchBackend` 注入点。
+- 新增 `internal/eval` 负责 dataset、命中判定、报告统计与 JSONL 编解码。
+- `proto/contextforge/v1.SearchRequest` / `SearchResponse` / `RetrievalResult` 作为检索输入输出契约。
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+- `eval.BuiltinGoldenQuestions() []Question`
+- `eval.LoadJSONL(path string) ([]Question, error)`
+- `eval.WriteJSONL(path string, questions []Question) error`
+- `eval.ValidateDataset([]Question) error`
+- `eval.EvaluateQuestion(Question, []*contextforgev1.RetrievalResult, time.Duration) Result`
+- `eval.Summarize([]Result) Report`
+- `runEval(args []string, stdout, stderr io.Writer) int`
 
 ## 6. Acceptance Criteria
 
