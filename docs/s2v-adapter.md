@@ -197,7 +197,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | **codex**        | ✅ 常驻必在 | 2 |
 | **grok**         | ⏳ 备选     | 3（**不能代替** claude-work1 / codex）  |
 | **droid**        | ⏳ 备选     | 4（**不能代替** claude-work1 / codex）  |
-| **agy**          | ⏳ 备选     | 5（**不能代替** claude-work1 / codex；2026-05-23 接入，能力：通用 SWE / Go + Rust，与主流 worker 同档；初期能力以实际派工表现校准）  |
+| **agy**          | ⏳ 备选     | 5（**不能代替** claude-work1 / codex；2026-05-23 接入；首次派工 PR #38 chore-bdd-phase-1-backfill review Good — 已校准能力：BDD 业务可读场景回填 / 多文件 in-place 协同 / 跨语言 (Go+Rust) test↔spec↔BDD 三向对齐 / 硬 scope 约束遵守可靠 / 单 commit 节律规范；还需观察：实际代码实施 / SPEC-DRIFT 发现-上报反射 / 长链路 task 耐力与中途自修正）  |
 | **kimi**         | ⏳ 备选     | 6（**不能代替** claude-work1 / codex）  |
 
 - **Worker 派工优先级**：claude-work1 → codex → grok → droid → agy → kimi
@@ -274,9 +274,9 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 5.1 | memoryops | docs/specs/tasks/task-5.1-dedup.md | Done | Phase5 #1 | `../ContextForge-wt-memoryops` |
 | 5.2 | memoryops | docs/specs/tasks/task-5.2-lifecycle.md | Done | Phase5 #2（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 5.3 | memoryops | docs/specs/tasks/task-5.3-audit.md | Done | Phase5 #3（dep 5.1）| `../ContextForge-wt-memoryops` |
-| 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Ready | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
-| 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Draft | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
-| 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Draft | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
+| 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Done | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
+| 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Ready | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
+| 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Ready | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 7.1 | mcp-adapter | docs/specs/tasks/task-7.1-mcp-server.md | Draft | Phase7 #1 | `../ContextForge-wt-mcp-adapter` |
 | 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Draft | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
 | 8.2 | reliability | docs/specs/tasks/task-8.2-reliability.md | Draft | Phase8 #2 | `../ContextForge-wt-eval-and-reliability` |
