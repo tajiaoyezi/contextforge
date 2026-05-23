@@ -90,6 +90,11 @@ func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		// cmd/contextforge/main.go to avoid cli -> daemon import cycles.
 		return runMCP(rest, stdin, stdout, stderr)
 
+	case "eval":
+		// task-8.1: recall eval harness entry. Reuses the search backend
+		// injection set by cmd/contextforge/main.go.
+		return runEval(rest, stdout, stderr)
+
 	default:
 		if known(sub) {
 			fmt.Fprintf(stderr, "contextforge %s: not implemented "+
