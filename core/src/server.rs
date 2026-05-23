@@ -439,4 +439,115 @@ mod tests {
             err.code()
         );
     }
+
+    // ============================================================================
+    // task-6.2 §2A 决策 E — CoreService::search fast-path 走 retriever.get_chunk
+    // 当 query 看起来像 chunk_id format (^[0-9a-fA-F]{16,}$) 时优先精确路径，
+    // 未命中 fallback 到原有 BM25 全文 search（保留语义一致性）。
+    // ============================================================================
+
+    // ---- TEST-6.2.E3 — search fast-path: query=chunk_id 命中 → 单条返 ----
+    //
+    // chunker §`chunk_id` format = "chk_<8-hex>_<ordinal>" (core/src/chunker/mod.rs §100);
+    // server.rs fast-path detector tests this prefix shape, not the spec's
+    // illustrative `^[0-9a-f]{16,}$` regex. If retriever.is_chunk_id_format
+    // recognises the seed chunk_id, search() takes the get_chunk fast-path;
+    // otherwise it falls back to BM25 (TEST-6.2.E4).
+    #[tokio::test]
+    async fn test_6_2_e3_search_fast_path_on_chunk_id_format() {
+        let (data, coll) = build_fixture(
+            "ac2e-fastpath",
+            &[("readme.md", "# Readme\nunique token fastpathmarker62z\n")],
+        );
+        // 1. Seed: 拿 fixture 真实 chunk_id（chunker 算出 "chk_<8-hex>_<ord>"）
+        let retr = crate::retriever::Retriever::open(&data, &coll).expect("seed open");
+        let seed = retr
+            .search(&crate::retriever::SearchOptions {
+                query: "fastpathmarker62z".into(),
+                top_k: 1,
+                filters: crate::retriever::SearchFilters::default(),
+                explain: false,
+            })
+            .expect("seed search");
+        assert!(!seed.is_empty(), "seed: fixture indexed");
+        let chunk_id = seed[0].chunk_id.clone();
+        // 2. chunker format sanity: chk_<8hex>_<ord> (chunker/mod.rs §100)
+        assert!(
+            chunk_id.starts_with("chk_"),
+            "seed chunk_id={} 应以 'chk_' 开头 (chunker format)",
+            chunk_id
+        );
+        // 3. detector helper 应识别此 chunk_id (will be added in GREEN)
+        assert!(
+            crate::retriever::is_chunk_id_format(&chunk_id),
+            "seed chunk_id={} 应被 is_chunk_id_format 识别为 fast-path 候选",
+            chunk_id
+        );
+
+        // 4. server.rs search with query = chunk_id → 走 fast-path 返单条
+        let svc = CoreService::new(data);
+        let resp = svc
+            .search(Request::new(SearchRequest {
+                query: chunk_id.clone(),
+                collections: vec![coll.clone()],
+                agent_scope: vec![],
+                top_k: 10,
+                filters: None,
+                explain: false,
+            }))
+            .await
+            .expect("fast-path search ok");
+        let inner = resp.into_inner();
+        assert_eq!(
+            inner.results.len(),
+            1,
+            "AC2-E fast-path: 应返单条 (target chunk_id), got {}",
+            inner.results.len()
+        );
+        assert_eq!(
+            inner.results[0].chunk_id, chunk_id,
+            "AC2-E fast-path: 命中 chunk_id 一致"
+        );
+    }
+
+    // ---- TEST-6.2.E4 — fast-path miss → fallback to BM25 search ----
+    //
+    // Query 用 chunker format-shape 字面 (`chk_deadbeef_0`) 触发 fast-path
+    // detector，但 chunk_id 不在 fixture 中。expected: get_chunk → None → fallback
+    // 走原 BM25 search() 路径 (which returns 0 hits for this nonsense query,
+    // but the wrap is Ok, not Err).
+    #[tokio::test]
+    async fn test_6_2_e4_search_fast_path_miss_falls_back_to_search() {
+        let (data, coll) = build_fixture(
+            "ac2e-fastpath-miss",
+            &[("readme.md", "# Readme\nunique token fallbackmarker62z\n")],
+        );
+        // 形如 chunk_id 但不在 fixture 中
+        let nonexistent_chunk_id = "chk_deadbeef_0";
+        // detector 应识别为 chunk_id 形（触发 fast-path 尝试）
+        assert!(
+            crate::retriever::is_chunk_id_format(nonexistent_chunk_id),
+            "detector 应识别 'chk_<hex>_<ord>' 形"
+        );
+
+        let svc = CoreService::new(data);
+        let resp = svc
+            .search(Request::new(SearchRequest {
+                query: nonexistent_chunk_id.into(),
+                collections: vec![coll.clone()],
+                agent_scope: vec![],
+                top_k: 10,
+                filters: None,
+                explain: false,
+            }))
+            .await
+            .expect("fallback search ok (BM25 won't crash even if 0 hits)");
+        let inner = resp.into_inner();
+        // BM25 fallback 对 "chk_deadbeef_0" 几乎 0 hits（fixture body 没该串），但路径活.
+        // 核心：fast-path miss 后 fallback 走通，返 Ok(SearchResponse) 即使 0 hits.
+        assert!(
+            inner.results.len() <= 10,
+            "AC2-E fallback: BM25 search 路径活，return ≤ top_k results"
+        );
+    }
 }

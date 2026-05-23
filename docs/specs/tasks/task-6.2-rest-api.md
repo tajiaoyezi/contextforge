@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. HTTP framework=stdlib net/http、B. 5 endpoint 部分真实施 + import/eval/run stub 501、C. 新 `contextforge serve` 子命令持久 daemon、D. Token file 0600 启动软随机生、E. retriever 加 `get_chunk` 公开 API 支持 AC2 chunks/{id} — 详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi

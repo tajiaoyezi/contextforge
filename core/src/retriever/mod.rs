@@ -1030,4 +1030,68 @@ mod tests {
             r.matched_terms
         );
     }
+
+    // ============================================================================
+    // task-6.2 §2A 决策 E — retriever.get_chunk 公开 API (REST GET /v1/chunks/{id} fast-path).
+    // ============================================================================
+
+    // ---- TEST-6.2.E1 — get_chunk hit returns full 12-field SearchResult ----
+    #[test]
+    fn test_6_2_e1_get_chunk_returns_12_field_result_on_hit() {
+        let (_src, data, coll) = build_fixture(
+            "ac2e-hit",
+            &[("readme.md", "# Readme\nunique token getchunkmarker62z\n")],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        // 先用 search 拿到一个真实 chunk_id（fixture 索引后 chunk_id 由 indexer 决定）
+        let results = retr
+            .search(&SearchOptions {
+                query: "getchunkmarker62z".into(),
+                top_k: 1,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("seed search");
+        assert!(!results.is_empty(), "seed: should hit fixture");
+        let target_chunk_id = results[0].chunk_id.clone();
+
+        // get_chunk(target_chunk_id) → Ok(Some(SearchResult)) with 12 字段 PRESENT
+        let got = retr
+            .get_chunk(&target_chunk_id)
+            .expect("get_chunk(hit) must Ok");
+        assert!(got.is_some(), "AC2-E hit: get_chunk 应返 Some(SearchResult)");
+        let r = got.unwrap();
+        assert_eq!(r.chunk_id, target_chunk_id, "AC2-E: chunk_id 一致");
+        assert!(!r.file_path.is_empty(), "AC2-E: file_path non-empty");
+        assert_eq!(r.context_id, "", "AC2-E §2A default schema gap");
+        assert_eq!(r.source_type, "", "AC2-E §2A default");
+        assert!(r.line_end >= r.line_start, "AC2-E: line range valid");
+        assert_eq!(
+            r.retrieval_method, "bm25",
+            "AC2-E: retrieval_method 复用 search() 的 bm25 标签 (provenance 表 schema 不动)"
+        );
+        assert!(r.agent_scope.is_empty(), "AC2-E §2A default");
+        assert_eq!(r.redaction_status, "applied", "AC2-E §2A default");
+        assert!(
+            !r.provenance.is_empty(),
+            "AC2-E: provenance.len() ≥ 1 (沿 AC3 黑盒守护)"
+        );
+    }
+
+    // ---- TEST-6.2.E2 — get_chunk miss returns Ok(None), 不 Err ----
+    #[test]
+    fn test_6_2_e2_get_chunk_returns_none_on_miss() {
+        let (_src, data, coll) = build_fixture(
+            "ac2e-miss",
+            &[("readme.md", "# Readme\nany content\n")],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        let got = retr
+            .get_chunk("nonexistent_chunk_id_zzz999")
+            .expect("get_chunk(miss) must Ok (not Err)");
+        assert!(
+            got.is_none(),
+            "AC2-E miss: get_chunk 未命中应返 Ok(None), got Some"
+        );
+    }
 }
