@@ -1,28 +1,55 @@
-//! task-1.3: tonic gRPC server + health.
+//! task-1.3 / task-6.1: tonic gRPC server + health + search wire.
 //!
-//! - AC1: listen on local gRPC — built-in default is loopback `127.0.0.1`;
-//!   a wildcard / `0.0.0.0` (or `::`) bind is rejected (PRD Local service
-//!   security baseline). `ListenAddr::Unix` is modeled for the daemon to
-//!   request later (task-1.4); task-1.3 serves loopback TCP.
-//! - AC2: `ContextService.Health` -> `HealthResponse{status:"SERVING"}`.
-//! - AC3: tonic + tokio + serde wired, proto via tonic codegen, no FFI.
-//! - `Search` returns `Status::unimplemented` (Phase 2+; out of scope here).
+//! - AC1 (task-1.3): listen on local gRPC — built-in default is loopback
+//!   `127.0.0.1`; a wildcard / `0.0.0.0` (or `::`) bind is rejected (PRD
+//!   Local service security baseline). `ListenAddr::Unix` is modeled for
+//!   the daemon to request later (task-1.4); task-1.3 serves loopback TCP.
+//! - AC2 (task-1.3): `ContextService.Health` -> `HealthResponse{status:"SERVING"}`.
+//! - AC3 (task-1.3): tonic + tokio + serde wired, proto via tonic codegen.
+//! - AC1 (task-6.1): `ContextService.Search` wire — replaces the task-1.3
+//!   `Status::unimplemented` placeholder with a real `Retriever::open` →
+//!   `retriever.search/explain` → `SearchResponse` pipeline.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
 use tonic::{Request, Response, Status};
 
+use crate::chunker::Provenance as RetrieverProvenance;
 use crate::pb::context_service_server::{ContextService, ContextServiceServer};
-use crate::pb::{HealthRequest, HealthResponse, SearchRequest, SearchResponse};
+use crate::pb::{
+    HealthRequest, HealthResponse, Provenance as PbProvenance, RetrievalResult, SearchRequest,
+    SearchResponse,
+};
+use crate::retriever::{
+    Retriever, RetrieverError, SearchFilters as RetrieverFilters, SearchOptions, SearchResult,
+};
 
 /// Built-in safe default listen address (loopback only, never `0.0.0.0`).
 pub const DEFAULT_LISTEN: &str = "127.0.0.1:50551";
 
-/// gRPC service impl for the data plane (task-1.3 = skeleton; Search is Phase 2+).
+/// gRPC service impl for the data plane.
+///
+/// task-1.3 = skeleton + health; task-6.1 = `Search` wired through
+/// `Retriever`. `data_dir` is the on-disk root the retriever opens
+/// (`[data_dir]/collections/[id]/{metadata.sqlite, tantivy/}`), set by
+/// `main.rs` via `resolve_data_dir` (cmd-arg / env / `~/.contextforge`).
+/// `Default::default()` (used by task-1.3/1.4 tests that only exercise
+/// Health) yields an empty path; calling `search()` against it will return
+/// `FailedPrecondition` from `Retriever::open`, matching task-6.1 §5.3.
 #[derive(Debug, Default, Clone)]
-pub struct CoreService;
+pub struct CoreService {
+    pub data_dir: PathBuf,
+}
+
+impl CoreService {
+    /// task-6.1 §5.3: explicit constructor — `main.rs` injects `data_dir`.
+    pub fn new(data_dir: PathBuf) -> Self {
+        Self { data_dir }
+    }
+}
 
 /// Where `contextforge-core` listens. Never a wildcard / `0.0.0.0` bind (AC1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,20 +81,157 @@ impl ContextService for CoreService {
         }))
     }
 
+    /// task-6.1 §5.3 AC1: SearchRequest → Retriever.search/explain → SearchResponse.
+    ///
+    /// Error mapping (per task-4.1/4.2 `RetrieverError` 5 variants):
+    ///   `collections` empty                            → `InvalidArgument`
+    ///   `Io(NotFound)` / `CollectionNotFound`          → `FailedPrecondition`
+    ///   `InvalidConfig`                                → `InvalidArgument`
+    ///   `Sqlite` / `Tantivy` / `Io(non-NotFound)`      → `Internal`
     async fn search(
         &self,
-        _req: Request<SearchRequest>,
+        req: Request<SearchRequest>,
     ) -> Result<Response<SearchResponse>, Status> {
-        // Out of scope for task-1.3 (retrieval is Phase 2+/Phase 4).
-        Err(Status::unimplemented(
-            "Search is Phase 2+ (task-1.3 ships the gRPC skeleton only)",
-        ))
+        let req = req.into_inner();
+
+        if req.collections.is_empty() {
+            return Err(Status::invalid_argument(
+                "collections is required (v0.1 single-collection)",
+            ));
+        }
+        let collection_id = &req.collections[0];
+
+        let retriever = match Retriever::open(&self.data_dir, collection_id) {
+            Ok(r) => r,
+            Err(RetrieverError::CollectionNotFound(_)) => {
+                return Err(Status::failed_precondition(format!(
+                    "collection not found: {}",
+                    collection_id
+                )));
+            }
+            Err(RetrieverError::Io(io_err))
+                if io_err.kind() == std::io::ErrorKind::NotFound =>
+            {
+                return Err(Status::failed_precondition(format!(
+                    "data dir / collection path missing: {}",
+                    io_err
+                )));
+            }
+            Err(RetrieverError::InvalidConfig(s)) => {
+                return Err(Status::invalid_argument(s));
+            }
+            Err(e) => return Err(Status::internal(e.to_string())),
+        };
+
+        let filters_pb = req.filters.unwrap_or_default();
+        let top_k = if req.top_k <= 0 {
+            10
+        } else {
+            req.top_k as usize
+        };
+        let opts = SearchOptions {
+            query: req.query,
+            top_k,
+            filters: RetrieverFilters {
+                source_type: filters_pb.source_type,
+                language: filters_pb.language,
+                agent_scope: req.agent_scope,
+                ..Default::default()
+            },
+            explain: req.explain,
+        };
+
+        let results = if req.explain {
+            retriever.explain(&opts)
+        } else {
+            retriever.search(&opts)
+        }
+        .map_err(|e| Status::internal(format!("retrieve: {}", e)))?;
+
+        Ok(Response::new(SearchResponse {
+            results: results.iter().map(search_result_to_proto).collect(),
+        }))
     }
 }
 
-/// AC3: assemble the tonic code-generated server for `CoreService`.
+/// task-6.1 §5.3: `chunker::Provenance` → `proto::Provenance` field mapping.
+///
+/// **§2A 决策 E placeholder**: `chunker::Provenance.imported_at` /
+/// `source_modified_at` are `String` (RFC3339 with Z; indexer SQLite TEXT
+/// 直存). v0.1 P0 returns `prost_types::Timestamp::default()` for both proto
+/// fields (chrono not in Cargo.toml — R7 strict channel; CLI text mode reads
+/// the original `String` directly from `chunker::Provenance` so users still
+/// see RFC3339; `--json` shows 1970-01-01 placeholder). task-6.3 may trigger
+/// SPEC-DRIFT to add chrono/time crate via main-agent R7 chore-dep PR.
+fn provenance_to_proto(p: &RetrieverProvenance) -> PbProvenance {
+    PbProvenance {
+        importer: p.importer.clone(),
+        original_path: p.original_path.clone(),
+        imported_at: Some(Timestamp::default()),
+        source_modified_at: Some(Timestamp::default()),
+    }
+}
+
+/// task-6.1 §5.3: `retriever::SearchResult` → `proto::RetrievalResult`
+/// (12 explainable fields 1:1 + provenance list).
+fn search_result_to_proto(r: &SearchResult) -> RetrievalResult {
+    RetrievalResult {
+        chunk_id: r.chunk_id.clone(),
+        context_id: r.context_id.clone(),
+        source_type: r.source_type.clone(),
+        file_path: r.file_path.clone(),
+        line_start: r.line_start as i64,
+        line_end: r.line_end as i64,
+        score: r.score as f64,
+        retrieval_method: r.retrieval_method.clone(),
+        reason: r.reason.clone(),
+        agent_scope: r.agent_scope.clone(),
+        redaction_status: r.redaction_status.clone(),
+        provenance: r.provenance.iter().map(provenance_to_proto).collect(),
+    }
+}
+
+/// AC3 (task-1.3): assemble the tonic code-generated server for `CoreService`
+/// (`Default::default()` — empty `data_dir`; only safe for Health-only callers).
 pub fn context_service() -> ContextServiceServer<CoreService> {
-    ContextServiceServer::new(CoreService)
+    ContextServiceServer::new(CoreService::default())
+}
+
+/// task-6.1: assemble the tonic server with an explicit `data_dir`.
+/// Phase-6 smoke (`core/tests/phase6_smoke.rs`) uses this to drive end-to-end
+/// gRPC Search against a fixture index. `main.rs` calls this on startup.
+pub fn context_service_with_data_dir(data_dir: PathBuf) -> ContextServiceServer<CoreService> {
+    ContextServiceServer::new(CoreService::new(data_dir))
+}
+
+/// task-6.1 §5.3: resolve the on-disk data root for `CoreService::search`.
+///
+/// Priority (matches Go-side `config::DefaultRootDir` semantics):
+///   1. `arg` (the 2nd cmd-line argument to `contextforge-core`, when present)
+///   2. `$CONTEXTFORGE_DATA_DIR`
+///   3. `$HOME/.contextforge` (Unix) / `%USERPROFILE%\.contextforge` (Windows)
+///   4. `./.contextforge` (last-resort fallback if no env / home is set)
+pub fn resolve_data_dir(arg: Option<&str>) -> PathBuf {
+    if let Some(a) = arg {
+        let trimmed = a.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Ok(env) = std::env::var("CONTEXTFORGE_DATA_DIR") {
+        if !env.trim().is_empty() {
+            return PathBuf::from(env);
+        }
+    }
+    let home_env = if cfg!(target_os = "windows") {
+        "USERPROFILE"
+    } else {
+        "HOME"
+    };
+    match std::env::var(home_env) {
+        Ok(h) if !h.trim().is_empty() => PathBuf::from(h).join(".contextforge"),
+        _ => PathBuf::from(".contextforge"),
+    }
 }
 
 /// AC1: resolve a *safe* listen address.
@@ -98,15 +262,25 @@ pub fn resolve_listen_addr(arg: Option<&str>) -> Result<ListenAddr, AddrError> {
     Ok(ListenAddr::Tcp(sock))
 }
 
-/// AC1/AC2: bind `addr` and serve `ContextService`.
-///
-/// task-1.3 serves loopback TCP; `ListenAddr::Unix` is intentionally deferred
-/// to task-1.4 daemon wiring (AC1 is satisfied via the 127.0.0.1 path).
+/// AC1/AC2 (task-1.3): bind `addr` and serve `ContextService` with a
+/// default-constructed service (Health-only callers). task-6.1 introduces
+/// [`serve_with_service`] for callers that need to inject `data_dir` for
+/// the search wire.
 pub async fn serve(addr: ListenAddr) -> Result<(), Box<dyn std::error::Error>> {
+    serve_with_service(addr, CoreService::default()).await
+}
+
+/// task-6.1: bind `addr` and serve the provided `CoreService` (with its
+/// configured `data_dir`). `main.rs` calls this with a service constructed
+/// from `resolve_data_dir`.
+pub async fn serve_with_service(
+    addr: ListenAddr,
+    svc: CoreService,
+) -> Result<(), Box<dyn std::error::Error>> {
     match addr {
         ListenAddr::Tcp(sock) => {
             tonic::transport::Server::builder()
-                .add_service(context_service())
+                .add_service(ContextServiceServer::new(svc))
                 .serve(sock)
                 .await?;
             Ok(())
