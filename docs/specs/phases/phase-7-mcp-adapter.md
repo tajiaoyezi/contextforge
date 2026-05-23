@@ -2,7 +2,7 @@
 
 **Status**: Draft
 
-> Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 留 `<TBD-by-user>`，本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1）。
+> Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 由 task-7.1 填实；自动化运行留 task-8.1 eval-harness。
 
 ## 1. 阶段目标
 
@@ -39,7 +39,56 @@ Agent 经 MCP 获取一致、可追溯上下文（`context_search` / `context_re
 - MCP `context_collections` 可列出可用 collection
 - MCP client 未被 allowlist 时拒绝访问
 
-**端到端 smoke**：`<TBD-by-user>`（本 phase 唯一 task=7.1 完工/合并前填实，例：起 MCP server → 用 MCP client 调 4 个 tool 校验返回字段与 REST 一致 + 未 allowlist client 被拒的 smoke 序列）
+**端到端 smoke**（命令骨架；自动化运行留 task-8.1 eval-harness）：
+
+```bash
+# Phase 7 MCP adapter smoke (task-7.1 AC5)
+set -euo pipefail
+
+ROOT="${TMPDIR:-/tmp}/cf-phase7"
+rm -rf "$ROOT"
+contextforge init --root "$ROOT"
+
+# Allow one MCP client explicitly. Empty / missing allowlist must reject all.
+cat > "$ROOT/mcp-allowlist.json" <<'JSON'
+[{"name":"claude-desktop","version":">=0.7.0"}]
+JSON
+chmod 0600 "$ROOT/mcp-allowlist.json"
+
+# Seed / import fixture data before this point when task-8.1 automates the smoke.
+# v0.1 manual gate focuses on the syntactic MCP handshake + 4 tool calls.
+
+INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"claude-desktop","version":"0.8.0"}}}'
+READY='{"jsonrpc":"2.0","method":"notifications/initialized"}'
+LIST='{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+SEARCH='{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"context_search","arguments":{"query":"fixture query","collections":["default"],"top_k":5}}}'
+READ='{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"context_read","arguments":{"chunk_id":"chk_<fixture>_0","collection":"default"}}}'
+EXPLAIN='{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"context_explain","arguments":{"query":"fixture query","collections":["default"]}}}'
+COLLECTIONS='{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"context_collections","arguments":{}}}'
+
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+  "$INIT" "$READY" "$LIST" "$SEARCH" "$READ" "$EXPLAIN" "$COLLECTIONS" \
+  | contextforge mcp --data-dir "$ROOT" --allowlist "$ROOT/mcp-allowlist.json" \
+  | tee "$ROOT/mcp-ok.jsonl"
+
+# Expected manual checks:
+# - initialize result protocolVersion == "2025-06-18" (newer client negotiated down)
+# - tools/list contains context_search/context_read/context_explain/context_collections
+# - context_search structuredContent.results uses the same RetrievalResult fields as REST /v1/search
+# - context_read returns the requested chunk_id after fixture seeding
+# - context_explain includes retrieval_trace with reason/provenance
+# - context_collections lists default collection metadata
+
+DENIED='{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"not-allowed","version":"0.1.0"}}}'
+printf '%s\n' "$DENIED" \
+  | contextforge mcp --data-dir "$ROOT" --allowlist "$ROOT/mcp-allowlist.json" \
+  | tee "$ROOT/mcp-denied.jsonl"
+
+# Expected denied checks:
+# - JSON-RPC error.code == -32000
+# - "$ROOT/audit-rest.log" contains endpoint "mcp:initialize" and status 403
+# - audit log does not contain full query/tool arguments
+```
 
 ## 7. 阶段级风险
 

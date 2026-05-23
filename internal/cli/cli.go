@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/tajiaoyezi/contextforge/internal/config"
 )
@@ -41,6 +42,13 @@ func known(sub string) bool {
 // code. Unknown / unimplemented subcommands write to stderr and return a
 // non-zero code — never panic (AC4).
 func Execute(args []string, stdout, stderr io.Writer) int {
+	return ExecuteWithIO(args, os.Stdin, stdout, stderr)
+}
+
+// ExecuteWithIO parses args and dispatches the subcommand with explicit stdin.
+// It exists for stdio-native subcommands like `mcp`; Execute preserves the
+// original task-1.4 public API for existing callers.
+func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintf(stderr, "contextforge: expected a subcommand, one of %v\n", subcommands)
 		return 2
@@ -76,6 +84,11 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		// task-6.3: real subcommand entry; supersedes the task-1.4
 		// "not implemented" default-arm response for `export`.
 		return runExport(rest, stdout, stderr)
+
+	case "mcp":
+		// task-7.1: stdio JSON-RPC MCP server entry. Backend wired by
+		// cmd/contextforge/main.go to avoid cli -> daemon import cycles.
+		return runMCP(rest, stdin, stdout, stderr)
 
 	default:
 		if known(sub) {
