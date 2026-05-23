@@ -24,6 +24,7 @@ import (
 	"github.com/tajiaoyezi/contextforge/internal/cli"
 	"github.com/tajiaoyezi/contextforge/internal/daemon"
 	"github.com/tajiaoyezi/contextforge/internal/exporter"
+	"github.com/tajiaoyezi/contextforge/internal/mcpadapter"
 	contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"
 )
 
@@ -35,6 +36,7 @@ const daemonHealthDeadline = 15 * time.Second
 func main() {
 	cli.SetSearchBackend(searchViaDaemon)
 	cli.SetServeBackend(doServe)
+	cli.SetMCPBackend(doMCP)
 	exporter.SetSearchBackend(searchViaDaemonWithDataDir)
 	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -88,6 +90,37 @@ func doServe(_ context.Context, opts *cli.ServeOpts, stdout, stderr io.Writer) e
 	fmt.Fprintln(stdout, "  Authorization: Bearer <token-from-file>")
 
 	return d.ServeREST(ctx, listener, opts.Token, opts.DataDir)
+}
+
+// doMCP is the production `cli.MCPBackend` (task-7.1): load the client
+// allowlist, start a long-running core daemon, wait for gRPC Health, then serve
+// MCP stdio JSON-RPC until stdin EOF or signal cancellation.
+func doMCP(ctx context.Context, opts cli.MCPOpts, stdin io.Reader, stdout, _ io.Writer) error {
+	allowlist, err := mcpadapter.LoadAllowlist(opts.Allowlist)
+	if err != nil {
+		return fmt.Errorf("load MCP allowlist %q: %w", opts.Allowlist, err)
+	}
+	restoreEnv, err := setDataDirEnv(opts.DataDir)
+	if err != nil {
+		return err
+	}
+	defer restoreEnv()
+
+	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
+	if err != nil {
+		return fmt.Errorf("start core daemon: %w", err)
+	}
+	defer d.Stop()
+	if err := waitDaemonHealthy(ctx, d); err != nil {
+		return err
+	}
+
+	server := &mcpadapter.Server{
+		Searcher:  d,
+		DataDir:   opts.DataDir,
+		Allowlist: allowlist,
+	}
+	return server.Serve(ctx, stdin, stdout)
 }
 
 // resolveListener creates the listener per ServeOpts. Unix socket is
@@ -153,18 +186,26 @@ func searchViaDaemonWithDataDir(
 	dataDir string,
 	req *contextforgev1.SearchRequest,
 ) (*contextforgev1.SearchResponse, error) {
+	restoreEnv, err := setDataDirEnv(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer restoreEnv()
+	return searchViaDaemon(ctx, req)
+}
+
+func setDataDirEnv(dataDir string) (func(), error) {
 	old, hadOld := os.LookupEnv("CONTEXTFORGE_DATA_DIR")
 	if dataDir != "" {
 		if err := os.Setenv("CONTEXTFORGE_DATA_DIR", dataDir); err != nil {
 			return nil, err
 		}
 	}
-	defer func() {
+	return func() {
 		if hadOld {
 			_ = os.Setenv("CONTEXTFORGE_DATA_DIR", old)
 		} else {
 			_ = os.Unsetenv("CONTEXTFORGE_DATA_DIR")
 		}
-	}()
-	return searchViaDaemon(ctx, req)
+	}, nil
 }

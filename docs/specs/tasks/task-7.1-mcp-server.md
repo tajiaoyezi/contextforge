@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. 手写 MCP JSON-RPC over stdio (R7 严格通道，不引 SDK)、B. stdio subprocess + 新 `contextforge mcp` 子命令、C. `<data_dir>/mcp-allowlist.json` 启动读 + initialize handshake 验证、D. 复用 task-6.2 `internal/memoryops/audit/` 同 audit-rest.log + Endpoint 字段 prefix `mcp:`、E. MCP spec lock 2025-06-18 — 详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -319,11 +319,11 @@ type ToolContent struct {
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 context_search 一致字段 | SCEN-7.1.1 | TEST-7.1.1 | - | unit-test | Not Started |
-| AC2 read/explain/collections | SCEN-7.1.2 | TEST-7.1.2 | - | unit-test | Not Started |
-| AC3 client allowlist 拒绝+审计 | SCEN-7.1.3 | TEST-7.1.3 | - | unit-test | Not Started |
-| AC4 adapter 解耦+版本锁定 | SCEN-7.1.4 | TEST-7.1.4 | - | unit-test | Not Started |
-| AC5 Phase7 端到端 smoke 骨架 | SCEN-7.1.5 | TEST-7.1.5 | phase-7 spec §6 | unit-test | Not Started |
+| AC1 context_search 一致字段 | SCEN-7.1.1 | TEST-7.1.1 | - | unit-test | Done |
+| AC2 read/explain/collections | SCEN-7.1.2 | TEST-7.1.2 | - | unit-test | Done |
+| AC3 client allowlist 拒绝+审计 | SCEN-7.1.3 | TEST-7.1.3 | - | unit-test | Done |
+| AC4 adapter 解耦+版本锁定 | SCEN-7.1.4 | TEST-7.1.4 | - | unit-test | Done |
+| AC5 Phase7 端到端 smoke 骨架 | SCEN-7.1.5 | TEST-7.1.5 | phase-7 spec §6 | unit-test | Done |
 
 ## 8. Risks
 
@@ -346,15 +346,32 @@ type ToolContent struct {
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - `internal/mcpadapter/jsonrpc.go`（新增：MCP 2025-06-18 JSON-RPC 2.0 newline stdio framing）
+  - `internal/mcpadapter/allowlist.go`（新增：allowlist JSON 加载 + 简化 version matcher）
+  - `internal/mcpadapter/server.go`（新增：initialize / tools/list / tools/call 主循环 + audit）
+  - `internal/mcpadapter/tools.go`（新增：context_search / context_read / context_explain / context_collections）
+  - `internal/cli/mcp.go`（新增：`contextforge mcp` 参数解析 + backend hook）
+  - `internal/cli/cli.go`（修改：`mcp` dispatch + stdin-aware `ExecuteWithIO`）
+  - `cmd/contextforge/main.go`（修改：生产 MCP backend 注入 + daemon wiring）
+  - `internal/cli/cli_test.go`（修改：`mcp` 从 not-implemented 清单移除）
+  - `internal/mcpadapter/*_test.go`（新增：TEST-7.1.1~4）
+  - `internal/cli/mcp_test.go`（新增：TEST-7.1.5）
+  - `test/features/mcp-adapter.feature`（修改：SCEN-7.1.1~5 填实）
+  - `docs/specs/phases/phase-7-mcp-adapter.md`（修改：§6 端到端 smoke shell + JSON-RPC pipe 命令骨架）
+  - `docs/s2v-adapter.md`（修改：Task 总索引 7.1 状态同步）
+  - `docs/specs/tasks/task-7.1-mcp-server.md`（修改：Status / §6 / §7 / §10 回填）
+- **commit 列表**：
+  - `4623926` test(mcp-server): 加 SCEN-7.1.1~5 共 5 个 RED 测试 + Status: Ready → In Progress
+  - `82f825e` feat(mcp-server): contextforge mcp 端到端实现 — 手写 MCP 2025-06-18 stdio JSON-RPC + 4 tool + allowlist + audit 通过全部 5 个测试 + phase-7 §6 端到端 smoke 命令骨架填实
+  - `本 docs commit` docs(spec): 回填 task-7.1 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`
+  - unit-test: ✅ `go test ./...`（111 passed / 0 failed；13 package pass，含 `internal/mcpadapter` 13 passed）+ `cargo test --workspace`（59 passed / 0 failed：35 core lib + 4 skeleton + phase2/4/5/6 smokes + 5 proto + 11 scanner）
+- **剩余风险 / 未做项**：Phase 7 §6 为可执行命令骨架；自动化 fixture seeding / MCP smoke 编排按 spec 留 task-8.1 eval-harness。
+- **下游 task 影响**：task-8.1 eval-harness 可消费 `contextforge mcp` 与 phase-7 §6 smoke 骨架；无 proto / dependency / lockfile 影响。
 - **§2A Decisions**（2026-05-23 用户审定，主 agent 与用户预先审定后落 spec；worker 完工时按实际实施情况验证 / 补充）：
   - **A: 手写 MCP JSON-RPC over stdio（R7 严格通道，不引 SDK）**：v0.1 选 stdlib `encoding/json` + `bufio` 手写 MCP 2025-06-18 stdio transport + JSON-RPC 2.0 实现（initialize / tools/list / tools/call）。不引 mcp-go / mcp-sdk / 任一 MCP SDK；零 supply chain surface；漂移隐藏在 adapter 层；与 ContextForge minimal 主义一致。代价：~300-500 行 Go 实现量；benefit：完全可控
   - **B: stdio subprocess + 新 `contextforge mcp` 子命令**：MCP 原生 mode；agent (Claude Desktop / Cursor / Zed) 启动 `contextforge mcp` 为 subprocess + stdio JSON-RPC 通信。task-1.4 default not-implemented 的 `mcp` 子命令本 task 接上（同 task-6.1 search / 6.2 serve / 6.3 export pattern）。HTTP/SSE transport 留 future v0.2+
