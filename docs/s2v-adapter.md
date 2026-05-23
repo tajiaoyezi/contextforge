@@ -243,7 +243,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | Done | 4 | `../ContextForge-wt-agent-importers` |
 | 4 | `retrieval-explain` | `docs/specs/phases/phase-4-retrieval-explain.md` | Done | 2 | `../ContextForge-wt-retrieval-explain` |
 | 5 | `memoryops` | `docs/specs/phases/phase-5-memoryops.md` | Done | 3 | `../ContextForge-wt-memoryops` |
-| 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Draft | 3 | `../ContextForge-wt-cli-api-export` |
+| 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Done | 3 | `../ContextForge-wt-cli-api-export` |
 | 7 | `mcp-adapter` | `docs/specs/phases/phase-7-mcp-adapter.md` | Draft | 1 | `../ContextForge-wt-mcp-adapter` |
 | 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Draft | 3 | `../ContextForge-wt-eval-and-reliability` |
 
@@ -275,7 +275,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 5.2 | memoryops | docs/specs/tasks/task-5.2-lifecycle.md | Done | Phase5 #2（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 5.3 | memoryops | docs/specs/tasks/task-5.3-audit.md | Done | Phase5 #3（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Done | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
-| 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Ready | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
+| 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Done | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Done | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 7.1 | mcp-adapter | docs/specs/tasks/task-7.1-mcp-server.md | Draft | Phase7 #1 | `../ContextForge-wt-mcp-adapter` |
 | 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Draft | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
