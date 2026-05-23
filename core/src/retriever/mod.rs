@@ -255,6 +255,17 @@ impl Retriever {
             return Ok(Vec::new());
         }
 
+        // v0.1 schema gap warning: source_type / agent_scope 在 SearchFilters struct 中存在但
+        // 检索路径未消费（task-2.4 Tantivy/SQLite schema 无对应列）→ caller 传非空值会被静默
+        // 忽略。emit warning 让 caller 知情，避免误以为 filter 已生效。
+        // 真实 filter 实施由 SPEC-DRIFT-task-2.4 reverse-fill schema 后落地。
+        if !opts.filters.source_type.is_empty() || !opts.filters.agent_scope.is_empty() {
+            eprintln!(
+                "[retriever] WARN: source_type/agent_scope filter not yet implemented \
+                 (schema gap; SPEC-DRIFT-task-2.4 pending), value ignored"
+            );
+        }
+
         let top_k = if opts.top_k == 0 { 10 } else { opts.top_k };
 
         // AC5: 配置 QueryParser，在 content + file_path 两字段上搜，对 file_path boost

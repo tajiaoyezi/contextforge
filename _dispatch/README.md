@@ -22,6 +22,35 @@
 
 **文件命名**：`<seq>-<worker名>__<task-名>.md`（同 session 多发时用 `01/02/...` 标顺序；单发可省序号）。
 
+### `sessions/` 子目录组织规则（详细）
+
+`_dispatch/sessions/` 仅本地（`.gitignore` 已加），用于留痕当前进行中 session 的全部 worker 派工 prompt。命名规则：
+
+**子目录**：`sessions/<YYYY-MM-DD>-<task-id-or-cluster-name>/`
+- `<YYYY-MM-DD>` = session 启动当天日期（按主 agent 终端日历）
+- `<task-id-or-cluster-name>`：
+  - 单 task session：`task-X.Y-<name>`（如 `task-2.4-indexer`）
+  - 多 task 并行 cluster：`task-A-B-parallel` / `<topic>` 描述（如 `task-5.2-5.3-parallel` / `phase-4-closeout`）
+
+**文件名**：`<NN>-<worker>__<task-name>.md`
+- `<NN>` = 该 worker 在本 session 的派工序号（`01` / `02` / ...），便于排序与同 worker 多轮派工区分
+- `<worker>` = 实际 worker 名（`claude-work1` / `codex` / `grok` / `droid` / `kimi` — 与 §Agent Roster 一致）
+- `<task-name>` = 该 prompt 的 task 主题（同子目录的 task-id 可不重复，可填子主题如 `nit-cleanup` / `gate-fix`）
+- 命名示例：`01-claude-work1__task-2.4-indexer.md` / `01-codex__task-5.3-audit.md` / `01-droid__chore-cleanup.md`
+
+**多 worker 双轨 / 多轨 session**：所有 worker prompt 落同一子目录（按日期 + cluster name 分组），不再每 worker 单建子目录。例：
+```
+sessions/2026-05-23-task-5.2-5.3-parallel/
+├── 01-claude-work1__task-5.2-lifecycle.md
+├── 01-codex__task-5.3-audit.md
+├── 01-droid__chore-cleanup.md
+└── 01-grok__chore-agents-gate-fix.md
+```
+
+**fix 工单** 写在同一子目录、序号递增：`02-codex__task-5.3-fix.md` / `03-codex__task-5.3-fix2.md`。
+
+归档约定见上方现有结构段。
+
 ## worker 回报输出规范（所有 worker 派工 prompt 强制）
 
 worker（claude-work1 / codex / grok / droid / kimi）回报时**必须明确写出**：
