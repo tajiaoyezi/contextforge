@@ -197,9 +197,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | **codex**        | ✅ 常驻必在 | 2 |
 | **grok**         | ⏳ 备选     | 3（**不能代替** claude-work1 / codex）  |
 | **droid**        | ⏳ 备选     | 4（**不能代替** claude-work1 / codex）  |
-| **kimi**         | ⏳ 备选     | 5（**不能代替** claude-work1 / codex）  |
+| **agy**          | ⏳ 备选     | 5（**不能代替** claude-work1 / codex；2026-05-23 接入，能力：通用 SWE / Go + Rust，与主流 worker 同档；初期能力以实际派工表现校准）  |
+| **kimi**         | ⏳ 备选     | 6（**不能代替** claude-work1 / codex）  |
 
-- **Worker 派工优先级**：claude-work1 → codex → grok → droid → kimi
+- **Worker 派工优先级**：claude-work1 → codex → grok → droid → agy → kimi
 - **备选不能顶替常驻 worker 槽位** — 不要因为某备选更熟某领域就跳过 claude-work1 / codex
 
 #### Review subagent（主 agent 内部，2026-05-22 起）
@@ -273,7 +274,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 5.1 | memoryops | docs/specs/tasks/task-5.1-dedup.md | Done | Phase5 #1 | `../ContextForge-wt-memoryops` |
 | 5.2 | memoryops | docs/specs/tasks/task-5.2-lifecycle.md | Done | Phase5 #2（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 5.3 | memoryops | docs/specs/tasks/task-5.3-audit.md | Done | Phase5 #3（dep 5.1）| `../ContextForge-wt-memoryops` |
-| 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Draft | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
+| 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Ready | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
 | 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Draft | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Draft | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 7.1 | mcp-adapter | docs/specs/tasks/task-7.1-mcp-server.md | Draft | Phase7 #1 | `../ContextForge-wt-mcp-adapter` |
@@ -329,7 +330,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 `team` 档使用此精确 prompt 格式（避免 agent 自创 task spec + 衔接 PR-only 流程）：
 
 ```
-[本次在岗 worker] claude-work1 ✅ / codex ✅ / grok <Y/N> / droid <Y/N> / kimi <Y/N>
+[本次在岗 worker] claude-work1 ✅ / codex ✅ / grok <Y/N> / droid <Y/N> / agy <Y/N> / kimi <Y/N>
 [派工目标] task-<X.Y>（spec: docs/specs/tasks/task-<X.Y>-<name>.md）
 [Worktree] <worktree-path>（按 AGENTS.md §1 拓扑）
 [Branch]   feat/task-<X.Y>-<name>

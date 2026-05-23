@@ -34,7 +34,7 @@
 
 **文件名**：`<NN>-<worker>__<task-name>.md`
 - `<NN>` = 该 worker 在本 session 的派工序号（`01` / `02` / ...），便于排序与同 worker 多轮派工区分
-- `<worker>` = 实际 worker 名（`claude-work1` / `codex` / `grok` / `droid` / `kimi` — 与 §Agent Roster 一致）
+- `<worker>` = 实际 worker 名（`claude-work1` / `codex` / `grok` / `droid` / `agy` / `kimi` — 与 §Agent Roster 一致）
 - `<task-name>` = 该 prompt 的 task 主题（同子目录的 task-id 可不重复，可填子主题如 `nit-cleanup` / `gate-fix`）
 - 命名示例：`01-claude-work1__task-2.4-indexer.md` / `01-codex__task-5.3-audit.md` / `01-droid__chore-cleanup.md`
 
@@ -53,7 +53,7 @@ sessions/2026-05-23-task-5.2-5.3-parallel/
 
 ## worker 回报输出规范（所有 worker 派工 prompt 强制）
 
-worker（claude-work1 / codex / grok / droid / kimi）回报时**必须明确写出**：
+worker（claude-work1 / codex / grok / droid / agy / kimi）回报时**必须明确写出**：
 
 1. **作用对象**：PR 编号（如 `PR #6`）+ 完整 PR 链接（如 `https://github.com/tajiaoyezi/contextforge/pull/6`）+ task ID（如 `task-2.2`）
 2. **作用结果**：本次做了什么（commit hash + headline / 触发的状态变化）
@@ -110,7 +110,7 @@ _dispatch/
 ## 操作步骤（典型派工流）
 
 1. 主 agent 按 `docs/s2v-adapter.md` §派工模板 写 worker prompt → 落盘到对应 session 子目录（本规范）
-2. 用户把 prompt 全文粘到对应 worker 终端（claude-work1 / codex / grok / droid / kimi），回车
+2. 用户把 prompt 全文粘到对应 worker 终端（claude-work1 / codex / grok / droid / agy / kimi），回车
 3. worker 跑 `/s2v-implement` 的 **§2A 交互审核**（在它自身终端用选择题问用户：AC 接受？Owner？§3/§4/§5 取值？R7 依赖怎么走？）
    - **R7 依赖问题**：一律选「**独立 chore-dep PR**」（不要 fold-in），它会写 `NEEDS-DEP-task-X.Y.md`
 4. worker 完成后回报 **PR 链接**（或 `NEEDS-DEP-*` / `SPEC-DRIFT-*` / `BLOCKED-*`）
