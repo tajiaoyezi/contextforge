@@ -1,13 +1,16 @@
-//! task-4.1 (Phase 4): retriever — BM25 / metadata / filter 检索（read-only）.
+//! task-4.1 / task-4.2 (Phase 4): retriever — BM25 / metadata / filter 检索 + 12-field explainable result.
 //!
-//! RED checkpoint: 公开类型与方法签名按 §5.3 落地；方法体均为 stub
-//! (Retriever::search 永远返回 Ok(Vec::new())) 让 5 个 RED 测试 compilable + 描述性失败.
-//! GREEN 替换 stub 为 tantivy 0.26 QueryParser + rusqlite JOIN 实现.
+//! task-4.1 GREEN: tantivy 0.26 QueryParser + rusqlite JOIN 实现 (read-only, 7-field SearchResult).
+//! task-4.2 §2A (2026-05-23): SearchResult 扩 12-field explainable contract (AC1) +
+//!   provenance 合成 (AC3 黑盒守护 ≥1 entry) + Retriever::explain debug entry (AC4) +
+//!   core/tests/phase4_smoke.rs (AC5).
 //!
 //! 数据目录与 task-2.4 IndexSession 一致：
 //!   [data_dir]/collections/[collection_id]/{metadata.sqlite, tantivy/}
 //!
-//! Tantivy schema 由 task-2.4 frozen，本模块只读不重定义（meta.json 自携）.
+//! Tantivy schema 由 task-2.4 frozen，本模块只读不重定义（meta.json 自携）。
+//! provenance 优先 JOIN indexer provenance 表；缺失则合成 scanner-default 保证
+//! AC3 invariant `provenance.len() ≥ 1`（v0.1 schema-gap 见 §10）。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,6 +21,14 @@ use tantivy::query::QueryParser;
 use tantivy::schema::{Field, Value};
 use tantivy::{Index, IndexReader, TantivyDocument};
 use thiserror::Error;
+
+use crate::chunker::Provenance;
+
+// ---- task-4.2 §2A v0.1 schema-gap default 常量（task-2.4 indexer 未存 → 合成兜底）----
+const DEFAULT_CONTEXT_ID: &str = "";
+const DEFAULT_SOURCE_TYPE: &str = "";
+const DEFAULT_REDACTION_STATUS: &str = "applied"; // BINDING: indexer 仅消费 redacted_content
+const SYNTHESIZED_IMPORTER: &str = "scanner"; // provenance 合成 importer 标识
 
 /// Read-only 检索会话；与 task-2.4 IndexSession 共享数据目录。
 pub struct Retriever {
@@ -103,19 +114,32 @@ pub struct SearchFilters {
     pub time_before_unix: Option<i64>,
 }
 
-/// 检索结果（PRD §REST/MCP search response 契约对齐）.
+/// 检索结果（PRD §REST/MCP search response 契约对齐 + proto `RetrievalResult` 单源 schema unity）.
+///
+/// task-4.2 §2A (2026-05-23) 升级：从 task-4.1 的 7-field 扩到 12-field explainable contract per AC1。
+/// v0.1 schema gap（继承 task-4.1 §10）：`context_id` / `source_type` / `agent_scope` /
+/// `redaction_status` 不在 task-2.4 indexer SQLite/Tantivy schema → 返回 v0.1 default 常量；
+/// `provenance` 优先 JOIN indexer provenance 表，缺失则合成 scanner-default 保证 ≥1 entry
+/// (AC3 黑盒守护)。SPEC-DRIFT-task-2.4 chore-spec PR 未来 reverse-fill 后真实生效。
 #[derive(Debug, Clone)]
 pub struct SearchResult {
+    // ---- 12 explainable fields (AC1) ----
     pub chunk_id: String,
+    pub context_id: String,           // v0.1 default ""（schema gap）
+    pub source_type: String,          // v0.1 default ""（schema gap）
     pub file_path: String,
     pub line_start: u64,
     pub line_end: u64,
-    pub language: String,
-    pub content: String,
     pub score: f32,
-    pub retrieval_method: String,
-    pub reason: Option<String>,
-    pub matched_terms: Vec<String>,
+    pub retrieval_method: String,     // v0.1 = "bm25"
+    pub reason: String,               // explain=false → ""；explain=true → enriched
+    pub agent_scope: Vec<String>,     // v0.1 default vec![]（schema gap）
+    pub redaction_status: String,     // v0.1 default "applied"（BINDING redacted_content）
+    pub provenance: Vec<Provenance>,  // AC3 硬底：每条 ≥1 entry（合成兜底）
+    // ---- 非 AC1 内部扩展（下游消费方便）----
+    pub language: String,             // 沿用 task-4.1
+    pub content: String,              // 沿用 task-4.1
+    pub matched_terms: Vec<String>,   // task-4.1 placeholder；task-4.2 explain=true 时 enrich
 }
 
 /// Retained for task-1.3 core_skeleton.rs anchor (AC4 wiring). Returns true.
@@ -301,23 +325,40 @@ impl Retriever {
 
             results.push(SearchResult {
                 chunk_id,
+                context_id: DEFAULT_CONTEXT_ID.to_string(),
+                source_type: DEFAULT_SOURCE_TYPE.to_string(),
                 file_path,
                 line_start: line_start.max(0) as u64,
                 line_end: line_end.max(0) as u64,
-                language,
-                content,
                 score,
                 retrieval_method: "bm25".to_string(),
                 reason: if opts.explain {
-                    Some(format!("BM25 match for query '{}'", q_trim))
+                    format!("BM25 match for query '{}'", q_trim)
                 } else {
-                    None
+                    String::new()
                 },
-                matched_terms: Vec::new(), // task-4.2 enriches
+                agent_scope: Vec::new(),
+                redaction_status: DEFAULT_REDACTION_STATUS.to_string(),
+                // RED: empty Vec — TEST-4.2.3 黑盒守护 (provenance.len() ≥ 1) will FAIL;
+                // GREEN 合成 scanner-default 或 JOIN provenance 表
+                provenance: Vec::new(),
+                language,
+                content,
+                matched_terms: Vec::new(), // RED: empty;  GREEN task-4.2 enrich on explain=true
             });
         }
 
         Ok(results)
+    }
+
+    /// AC4 v0.1 调试入口 — Rust public API；CLI / REST / MCP / gRPC 在 Phase 6/7 wrap.
+    ///
+    /// RED stub (task-4.2 §2.5 RED): 返回明确 Err，让 TEST-4.2.4 失败但描述清晰。
+    /// GREEN: 等价 search(opts.clone() with explain=true) — reason / matched_terms enrich。
+    pub fn explain(&self, _opts: &SearchOptions) -> Result<Vec<SearchResult>, RetrieverError> {
+        Err(RetrieverError::InvalidConfig(
+            "task-4.2 RED stub: Retriever::explain() not yet implemented (GREEN delegates to search() with explain=true)".to_string(),
+        ))
     }
 
     pub fn config(&self) -> &RetrieverConfig {
@@ -645,5 +686,267 @@ mod tests {
             Retriever::open_with_config(&data, &coll, custom_cfg).expect("open with config");
         assert_eq!(retr2.config().field_boosts.get("content").copied(), Some(3.0));
         assert!(!retr2.config().enable_exact_phrase);
+    }
+
+    // ============================================================================
+    // task-4.2 §2A (2026-05-23) — explainable retrieval trace + 12-field result schema
+    // ============================================================================
+    // SCEN-4.2.1 ~ SCEN-4.2.5 — RED commit: 4 tests in this mod + TEST-4.2.5 in
+    // core/tests/phase4_smoke.rs（主 agent §4 Gate 3 cargo test --test phase4_smoke 入口）。
+
+    // ---- TEST-4.2.1 / SCEN-4.2.1 (AC1) — 12-field explainable contract PRESENT ----
+    //
+    // Schema parity (PRD §Technical Approach REST/MCP search response + proto
+    // RetrievalResult)：每条 SearchResult 必有全部 12 字段 PRESENT（struct 强制 = compile gate）.
+    // v0.1 schema gap 字段（context_id / source_type / agent_scope / redaction_status）
+    // 返 §2A default 常量（"" / "" / vec![] / "applied"）.
+    #[test]
+    fn test_4_2_1_search_result_has_all_12_explainable_fields() {
+        let (_src, data, coll) = build_fixture(
+            "ac1-explain",
+            &[("readme.md", "# Readme\n\nunique token explainmarker42 in body.\n")],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        let results = retr
+            .search(&SearchOptions {
+                query: "explainmarker42".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("search");
+        assert!(!results.is_empty(), "AC1 sanity: should hit on unique token");
+        let r = &results[0];
+
+        // 12 explainable fields PRESENT (compile-enforced — struct membership;
+        // 运行时 sanity 校验各字段已被 search() 显式赋值 + v0.1 default 决策一致).
+        assert!(!r.chunk_id.is_empty(), "AC1: chunk_id non-empty");
+        assert_eq!(
+            r.context_id, "",
+            "AC1 §2A v0.1 schema gap: context_id 默认 \"\""
+        );
+        assert_eq!(
+            r.source_type, "",
+            "AC1 §2A v0.1 schema gap: source_type 默认 \"\""
+        );
+        assert!(!r.file_path.is_empty(), "AC1: file_path non-empty");
+        assert!(
+            r.line_end >= r.line_start,
+            "AC1: line range valid (line_end={} >= line_start={})",
+            r.line_end,
+            r.line_start
+        );
+        assert!(r.score > 0.0, "AC1: score > 0, got {}", r.score);
+        assert_eq!(r.retrieval_method, "bm25", "AC1: method=bm25");
+        // reason: explain=false → "" (proto3 string 空默认; explain=true 时 enrich)
+        assert_eq!(
+            r.reason, "",
+            "AC1 explain=false: reason 默认空（explain=true → enrich, TEST-4.2.4 校验）"
+        );
+        assert!(
+            r.agent_scope.is_empty(),
+            "AC1 §2A v0.1 schema gap: agent_scope 默认 empty"
+        );
+        assert_eq!(
+            r.redaction_status, "applied",
+            "AC1 §2A v0.1 default: \"applied\"（indexer BINDING 仅消费 redacted_content）"
+        );
+        // provenance: AC3 黑盒守护 — 每条 ≥1（合成 scanner-default 若无 importer 行）
+        // 注：TEST-4.2.3 专门压这一点；本测试仅作 schema coverage sanity
+        assert!(
+            !r.provenance.is_empty(),
+            "AC1 + AC3 黑盒守护：provenance.len() ≥ 1（合成 scanner-default 若无真实 importer 行）, got {}",
+            r.provenance.len()
+        );
+    }
+
+    // ---- TEST-4.2.2 / SCEN-4.2.2 (AC2) — file_path + line_start/end 精确定位回原文 ----
+    //
+    // 多 chunk 文件 → 命中 → 校验 file_path + line_start/end 落在 fixture 真实行号范围内
+    // 且按 (file, line_start, line_end) 切片可恢复原始内容.
+    #[test]
+    fn test_4_2_2_result_locates_back_to_file_and_line() {
+        let body = "# Section A\nlocateme42 first hit content here\n\
+                    line three\nline four\nline five\n\
+                    # Section B\nanother body\nlast line\n";
+        let total_lines = body.lines().count() as u64;
+        let (_src, data, coll) = build_fixture("ac2-locate", &[("multi.md", body)]);
+        let retr = Retriever::open(&data, &coll).expect("open");
+        let results = retr
+            .search(&SearchOptions {
+                query: "locateme42".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("search");
+        assert!(!results.is_empty(), "AC2 sanity: should hit on locateme42");
+        let r = &results[0];
+
+        // file_path 精确（不模糊不偏移）
+        assert!(
+            r.file_path.ends_with("multi.md"),
+            "AC2: file_path 应精确指向 fixture 'multi.md', got {}",
+            r.file_path
+        );
+        // line_start / line_end 落在 fixture 真实行号范围内
+        assert!(
+            r.line_start >= 1 && r.line_end <= total_lines,
+            "AC2: line range [{}, {}] 应落在 fixture 1..={} 范围内",
+            r.line_start,
+            r.line_end,
+            total_lines
+        );
+        assert!(
+            r.line_end >= r.line_start,
+            "AC2: line_end ({}) 必 >= line_start ({})",
+            r.line_end,
+            r.line_start
+        );
+        // chunk content 应含 trigger token（恢复原文 sanity）
+        assert!(
+            r.content.contains("locateme42"),
+            "AC2: chunk content 应含 trigger token 'locateme42', got: {:?}",
+            r.content
+        );
+    }
+
+    // ---- TEST-4.2.3 / SCEN-4.2.3 (AC3) — schema coverage 100% + 反指标 provenance ≥1 ----
+    //
+    // 反指标硬约束：PRD §Success Metrics 反指标「禁返回无 provenance 的黑盒高分」.
+    // v0.1 量化（§2A 决策）：每条 result.provenance.len() ≥ 1（合成 scanner-default）.
+    // 多文件 fixture → 多条结果 → 每条都过黑盒守护.
+    #[test]
+    fn test_4_2_3_no_black_box_results_provenance_floor() {
+        let (_src, data, coll) = build_fixture(
+            "ac3-noblackbox",
+            &[
+                ("a.md", "# A\nblackboxguard9z in a doc.\n"),
+                ("b.md", "# B\nblackboxguard9z in b doc.\n"),
+                ("c.md", "# C\nblackboxguard9z in c doc.\n"),
+            ],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        let results = retr
+            .search(&SearchOptions {
+                query: "blackboxguard9z".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("search");
+
+        assert!(
+            results.len() >= 3,
+            "AC3 sanity: 3 文件都含 marker, 应有 3 hits, got {}",
+            results.len()
+        );
+
+        // 反指标硬约束：每条 result.provenance.len() ≥ 1 （黑盒守护）
+        let mut black_box_count = 0;
+        for (i, r) in results.iter().enumerate() {
+            if r.provenance.is_empty() {
+                black_box_count += 1;
+                eprintln!(
+                    "AC3 violation: result {}（chunk_id={}, file_path={}, score={}）provenance 为空 — \"黑盒高分\"",
+                    i, r.chunk_id, r.file_path, r.score
+                );
+            }
+        }
+        assert_eq!(
+            black_box_count, 0,
+            "AC3 反指标：禁返回无 provenance 的黑盒高分结果（共 {} 条违规 / {} 条总）",
+            black_box_count,
+            results.len()
+        );
+
+        // Schema coverage 100%（struct 强制；运行时再断言 12 字段都 valid）：
+        // 此循环 sanity 校验合成 provenance 的 4 字段都非空（结构性完整）
+        for r in &results {
+            for (j, prov) in r.provenance.iter().enumerate() {
+                assert!(
+                    !prov.importer.is_empty(),
+                    "AC3 provenance #{} importer 非空（合成 'scanner' 或真实 importer 名）",
+                    j
+                );
+                assert!(
+                    !prov.original_path.is_empty(),
+                    "AC3 provenance #{} original_path 非空（合成 file_path 或真实 importer.original_path）",
+                    j
+                );
+                assert!(
+                    !prov.imported_at.is_empty(),
+                    "AC3 provenance #{} imported_at 非空（合成 indexed_at 或真实 importer.imported_at）",
+                    j
+                );
+            }
+        }
+    }
+
+    // ---- TEST-4.2.4 / SCEN-4.2.4 (AC4) — Retriever::explain Rust public API 调试入口 ----
+    //
+    // §2A AC4 决策：v0.1 调试入口 = Rust public API。gRPC server / Go CLI 留 Phase 6.
+    // explain(opts) 等价 search(opts with explain=true) — reason / matched_terms 填实.
+    #[test]
+    fn test_4_2_4_explain_entry_enriches_reason_and_matched_terms() {
+        let (_src, data, coll) = build_fixture(
+            "ac4-explain-entry",
+            &[("readme.md", "# Readme\nexplainentrymarker77 here in body\n")],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+
+        // explain=false → reason 空（task-4.1 已做的对照基线）
+        let plain = retr
+            .search(&SearchOptions {
+                query: "explainentrymarker77".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("search plain");
+        assert!(!plain.is_empty(), "AC4 sanity: should hit");
+        assert_eq!(plain[0].reason, "", "AC4 baseline: explain=false → reason \"\"");
+        assert!(
+            plain[0].matched_terms.is_empty(),
+            "AC4 baseline: explain=false → matched_terms empty"
+        );
+
+        // explain() 公开 API → reason / matched_terms 填实
+        let explained = retr
+            .explain(&SearchOptions {
+                query: "explainentrymarker77".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false, // explain() 自己 force = true
+            })
+            .expect("AC4: Retriever::explain 应返 Ok（v0.1 公开调试入口）");
+        assert!(!explained.is_empty(), "AC4: explain 应有结果");
+        let r = &explained[0];
+        // reason 非空 + 含 BM25 / matched 词（enrichment 内容）
+        assert!(
+            !r.reason.is_empty(),
+            "AC4: explain() 后 reason 必非空（含 'bm25' / 'matched' / 等可解释词）, got: {:?}",
+            r.reason
+        );
+        let reason_lower = r.reason.to_lowercase();
+        assert!(
+            reason_lower.contains("bm25") || reason_lower.contains("matched"),
+            "AC4: reason 应含可解释标识（'bm25' or 'matched'）, got: {:?}",
+            r.reason
+        );
+        // matched_terms 非空（含 query trigger token）
+        assert!(
+            !r.matched_terms.is_empty(),
+            "AC4: explain() 后 matched_terms 必非空（含 query 中可命中的 token）"
+        );
+        let any_match = r
+            .matched_terms
+            .iter()
+            .any(|t| t.to_lowercase().contains("explainentrymarker77"));
+        assert!(
+            any_match,
+            "AC4: matched_terms 应含 query trigger token 'explainentrymarker77', got: {:?}",
+            r.matched_terms
+        );
     }
 }

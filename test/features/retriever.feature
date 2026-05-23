@@ -40,27 +40,27 @@ Feature: retriever
 
   # ---
   # Maps to: docs/specs/tasks/task-4.2-explain.md
-  Scenario: SCEN-4.2.1 — 对应 AC1（可解释字段完整）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+  Scenario: SCEN-4.2.1 — 对应 AC1（可解释字段完整，12 字段 PRESENT 契约）
+    Given task-2.4 indexer 已写入 ≥1 chunk（scanner 路径）
+    When  Retriever::search(query="explainmarker42", explain=false)
+    Then  返回 SearchResult 含 PRD §search response 全部 12 字段：chunk_id / context_id / source_type / file_path / line_start / line_end / score / retrieval_method / reason / agent_scope / redaction_status / provenance；v0.1 schema gap 字段（context_id="" / source_type="" / agent_scope=[] / redaction_status="applied"）按 §2A 决策返默认值
 
-  Scenario: SCEN-4.2.2 — 对应 AC2（定位回原文行号）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+  Scenario: SCEN-4.2.2 — 对应 AC2（定位回原文行号 file_path + line_start/end 精确）
+    Given fixture 文件含多行可分块 markdown（headings 切多 chunk，line_start/end 跨多行）
+    When  Retriever::search 命中其中一条
+    Then  result.file_path 精确为 fixture 路径；line_start / line_end 落在 fixture 实际行数范围内（line_start ≤ line_end ≤ 总行数）；按 file_path + line_start/end 可定位回原始内容（不模糊不偏移）
 
-  Scenario: SCEN-4.2.3 — 对应 AC3（覆盖率≥90%/禁黑盒）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+  Scenario: SCEN-4.2.3 — 对应 AC3（schema coverage 100% + 反指标 provenance≥1 黑盒守护）
+    Given 多文件 fixture（scanner 路径，无 importer provenance 行）
+    When  Retriever::search 返回 N 条结果
+    Then  每条 result.provenance.len() ≥ 1（合成 scanner-default：importer="scanner" / original_path=file_path / imported_at=indexed_at）；schema coverage 100%（12 字段 PRESENT，struct 强制）；反指标：不允许任一结果出现 provenance 为空的"黑盒高分"
 
-  Scenario: SCEN-4.2.4 — 对应 AC4（gRPC/CLI 调试入口）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+  Scenario: SCEN-4.2.4 — 对应 AC4（Rust public API 调试入口 Retriever::explain）
+    Given 索引非空 fixture
+    When  Retriever::explain(opts) 调用（v0.1 调试入口 — 等价 search(opts with explain=true)）
+    Then  返回 Ok(Vec<SearchResult>)，且每条 result.reason 非空（含 "bm25 hit" 或 "matched terms" 词）+ matched_terms 非空（task-4.2 enrichment）；CLI / REST / MCP / gRPC 在 Phase 6/7 wrap 本方法即可
 
-  Scenario: SCEN-4.2.5 — 对应 AC5（Phase4 端到端 smoke）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+  Scenario: SCEN-4.2.5 — 对应 AC5（Phase 4 端到端 smoke 落点 core/tests/phase4_smoke.rs）
+    Given core/tests/phase4_smoke.rs 含 #[test] fn phase_4_end_to_end_smoke
+    When  cargo test --test phase4_smoke 运行（主 agent §4 Gate 3 phase-4 §6 端到端 smoke 触发点）
+    Then  跑完整链路 scanner→parser→chunker→indexer→retriever→explain，断言：12 字段全 PRESENT / 每条 provenance ≥1 / file_path+lines 精确 / 空 query 安全（不 panic）/ explain() reason 非空
