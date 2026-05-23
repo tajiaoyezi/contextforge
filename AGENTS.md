@@ -378,6 +378,9 @@ PENDING="$(awk -F'|' -v p="${PHASE_NO}." -v self="$THIS_TASK" '
   }
   END { print c+0 }
 ' "$ADAPTER" 2>/dev/null)"
+# Gate 3 awk 复审（chore-agents-fix 2026-05）：pattern ^\| *[0-9]+\.[0-9]+ *\| 仅匹配 adapter
+# §Task 总索引（## Task 总索引 后 37 行，之前 0 行；无其他表污染 §7/phase §4 等）。当前实现干净，
+# 无需 section-scoped 状态机加固（若未来 adapter 增其他 N.N 表，再评估）。实证见 PR body。
 if [ -z "$PENDING" ]; then
   echo "BLOCKED: 无法读 adapter §Task 总索引判定本 task 是否 phase 内最后（$ADAPTER）"
   echo "  按下方判定矩阵人工确认后，显式设 IS_LAST_TASK_IN_PHASE=0|1 + IS_CROSS_PHASE_INTEGRATION=0|1 重跑本 gate"
@@ -456,12 +459,15 @@ fi
 
 # 第 2 道：占位拒绝 — §10 内不允许任何 <XXX> 形式的模板 token（防止"字段在但值仍是占位"过 gate）
 #   先过 _s2v_strip_retained（§0 已 source preflight.sh，单一源剥除函数）剥掉
-#   §8.3 / §10 模板保留的 <!-- --> 注释 / ^> blockquote：§10 schema 指引 blockquote
+#   §8.3 / §10 模板保留的 <!-- --> 注释 / ^> blockquote / **markdown code spans（`...` + ```...```）**
+#   代码 span 剥除是 chore-agents-fix（Gate 4 false-positive 根治）：§10 里 `Option<String>` /
+#   `Vec<u8>` / `HashMap<...>` 等合法 Rust/Go 类型字面现在安全，不会再被宽 <...> 检测误杀。
 #   合法含字面 <TBD-after-impl>，不剥则**正确完工**的 task 也被本门误 BLOCK
-#   （DEFECT-P3-C，与 DEFECT-1 同根；禁止改回裸 grep，剥除逻辑须单一源 —— 防两处
-#   盲点漂移，见 preflight.sh _S2V_STRIP_PREAMBLE）。
+#   （DEFECT-P3-C，与 DEFECT-1 同根；chore-agents 扩展 code span 后彻底解决；禁止改回裸 grep，
+#   剥除逻辑须单一源 —— 见 preflight.sh _S2V_STRIP_PREAMBLE）。
 #   regex 解释：匹配 <字母_数字_-> 形式的纯标识符 token，能抓 <source-file-1> / <hash1> / <RISK_OR_NONE> / <DOWNSTREAM_OR_NONE> 等真实未替换占位
 #   不会误伤 markdown autolink（如 <https://...>，因为 :// 不在字符集内，整个串匹配不上）
+#   也不会误伤 code span 内的 <Type>（chore fix 后行为）。
 PLACEHOLDERS=$(echo "$NOTES" | _s2v_strip_retained | grep -oE "<[A-Za-z_][A-Za-z0-9_-]*>" | sort -u || true)
 if [ -n "$PLACEHOLDERS" ]; then
   echo "BLOCKED: §10 仍含未替换的模板占位（应填真实值再 commit）："
@@ -475,9 +481,9 @@ if [ -n "$PLACEHOLDERS" ]; then
   echo "   <DOWNSTREAM_OR_NONE> → 受影响下游 task ID 列表，或字面量「无」"
   echo "   <TBD-after-impl>     → 任何 init 时的占位都必须在完工时替换"
   echo ""
-  echo "   §10 中**禁止**使用 <...> 形式的尖括号占位 — 即使在反引号内（grep 是纯文本，"
-  echo "   不解析 markdown code span，仍会匹配 BLOCK）。如需描述泛型变量名，"
-  echo "   改为 'type parameter T' / 'the param value' / 'foo（泛型）' 等无尖括号写法。"
+  echo "   §10 中 code 语义请用反引号包裹（如 \`Option<String>\` / \`Result<T,E>\`），chore-agents-fix 后"
+  echo "   这些在 \` \` 内的 <Type> 会被 _s2v_strip_retained 安全剥除，不会触发 BLOCK。"
+  echo "   只有 prose 里的 <未替换 token> 才会被本门捕获。"
   exit 1
 fi
 
