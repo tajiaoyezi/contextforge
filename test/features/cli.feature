@@ -41,26 +41,33 @@ Feature: cli
   # ---
   # Maps to: docs/specs/tasks/task-6.1-cli-search.md
   Scenario: SCEN-6.1.1 — 对应 AC1（search 返回 Top-K）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 数据目录中存在已索引的含 trigger token 的 fixture collection
+    And contextforge-core 数据平面可被 daemon 自启
+    When 用户在终端执行 `contextforge search "<trigger>" --collections=<coll>`
+    Then CLI 经 daemon 调用 gRPC ContextService.Search 返非空 Top-K RetrievalResult 列表
+    And 每条结果含 chunk_id / file_path / line_start / line_end / score / retrieval_method 等字段
 
   Scenario: SCEN-6.1.2 — 对应 AC2（flags 契约一致）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 用户已知 SearchRequest proto 契约（query / collections / agent_scope / top_k / filters / explain）
+    When 执行 `contextforge search "<q>" --collections=c1 --agent-scope=a1 --top-k=5 --source-type=markdown --language=go --explain`
+    Then CLI 解析后构造的 SearchRequest 字段与 flag 取值 1:1 映射（含 SearchFilters.source_type / language）
+    And `--top-k=0` 或缺省时回退默认 top_k=10
 
   Scenario: SCEN-6.1.3 — 对应 AC3（可解释字段 + --json）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given retriever 返回含全部 12 字段的 RetrievalResult
+    When 用户加 --json 标志
+    Then stdout 输出 JSON 序列化 SearchResponse（含 12 字段 + provenance 数组）
+    And 缺省（不加 --json）输出人类可读 text 块（每结果一块，含 chunk_id / score / redaction_status / reason）
 
   Scenario: SCEN-6.1.4 — 对应 AC4（不展示完整 secret）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given retriever 返回的 RetrievalResult.redaction_status="applied"（上游 scanner+indexer 已 redact）
+    When CLI 渲染 text/JSON 输出
+    Then redaction_status 字段值原样透传到 stdout（无论 text 或 JSON 模式）
+    And CLI 不在 content 字段上二次执行 secret scan
 
   Scenario: SCEN-6.1.5 — 对应 AC5（与 export 共享结果模型）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given 索引 fixture 含 trigger token 且 Rust tonic Search server 已启
+    When grpc 客户端发起 ContextService.Search RPC
+    Then 返回的 *contextforgev1.RetrievalResult 含全部 12 explainable 字段
+    And provenance.len() ≥ 1（黑盒守护，沿 task-4.2 AC3 反指标）
+    And 该 proto-generated 类型未来由 task-6.3 exporter 直接消费（ADR-003 单一源）

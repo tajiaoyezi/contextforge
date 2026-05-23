@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. AC1 Rust tonic Search wire 本 task 端到端、B. CLI per-invocation spawn、C. AC4 secret 透传 redaction_status、D. AC5 直接用 proto-generated RetrievalResult、E. Provenance 时间字段 v0.1 placeholder — 详见 §10 §2A Decisions）。**PR #37 review 补判定**：原草稿 `RetrieverError::DataDirMissing` 是写错（实际 5 变种 `Io/Sqlite/Tantivy/InvalidConfig/CollectionNotFound`）；chunker::Provenance 时间字段是 `String` 不是 `chrono::DateTime`（→ §2A 决策 E）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi

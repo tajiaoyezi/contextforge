@@ -118,3 +118,151 @@ pub async fn serve(addr: ListenAddr) -> Result<(), Box<dyn std::error::Error>> {
         )))),
     }
 }
+
+// ============================================================================
+// task-6.1 RED tests — CoreService::search wire 单元 (TEST-6.1.1 Rust 端).
+// 用 in-memory tempdir Retriever 验真实拿到 12 字段（不走 tonic transport；
+// 端到端 transport 走 core/tests/phase6_smoke.rs = TEST-6.1.5 / AC5）.
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chunker::ChunkPolicy;
+    use crate::indexer::IndexSession;
+    use crate::pb::context_service_server::ContextService as CSTrait;
+    use crate::pb::SearchRequest;
+    use crate::scanner::{default_denylist, ScanOptions};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tonic::Request;
+
+    fn temp_root(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "contextforge-server-{name}-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn build_fixture(name: &str, files: &[(&str, &str)]) -> (PathBuf, String) {
+        let src = temp_root(&format!("{name}-src"));
+        let data = temp_root(&format!("{name}-data"));
+        let coll = format!("test-{}", name);
+        for (rel, body) in files {
+            let p = src.join(rel);
+            if let Some(parent) = p.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(&p, body).unwrap();
+        }
+        let scan_opts = ScanOptions {
+            denylist: default_denylist(),
+            allowlist: Vec::new(),
+            allow_denylist_override: false,
+            dry_run: false,
+            max_file_bytes: 10 * 1024 * 1024,
+        };
+        let mut sess = IndexSession::open(&data, &coll).expect("open indexer");
+        sess.index_path(&src, &scan_opts, &ChunkPolicy::default(), vec![])
+            .expect("index_path");
+        sess.commit().expect("commit");
+        (data, coll)
+    }
+
+    // ---- TEST-6.1.1 / SCEN-6.1.1 / AC1 — search wire 端到端拿 12 字段 ----
+    #[tokio::test]
+    async fn test_6_1_1_search_wire_returns_12_field_results() {
+        let (data, coll) = build_fixture(
+            "ac1-wire",
+            &[(
+                "readme.md",
+                "# Readme\n\nunique token wire6n1zmark in body.\n",
+            )],
+        );
+        let svc = CoreService::new(data);
+        let req = SearchRequest {
+            query: "wire6n1zmark".into(),
+            collections: vec![coll],
+            agent_scope: vec![],
+            top_k: 10,
+            filters: None,
+            explain: true,
+        };
+        let resp = svc.search(Request::new(req)).await.expect("search ok");
+        let inner = resp.into_inner();
+        assert!(
+            !inner.results.is_empty(),
+            "AC1 wire: 应有命中（unique token in fixture）"
+        );
+        let r = &inner.results[0];
+
+        // 12 explainable fields PRESENT + 内容 sanity
+        assert!(!r.chunk_id.is_empty(), "AC1: chunk_id non-empty");
+        assert_eq!(r.context_id, "", "AC1 §2A v0.1 schema gap default");
+        assert_eq!(r.source_type, "", "AC1 §2A v0.1 schema gap default");
+        assert!(!r.file_path.is_empty(), "AC1: file_path non-empty");
+        assert!(r.line_end >= r.line_start, "AC1: line range valid");
+        assert!(r.score > 0.0, "AC1: score > 0, got {}", r.score);
+        assert_eq!(r.retrieval_method, "bm25", "AC1: method=bm25");
+        assert!(!r.reason.is_empty(), "AC1 explain=true: reason 非空");
+        assert!(r.agent_scope.is_empty(), "AC1 §2A v0.1 default empty");
+        assert_eq!(
+            r.redaction_status, "applied",
+            "AC1 §2A v0.1 default 'applied'"
+        );
+        assert!(
+            !r.provenance.is_empty(),
+            "AC3 黑盒守护：provenance.len() ≥ 1"
+        );
+    }
+
+    // ---- TEST-6.1.1b — collections 为空 → InvalidArgument ----
+    #[tokio::test]
+    async fn test_6_1_1_empty_collections_returns_invalid_argument() {
+        let svc = CoreService::default();
+        let req = SearchRequest {
+            query: "x".into(),
+            collections: vec![],
+            agent_scope: vec![],
+            top_k: 1,
+            filters: None,
+            explain: false,
+        };
+        let err = svc.search(Request::new(req)).await.unwrap_err();
+        assert_eq!(
+            err.code(),
+            tonic::Code::InvalidArgument,
+            "AC1 wire: 空 collections 应 InvalidArgument, got {:?}",
+            err.code()
+        );
+    }
+
+    // ---- TEST-6.1.1c — 未知 collection → FailedPrecondition ----
+    #[tokio::test]
+    async fn test_6_1_1_unknown_collection_returns_failed_precondition() {
+        let data = temp_root("ac1-unknown");
+        let svc = CoreService::new(data);
+        let req = SearchRequest {
+            query: "x".into(),
+            collections: vec!["nonexistent-collection".into()],
+            agent_scope: vec![],
+            top_k: 1,
+            filters: None,
+            explain: false,
+        };
+        let err = svc.search(Request::new(req)).await.unwrap_err();
+        assert_eq!(
+            err.code(),
+            tonic::Code::FailedPrecondition,
+            "AC1 wire: 未知 collection 应 FailedPrecondition, got {:?}",
+            err.code()
+        );
+    }
+}
