@@ -66,6 +66,12 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		// "not implemented" default-arm response for `search`.
 		return runSearch(rest, stdout, stderr)
 
+	case "serve":
+		// task-6.2: real subcommand entry; supersedes the task-1.4
+		// "not implemented" default-arm response for `serve`.
+		// Backend wired by cmd/contextforge/main.go.
+		return runServe(rest, stdout, stderr)
+
 	case "export":
 		// task-6.3: real subcommand entry; supersedes the task-1.4
 		// "not implemented" default-arm response for `export`.

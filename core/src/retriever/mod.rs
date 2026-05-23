@@ -147,6 +147,31 @@ pub fn placeholder_ready() -> bool {
     true
 }
 
+/// task-6.2 §2A 决策 E: chunk_id format detector — REST `/v1/chunks/{id}` fast-path
+/// pivot. 当 query 看起来像 `chunk_id` 时，`server.rs CoreService::search` 优先调
+/// `retriever.get_chunk` 走精确路径；未命中 fallback 到 BM25 全文 `search()`.
+///
+/// chunker §100 format: `chk_<8-hex>_<ordinal>` (例 `chk_a1b2c3d4_0`). 此 detector
+/// 是 chunk_id format 的"必要+充分"形状检查；任何其他形态（含 spec §5.3 示例的纯 hex
+/// `^[0-9a-f]{16,}$`）都不触发 fast-path（避免误判 BM25 query 为 chunk_id 字面）.
+pub fn is_chunk_id_format(s: &str) -> bool {
+    let rest = match s.strip_prefix("chk_") {
+        Some(r) => r,
+        None => return false,
+    };
+    // 拆 "_<ordinal>" — 自后向前找最后一个 '_'
+    let underscore_idx = match rest.rfind('_') {
+        Some(i) => i,
+        None => return false,
+    };
+    let hex_part = &rest[..underscore_idx];
+    let ord_part = &rest[underscore_idx + 1..];
+    hex_part.len() == 8
+        && hex_part.chars().all(|c| c.is_ascii_hexdigit())
+        && !ord_part.is_empty()
+        && ord_part.chars().all(|c| c.is_ascii_digit())
+}
+
 /// task-4.2 AC4 helper: 提取 query 中的可解释 term — 仅保留在 chunk content 中出现的词
 /// （case-insensitive substring 匹配；过滤 Tantivy QueryParser 元字符 / 引号 / 仅空白）.
 ///
@@ -417,6 +442,67 @@ impl Retriever {
             explain: true,
         };
         self.search(&forced)
+    }
+
+    /// task-6.2 §2A 决策 E: exact `chunk_id` lookup — REST `GET /v1/chunks/{id}` fast-path.
+    ///
+    /// SQLite single-row `WHERE chunk_id = ?1 LIMIT 1` + provenance JOIN (same wiring
+    /// as `search()` so the 12-field `SearchResult` schema parity is preserved).
+    /// 未命中 → `Ok(None)` (调用方区分 not-found vs error); SQLite / IO 错 → `Err`.
+    /// `retrieval_method` 复用 `"bm25"` 标签（fast-path 不引新检索方法名 — schema gap
+    /// 与 task-4.2 § task-4.2 §10 一致）；`score=1.0` 标记 exact match.
+    pub fn get_chunk(&self, chunk_id: &str) -> Result<Option<SearchResult>, RetrieverError> {
+        let row = self.sqlite.query_row(
+            "SELECT chunk_id, file_path, content, language, line_start, line_end, indexed_at
+             FROM chunks WHERE chunk_id = ?1 LIMIT 1",
+            params![chunk_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            },
+        );
+        let (chunk_id_db, file_path, content, language, line_start, line_end, indexed_at) =
+            match row {
+                Ok(t) => t,
+                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+                Err(e) => return Err(RetrieverError::from(e)),
+            };
+
+        // provenance — same synthesis floor as search() so AC3 黑盒守护 仍生效
+        let mut provenance = self.read_provenance(&chunk_id_db)?;
+        if provenance.is_empty() {
+            provenance.push(Provenance {
+                importer: SYNTHESIZED_IMPORTER.to_string(),
+                original_path: file_path.clone(),
+                imported_at: indexed_at.clone(),
+                source_modified_at: String::new(),
+            });
+        }
+
+        Ok(Some(SearchResult {
+            chunk_id: chunk_id_db,
+            context_id: DEFAULT_CONTEXT_ID.to_string(),
+            source_type: DEFAULT_SOURCE_TYPE.to_string(),
+            file_path,
+            line_start: line_start.max(0) as u64,
+            line_end: line_end.max(0) as u64,
+            score: 1.0,
+            retrieval_method: "bm25".to_string(),
+            reason: String::new(),
+            agent_scope: Vec::new(),
+            redaction_status: DEFAULT_REDACTION_STATUS.to_string(),
+            provenance,
+            language,
+            content,
+            matched_terms: Vec::new(),
+        }))
     }
 
     /// AC3 helper: 从 indexer provenance 表读 chunk_id 的全部 importer 行（任意条 0..n）.
@@ -1028,6 +1114,70 @@ mod tests {
             any_match,
             "AC4: matched_terms 应含 query trigger token 'explainentrymarker77', got: {:?}",
             r.matched_terms
+        );
+    }
+
+    // ============================================================================
+    // task-6.2 §2A 决策 E — retriever.get_chunk 公开 API (REST GET /v1/chunks/{id} fast-path).
+    // ============================================================================
+
+    // ---- TEST-6.2.E1 — get_chunk hit returns full 12-field SearchResult ----
+    #[test]
+    fn test_6_2_e1_get_chunk_returns_12_field_result_on_hit() {
+        let (_src, data, coll) = build_fixture(
+            "ac2e-hit",
+            &[("readme.md", "# Readme\nunique token getchunkmarker62z\n")],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        // 先用 search 拿到一个真实 chunk_id（fixture 索引后 chunk_id 由 indexer 决定）
+        let results = retr
+            .search(&SearchOptions {
+                query: "getchunkmarker62z".into(),
+                top_k: 1,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("seed search");
+        assert!(!results.is_empty(), "seed: should hit fixture");
+        let target_chunk_id = results[0].chunk_id.clone();
+
+        // get_chunk(target_chunk_id) → Ok(Some(SearchResult)) with 12 字段 PRESENT
+        let got = retr
+            .get_chunk(&target_chunk_id)
+            .expect("get_chunk(hit) must Ok");
+        assert!(got.is_some(), "AC2-E hit: get_chunk 应返 Some(SearchResult)");
+        let r = got.unwrap();
+        assert_eq!(r.chunk_id, target_chunk_id, "AC2-E: chunk_id 一致");
+        assert!(!r.file_path.is_empty(), "AC2-E: file_path non-empty");
+        assert_eq!(r.context_id, "", "AC2-E §2A default schema gap");
+        assert_eq!(r.source_type, "", "AC2-E §2A default");
+        assert!(r.line_end >= r.line_start, "AC2-E: line range valid");
+        assert_eq!(
+            r.retrieval_method, "bm25",
+            "AC2-E: retrieval_method 复用 search() 的 bm25 标签 (provenance 表 schema 不动)"
+        );
+        assert!(r.agent_scope.is_empty(), "AC2-E §2A default");
+        assert_eq!(r.redaction_status, "applied", "AC2-E §2A default");
+        assert!(
+            !r.provenance.is_empty(),
+            "AC2-E: provenance.len() ≥ 1 (沿 AC3 黑盒守护)"
+        );
+    }
+
+    // ---- TEST-6.2.E2 — get_chunk miss returns Ok(None), 不 Err ----
+    #[test]
+    fn test_6_2_e2_get_chunk_returns_none_on_miss() {
+        let (_src, data, coll) = build_fixture(
+            "ac2e-miss",
+            &[("readme.md", "# Readme\nany content\n")],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        let got = retr
+            .get_chunk("nonexistent_chunk_id_zzz999")
+            .expect("get_chunk(miss) must Ok (not Err)");
+        assert!(
+            got.is_none(),
+            "AC2-E miss: get_chunk 未命中应返 Ok(None), got Some"
         );
     }
 }

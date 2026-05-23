@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. HTTP framework=stdlib net/http、B. 5 endpoint 部分真实施 + import/eval/run stub 501、C. 新 `contextforge serve` 子命令持久 daemon、D. Token file 0600 启动软随机生、E. retriever 加 `get_chunk` 公开 API 支持 AC2 chunks/{id} — 详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -278,22 +278,21 @@ async fn search(
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 6 Exit Criteria): REST `POST /v1/search` 可用，请求/响应契约与 PRD §Technical Approach 草案一致。
-- [ ] **AC2** (PRD §Technical Approach REST/MCP 契约): `GET /v1/chunks/{id}` / `POST /v1/import` / `POST /v1/eval/run` / `GET /v1/collections` 可用（**v0.1 解读**：chunks/{id} + collections 真实施返业务数据；import + eval/run stub 501 + 显式 deferred note —— §2A 决策 B）。
-- [ ] **AC3** (PRD §Constraints Local service security baseline): daemon 默认只监听 `127.0.0.1` 或 Unix socket，v0.1 禁默认绑定 `0.0.0.0`。
-- [ ] **AC4** (PRD §Constraints Local service security baseline): REST API 默认启用本地随机 token，token 文件权限 `0600`。
-- [ ] **AC5** (PRD §Technical Risks R9): 未带有效 token 的请求被拒；访问写 audit log（脱敏，复用 task 5.3）。
+- [x] **AC1** (PRD §Implementation Phases Phase 6 Exit Criteria): REST `POST /v1/search` 可用，请求/响应契约与 PRD §Technical Approach 草案一致。
+- [x] **AC2** (PRD §Technical Approach REST/MCP 契约): `GET /v1/chunks/{id}` / `POST /v1/import` / `POST /v1/eval/run` / `GET /v1/collections` 可用（**v0.1 解读**：chunks/{id} + collections 真实施返业务数据；import + eval/run stub 501 + 显式 deferred note —— §2A 决策 B）。
+- [x] **AC3** (PRD §Constraints Local service security baseline): daemon 默认只监听 `127.0.0.1` 或 Unix socket，v0.1 禁默认绑定 `0.0.0.0`。
+- [x] **AC4** (PRD §Constraints Local service security baseline): REST API 默认启用本地随机 token，token 文件权限 `0600`。
+- [x] **AC5** (PRD §Technical Risks R9): 未带有效 token 的请求被拒；访问写 audit log（脱敏，复用 task 5.3）。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 /v1/search 契约一致 | SCEN-6.2.1 | TEST-6.2.1 | - | unit-test | Not Started |
-| AC2 chunks/collections 真返 + import/eval stub 501 | SCEN-6.2.2 | TEST-6.2.2 | - | unit-test | Not Started |
-| AC3 默认本地监听禁 0.0.0.0 | SCEN-6.2.3 | TEST-6.2.3 | - | unit-test | Not Started |
-| AC4 token 0600 启动软随机生 | SCEN-6.2.4 | TEST-6.2.4 | - | unit-test | Not Started |
-| AC5 无 token 拒绝 + audit 脱敏 | SCEN-6.2.5 | TEST-6.2.5 | - | unit-test | Not Started |
-
+| AC1 /v1/search 契约一致 | SCEN-6.2.1 | TEST-6.2.1 | - | unit-test | Done |
+| AC2 chunks/collections 真返 + import/eval stub 501 | SCEN-6.2.2 | TEST-6.2.2 | - | unit-test | Done |
+| AC3 默认本地监听禁 0.0.0.0 | SCEN-6.2.3 | TEST-6.2.3 | - | unit-test | Done |
+| AC4 token 0600 启动软随机生 | SCEN-6.2.4 | TEST-6.2.4 | - | unit-test | Done |
+| AC5 无 token 拒绝 + audit 脱敏 | SCEN-6.2.5 | TEST-6.2.5 | - | unit-test | Done |
 ## 8. Risks
 
 - 关联 PRD §Technical Risks **R9**（本地 daemon/MCP 暴露面）：监听限制（loopback / Unix socket / 拒 0.0.0.0）+ token Bearer + audit 脱敏 三层缓解齐全；与 task-1.4 baseline 同构（无新 attack surface）。
@@ -311,15 +310,38 @@ async fn search(
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - core/src/retriever/mod.rs（修改）— 新增公开 `is_chunk_id_format` (chunker §100 真实 format `chk_<8-hex>_<ordinal>` shape detector) + `get_chunk(&str)` 公开 API (SQLite WHERE chunk_id=?1 LIMIT 1 + provenance JOIN + score=1.0 + retrieval_method 复用 bm25 标签 + AC3 黑盒守护 ≥1 provenance entry)；`#[cfg(test)]` 加 TEST-6.2.E1/E2
+  - core/src/server.rs（修改）— `CoreService::search` 加 fast-path 分支：is_chunk_id_format(query) → 先 get_chunk → Some 返单条；None / 非 chunk_id-shape → fallback BM25 search/explain；`#[cfg(test)]` 加 TEST-6.2.E3/E4
+  - internal/cli/serve.go（新增）— runServe / parseServeOpts (含 validateLoopbackAddr AC3 拒 0.0.0.0/::) / loadOrGenerateToken (AC4 crypto/rand 32 bytes hex + 0600 + 重启复用) + ServeBackend 类型 + SetServeBackend 依赖注入（沿 task-6.1 SearchBackend pattern 破 daemon ↔ cli 循环）
+  - internal/cli/serve_test.go（新增）— TEST-6.2.3 (parseServeOpts addr 校验全表 4 case) + TEST-6.2.4 (loadOrGenerateToken 0600 + 复用 + 空 dataDir 错) + backend-not-wired 反向校验
+  - internal/cli/cli.go（修改）— dispatch case "serve" → runServe（取代 task-1.4 default not-implemented）
+  - internal/cli/cli_test.go（修改）— TestTask14_AC4 not-implemented 循环移除 "serve"（剩 5 项 import/index/mcp/eval/export）
+  - internal/daemon/rest.go（新增）— RESTSearcher 接口 + NewRESTHandler factory + ServeREST(ctx, listener, token, dataDir) + authMiddleware (Bearer + crypto/subtle + audit.Write) + 5 handlers (search/chunk/collections/import/eval) + GRPCStatusToHTTP exported (codes.InvalidArgument→400/FailedPrecondition→412/NotFound→404/Unauthenticated→401/Internal→500) + statusCapture wrapper
+  - internal/daemon/rest_test.go（新增）— TEST-6.2.1 (POST /v1/search 契约) + TEST-6.2.2 (chunks hit/miss + collections + import/eval stub 501 + grpcStatus→HTTP) + TEST-6.2.5 (401 + audit JSON-lines 不含 token / 不含 body)；package daemon_test 外部包 + httptest.Server + fake RESTSearcher
+  - internal/memoryops/audit/audit.go（新增）— daemon-scoped REST 审计公开 API: type Event + func Write(dataDir, ev) 写 `<dataDir>/audit-rest.log` JSON-lines
+  - cmd/contextforge/main.go（修改）— 注入 cli.SetServeBackend(doServe) + 实现 doServe (signal.NotifyContext SIGINT/SIGTERM + resolveListener Unix-prefer/Windows-fallback-TCP + daemon.Start AutoRestart=true + waitDaemonHealthy 共享 helper + ServeREST 长流程)
+  - test/features/daemon.feature（修改）— SCEN-6.2.1 ~ 6.2.5 五个占位 Given/When/Then 填实
+  - docs/specs/tasks/task-6.2-rest-api.md（修改）— Status Ready → In Progress → Done；§10 Completion Notes 回填
+- **commit 列表**：
+  - 3d3bcc0 test(rest-api): 加 SCEN-6.2.1~5 共 5 个 RED 测试 + Status: Ready → In Progress
+  - 8653fc9 feat(rest-api): contextforge serve 端到端实现 — stdlib net/http 5 endpoint + Bearer + audit + Rust fast-path
+  - （本 commit）docs(spec): 回填 task-6.2 §10 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ skipped（无新依赖；Cargo.toml / go.mod / lockfile 均不动 — R7 strict 兑现）
+  - typecheck: ✅ cargo check --workspace 干净 + go vet ./... 干净
+  - unit-test: Rust 59 passed / 0 failed（35 lib unit 含 server::tests 6 个 / retriever::tests 12 个含 TEST-6.2.E1/E2 + memoryops::audit::tests 3 个 / indexer::tests 4 个 + 4 core_skeleton + 5 proto_contract + 11 scanner + 1 phase2_smoke + 1 phase3_importer_smoke + 1 phase4_smoke + 1 phase6_smoke）；Go 9 packages all pass（cli 6 含 TEST-6.2.3/4 全子 case + daemon 3 测试含 TEST-6.2.1/2/5 全子 case + config + contract + importer + 3 sub + memoryops + 3 sub；internal/memoryops/audit 包通过 TEST-6.2.5 黑盒覆盖文件写入 + 脱敏），task-1.4 end-to-end smoke 仍通过零回归
+- **剩余风险 / 未做项**：
+  - **handleCollections.chunk_count v0.1 placeholder 0**：未打开每个 collection SQLite 算 COUNT(*) chunks（避免 5 endpoint handler 拖入数据库连接管理）；列表返 placeholder + last_indexed_at = dir mtime。future task / endpoint extension 补真实 count。
+  - **handleChunk 默认 `?collection=default`**：v0.1 简化（PRD §default collection 设计一致）；多 collection 联邦 scan / 自动 detection 留 Phase 6+ / future task。
+  - **Audit Go 包独立于 Rust SQLite audit_log**：spec §3 / §5.2 引用的 `internal/memoryops/audit` Go 包不存在（task-5.3 audit 实际在 Rust 端 `core/src/memoryops/audit.rs` 是 collection-scoped SQLite audit_log，记 memoryops 操作）。本 task 新建 Go `internal/memoryops/audit` 包提供 daemon-scoped REST audit JSON-lines log（互补、非重复）；spec 字面 import 路径真实存在。future SPEC-DRIFT 整合（Go REST audit 写入 Rust SQLite 通过 gRPC RPC 或 shared schema）留 task-8+。
+  - **§2A 决策 E placeholder 时间字段沿 task-6.1**：get_chunk 返回的 SearchResult 的 provenance.imported_at / source_modified_at 在 proto 端走 task-6.1 的 Timestamp::default() placeholder 路径（chunker::Provenance.imported_at 是 String RFC3339；CLI text 渲染保留原值；JSON 输出 1970-01-01）。task-6.3 export 触发 SPEC-DRIFT 时主 agent 走 R7 chore-dep 修复。
+  - **Windows Unix socket 不支持**：spec 已明示 fallback TCP loopback + stderr warning，与 PRD v0.1 P0 (Linux/WSL2) 一致。
+- **下游 task 影响**：
+  - task-6.3 exporter（同期并行，codex 跑）：与本 task 在 internal/cli/cli.go 同函数体不同 case 分支（serve vs export）；后 merge 一侧主 agent §4 Gate 1 rebase trivial（dispatch 表加一行 case，文本无重叠）；exporter 共享 internal/memoryops/audit 包记 export 事件即可（互补 audit 入口）
+  - task-7.1 MCP context_search tool（下游强依赖）：MCP server 复用 `daemon.RESTSearcher` 接口 / authMiddleware pattern / handleSearch/handleChunk 逻辑（gRPC 调用 + Authorization Bearer 等价）
+  - task-8.1 eval-harness（下游软依赖）：可调 REST `/v1/search` 跑 recall eval / 可解释字段覆盖率回归；本 task 暴露 endpoint，eval-harness 不实现 eval 自身
 - **§2A Decisions**（2026-05-23 用户审定，主 agent 与用户预先审定后落 spec；worker 完工时按实际实施情况验证 / 补充）：
   - **A: HTTP framework = stdlib net/http**（不引 chi / gorilla mux / gin；沿 task-1.4 stdlib flag 先例 + R7 严格通道；手写 `http.ServeMux` 5 endpoint 路由 + middleware 函数链）
   - **B: 5 endpoint 部分真实施 + 其他 stub 501**：search / chunks/{id} / collections 真实施；import / eval/run 返 501 + body `{"error":"deferred to phase 8"}`。AC2「可用」v0.1 解读为「有响应」（含 501 也算）；spec §3 In Scope + §6 AC2 明示。未来 task-8.x 接 import / eval/run 真实施
