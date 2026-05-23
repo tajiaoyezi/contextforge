@@ -89,3 +89,5 @@ return 一段 markdown 报告，格式严格：
 ## 历史说明
 
 2026-05-22 之前本文件曾是 "reviewer 终端" 模式（独立 long-running Claude session 作为评审专属终端）。该模式因双向中转开销（用户复制 prompt → reviewer 跑 → 用户复制回报 → 主 agent 接收）已停用，改为本文件描述的主 agent 内部 subagent 模式。历史 reviewer 终端派工记录见 `_dispatch/sessions/archive/`。
+
+**2026-05-23**：项目治理从 team 多终端转单驱动 + 内部 subagent 变体（[ADR-011](../docs/decisions/adr-011-single-driver-with-subagents.md)），本 template 持续使用，无需改动。

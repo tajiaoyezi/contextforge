@@ -33,9 +33,7 @@ vendor/
 #   target/ 已在上方；Cargo.lock 对二进制应用须入库（不忽略）
 **/*.rs.bk
 
-# S2V 协作临时文件（team 档）
-STATUS-MAIN.md
-
 # _dispatch 子目录约定：顶层 README + reviewer template tracked（规范文档）；
-# sessions/ 仅本地（worker 派工 prompts 动态内容，每个 session 自维护，不污染主线）
+# sessions/ 仅本地：历史归档（archive/，2026-05-23 前 team 多终端遗留）+ 偶发本地协作临时产物，不入库。
+# 单驱动变体（ADR-011）下新流程不再产出 sessions/ 内容，但 archive/ 保留供历史复盘。
 _dispatch/sessions/
