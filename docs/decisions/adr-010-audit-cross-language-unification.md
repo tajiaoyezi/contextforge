@@ -10,7 +10,7 @@
 
 v0.1 ContextForge 在 audit 路径上跨 Go / Rust 两端形成双轨互补设计，源自 PR #45 phase-6 closeout 对 task-6.2 spec §3 / §5.2 / AC5 的 5 处「Go 互补 Rust」字面修正：
 
-- **Rust 端（task-5.3）— `core/src/memoryops/audit.rs`**：collection-scoped，复用 collection 自带的 `<data_dir>/collections/<id>/metadata.sqlite` SQLite，新增 `audit_log` 表 + 索引（`idx_audit_log_operation` / `idx_audit_log_collection`）。记 memoryops data-plane 操作 — `import` / `search` / `export` / `redact`（task-5.3 §3 / §6 AC2）。schema：`operation` / `collection` / `source` / `result_count` / `redaction_count` / `timestamp` / `query_hash` / `query_length` / `redacted_terms` / `chunk_ids` / `export_total_byte_count`。脱敏规则：不记完整 query content（仅 `sha256` + 长度）/ 不记完整 secret / 不记导出内容。公开 API：`AuditSink::open(data_dir, collection)` / `AuditSink::record(event)` / `AuditSink::list()` / `count_by_operation(op)`。
+- **Rust 端（task-5.3）— `core/src/memoryops/audit.rs`**：collection-scoped，复用 collection 自带的 `<data_dir>/collections/<id>/metadata.sqlite` SQLite，新增 `audit_log` 表 + 索引（`idx_audit_log_operation` / `idx_audit_log_collection`）。记 memoryops data-plane 操作 — `import` / `search` / `export` / `redact`（task-5.3 §3 / §6 AC2）。schema：`operation` / `collection` / `source` / `result_count` / `redaction_count` / `timestamp` / `query_hash` / `query_length` / `redacted_terms` / `chunk_ids` / `export_total_byte_count`（+ auto-increment `id` PK）。脱敏规则：不记完整 query content（仅 `sha256` + 长度）/ 不记完整 secret / 不记导出内容。公开 API：`AuditSink::open(data_dir, collection)` / `AuditSink::record(event)` / `AuditSink::list()` / `count_by_operation(op)`。
 - **Go 端（task-6.2）— `internal/memoryops/audit/audit.go`**：daemon-scoped，单文件 `<data_dir>/audit-rest.log` JSON-lines（`os.O_APPEND | O_CREATE | O_WRONLY`，mode `0o644`，私密性来自 `0o700` 的 dataDir 自身 — task-1.2 config.Init 落定）。记 REST 控制平面访问 — 含 `401` 拒访问 + `200` 成功。schema 极简：`endpoint` / `status` / `timestamp` / `reason`（可选）。脱敏规则：**永不** 记 Bearer token 值 / **永不** 记完整请求 body（middleware 在 `audit.Write` 之前剥离）。公开 API：`audit.Write(dataDir, Event)`。
 - **MCP 端（task-7.1，codex 同期实施中）**：§2A 决策 D 复用 task-6.2 Go `audit.Write` 公开 API + Endpoint 字段 prefix `mcp:`（`mcp:initialize` / `mcp:context_search` / `mcp:context_read` / `mcp:context_explain` / `mcp:context_collections`），与 REST 共写同一 `audit-rest.log`，运维可 grep 分类。
 
@@ -54,7 +54,7 @@ Unification 决策延期到任一【触发条件】被满足时（见下方 Roll
   - Cons：运维跨双轨查询略 friction；task-8.1 eval-harness 需要兼容两种 schema 才能做联动分析；schema 演进需双端同步（如新增字段要同时改 Rust SQLite migration + Go Event struct）。
 - **选项 B — 统一到 Rust SQLite（推荐 Rollback 方向）**：Go REST / MCP audit 经 gRPC RPC（新增 `proto/contextforge/v1/audit.proto` 含 `AuditRecord` message + `ContextService::WriteAudit` RPC）写入 Rust 端 daemon-scoped 或 collection-scoped SQLite。Go 端 `audit-rest.log` 文件路径删除 + 迁移历史 JSON-lines 一次性入库。
   - Pros：与 ADR-002「SQLite + Tantivy layered storage」对齐 — audit 沿用同一持久层 + 同一 query 语义；single source of truth；跨 collection / cross-scope 查询 trivial（标准 SQL）；与 task-5.3 Rust audit 现有 schema + 索引复用。
-  - Cons：phase23-start-gate「proto frozen，add-only field tag」需解封以加 new message + new RPC（仍 add-only 兼容，但 freeze 通道要走主 agent gate）；Go 端写路径多一次 RPC（延迟 + 错误传播 + 进程死活 — daemon 没起来时 REST middleware 怎么办？）；一次性迁移 audit-rest.log 历史数据脚本 + 失败回滚预案；task-7.1 MCP 也要跟改 audit wire（codex 在跑，要等 PR merge 后 SPEC-DRIFT 重派）。
+  - Cons：phase23-start-gate「proto frozen」需主 agent gate 放行新增 message + RPC（属 protobuf wire-compat 扩展，与 message 内 add-only field tag policy 是不同层面变更）；Go 端写路径多一次 RPC（延迟 + 错误传播 + 进程死活 — daemon 没起来时 REST middleware 怎么办？）；一次性迁移 audit-rest.log 历史数据脚本 + 失败回滚预案；task-7.1 MCP 也要跟改 audit wire（codex 在跑，要等 PR merge 后 SPEC-DRIFT 重派）。
 - **选项 C — 统一到 Go JSON-lines**：Rust memoryops 经 stdin/stdout 或 Unix socket IPC 把 audit 事件转给 Go daemon 写 `audit-rest.log`，删除 Rust SQLite `audit_log` 表。
   - Pros：单文件 + grep 友好；Go 端 query 工具不需额外 wire；daemon-scoped 视图比 collection-scoped 视图更接近运维心智模型。
   - Cons：丢失 ADR-002 SQLite 优势（事务 / 索引 / structured query）；Rust core 进程要被迫依赖 Go daemon 在线才能写 audit（违背 task-5.3 memoryops 独立可测的设计）；IPC pipe 失败时 Rust core 怎么 fallback？file write 失败容错路径变 IPC 失败容错路径，复杂度反而上升；audit 数据规模长期可能让 JSON-lines 检索成本超过 SQLite。
@@ -101,7 +101,7 @@ Unification 决策延期到任一【触发条件】被满足时（见下方 Roll
 2. proto/contextforge/v1/audit.proto 新建（phase23-start-gate 解封 add-only）— 加 `message AuditRecord { string endpoint = 1; string status = 2; google.protobuf.Timestamp timestamp = 3; string actor = 4; string reason = 5; map<string,string> extra = 6; }` + `rpc WriteAudit(AuditRecord) returns (WriteAuditResponse)` 在 `ContextService`；
 3. Rust `core/src/memoryops/audit.rs` 扩 `AuditSink` 接收 daemon-scoped event（不仅 collection-scoped），或新建并行 `daemon_audit_log` 表 / 共用 `audit_log` 表（加 `scope` 列区分 `collection` / `daemon`）；新增 gRPC server impl 接收 `WriteAudit` 请求；
 4. Go `internal/memoryops/audit/audit.go` `Write` 函数改为 gRPC client：建立 `daemon.audit_client_conn`（懒初始化 + 复用 `clientConn`）；写失败时 fallback 到当前 JSON-lines 路径（degrade 而不丢 audit）；
-5. 一次性 migration script `tools/migrate-audit-rest-log.go`：读历史 `<data_dir>/audit-rest.log` → 逐行 unmarshal 成 `AuditRecord` → 通过 gRPC 写 SQLite → migration 完成后保留原文件加 `.migrated` 后缀（不删，留 fallback）；
+5. 一次性 migration script `tools/migrate-audit-rest-log.go`（新建 `tools/` 目录）：读历史 `<data_dir>/audit-rest.log` → 逐行 unmarshal 成 `AuditRecord` → 通过 gRPC 写 SQLite → migration 完成后保留原文件加 `.migrated` 后缀（不删，留 fallback）；
 6. task-7.1 MCP / task-6.2 REST 调 `audit.Write` 公开 API 不变 — 公开 API 兼容（Go 内部实现从 file write 切到 gRPC，对调用方透明）；
 7. 运维查询统一为 SQLite（`audit_log` 表 + 跨 collection / daemon-scope 查询），更新 `docs/ops/audit-query.md`（如有）使用 `sqlite3` + 标准 SQL。
 
@@ -118,5 +118,5 @@ scope 评估：选项 B 改动跨 proto + Rust audit + Go audit + migration scri
 - **关联 ADR-002 layered storage（SQLite + Tantivy）**：audit unification 若选 B，audit_log 表会成为 layered storage 的第三个写路径（chunks / metadata / audit），需要在 ADR-002 中追加写路径合规审视。
 - **关联 task-8.1 eval-harness（Phase 8）**：单一审计入口诉求 + access pattern 分析依赖 audit 统一性 — eval-harness spec §3 / §6 AC 起草时应显式声明是接受双轨 + audit-query 工具，还是触发本 ADR Rollback 选 B。
 - **关联 PRD §Vision「多 Agent 一致可追溯」**：audit 是该 vision 的实施层 — v0.2+ 路线深化时需把本 ADR-010 升级到 Accepted with Resolution（B / C / D 任一）。
-- **关联 PR #45 phase-6 closeout 修正**：task-6.2 spec §3 / §5.2 / AC5 / §10 / §10 §2A Decisions 共 5+ 处「Go 互补 Rust」字面 — 本 ADR 是该字面的完整决策溯源，spec 字面与本 ADR Decision 段一致性自检通过。未来 unification 实施 PR 应同时刷新这 5 处字面（task-6.2 spec §3 等）+ 本 ADR Status / Resolution。
+- **关联 PR #45 phase-6 closeout 修正**：task-6.2 spec §3 / §5.2 / AC5 / §10 共 5 处「Go 互补 Rust」字面 — 本 ADR 是该字面的完整决策溯源，spec 字面与本 ADR Decision 段一致性自检通过。未来 unification 实施 PR 应同时刷新这 5 处字面（task-6.2 spec §3 等）+ 本 ADR Status / Resolution。
 - **关联 task-7.1 MCP（codex 同期实施）**：MCP §2A 决策 D「复用 Go audit + Endpoint prefix `mcp:`」是双轨现状下的最佳路径；统一后 prefix 仍可保留为 `endpoint` 字段值，迁移成本零（Endpoint 字段是 string，跨 storage 中立）。
