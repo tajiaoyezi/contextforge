@@ -369,18 +369,22 @@ s2v_coverage_threshold_guard "$TASK_SPEC" || { echo "BLOCKED: 覆盖率阈值声
 ADAPTER="docs/s2v-adapter.md"        # agent 替换为实际 adapter（如 docs/s2v-adapter.md）
 THIS_TASK="<X.Y>"              # agent 替换为本 task id（如 2.3）
 PHASE_NO="${THIS_TASK%%.*}"
-# 本 phase 内、非本 task、Status≠Done 的 task 行数（adapter §Task 总索引：| Task | 模块 | Spec | Status | … |）
+# 本 phase 内、非本 task、Status≠Done 的 task 行数（仅 adapter §Task 总索引；已加 section-scoped 避免 §BDD 等表污染）
 PENDING="$(awk -F'|' -v p="${PHASE_NO}." -v self="$THIS_TASK" '
-  /^\| *[0-9]+\.[0-9]+ *\|/ {
+  /^## Task 总索引/ { in_t=1; next }
+  in_t && /^## / { in_t=0 }
+  in_t && /^\| *[0-9]+\.[0-9]+ *\|/ {
     id=$2; gsub(/[[:space:]]/,"",id);
     st=$5; gsub(/^[[:space:]]+|[[:space:]]+$/,"",st);
     if (index(id,p)==1 && id!=self && st!="Done") c++
   }
   END { print c+0 }
 ' "$ADAPTER" 2>/dev/null)"
-# Gate 3 awk 复审（chore-agents-fix 2026-05）：pattern ^\| *[0-9]+\.[0-9]+ *\| 仅匹配 adapter
-# §Task 总索引（## Task 总索引 后 37 行，之前 0 行；无其他表污染 §7/phase §4 等）。当前实现干净，
-# 无需 section-scoped 状态机加固（若未来 adapter 增其他 N.N 表，再评估）。实证见 PR body。
+# 注意：原 pattern 同时匹配 §Task 总索引 (24 行 @250-281) + §BDD Feature 索引 (13 行 @300-322) 共 37 行（数字巧合）。
+# §BDD 段行 | X.Y | feature-path | （$5 为空）→ st!="Done" 恒 TRUE → 跨表污染 PENDING → 1.4/2.4/6.3/8.3 等 phase-last 误判 IS_LAST=0，静默跳过 §6 phase smoke 兜底（与 Gate 3 意图反）。
+# FIX-1 已修：awk 加 `## Task 总索引` section-scoped 状态机（/^## Task 总索引/ 入 in_t=1，下一 /^## / 出；仅 in_t 段内 count）。
+# FIX-2：删除原虚假"无需 section-scoped" 声明，改写实情 + 跨段污染 13 行历史（见 PR #32 review）。
+# 实证验证（不再自报）：下文 8 phase-last task pre/post PENDING + IS_LAST 对比（post 仅 Task 表真实值）。
 if [ -z "$PENDING" ]; then
   echo "BLOCKED: 无法读 adapter §Task 总索引判定本 task 是否 phase 内最后（$ADAPTER）"
   echo "  按下方判定矩阵人工确认后，显式设 IS_LAST_TASK_IN_PHASE=0|1 + IS_CROSS_PHASE_INTEGRATION=0|1 重跑本 gate"
