@@ -25,7 +25,8 @@
 - 支持 import / search / export / redact 四类事件写入，默认字段为 operation / collection / source / result_count / redaction_count / timestamp。
 - 对敏感上下文字段只写脱敏元数据：query 仅写 hash 和长度；secret 仅写 `[REDACTED:TYPE]` 标签；export 仅写 chunk_id 列表和总字节数。
 - 暴露 scanner override 审计 helper，供用户显式覆盖 scanner redaction / denylist 保护时写入 redact 事件。
-- 新增 `core/tests/phase5_smoke.rs` 作为 Phase 5 Gate 3 精准 smoke 入口；在 task-5.2 merge 前使用测试内 stale stub，后续 rebase 后替换为真实 lifecycle API。
+- **本 task 仅暴露 audit helper API**（`scanner_override_event` 等），**不负责** wiring 到 scanner walker 生产路径或 indexer/retriever caller。wiring 由 Phase 6 调用方（task-6.x daemon/CLI orchestrator）负责，AC 新增在该 task 验收。
+- 新增 `core/tests/phase5_smoke.rs` 作为 Phase 5 Gate 3 精准 smoke 入口；stale 检查使用测试内 StaleStub stand-in，真 stale-aware smoke 留 Phase 6 daemon 经 gRPC + proto extension 接 Go lifecycle。
 
 ### Out Of Scope
 
@@ -171,14 +172,18 @@ pub fn scanner_override_event(collection: &str, source: &str, redacted_terms: Ve
   - `test/features/memoryops.feature`（修改：补齐 SCEN-5.3.1~5.3.5）
   - `docs/specs/tasks/task-5.3-audit.md`（修改：§2A、§7、§10、Status 回填）
 - **commit 列表**：
-  - `588c2a2` docs(spec): task-5.3 §2A 审核通过 (Status: Draft → Ready)
-  - `03940a8` docs(spec): task-5.3 进入实施 (Status: Ready → In Progress)
-  - `18e7aac` test(memoryops): 加 SCEN-5.3.1~5.3.5 共 5 个 RED 测试
-  - `60b3542` feat(memoryops): 实现 SQLite audit log 脱敏写入
-  - `本 docs commit` docs(spec): 回填 task-5.3 §10 Completion Notes + Status → Done
+  - `855ba95` docs(spec): task-5.3 §2A 审核通过 (Status: Draft → Ready)
+  - `cb4b0c3` docs(spec): task-5.3 进入实施 (Status: Ready → In Progress)
+  - `efdf15d` test(memoryops): 加 SCEN-5.3.1~5.3.5 共 5 个 RED 测试
+  - `3e1a146` feat(memoryops): 实现 SQLite audit log 脱敏写入
+  - `bf7d145` docs(spec): 回填 task-5.3 §10 Completion Notes + Status → Done
+  - `a1dc57f` docs(adapter): 标记 task-5.3 为 Done
+  - 待本次 fix commit 后补填 fix(task-5.3): PR #31 FIX-1/FIX-2/FIX-3 — §3 wiring scope clarify + StaleStub stand-in 诚实承认 + §10 commit list 填实
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`
   - unit-test: ✅ `go test ./... && cargo test --workspace`；Go packages all passed；Rust 52 passed / 0 failed；AC5 smoke `cargo test --manifest-path core/Cargo.toml --test phase5_smoke` 1 passed / 0 failed
-- **剩余风险 / 未做项**：task-5.2 尚未在本分支合入，Phase 5 smoke 按 §2A 使用测试内 stale stub；task-5.2 合并后如主 agent 要求，可将 stub 替换为真实 lifecycle API。
-- **下游 task 影响**：task-5.2 lifecycle 合并后可能需要 rebase 本分支以接真实 stale API；Phase 6 search/export 可复用 `memoryops::audit` helper 记录 search/export 审计事件。
+- **剩余风险 / 未做项**：
+  - **AC4 evidence gap — scanner override wiring deferred to Phase 6**：本 task 实现 `scanner_override_event()` helper（test TEST-5.3.4 验证 helper 接到 redaction_hits 后能正确写 audit），但 scanner walker `allow_denylist_override=true` 路径生产代码**未** call helper（reviewer PR #31 review 实证）。partial implement 模式同 task-4.1/4.2/5.1：AC4 文字保持不变（不走 SPEC-DRIFT），wiring 责任归 Phase 6 task-6.x（CLI/daemon orchestrator 加 AC "scanner override 路径必须 call audit helper"）。当前测试覆盖 = helper 功能 + AC1-3 硬负断言；wiring e2e 留 Phase 6 + Phase 8 release smoke 接管。
+  - **AC5 phase5_smoke stale 检查用 StaleStub stand-in**：架构层 Rust↔Go 无跨语言 seam（task-5.2 lifecycle.go 是 Go package；本 smoke 是 Rust 集成测试）。真 stale-aware smoke 推 Phase 6 daemon (task-6.x via gRPC + proto extension) 接 Go lifecycle。当前 StaleStub 是 phase-5 closeout 的 stand-in，**不**承诺被替换为真 API。
+- **下游 task 影响**：Phase 6 daemon/CLI orchestrator 需要接入 scanner override audit helper，并通过 gRPC + proto extension 承接真 stale-aware smoke；Phase 6 search/export 可复用 `memoryops::audit` helper 记录 search/export 审计事件。

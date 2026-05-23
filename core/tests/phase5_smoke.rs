@@ -1,3 +1,13 @@
+// Phase 5 end-to-end smoke (task-5.3 §2A 选项 A — Rust 集成测试入口；主 agent §4 Gate 3 精准抓 last task)
+//
+// 架构注：本 smoke 的 StaleStub 是 phase-5 closeout 的 stand-in，**不**承诺 task-5.2 merge 后替换为真 API。
+// 原因：task-5.2 lifecycle (internal/memoryops/lifecycle/) 是 Go package；本 smoke 是 Rust 集成测试 —
+// Rust core ↔ Go lifecycle 跨语言 seam 在 v0.1 架构下不存在，真 stale-aware smoke 需 Phase 6 daemon 经
+// gRPC + proto extension 暴露 lifecycle 服务后由 Rust core 调用（task-6.x scope）。
+//
+// 当前 smoke 验证：chunker → indexer → retriever → audit + db bytes 断言无 SECRET + AC1-5 端到端覆盖；
+// stale 检查用本文件内 StaleStub（语义 = BTreeSet<String> mark/is_stale），独立于真 lifecycle 行为。
+
 use contextforge_core::chunker::{ChunkPolicy, Provenance};
 use contextforge_core::indexer::IndexSession;
 use contextforge_core::memoryops::audit::{
