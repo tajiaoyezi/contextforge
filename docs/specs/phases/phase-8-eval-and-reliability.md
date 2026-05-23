@@ -1,6 +1,6 @@
 # Phase 8 · eval-and-reliability
 
-**Status**: In Progress
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 最后一个 task 完工/合并前必须执行 §6 端到端 smoke（`s2v_preflight_phase` C1）。
 
@@ -59,8 +59,8 @@ bash scripts/release_smoke.sh
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done 或 Waived
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（v0.1 七项技术闭环跑通）
-- [ ] 关联风险 R3 / R6 / R2 缓解措施已落地（eval harness + 性能回归 + 向量后端结论）
-- [ ] adapter §Phase 状态索引该行 Status 同步更新
-- [ ] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task（v0.1 收口）
+- [x] 本 phase 全部 task spec Status=Done 或 Waived
+- [x] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（v0.1 七项技术闭环跑通）
+- [x] 关联风险 R3 / R6 / R2 缓解措施已落地（eval harness + 性能回归 + 向量后端结论）
+- [x] adapter §Phase 状态索引该行 Status 同步更新
+- [x] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task（v0.1 收口）

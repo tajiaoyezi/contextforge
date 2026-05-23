@@ -1,6 +1,6 @@
 # Task `8.3`: `release-smoke — Linux x86_64 release 打包 + smoke test + 性能基准`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -66,21 +66,21 @@ v0.1 收口 task：产出可安装的 Linux x86_64 release 包并通过 smoke te
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Decisions Log D7 / §Constraints 发布): 产出 `contextforge-linux-amd64.tar.gz`，含 contextforge + contextforge-core + contextforge.example.toml + README + LICENSE。
-- [ ] **AC2** (PRD §Implementation Phases Phase 8 Exit Criteria): Linux / WSL2 release smoke test 通过（解包→init→import→index→search/MCP→export→eval run 端到端）。
-- [ ] **AC3** (PRD §Implementation Phases Phase 8 Exit Criteria / §Success Metrics 次指标): 10 万 chunk 内 BM25/metadata/filter 检索 P95 < 500ms 基准达标。
-- [ ] **AC4** (PRD §Implementation Phases v0.1 七项技术闭环): v0.1 七项闭环在 Linux/WSL2 端到端跑通（导入/索引/CLI·API 搜索/MCP/可解释检索/recall eval/可靠运行）。
-- [ ] **AC5** (本 task 新增 / C1): 本 task = Phase 8 与 v0.1 最后 task，phase spec §6 端到端 smoke（= v0.1 七项闭环 release smoke 序列）必须在合并前填实并全过。
+- [x] **AC1** (PRD §Decisions Log D7 / §Constraints 发布): 产出 `contextforge-linux-amd64.tar.gz`，含 contextforge + contextforge-core + contextforge.example.toml + README + LICENSE。
+- [x] **AC2** (PRD §Implementation Phases Phase 8 Exit Criteria): Linux / WSL2 release smoke test 通过（解包→init→import→index→search/MCP→export→eval run 端到端）。
+- [x] **AC3** (PRD §Implementation Phases Phase 8 Exit Criteria / §Success Metrics 次指标): 10 万 chunk 内 BM25/metadata/filter 检索 P95 < 500ms 基准达标。
+- [x] **AC4** (PRD §Implementation Phases v0.1 七项技术闭环): v0.1 七项闭环在 Linux/WSL2 端到端跑通（导入/索引/CLI·API 搜索/MCP/可解释检索/recall eval/可靠运行）。
+- [x] **AC5** (本 task 新增 / C1): 本 task = Phase 8 与 v0.1 最后 task，phase spec §6 端到端 smoke（= v0.1 七项闭环 release smoke 序列）必须在合并前填实并全过。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 tarball 产物完整 | SCEN-8.3.1 | TEST-8.3.1 | - | unit-test | Not Started |
-| AC2 release smoke 通过 | SCEN-8.3.2 | TEST-8.3.2 | - | unit-test | Not Started |
-| AC3 P95<500ms 基准 | SCEN-8.3.3 | TEST-8.3.3 | - | unit-test | Not Started |
-| AC4 v0.1 七项闭环跑通 | SCEN-8.3.4 | TEST-8.3.4 | - | unit-test | Not Started |
-| AC5 phase §6 端到端 smoke | SCEN-8.3.5 | TEST-8.3.5 | - | unit-test | Not Started |
+| AC1 tarball 产物完整 | SCEN-8.3.1 | TEST-8.3.1 | - | unit-test | Done |
+| AC2 release smoke 通过 | SCEN-8.3.2 | TEST-8.3.2 | - | unit-test | Done |
+| AC3 P95<500ms 基准 | SCEN-8.3.3 | TEST-8.3.3 | - | unit-test | Done |
+| AC4 v0.1 七项闭环跑通 | SCEN-8.3.4 | TEST-8.3.4 | - | unit-test | Done |
+| AC5 phase §6 端到端 smoke | SCEN-8.3.5 | TEST-8.3.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -96,12 +96,25 @@ v0.1 收口 task：产出可安装的 Linux x86_64 release 包并通过 smoke te
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - `docs/specs/tasks/task-8.3-release-smoke.md`（修改）
+  - `docs/specs/phases/phase-8-eval-and-reliability.md`（修改）
+  - `docs/s2v-adapter.md`（修改）
+  - `test/features/release.feature`（修改）
+  - `internal/release/release_test.go`（新增）
+  - `internal/release/release.go`（新增）
+  - `scripts/release_smoke.sh`（新增）
+  - `README.md`（新增）
+  - `LICENSE`（新增）
+  - `contextforge.example.toml`（新增）
+- **commit 列表**：
+  - `af1b202` `docs(spec): task-8.3 §2A 自审 Ready`
+  - `2088c41` `test(release): task-8.3 release smoke RED`
+  - `815b96d` `feat(release): 实现 task-8.3 release smoke gate`
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`
+  - unit-test: ✅ `go test ./... && cargo test --workspace`（Go 全包通过；Rust 60 passed / 0 failed）
+- **剩余风险 / 未做项**：GitHub Release 上传、tag、checksum / signing、真实 amd64 runner 发布作业不在本 task scope；本 task 提供 release contract gate 与 phase smoke harness。
+- **下游 task 影响**：无；Phase 8 / v0.1 收口 task。
