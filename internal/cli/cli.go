@@ -74,6 +74,12 @@ func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		// "not implemented" default-arm response for `search`.
 		return runSearch(rest, stdout, stderr)
 
+	case "index":
+		// task-8.2: long-task/resume entrypoint. The production data-plane
+		// indexing bridge remains Rust-side; this Go entrypoint owns the
+		// resumable control-plane manifest.
+		return runIndex(rest, stdout, stderr)
+
 	case "serve":
 		// task-6.2: real subcommand entry; supersedes the task-1.4
 		// "not implemented" default-arm response for `serve`.

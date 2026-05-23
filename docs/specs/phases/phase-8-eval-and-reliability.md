@@ -1,6 +1,6 @@
 # Phase 8 · eval-and-reliability
 
-**Status**: Draft
+**Status**: In Progress
 
 > Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 留 `<TBD-by-user>`，本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1）。
 
