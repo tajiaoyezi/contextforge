@@ -90,6 +90,7 @@ func TestTask63_AC5_RunExportSubcommandEndToEndAndFormatFlags(t *testing.T) {
 				"--collection=default",
 				"--data-dir=" + dataDir,
 				"--output=" + tc.output,
+				"--include-stale",
 			}, &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("runExport(%s) exit=%d stderr=%q", tc.format, code, stderr.String())

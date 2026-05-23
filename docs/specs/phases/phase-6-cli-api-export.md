@@ -2,7 +2,7 @@
 
 **Status**: Draft
 
-> Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 留 `<TBD-by-user>`，本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1）。
+> Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 初始留待用户审定，本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1）。
 
 ## 1. 阶段目标
 
@@ -44,7 +44,55 @@
 - export 前执行二次 secret scan
 - 迁移字段保真率可通过 fixture 计算（目标 ≥ 80%）
 
-**端到端 smoke**：`<TBD-by-user>`（本 phase 最后一个 task 完工/合并前填实，例：索引 fixture → `contextforge search` + `curl /v1/search` 返回一致可解释结果 → `contextforge export` 三格式产出 + 二次 secret scan 命中、字段保真率 ≥ 80% 的 smoke 序列）
+**端到端 smoke**（task-6.3 AC5 落点；自动化运行留 task-8.1 eval-harness）：
+
+```bash
+set -euo pipefail
+
+CF_ROOT="$(mktemp -d)"
+CF_SRC="$(mktemp -d)"
+CF_PORT="${CF_PORT:-18086}"
+
+cat > "$CF_SRC/README.md" <<'EOF'
+# Phase 6 smoke
+
+fixture query phase6exportmarker
+EOF
+
+contextforge init --root "$CF_ROOT"
+contextforge import "$CF_SRC" --collection default --data-dir "$CF_ROOT"
+contextforge serve --data-dir "$CF_ROOT" --addr "127.0.0.1:${CF_PORT}" &
+SERVE_PID="$!"
+trap 'kill "$SERVE_PID" 2>/dev/null || true' EXIT
+sleep 2
+
+contextforge search "phase6exportmarker" --collections default --data-dir "$CF_ROOT" --json \
+  | tee "$CF_ROOT/search-cli.json"
+
+curl -fsS \
+  -H "Authorization: Bearer $(cat "$CF_ROOT/token")" \
+  -H "Content-Type: application/json" \
+  -X POST "http://127.0.0.1:${CF_PORT}/v1/search" \
+  -d '{"query":"phase6exportmarker","collections":["default"],"top_k":5,"explain":true}' \
+  | tee "$CF_ROOT/search-rest.json"
+
+contextforge export --collection default --data-dir "$CF_ROOT" \
+  --format jsonl --output "$CF_ROOT/export.jsonl" \
+  | tee "$CF_ROOT/export-jsonl.log"
+contextforge export --collection default --data-dir "$CF_ROOT" \
+  --format markdown-bundle --output "$CF_ROOT/export.tar.gz" \
+  | tee "$CF_ROOT/export-md-bundle.log"
+contextforge export --collection default --data-dir "$CF_ROOT" \
+  --format agent-draft --output "$CF_ROOT/export-draft" \
+  | tee "$CF_ROOT/export-agent-draft.log"
+
+test -s "$CF_ROOT/export.jsonl"
+test -s "$CF_ROOT/export.tar.gz"
+test -s "$CF_ROOT/export-draft/MEMORY.md"
+grep -E 'fidelity=0\.[89]|fidelity=1\.000' "$CF_ROOT/export-jsonl.log"
+grep -E 'fidelity=0\.[89]|fidelity=1\.000' "$CF_ROOT/export-md-bundle.log"
+grep -E 'fidelity=0\.[6-9]|fidelity=1\.000' "$CF_ROOT/export-agent-draft.log"
+```
 
 ## 7. 阶段级风险
 
