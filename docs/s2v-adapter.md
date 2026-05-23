@@ -241,7 +241,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 2 | `index-core` | `docs/specs/phases/phase-2-index-core.md` | Done | 4 | `../ContextForge-wt-index-core` |
 | 3 | `agent-importers` | `docs/specs/phases/phase-3-agent-importers.md` | Done | 4 | `../ContextForge-wt-agent-importers` |
 | 4 | `retrieval-explain` | `docs/specs/phases/phase-4-retrieval-explain.md` | Done | 2 | `../ContextForge-wt-retrieval-explain` |
-| 5 | `memoryops` | `docs/specs/phases/phase-5-memoryops.md` | Draft | 3 | `../ContextForge-wt-memoryops` |
+| 5 | `memoryops` | `docs/specs/phases/phase-5-memoryops.md` | Done | 3 | `../ContextForge-wt-memoryops` |
 | 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Draft | 3 | `../ContextForge-wt-cli-api-export` |
 | 7 | `mcp-adapter` | `docs/specs/phases/phase-7-mcp-adapter.md` | Draft | 1 | `../ContextForge-wt-mcp-adapter` |
 | 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Draft | 3 | `../ContextForge-wt-eval-and-reliability` |
@@ -271,7 +271,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 4.1 | retriever | docs/specs/tasks/task-4.1-retriever.md | Done | Phase4 #1 | `../ContextForge-wt-retrieval-explain` |
 | 4.2 | retriever | docs/specs/tasks/task-4.2-explain.md | Done | Phase4 #2（dep 4.1）| `../ContextForge-wt-retrieval-explain` |
 | 5.1 | memoryops | docs/specs/tasks/task-5.1-dedup.md | Done | Phase5 #1 | `../ContextForge-wt-memoryops` |
-| 5.2 | memoryops | docs/specs/tasks/task-5.2-lifecycle.md | Draft | Phase5 #2（dep 5.1）| `../ContextForge-wt-memoryops` |
+| 5.2 | memoryops | docs/specs/tasks/task-5.2-lifecycle.md | Done | Phase5 #2（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 5.3 | memoryops | docs/specs/tasks/task-5.3-audit.md | Draft | Phase5 #3（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Draft | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
 | 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Draft | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
