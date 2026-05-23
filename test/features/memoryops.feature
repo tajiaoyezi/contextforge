@@ -37,24 +37,24 @@ Feature: memoryops
   # ---
   # Maps to: docs/specs/tasks/task-5.2-lifecycle.md
   Scenario: SCEN-5.2.1 — 对应 AC1（stale 三触发可设/检索）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given a set of ContextRecords where one has past expires_at, one has a provenance.original_path that no longer exists, and one whose fs mtime is newer than its provenance.source_modified_at
+    When MemoryOps lifecycle Mark runs with a deterministic Oracle (clock + filesystem)
+    Then each affected record gets a StaleMark with the correct reason (expired / source-deleted / source-modified) and healthy records are not marked
 
   Scenario: SCEN-5.2.2 — 对应 AC2（基础冲突检测提示）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given two records sharing the same source_uri with different content_hash, and two other records sharing the same file_path with different content_hash
+    When MemoryOps lifecycle Mark runs
+    Then it emits one ConflictReport per source_uri group and one per file_path group, each listing the participating record ids deterministically
 
   Scenario: SCEN-5.2.3 — 对应 AC3（不做语义冲突 边界）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given two records that are semantically similar but have different content_hash AND non-overlapping source_uri AND non-overlapping file_path
+    When MemoryOps lifecycle Mark runs
+    Then it does NOT report them as conflicting (proves no LLM / embedding semantic analysis is performed — v0.1 边界硬约束)
 
   Scenario: SCEN-5.2.4 — 对应 AC4（检索可排除 stale）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given a list of records and a list of StaleMarks naming a subset of those records
+    When the caller invokes lifecycle.FilterStale(records, marks)
+    Then the returned list omits every record whose id is in marks, preserves the original order of the remaining records, and does not mutate the input slice
 
   # ---
   # Maps to: docs/specs/tasks/task-5.3-audit.md
