@@ -26,28 +26,36 @@
 
 `_dispatch/sessions/` 仅本地（`.gitignore` 已加），用于留痕当前进行中 session 的全部 worker 派工 prompt。命名规则：
 
-**子目录**：`sessions/<YYYY-MM-DD>-<task-id-or-cluster-name>/`
+**子目录**：`sessions/<YYYY-MM-DD>[-<可选-topic>]/`
 - `<YYYY-MM-DD>` = session 启动当天日期（按主 agent 终端日历）
-- `<task-id-or-cluster-name>`：
-  - 单 task session：`task-X.Y-<name>`（如 `task-2.4-indexer`）
-  - 多 task 并行 cluster：`task-A-B-parallel` / `<topic>` 描述（如 `task-5.2-5.3-parallel` / `phase-4-closeout`）
+- `<可选-topic>` = 该子目录开始时主要 task 或主题，便于人类识别（如 `task-5.2-5.3-parallel` / `phase-4-closeout` / `task-2.4-indexer`），可省略只用日期
+- **同日 / 同 session 合并约定**（2026-05-23 用户纠偏）：同一日期或同一 session 下的所有 worker 派工（含初始 task dispatch / fix 工单 / chore PR dispatch / 跨 task 后续追加）**统一进入同一文件夹**，用文件名 seq 区分，**禁止**为每个 task / 每个 chore 单建子目录
+- **历史兼容**：archive 内已有的 `task-5.2-5.3-parallel` / `task-2.4-indexer` / `task-4.2-explain` 等命名为合法已落档，不 retro 重组；新建子目录按本约定走
 
 **文件名**：`<NN>-<worker>__<task-name>.md`
-- `<NN>` = 该 worker 在本 session 的派工序号（`01` / `02` / ...），便于排序与同 worker 多轮派工区分
+- `<NN>` = 子目录内**全局**派工序号（`01` / `02` / ...），**跨 task 跨 worker 跨 chore 共用一组序号**（不按 worker 分隔），便于按时间线复盘
 - `<worker>` = 实际 worker 名（`claude-work1` / `codex` / `grok` / `droid` / `agy` / `kimi` — 与 §Agent Roster 一致）
 - `<task-name>` = 该 prompt 的 task 主题（同子目录的 task-id 可不重复，可填子主题如 `nit-cleanup` / `gate-fix`）
 - 命名示例：`01-claude-work1__task-2.4-indexer.md` / `01-codex__task-5.3-audit.md` / `01-droid__chore-cleanup.md`
 
-**多 worker 双轨 / 多轨 session**：所有 worker prompt 落同一子目录（按日期 + cluster name 分组），不再每 worker 单建子目录。例：
+**多 worker 双轨 / 多轨 session**：所有 worker prompt 落同一子目录（按日期 + 可选 topic 分组），不再每 worker 单建子目录。例：
 ```
 sessions/2026-05-23-task-5.2-5.3-parallel/
 ├── 01-claude-work1__task-5.2-lifecycle.md
-├── 01-codex__task-5.3-audit.md
-├── 01-droid__chore-cleanup.md
-└── 01-grok__chore-agents-gate-fix.md
+├── 02-codex__task-5.3-audit.md
+├── 03-grok__chore-agents-gate-defects.md
+├── 04-droid__chore-post-merge-nit-cleanup.md
+├── 05-grok__chore-agents-fix-blocker.md
+├── 06-codex__task-5.3-fix-rebase.md
+├── 07-claude-work1__task-6.1-cli-search.md
+├── 08-agy__chore-bdd-phase-1-backfill.md
+├── 09-droid__chore-adr-009-provenance-ts.md
+└── 10-grok__chore-dispatch-readme-consolidate-by-date.md
 ```
 
-**fix 工单** 写在同一子目录、序号递增：`02-codex__task-5.3-fix.md` / `03-codex__task-5.3-fix2.md`。
+**注意 seq 跨 task/chore/worker 全局递增**（不按类型分组也不按 worker 分组 — 纯时间线）；该例展示了同一日期下 task 派工 + fix 工单 + chore 派工共 10 个 prompt 全部入同一文件夹。
+
+**fix 工单** 写在同一子目录、序号递增：`02-codex__task-5.3-fix.md` / `03-codex__task-5.3-fix2.md`。**fix 工单 / chore 派工 / 新 task dispatch 全部共用同一组 seq，不分配独立子目录**。
 
 归档约定见上方现有结构段。
 
