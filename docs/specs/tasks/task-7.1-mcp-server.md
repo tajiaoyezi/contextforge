@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. 手写 MCP JSON-RPC over stdio (R7 严格通道，不引 SDK)、B. stdio subprocess + 新 `contextforge mcp` 子命令、C. `<data_dir>/mcp-allowlist.json` 启动读 + initialize handshake 验证、D. 复用 task-6.2 `internal/memoryops/audit/` 同 audit-rest.log + Endpoint 字段 prefix `mcp:`、E. MCP spec lock 2025-06-18 — 详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -319,11 +319,11 @@ type ToolContent struct {
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 context_search 一致字段 | SCEN-7.1.1 | TEST-7.1.1 | - | unit-test | Not Started |
-| AC2 read/explain/collections | SCEN-7.1.2 | TEST-7.1.2 | - | unit-test | Not Started |
-| AC3 client allowlist 拒绝+审计 | SCEN-7.1.3 | TEST-7.1.3 | - | unit-test | Not Started |
-| AC4 adapter 解耦+版本锁定 | SCEN-7.1.4 | TEST-7.1.4 | - | unit-test | Not Started |
-| AC5 Phase7 端到端 smoke 骨架 | SCEN-7.1.5 | TEST-7.1.5 | phase-7 spec §6 | unit-test | Not Started |
+| AC1 context_search 一致字段 | SCEN-7.1.1 | TEST-7.1.1 | - | unit-test | Test Red |
+| AC2 read/explain/collections | SCEN-7.1.2 | TEST-7.1.2 | - | unit-test | Test Red |
+| AC3 client allowlist 拒绝+审计 | SCEN-7.1.3 | TEST-7.1.3 | - | unit-test | Test Red |
+| AC4 adapter 解耦+版本锁定 | SCEN-7.1.4 | TEST-7.1.4 | - | unit-test | Test Red |
+| AC5 Phase7 端到端 smoke 骨架 | SCEN-7.1.5 | TEST-7.1.5 | phase-7 spec §6 | unit-test | Test Red |
 
 ## 8. Risks
 
