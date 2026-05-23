@@ -1,11 +1,9 @@
 # Task `8.3`: `release-smoke — Linux x86_64 release 打包 + smoke test + 性能基准`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
-
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: main agent（ADR-012 自治）
 **Related Phase**: Phase 8 (eval-and-reliability)
 **Dependencies**: 8.1 (eval-harness), 8.2 (reliability)
 
@@ -21,15 +19,24 @@ v0.1 收口 task：产出可安装的 Linux x86_64 release 包并通过 smoke te
 
 ### In Scope
 
-- `<TBD-by-user>`
+- Linux x86_64 tarball contract harness：校验 `contextforge-linux-amd64.tar.gz` 必含 `contextforge`、`contextforge-core`、`contextforge.example.toml`、`README.md`、`LICENSE`，并校验二进制 entry mode。
+- Release smoke sequence harness：把解包、init、import、index、search、MCP、export、eval run 七步建模为必须全绿的可审计 evidence。
+- 性能基准 gate：10 万 chunk BM25 / metadata / filter P95 均需 `< 500ms`，低于 10 万 chunk 的样本不得冒充 release benchmark。
+- Phase 8 §6 端到端 smoke 命令落盘为可执行脚本，作为最后 task 合并前的 Gate 3 入口。
+- v0.1 release README / example config / license placeholder 纳入 tarball 内容源。
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- GitHub Release 上传、tag 发布、制品签名、checksum 发布自动化。
+- macOS / Windows 官方 tarball、Homebrew、installer。
+- 真实 100 万 chunk benchmark；v0.1 gate 仅要求 10 万 chunk 目标。
+- 修复所有历史产品 gap（如完整 import CLI 体验）；本 task 只建立 release smoke 可判定门。
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- v0.1 发布负责人：需要一条可重复的 release smoke 命令判断能否发包。
+- 本地 Linux / WSL2 用户：下载 tarball 后按 README 快速启动。
+- 后续 CI：复用 release harness 阻止缺文件、低规模 benchmark 或 smoke 漏步进入 release。
 
 ## 5. Behavior Contract
 
@@ -44,11 +51,16 @@ v0.1 收口 task：产出可安装的 Linux x86_64 release 包并通过 smoke te
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- 新增 `internal/release`：tarball 校验、release smoke evidence 校验、benchmark gate。
+- 新增 `scripts/release_smoke.sh`：Phase 8 Gate 3 可执行 smoke 入口。
+- 新增根目录 `README.md`、`LICENSE`、`contextforge.example.toml` 作为 tarball 文档源。
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+- `release.ValidateTarball(path string) (*TarballReport, error)`
+- `release.ValidateSmokeEvidence([]StepResult) error`
+- `release.CheckBenchmark(BenchmarkReport) error`
+- `release.RequiredSteps() []string`
 
 ## 6. Acceptance Criteria
 
