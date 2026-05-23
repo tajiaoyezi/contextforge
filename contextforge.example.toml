@@ -1,0 +1,15 @@
+# ContextForge v0.1 example config.
+schema_version = "0.1"
+data_dir = "~/.contextforge"
+allow_denylist_override = false
+denylist = [".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa", "id_ed25519", ".ssh/", ".git/objects/", "node_modules/", "target/", "dist/", "build/", ".cache/", "vendor/"]
+
+[remote]
+enabled = false
+provider = ""
+endpoint = ""
+
+[[collections]]
+id = "default"
+allowlist = ["./"]
+agent_scope = ["local"]

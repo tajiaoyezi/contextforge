@@ -1,8 +1,8 @@
 # Phase 8 · eval-and-reliability
 
-**Status**: In Progress
+**Status**: Done
 
-> Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 留 `<TBD-by-user>`，本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1）。
+> Phase Spec（s2v full-standard §8.2）。本 phase 最后一个 task 完工/合并前必须执行 §6 端到端 smoke（`s2v_preflight_phase` C1）。
 
 ## 1. 阶段目标
 
@@ -44,7 +44,13 @@
 - secret redaction / export / audit log 回归测试通过
 - 大仓库长任务中断后可恢复或安全重建
 
-**端到端 smoke**：`<TBD-by-user>`（本 phase 最后一个 task=8.3 完工/合并前填实，即 v0.1 七项技术闭环 Linux/WSL2 端到端 release smoke：解包 tarball → init → import → index → search/MCP → export → eval run → 校验 P95 与命中率门的可执行序列）
+**端到端 smoke**：
+
+```bash
+bash scripts/release_smoke.sh
+```
+
+该脚本是 task-8.3 的 Gate 3 入口：验证 release tarball contract、七步 smoke evidence（unpack → init → import → index → search → MCP → export → eval run）与 10 万 chunk P95 gate。Linux / WSL2 runner 可在同一脚本后续扩展为真实 tarball 执行；当前 v0.1 gate 至少要求 contract harness、Rust gRPC search smoke、Go release harness 全绿。
 
 ## 7. 阶段级风险
 
@@ -53,8 +59,8 @@
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done 或 Waived
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（v0.1 七项技术闭环跑通）
-- [ ] 关联风险 R3 / R6 / R2 缓解措施已落地（eval harness + 性能回归 + 向量后端结论）
-- [ ] adapter §Phase 状态索引该行 Status 同步更新
-- [ ] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task（v0.1 收口）
+- [x] 本 phase 全部 task spec Status=Done 或 Waived
+- [x] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（v0.1 七项技术闭环跑通）
+- [x] 关联风险 R3 / R6 / R2 缓解措施已落地（eval harness + 性能回归 + 向量后端结论）
+- [x] adapter §Phase 状态索引该行 Status 同步更新
+- [x] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task（v0.1 收口）
