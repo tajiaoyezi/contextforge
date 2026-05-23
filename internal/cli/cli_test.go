@@ -76,10 +76,10 @@ func TestTask14_AC4_SubcommandsRegisteredUnimplementedNoPanic(t *testing.T) {
 		}
 	}
 
-	// task-6.1 and task-6.3: `search` and `export` are now real subcommands.
-	// The remaining placeholders still return the task-1.4 not-implemented
-	// response and must not panic.
-	for _, sub := range []string{"import", "index", "serve", "mcp", "eval"} {
+	// task-6.1 / task-6.2 / task-6.3: `search`, `serve`, `export` are now real
+	// subcommands and dispatch through runSearch / runServe / runExport. The
+	// remaining four stay Phase 6+/7/8 placeholders that AC4 still asserts on.
+	for _, sub := range []string{"import", "index", "mcp", "eval"} {
 		var stdout, stderr bytes.Buffer
 		code := mustNotPanic(t, func() int { return Execute([]string{sub}, &stdout, &stderr) })
 		if code == 0 {

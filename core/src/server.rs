@@ -24,7 +24,8 @@ use crate::pb::{
     SearchResponse,
 };
 use crate::retriever::{
-    Retriever, RetrieverError, SearchFilters as RetrieverFilters, SearchOptions, SearchResult,
+    is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
+    SearchOptions, SearchResult,
 };
 
 /// Built-in safe default listen address (loopback only, never `0.0.0.0`).
@@ -122,6 +123,27 @@ impl ContextService for CoreService {
             }
             Err(e) => return Err(Status::internal(e.to_string())),
         };
+
+        // task-6.2 §2A 决策 E fast-path: when the query shape looks like a
+        // chunk_id (chunker §100 = "chk_<8-hex>_<ordinal>"), try the exact
+        // SQLite lookup first; hit → single-result SearchResponse, no BM25
+        // scoring. Miss → fall through to the original BM25 search (so
+        // legitimate full-text queries that happen to look like chunk_ids
+        // still get retrieval, and chunk_id-shaped strings that aren't real
+        // chunk_ids degrade gracefully to BM25). REST `GET /v1/chunks/{id}`
+        // is the primary user of this path; CLI search is mostly unaffected
+        // because user queries rarely match the chunker format prefix.
+        if is_chunk_id_format(&req.query) {
+            match retriever.get_chunk(&req.query) {
+                Ok(Some(hit)) => {
+                    return Ok(Response::new(SearchResponse {
+                        results: vec![search_result_to_proto(&hit)],
+                    }));
+                }
+                Ok(None) => { /* fall through to BM25 */ }
+                Err(e) => return Err(Status::internal(format!("get_chunk: {}", e))),
+            }
+        }
 
         let filters_pb = req.filters.unwrap_or_default();
         let top_k = if req.top_k <= 0 {

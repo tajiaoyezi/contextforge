@@ -1,14 +1,24 @@
 // Command contextforge is the Go control-plane binary (task-1.4 Phase 1 +
-// task-6.1 Phase 6). It delegates to the internal/cli stdlib subcommand
-// dispatcher, wiring the production gRPC `Search` backend (per-invocation
-// daemon spawn — §2A 决策 B) so internal/cli stays independent of
-// internal/daemon (avoids a test-time import cycle with daemon_test.go).
+// task-6.1 / task-6.2 Phase 6). It delegates to the internal/cli stdlib
+// subcommand dispatcher and injects the production backends:
+//   - SearchBackend (task-6.1): per-invocation daemon spawn for `contextforge search`
+//   - ServeBackend  (task-6.2): long-running daemon + REST server for `contextforge serve`
+//
+// internal/cli deliberately does NOT import internal/daemon — that would
+// resurrect the test-time import cycle with daemon_test.go (which imports
+// cli for the task-1.4 end-to-end smoke). All daemon-coupled work lives
+// here in package main.
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/cli"
@@ -24,6 +34,7 @@ const daemonHealthDeadline = 15 * time.Second
 
 func main() {
 	cli.SetSearchBackend(searchViaDaemon)
+	cli.SetServeBackend(doServe)
 	exporter.SetSearchBackend(searchViaDaemonWithDataDir)
 	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -40,26 +51,98 @@ func searchViaDaemon(
 		return nil, fmt.Errorf("start core daemon: %w", err)
 	}
 	defer d.Stop()
+	if err := waitDaemonHealthy(ctx, d); err != nil {
+		return nil, err
+	}
+	return d.Search(ctx, req)
+}
 
+// doServe is the production `cli.ServeBackend` (task-6.2): start a
+// long-running daemon (AutoRestart=true), bind the REST listener (Unix
+// socket or loopback TCP per ServeOpts), wait for the gRPC core to
+// report SERVING, then enter ServeREST until SIGINT/SIGTERM triggers a
+// graceful shutdown.
+func doServe(_ context.Context, opts *cli.ServeOpts, stdout, stderr io.Writer) error {
+	// ctx scope: signal handler cancels on SIGINT/SIGTERM → graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	listener, addrStr, err := resolveListener(opts.Addr, opts.Unix, stderr)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+
+	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
+	if err != nil {
+		return fmt.Errorf("start core daemon: %w", err)
+	}
+	defer d.Stop()
+
+	if err := waitDaemonHealthy(ctx, d); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "contextforge serve: listening on %s\n", addrStr)
+	fmt.Fprintf(stdout, "  token file: %s\n", opts.TokenPath)
+	fmt.Fprintln(stdout, "  Authorization: Bearer <token-from-file>")
+
+	return d.ServeREST(ctx, listener, opts.Token, opts.DataDir)
+}
+
+// resolveListener creates the listener per ServeOpts. Unix socket is
+// preferred when --unix is given; Windows falls back to loopback TCP with
+// a stderr warning (§3 In Scope: Windows Unix-domain not supported v0.1).
+// When neither --addr nor --unix is given, picks a free loopback port.
+func resolveListener(addr, unixPath string, stderr io.Writer) (net.Listener, string, error) {
+	if unixPath != "" {
+		if runtime.GOOS == "windows" {
+			fmt.Fprintln(stderr,
+				"contextforge serve: --unix not supported on Windows; "+
+					"falling back to loopback TCP (auto-selected port)")
+			unixPath = ""
+		} else {
+			ln, err := net.Listen("unix", unixPath)
+			if err != nil {
+				return nil, "", fmt.Errorf("unix listen %q: %w", unixPath, err)
+			}
+			if err := os.Chmod(unixPath, 0o600); err != nil {
+				ln.Close()
+				return nil, "", fmt.Errorf("chmod unix socket %q: %w", unixPath, err)
+			}
+			return ln, "unix://" + unixPath, nil
+		}
+	}
+
+	bind := addr
+	if bind == "" {
+		bind = "127.0.0.1:0" // auto-select free loopback port
+	}
+	ln, err := net.Listen("tcp", bind)
+	if err != nil {
+		return nil, "", fmt.Errorf("tcp listen %q: %w", bind, err)
+	}
+	return ln, "http://" + ln.Addr().String(), nil
+}
+
+// waitDaemonHealthy polls daemon.HealthCheck until it returns "SERVING"
+// or daemonHealthDeadline elapses. Shared between SearchBackend (one-shot)
+// and ServeBackend (long-running startup gate).
+func waitDaemonHealthy(ctx context.Context, d *daemon.Daemon) error {
 	deadline := time.Now().Add(daemonHealthDeadline)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		hctx, hcancel := context.WithTimeout(ctx, 2*time.Second)
-		status, herr := d.HealthCheck(hctx)
+		s, herr := d.HealthCheck(hctx)
 		hcancel()
-		if herr == nil && status == "SERVING" {
-			lastErr = nil
-			break
+		if herr == nil && s == "SERVING" {
+			return nil
 		}
 		lastErr = herr
 		time.Sleep(200 * time.Millisecond)
 	}
-	if lastErr != nil {
-		return nil, fmt.Errorf("core did not reach SERVING within %s: %w",
-			daemonHealthDeadline, lastErr)
-	}
-
-	return d.Search(ctx, req)
+	return fmt.Errorf("core did not reach SERVING within %s: %w",
+		daemonHealthDeadline, lastErr)
 }
 
 // searchViaDaemonWithDataDir is the production exporter.SearchBackend. The
