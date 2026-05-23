@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. 数据源=collection-wide + stale 默认过滤、B. 三格式=jsonl + md-bundle(.tar.gz multi-file) + agent-draft 4 .md、C. AC3 secret scan = Go inline sanity hit-count check（cross-language 修正不重做 task-2.1 完整 detection）、D. AC4 fidelity = exporter.CalcFidelity helper + 内部 fixture、E. AC5 Phase 6 端到端 smoke = 本 task 填实 phase-6 spec §6 — 详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -298,21 +298,21 @@ func writeAgentDraft(records []*contextforgev1.ContextRecord, dir string) error
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 6 Exit Criteria): `contextforge export --format jsonl` 导出 canonical JSONL；`--format markdown-bundle` 导出 Markdown bundle（多 .md + manifest 打 .tar.gz）。
-- [ ] **AC2** (PRD §Constraints 兼容性导出格式): 支持 `--format agent-draft`（Hermes-style MEMORY.md/USER.md/AGENTS.md/CLAUDE.md draft），draft/bundle 一律不写回第三方 Agent（output 在保护路径下 → 拒）。
-- [ ] **AC3** (PRD §Technical Risks R4 / §Constraints 安全): export 前执行二次 secret scan（**v0.1 解读 §2A 决策 C**：Go inline sanity hit-count check，5-7 常见 pattern；cross-language 限制下不重做 task-2.1 完整 detection；defense-in-depth），命中即拒 export。
-- [ ] **AC4** (PRD §Success Metrics 跨 Agent 迁移保真): 迁移后结构化字段保真率经 fixture 计算，jsonl/md-bundle ≥ 80% / agent-draft ≥ 60%（agent-draft 是 lossy format 特殊阈值，§2A 决策 D）。
-- [ ] **AC5** (本 task 新增): Phase 6 端到端 smoke 可执行（init → import → serve → CLI search + REST /v1/search 一致 → export 三格式 + sanity secret scan 0 hits + fidelity ≥ 80% / 60%），本 task 填实 phase-6 spec §6 端到端 smoke 命令骨架（自动化运行留 task-8.1 eval-harness）。
+- [x] **AC1** (PRD §Implementation Phases Phase 6 Exit Criteria): `contextforge export --format jsonl` 导出 canonical JSONL；`--format markdown-bundle` 导出 Markdown bundle（多 .md + manifest 打 .tar.gz）。
+- [x] **AC2** (PRD §Constraints 兼容性导出格式): 支持 `--format agent-draft`（Hermes-style MEMORY.md/USER.md/AGENTS.md/CLAUDE.md draft），draft/bundle 一律不写回第三方 Agent（output 在保护路径下 → 拒）。
+- [x] **AC3** (PRD §Technical Risks R4 / §Constraints 安全): export 前执行二次 secret scan（**v0.1 解读 §2A 决策 C**：Go inline sanity hit-count check，5-7 常见 pattern；cross-language 限制下不重做 task-2.1 完整 detection；defense-in-depth），命中即拒 export。
+- [x] **AC4** (PRD §Success Metrics 跨 Agent 迁移保真): 迁移后结构化字段保真率经 fixture 计算，jsonl/md-bundle ≥ 80% / agent-draft ≥ 60%（agent-draft 是 lossy format 特殊阈值，§2A 决策 D）。
+- [x] **AC5** (本 task 新增): Phase 6 端到端 smoke 可执行（init → import → serve → CLI search + REST /v1/search 一致 → export 三格式 + sanity secret scan 0 hits + fidelity ≥ 80% / 60%），本 task 填实 phase-6 spec §6 端到端 smoke 命令骨架（自动化运行留 task-8.1 eval-harness）。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 jsonl/md-bundle 导出 | SCEN-6.3.1 | TEST-6.3.1 | - | unit-test | Not Started |
-| AC2 agent-draft + 不写回 | SCEN-6.3.2 | TEST-6.3.2 | - | unit-test | Not Started |
-| AC3 sanity secret scan | SCEN-6.3.3 | TEST-6.3.3 | - | unit-test | Not Started |
-| AC4 fidelity 三格式 | SCEN-6.3.4 | TEST-6.3.4 | - | unit-test | Not Started |
-| AC5 Phase6 端到端 smoke 骨架 | SCEN-6.3.5 | TEST-6.3.5 | phase-6 spec §6 | unit-test | Not Started |
+| AC1 jsonl/md-bundle 导出 | SCEN-6.3.1 | TEST-6.3.1 | - | unit-test | Done |
+| AC2 agent-draft + 不写回 | SCEN-6.3.2 | TEST-6.3.2 | - | unit-test | Done |
+| AC3 sanity secret scan | SCEN-6.3.3 | TEST-6.3.3 | - | unit-test | Done |
+| AC4 fidelity 三格式 | SCEN-6.3.4 | TEST-6.3.4 | - | unit-test | Done |
+| AC5 Phase6 端到端 smoke 骨架 | SCEN-6.3.5 | TEST-6.3.5 | phase-6 spec §6 | unit-test | Done |
 
 ## 8. Risks
 
@@ -332,15 +332,31 @@ func writeAgentDraft(records []*contextforgev1.ContextRecord, dir string) error
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - `internal/exporter/`（新增）— Export 主入口、daemon.Search pseudo full-scan backend、JSONL / Markdown bundle / agent-draft writers、sanity secret scan、CalcFidelity
+  - `internal/cli/export.go`（新增）— `contextforge export` flag parsing + exit-code handling
+  - `internal/cli/cli.go`（修改）— dispatch case `"export"` 改为 `runExport`
+  - `cmd/contextforge/main.go`（修改）— production exporter backend wire 到 `daemon.Search`，通过 `CONTEXTFORGE_DATA_DIR` 传 `--data-dir`
+  - `internal/cli/cli_test.go` / `internal/cli/export_test.go`（修改/新增）— task-6.3 export CLI tests + task-1.4 placeholder test 更新
+  - `internal/exporter/*_test.go`（新增）— TEST-6.3.1~5 RED→GREEN 覆盖
+  - `test/features/exporter.feature`（修改）— SCEN-6.3.1~5 Given/When/Then 填实
+  - `docs/specs/phases/phase-6-cli-api-export.md`（修改）— §6 端到端 smoke shell 命令骨架填实
+  - `docs/s2v-adapter.md`（修改）— task-6.3 Status Ready → Done
+  - `docs/specs/tasks/task-6.3-exporter.md`（修改）— Status / AC / §7 / §10 终态回填
+- **commit 列表**：
+  - `0042671` test(exporter): 加 SCEN-6.3.1~5 共 5 个 RED 测试 + Status: Ready → In Progress
+  - `200190b` feat(exporter): contextforge export 端到端实现 (三格式 + sanity secret scan + CalcFidelity 通过全部 5 个测试) + phase-6 §6 端到端 smoke 命令骨架填实
+  - `25eeeb0` test(exporter): 避免 ContextRecord fixture 值拷贝触发 go vet
+  - 本 docs(spec) commit（§10 回填 + Status → Done）
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`
+  - unit-test: ✅ `go test ./... && cargo test --workspace`
+    - Go: 12 tested packages ok + 2 no-test packages；新 `internal/exporter` 包 5 tests passed
+    - Rust: 55 tests passed / 0 failed（core unit 31 + skeleton 4 + phase smokes 4 + proto contract 5 + scanner 11）
+- **剩余风险 / 未做项**：Phase 6 §6 shell smoke 已填实但自动化执行留 task-8.1；export 数据源按 §2A 路径 A 走 `daemon.Search(query="*")` pseudo full-scan，若后续实测发现 Tantivy `*` 不能全集召回，按既定 `SPEC-DRIFT-task-6.3.list-chunks.md` 升级到 `ListAllChunks`。
+- **下游 task 影响**：task-6.2（phase-last merge 时 Gate 3 复用 phase-6 §6 smoke）；task-7.1（MCP 可复用 `contextforge export` / exporter API）；task-8.1（接手 phase smoke 自动化 + 大规模 fidelity 回归）。
 - **§2A Decisions**（2026-05-23 用户审定，主 agent 与用户预先审定后落 spec；worker 完工时按实际实施情况验证 / 补充）：
   - **A: 数据源 = collection-wide 读全集 + stale 默认过滤**：`contextforge export --collection <id>` 直读 indexer 全集；默认调 `lifecycle.Mark + FilterStale` 跳过 stale records，`--include-stale` 显式 bypass。SQLite 读取走 daemon.Search(query="*", top_k=large) pseudo full-scan 替代路径（避免引 SQLite Go driver R7 chore-dep）；BM25 `*` 不全集 → SPEC-DRIFT-task-6.3.list-chunks 串行
   - **B: 三格式 = jsonl + md-bundle(.tar.gz multi-file) + agent-draft (4 .md)**：jsonl 一行一 record；md-bundle 多 .md + manifest.json 打 .tar.gz；agent-draft 生 MEMORY/USER/AGENTS/CLAUDE.md 到 output dir + 启动 check Output 在保护路径拒

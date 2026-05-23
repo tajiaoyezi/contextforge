@@ -13,6 +13,7 @@ import (
 
 	"github.com/tajiaoyezi/contextforge/internal/cli"
 	"github.com/tajiaoyezi/contextforge/internal/daemon"
+	"github.com/tajiaoyezi/contextforge/internal/exporter"
 	contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"
 )
 
@@ -23,6 +24,7 @@ const daemonHealthDeadline = 15 * time.Second
 
 func main() {
 	cli.SetSearchBackend(searchViaDaemon)
+	exporter.SetSearchBackend(searchViaDaemonWithDataDir)
 	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -58,4 +60,28 @@ func searchViaDaemon(
 	}
 
 	return d.Search(ctx, req)
+}
+
+// searchViaDaemonWithDataDir is the production exporter.SearchBackend. The
+// daemon API is intentionally unchanged; contextforge-core already accepts
+// CONTEXTFORGE_DATA_DIR, and exec.Command inherits the parent environment.
+func searchViaDaemonWithDataDir(
+	ctx context.Context,
+	dataDir string,
+	req *contextforgev1.SearchRequest,
+) (*contextforgev1.SearchResponse, error) {
+	old, hadOld := os.LookupEnv("CONTEXTFORGE_DATA_DIR")
+	if dataDir != "" {
+		if err := os.Setenv("CONTEXTFORGE_DATA_DIR", dataDir); err != nil {
+			return nil, err
+		}
+	}
+	defer func() {
+		if hadOld {
+			_ = os.Setenv("CONTEXTFORGE_DATA_DIR", old)
+		} else {
+			_ = os.Unsetenv("CONTEXTFORGE_DATA_DIR")
+		}
+	}()
+	return searchViaDaemon(ctx, req)
 }

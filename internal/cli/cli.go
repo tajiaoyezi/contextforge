@@ -66,6 +66,11 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		// "not implemented" default-arm response for `search`.
 		return runSearch(rest, stdout, stderr)
 
+	case "export":
+		// task-6.3: real subcommand entry; supersedes the task-1.4
+		// "not implemented" default-arm response for `export`.
+		return runExport(rest, stdout, stderr)
+
 	default:
 		if known(sub) {
 			fmt.Fprintf(stderr, "contextforge %s: not implemented "+

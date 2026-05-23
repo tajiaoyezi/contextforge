@@ -276,7 +276,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 5.3 | memoryops | docs/specs/tasks/task-5.3-audit.md | Done | Phase5 #3（dep 5.1）| `../ContextForge-wt-memoryops` |
 | 6.1 | cli | docs/specs/tasks/task-6.1-cli-search.md | Done | Phase6 #1 | `../ContextForge-wt-cli-api-export` |
 | 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Ready | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
-| 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Ready | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
+| 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Done | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 7.1 | mcp-adapter | docs/specs/tasks/task-7.1-mcp-server.md | Draft | Phase7 #1 | `../ContextForge-wt-mcp-adapter` |
 | 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Draft | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
 | 8.2 | reliability | docs/specs/tasks/task-8.2-reliability.md | Draft | Phase8 #2 | `../ContextForge-wt-eval-and-reliability` |
