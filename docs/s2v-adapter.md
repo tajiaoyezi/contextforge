@@ -209,6 +209,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 - subagent 跑 review → return 结构化结论给主 agent → 主 agent 直接评判 + 决策（merge / 派 worker fix）
 - **省掉** "reviewer 终端评 → 主 agent 接 review 报告 → 主 agent 写 fix 工单 → 用户中转" 的双向中转
 - subagent 引用的 prompt template 见 `_dispatch/reviewer__per-PR.md`（保留文件名；内容已改为 subagent 模式）
+- **约束：review subagent 不得再 spawn 子 subagent** — 必须**直接亲自评审**（亲自跑 temp clone verify + 读 spec + 写 review object），嵌套 spawn 会失控且信息二手转述损失。该硬约束已写进 `_dispatch/reviewer__per-PR.md` 第 28-29 行（"角色"段尾），本处与之保持单一源
 
 #### 主 agent 会话首 worker 派工前置 checklist
 
