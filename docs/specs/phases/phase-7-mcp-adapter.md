@@ -1,6 +1,6 @@
 # Phase 7 · mcp-adapter
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 由 task-7.1 填实；自动化运行留 task-8.1 eval-harness。
 
