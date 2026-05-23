@@ -1,10 +1,10 @@
-# AGENTS.md — Agent 协作约定（Tier: team / 单驱动 + 内部 subagent 变体）
+# AGENTS.md — Agent 协作约定（Tier: team / 单驱动 + 内部 subagent 自治变体）
 
-> 本项目 Collaboration Tier = `team`。**自 2026-05-23 起转入单驱动变体**（ADR-011）：仅主 agent（Claude Code 单 session）+ 其 Agent tool 内部 subagent，外部 worker 终端整套退役。R6 PR-only / R7 lockfile-protect / worktree 拓扑 / ADR 治理骨架 全部保留。
+> 本项目 Collaboration Tier = `team`。**自 2026-05-23 起转入单驱动变体**（ADR-011），并由 **ADR-012** 放宽为主 agent 治理自治：仅主 agent（Claude Code 单 session）+ 其 Agent tool 内部 subagent，外部 worker 终端整套退役；§2A / R6 merge decision / R7 dep chore / §8 Waive 在有 PRD/spec/ADR/用户目标锚点时由主 agent 自决。R3/R6 物理保险、R6 PR-only、R7 subagent lockfile-protect、worktree 拓扑、ADR 治理骨架全部保留。
 > git 协作严格：worktree 隔离 + feature branch + PR + R6 PR-only。
 > 项目可在 `docs/s2v-adapter.md` §Workflow Overrides 微调单一字段（如关闭 multi-reviewer / require-CI-gate）以适配实际规模。
 >
-> **进入本仓库时第一件事：读完本文件 + `docs/s2v-adapter.md` + `docs/decisions/adr-011-single-driver-with-subagents.md`**。
+> **进入本仓库时第一件事：读完本文件 + `docs/s2v-adapter.md` + `docs/decisions/adr-011-single-driver-with-subagents.md` + `docs/decisions/adr-012-main-agent-governance-autonomy.md`**。
 >
 > 命名约定：**分支**一律含模块 name 全名（`feat/<phase>-<name>` / `feat/task-<X.Y>-<name>`，与 git 历史一致避免歧义）。**worktree 目录**：phase 级 `ContextForge-wt-<phase-name>/`（主 agent 手动建）；task 级 `ContextForge-wt-task-<X.Y>/`（主 agent 用 Agent tool `isolation: "worktree"` 自动建 — 用 X.Y 唯一标识，name 已在分支名，二者由 X.Y 关联）。
 
@@ -79,7 +79,7 @@ source docs/s2v/scripts/lib/verify.sh
 | `s2v_verify_full "<keys>"` | 跑全套；空列表 / 缺 unit-test 自动 hard-fail |
 | `s2v_read_status <task-spec>` | 读 task spec 顶部 `**Status**:` 字段（多词如 "In Progress" 不被截断）|
 | `s2v_preflight_input <path>` | 输入路径形态校验（绝对路径 / ./ 前缀 / 非 docs/specs/tasks/ 拒绝）|
-| `s2v_preflight_ready <task-spec>` | Ready Gate 全套；rc=0 OK / rc=1 Draft（本档 §4.5：STOP，通知主 agent/用户审后改 Ready）/ rc=2 硬 STOP |
+| `s2v_preflight_ready <task-spec>` | Ready Gate 全套；rc=0 OK / rc=1 Draft（本档 §4.5：STOP，主 agent 按 ADR-012 自审后改 Ready）/ rc=2 硬 STOP |
 
 完整说明 + self-test：见 `docs/s2v/scripts/README.md`。
 
@@ -162,7 +162,7 @@ grep -qE "^\[${EXPECTED} " /tmp/c.txt || {
 - **找到** → 严格按 spec 的 AC / Behavior Contract / Traceability / Verification Plan 执行
 - **找不到** → 立刻停下，主 agent 跑 `/s2v-add task <name>` 生成。**禁止 subagent 自创 task spec**
 
-### R6 · 仅通过 PR 合入 main
+### R6 · 仅通过 PR 合入 main（主 agent 自决 merge）
 
 ❌ **禁止操作**：
 - 在 main 上 `git commit`（含 amend / squash 业务提交）
@@ -182,6 +182,8 @@ grep -qE "^\[${EXPECTED} " /tmp/c.txt || {
 | 切换 HEAD（不写）| `git checkout <existing-branch>` | 主 agent 在主 repo / subagent 在 worktree |
 | Feature branch 写 | `commit` / `rebase <feat>` / `squash` | 主 agent / subagent，仅在自己分支 |
 
+> **ADR-012 自治放宽**：§4 Gate 0-5 全部通过后，主 agent 可自行决定 `merge --no-ff` 合入并 push `master`，不再等待额外用户确认。放宽的是"merge 决策"，不是物理边界：仍禁止 main 上业务 commit、`reset --hard`、force push、绕过 Gate、或 subagent 自 merge。
+
 #### R6.1 · 无 GitHub remote 时的退化协议
 
 无 `origin` remote 时（判定：`git remote -v | grep -q "^origin"` 为假 — 与 `references/r6-pr-protocol.md` 单一事实源同口径；fork 仓库有 `upstream` 无 `origin` 亦走此分支）退化为纯本地 PR 模拟：
@@ -199,9 +201,9 @@ grep -qE "^\[${EXPECTED} " /tmp/c.txt || {
 - R6 / R7 自本 AGENTS.md merge 入 main 之后对所有未来 commit 生效
 - main 上 R6 加入前的历史 commit 视为 baseline，不需回溯重做
 
-### R7 · 禁止 subagent 自行修改 lockfile（`package.json` / `bun.lock` / `requirements.txt` / `Cargo.lock` / `go.sum` / 等）
+### R7 · 禁止 subagent 自行修改 lockfile（主 agent 可自决 dep chore PR）
 
-依赖管理仅由主 agent 在专门 chore-dep PR 中执行。subagent 实施 task 中发现需新依赖：
+依赖管理仅由主 agent 在专门 chore-dep PR 中执行。ADR-012 起，若依赖需求由已接受 task/spec/ADR/用户目标明确锚定，主 agent 可自行完成 dep chore PR（记录包名 / 版本 / 用途 / 替代方案考虑并跑验证），不再等待额外用户确认。subagent 实施 task 中发现需新依赖：
 
 1. subagent 立刻 STOP 当前 task → return needs-dep 对象给主 agent（含包名 / 版本范围 / 用途 / 替代方案考虑）
 2. 主 agent 走完整 R6 PR 流程加依赖：
@@ -274,7 +276,7 @@ TASK_SPEC="<task-spec-path>"   # agent 替换为 docs/specs/tasks/task-X.Y-<name
 s2v_preflight_ready "$TASK_SPEC"
 case $? in
   0) : ;;                        # Ready / In Progress，可进 RED
-  1) echo "🛑 STOP: $TASK_SPEC Status=Draft — 通知主 agent / 用户审 §3 Scope / §5 Behavior Contract / §6 AC，把 Status 改成 Ready 再来"
+  1) echo "🛑 STOP: $TASK_SPEC Status=Draft — 主 agent 按 ADR-012 自行审 §3 Scope / §5 Behavior Contract / §6 AC；可由项目证据补齐并改 Ready 后重跑，subagent 不得私改业务契约"
      exit 1 ;;
   *) exit 2 ;;                   # 硬性 STOP（§6 AC 空 / §7 无 SCEN-TEST / 非法 Status / 残留 <TBD-by-user> — 详因已写 stderr）
 esac
@@ -363,12 +365,12 @@ Claude Code v2.1.139+ 的 `/goal` 命令让主 agent 设完成条件后跨多轮
 |---|---|
 | task 实施直至 §9 全绿 + §10 回填 | PR merge 本身（R6 — 主 agent 显式 §4 Gate）|
 | Spec drift 批量修复直至 grep 干净 | 跨 task 跨 phase 的大规模 refactor（拆 task 分别跑）|
-| Lockfile / dep migration 直至构建过 | 需用户拍板的设计决策（用 AskUserQuestion 而非 /goal）|
-| Test red → green 多轮 fix 单一 AC | 业务 ADR 起草（需用户审 trade-off，非自治）|
+| Lockfile / dep migration 直至构建过 | 无 PRD/spec/ADR/用户目标锚点的产品取舍（需用户拍板）|
+| Test red → green 多轮 fix 单一 AC | 影响安全 / 隐私 / release integrity 的 ADR 或 Waive（需用户审 trade-off）|
 
-**与 R6 / §4 Gate 关系**：`/goal` 只用于 PR ready 之前的实施阶段；进入 §4 Gate 0-5 后 `/goal clear` 让主 agent 显式走每个 gate 决策。
+**与 R6 / §4 Gate 关系**：`/goal` 只用于 PR ready 之前的实施阶段；进入 §4 Gate 0-5 后 `/goal clear` 让主 agent 显式走每个 gate 决策。ADR-012 起 Gate 全绿后的 merge 决策由主 agent 自决。
 
-**与 §8 卡住协议关系**：`/goal` 跑到 turn 上限仍未满足条件 → evaluator 返回 stop reason → 主 agent 转入 §8（视情况 fix / 改 spec / Waive）。
+**与 §8 卡住协议关系**：`/goal` 跑到 turn 上限仍未满足条件 → evaluator 返回 stop reason → 主 agent 转入 §8（视情况 fix / 改 spec / Waive）。Waive 有项目锚点且不削弱安全/隐私/release integrity 时由主 agent 按 ADR-012 自决并留痕。
 
 ---
 
@@ -704,7 +706,7 @@ git push origin --delete "feat/<task-X.Y-name>"   # 远程也删（如有）
 
 ### 场景 A · commit 落错分支（R6 + R3 双保险后理论上不应发生）
 
-> ⚠️ **铁律**：发现 branch mismatch 后**立即停手**。**禁止**任何 agent 自动跑下面的命令——必须先**备份 + 给用户看清**才能动手。
+> ⚠️ **铁律**：发现 branch mismatch 后**立即停手**。必须先备份 + 写 `BLOCKED-branch-mismatch.md`。ADR-012 只允许主 agent 在证据充分、恢复路径确定且非破坏性时自行执行 reflog/cherry-pick 复原；存在歧义、需 reset/delete、或备份失败时仍交用户审。
 
 #### A.1 发现：先停 + 备份（agent 自动）
 
@@ -731,17 +733,17 @@ cat > BLOCKED-branch-mismatch.md << EOF
 - 备份 tag：backup/${WRONG}-mismatch-${WRONG_HASH:0:7}
 - 备份 branch（远程）：backup/${WRONG}-mismatch-...
 
-请 **用户审核后** 再决定如何修复（见下方 A.2 选项）。
+请先由主 agent 按 ADR-012 判断是否满足"确定且非破坏性恢复"；不满足时交用户审核后再决定如何修复（见下方 A.2 选项）。
 EOF
 git add BLOCKED-branch-mismatch.md && git commit -m "blocked(branch): ${WRONG_HASH:0:7} 落错到 ${WRONG}，已备份"
 
-echo "🛑 STOP。已备份。等用户决定修复方案后再继续。"
+echo "🛑 STOP。已备份。主 agent 按 ADR-012 判定能否非破坏性复原；不能则等用户决定。"
 exit 1
 ```
 
-#### A.2 修复（**仅在用户明确确认后** 才执行）
+#### A.2 修复（确定且非破坏性时主 agent 可自决；否则等用户确认）
 
-> 用户读完 `BLOCKED-branch-mismatch.md` 后，从下面三个选项里选一个回复 agent。
+> `BLOCKED-branch-mismatch.md` 是必须留存的事故载体。若目标分支、错 commit、备份 tag/branch、恢复命令均可验证且不需要删除/重写历史，主 agent 可自行执行选项 1/2；否则用户读完后从下面三个选项里选一个回复 agent。
 
 **选项 1 — 把 commit 移到正确分支，错分支回退到 origin**（最常见）
 
@@ -843,7 +845,7 @@ git worktree list
      impl: "<src-file>:<line>"
    ```
 
-3. subagent 退出（return 后 Agent tool 会回收 context），等主 agent 决策；主 agent 视情况转用户决策（如选项 C Waive 需用户审 trade-off）
+3. subagent 退出（return 后 Agent tool 会回收 context），等主 agent 决策；ADR-012 起，主 agent 对有 PRD/spec/ADR/用户目标锚点且不削弱安全/隐私/release integrity 的选项 C Waive 可自决，其他无锚点 trade-off 再转用户决策。
 
 ### 主 agent 决策路径
 

@@ -185,9 +185,9 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
       影响有界）。task-1.4 仍照常走 AGENTS §4 Gate 3 phase-1 §6 端到端 smoke，
       Phase 1 仍按正常流程正式收口（本 override 不豁免 §4 任何 gate）。
 
-### Agent Topology（单驱动 + 内部 subagent，2026-05-23 起；前身 Agent Roster 见 ADR-011）
+### Agent Topology（单驱动 + 内部 subagent 自治，2026-05-23 起；前身 Agent Roster 见 ADR-011）
 
-本项目治理拓扑（[ADR-011](decisions/adr-011-single-driver-with-subagents.md) 决策）：
+本项目治理拓扑（[ADR-011](decisions/adr-011-single-driver-with-subagents.md) / [ADR-012](decisions/adr-012-main-agent-governance-autonomy.md) 决策）：
 
 - **唯一驱动**：主 agent（Claude Code 单 session）在主 repo `ContextForge/` 协调 + 实施
 - **subagent 调度**：主 agent 用 **Agent tool** spawn 内部子 agent 完成需隔离 context / 并行执行 / 角色专精的子任务；`subagent_type` 按任务选：
@@ -198,6 +198,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
   - `claude` — 默认 catch-all（不确定时用）
 - **worktree 隔离**：需写隔离时用 Agent tool `isolation: "worktree"` 参数 — 自动建 `../ContextForge-wt-task-<X.Y>` + `feat/task-<X.Y>-<name>` 分支；subagent 完成后主 agent 收回 worktree
 - **长任务自治**：主 agent 用 Claude Code `/goal <condition>` 让自身跨多轮工作至完成条件满足 — 完整规范见 [AGENTS.md §3.5](../AGENTS.md) / [ADR-011](decisions/adr-011-single-driver-with-subagents.md)
+- **治理自治**：主 agent 对 §2A Ready review / R6 merge decision / R7 dep chore PR / §8 Waive 可按 ADR-012 自决；R3/R6 物理保险、subagent lockfile 禁写、`BLOCKED-branch-mismatch.md` 留痕不放松。
 
 #### Review subagent 协议（主 agent 内部，2026-05-22 起延用）
 
@@ -209,6 +210,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 #### 与既有协议的关系
 
 - 所有 subagent 工作产出仍走 R6 PR-only + AGENTS §4 PR 合入流程
+- Gate 0-5 全绿后的 merge 决策由主 agent 按 ADR-012 自决，不再要求额外用户确认
 - subagent 实施结果 / 卡住 / 需新 dep / 发现 spec drift → 通过 **return 结构化对象** 给主 agent（旧 worker 终端模式下的 `NEEDS-DEP-task-X.Y.md` / `BLOCKED-task-X.Y.md` / `READY-FOR-MERGE-task-X.Y.md` / `SPEC-DRIFT-task-X.Y.md` 文件载体已退役）
 - review subagent 调用是主 agent context 内行为，**不落盘**（Agent tool log 已审计）
 - subagent 不得自走：**主 agent → subagent** 单一决策链；subagent 完成 / 卡住后 return 即结束，由主 agent 决定下一步
@@ -285,6 +287,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 008 | core-library-selection | Accepted | docs/decisions/adr-008-core-library-selection.md |
 | 009 | provenance-timestamp-placeholder | Accepted | docs/decisions/adr-009-provenance-timestamp-placeholder.md |
 | 010 | audit-cross-language-unification | Proposed | docs/decisions/adr-010-audit-cross-language-unification.md |
+| 011 | single-driver-with-subagents | Proposed | docs/decisions/adr-011-single-driver-with-subagents.md |
+| 012 | main-agent-governance-autonomy | Accepted | docs/decisions/adr-012-main-agent-governance-autonomy.md |
 
 ## BDD Feature 索引
 
