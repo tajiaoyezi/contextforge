@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23）：§3/§4/§5.2/§5.3 的待定字段已清零；决策为嵌入 collection SQLite `audit_log` 表、默认仅记录脱敏元数据、Phase 5 smoke 落 `core/tests/phase5_smoke.rs`，task-5.2 stale API 合并前 smoke 使用局部 stub 标明衔接点。实施硬约束：不改 `proto/`，不改依赖/lockfile，audit log 不记录完整 query / secret / export content。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: codex
@@ -143,11 +143,11 @@ pub fn scanner_override_event(collection: &str, source: &str, redacted_terms: Ve
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 四类事件写 audit.log | SCEN-5.3.1 | TEST-5.3.1 | - | unit-test | Test Red |
-| AC2 默认字段不含 query 全文 | SCEN-5.3.2 | TEST-5.3.2 | - | unit-test | Test Red |
-| AC3 不记录完整 secret/导出 | SCEN-5.3.3 | TEST-5.3.3 | - | unit-test | Test Red |
-| AC4 secret override 写 audit | SCEN-5.3.4 | TEST-5.3.4 | - | unit-test | Test Red |
-| AC5 Phase5 端到端 smoke | SCEN-5.3.5 | TEST-5.3.5 | - | unit-test | Test Red |
+| AC1 四类事件写 audit.log | SCEN-5.3.1 | TEST-5.3.1 | - | unit-test | Done |
+| AC2 默认字段不含 query 全文 | SCEN-5.3.2 | TEST-5.3.2 | - | unit-test | Done |
+| AC3 不记录完整 secret/导出 | SCEN-5.3.3 | TEST-5.3.3 | - | unit-test | Done |
+| AC4 secret override 写 audit | SCEN-5.3.4 | TEST-5.3.4 | - | unit-test | Done |
+| AC5 Phase5 端到端 smoke | SCEN-5.3.5 | TEST-5.3.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -163,12 +163,22 @@ pub fn scanner_override_event(collection: &str, source: &str, redacted_terms: Ve
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - `core/src/memoryops/mod.rs`（修改：暴露 audit 模块）
+  - `core/src/memoryops/audit.rs`（新增：SQLite audit_log 表、脱敏事件写入、查询 helper、TEST-5.3.1~5.3.4）
+  - `core/tests/phase5_smoke.rs`（新增：TEST-5.3.5 Phase 5 端到端 smoke）
+  - `test/features/memoryops.feature`（修改：补齐 SCEN-5.3.1~5.3.5）
+  - `docs/specs/tasks/task-5.3-audit.md`（修改：§2A、§7、§10、Status 回填）
+- **commit 列表**：
+  - `588c2a2` docs(spec): task-5.3 §2A 审核通过 (Status: Draft → Ready)
+  - `03940a8` docs(spec): task-5.3 进入实施 (Status: Ready → In Progress)
+  - `18e7aac` test(memoryops): 加 SCEN-5.3.1~5.3.5 共 5 个 RED 测试
+  - `60b3542` feat(memoryops): 实现 SQLite audit log 脱敏写入
+  - `本 docs commit` docs(spec): 回填 task-5.3 §10 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`
+  - unit-test: ✅ `go test ./... && cargo test --workspace`；Go packages all passed；Rust 52 passed / 0 failed；AC5 smoke `cargo test --manifest-path core/Cargo.toml --test phase5_smoke` 1 passed / 0 failed
+- **剩余风险 / 未做项**：task-5.2 尚未在本分支合入，Phase 5 smoke 按 §2A 使用测试内 stale stub；task-5.2 合并后如主 agent 要求，可将 stub 替换为真实 lifecycle API。
+- **下游 task 影响**：task-5.2 lifecycle 合并后可能需要 rebase 本分支以接真实 stale API；Phase 6 search/export 可复用 `memoryops::audit` helper 记录 search/export 审计事件。
