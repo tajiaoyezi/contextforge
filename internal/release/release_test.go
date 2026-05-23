@@ -10,15 +10,21 @@ import (
 
 // TEST-8.3.1 / SCEN-8.3.1 / AC1
 func TestTask83_AC1_TarballContainsRequiredAssets(t *testing.T) {
-	tarball := filepath.Join(t.TempDir(), "contextforge-linux-amd64.tar.gz")
-	writeTarball(t, tarball, map[string]int64{
-		"contextforge":               0o755,
-		"contextforge-core":          0o755,
-		"contextforge.example.toml":  0o644,
-		"README.md":                  0o644,
-		"LICENSE":                    0o644,
-		"extra/release-metadata.txt": 0o644,
-	})
+	root := t.TempDir()
+	for _, name := range append(RequiredTarballEntries(), "extra/release-metadata.txt") {
+		writeFile(t, filepath.Join(root, name), name+"\n")
+	}
+	tarball := filepath.Join(root, "contextforge-linux-amd64.tar.gz")
+	if err := BuildTarball(tarball, []Asset{
+		{Name: "contextforge", Path: filepath.Join(root, "contextforge"), Mode: 0o755},
+		{Name: "contextforge-core", Path: filepath.Join(root, "contextforge-core"), Mode: 0o755},
+		{Name: "contextforge.example.toml", Path: filepath.Join(root, "contextforge.example.toml"), Mode: 0o644},
+		{Name: "README.md", Path: filepath.Join(root, "README.md"), Mode: 0o644},
+		{Name: "LICENSE", Path: filepath.Join(root, "LICENSE"), Mode: 0o644},
+		{Name: "extra/release-metadata.txt", Path: filepath.Join(root, "extra/release-metadata.txt"), Mode: 0o644},
+	}); err != nil {
+		t.Fatalf("BuildTarball: %v", err)
+	}
 
 	report, err := ValidateTarball(tarball)
 	if err != nil {
@@ -41,6 +47,16 @@ func TestTask83_AC1_TarballContainsRequiredAssets(t *testing.T) {
 	})
 	if _, err := ValidateTarball(bad); err == nil {
 		t.Fatal("ValidateTarball should reject non-executable contextforge")
+	}
+}
+
+func writeFile(t *testing.T, path string, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }
 
