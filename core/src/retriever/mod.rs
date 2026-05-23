@@ -147,6 +147,31 @@ pub fn placeholder_ready() -> bool {
     true
 }
 
+/// task-4.2 AC4 helper: 提取 query 中的可解释 term — 仅保留在 chunk content 中出现的词
+/// （case-insensitive substring 匹配；过滤 Tantivy QueryParser 元字符 / 引号 / 仅空白）.
+///
+/// 不重做 BM25 / Tantivy 自身的 tokenization — 只做 "用户读得懂的 reason enrichment".
+fn enrich_matched_terms(query: &str, content: &str) -> Vec<String> {
+    let content_lower = content.to_lowercase();
+    query
+        .split(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+        .filter_map(|t| {
+            let term = t.trim_matches(|c: char| {
+                !c.is_alphanumeric() && c != '_' && c != '-'
+            });
+            if term.is_empty() {
+                return None;
+            }
+            let term_lower = term.to_lowercase();
+            if content_lower.contains(&term_lower) {
+                Some(term.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 impl Retriever {
     /// 打开 read-only 会话；连接同一 task-2.4 数据目录.
     pub fn open(data_dir: &Path, collection_id: &str) -> Result<Self, RetrieverError> {
@@ -323,6 +348,30 @@ impl Retriever {
                 }
             }
 
+            // task-4.2 AC3 黑盒守护：优先 JOIN provenance 表；缺失合成 scanner-default
+            let mut provenance = self.read_provenance(&chunk_id)?;
+            if provenance.is_empty() {
+                provenance.push(Provenance {
+                    importer: SYNTHESIZED_IMPORTER.to_string(),
+                    original_path: file_path.clone(),
+                    imported_at: indexed_at.clone(),
+                    source_modified_at: String::new(),
+                });
+            }
+
+            // task-4.2 AC4: explain=true 时 enrich reason + matched_terms（task-4.1 留的 placeholder）
+            let (reason, matched_terms) = if opts.explain {
+                let terms = enrich_matched_terms(q_trim, &content);
+                let r = if terms.is_empty() {
+                    format!("bm25 hit on '{}'", q_trim)
+                } else {
+                    format!("bm25 hit on '{}'; matched terms: [{}]", q_trim, terms.join(", "))
+                };
+                (r, terms)
+            } else {
+                (String::new(), Vec::new())
+            };
+
             results.push(SearchResult {
                 chunk_id,
                 context_id: DEFAULT_CONTEXT_ID.to_string(),
@@ -332,19 +381,13 @@ impl Retriever {
                 line_end: line_end.max(0) as u64,
                 score,
                 retrieval_method: "bm25".to_string(),
-                reason: if opts.explain {
-                    format!("BM25 match for query '{}'", q_trim)
-                } else {
-                    String::new()
-                },
+                reason,
                 agent_scope: Vec::new(),
                 redaction_status: DEFAULT_REDACTION_STATUS.to_string(),
-                // RED: empty Vec — TEST-4.2.3 黑盒守护 (provenance.len() ≥ 1) will FAIL;
-                // GREEN 合成 scanner-default 或 JOIN provenance 表
-                provenance: Vec::new(),
+                provenance,
                 language,
                 content,
-                matched_terms: Vec::new(), // RED: empty;  GREEN task-4.2 enrich on explain=true
+                matched_terms,
             });
         }
 
@@ -353,12 +396,39 @@ impl Retriever {
 
     /// AC4 v0.1 调试入口 — Rust public API；CLI / REST / MCP / gRPC 在 Phase 6/7 wrap.
     ///
-    /// RED stub (task-4.2 §2.5 RED): 返回明确 Err，让 TEST-4.2.4 失败但描述清晰。
-    /// GREEN: 等价 search(opts.clone() with explain=true) — reason / matched_terms enrich。
-    pub fn explain(&self, _opts: &SearchOptions) -> Result<Vec<SearchResult>, RetrieverError> {
-        Err(RetrieverError::InvalidConfig(
-            "task-4.2 RED stub: Retriever::explain() not yet implemented (GREEN delegates to search() with explain=true)".to_string(),
-        ))
+    /// 等价 search(opts) 但强制 explain=true，让 reason / matched_terms 填实.
+    /// 不消费 opts.explain 字段（无论 caller 传 true / false 都 force = true）.
+    pub fn explain(&self, opts: &SearchOptions) -> Result<Vec<SearchResult>, RetrieverError> {
+        let forced = SearchOptions {
+            query: opts.query.clone(),
+            top_k: opts.top_k,
+            filters: opts.filters.clone(),
+            explain: true,
+        };
+        self.search(&forced)
+    }
+
+    /// AC3 helper: 从 indexer provenance 表读 chunk_id 的全部 importer 行（任意条 0..n）.
+    fn read_provenance(&self, chunk_id: &str) -> Result<Vec<Provenance>, RetrieverError> {
+        let mut stmt = self.sqlite.prepare(
+            "SELECT importer, original_path, imported_at, source_modified_at
+             FROM provenance WHERE chunk_id = ?1",
+        )?;
+        let iter = stmt.query_map(params![chunk_id], |row| {
+            Ok(Provenance {
+                importer: row.get::<_, String>(0)?,
+                original_path: row.get::<_, String>(1)?,
+                imported_at: row.get::<_, String>(2)?,
+                source_modified_at: row
+                    .get::<_, Option<String>>(3)?
+                    .unwrap_or_default(),
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in iter {
+            out.push(row?);
+        }
+        Ok(out)
     }
 
     pub fn config(&self) -> &RetrieverConfig {
