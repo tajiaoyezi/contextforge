@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. AC1 Rust tonic Search wire 本 task 端到端、B. CLI per-invocation spawn、C. AC4 secret 透传 redaction_status、D. AC5 直接用 proto-generated RetrievalResult、E. Provenance 时间字段 v0.1 placeholder — 详见 §10 §2A Decisions）。**PR #37 review 补判定**：原草稿 `RetrieverError::DataDirMissing` 是写错（实际 5 变种 `Io/Sqlite/Tantivy/InvalidConfig/CollectionNotFound`）；chunker::Provenance 时间字段是 `String` 不是 `chrono::DateTime`（→ §2A 决策 E）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -309,22 +309,21 @@ fn resolve_data_dir(arg: Option<&str>) -> PathBuf;
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 6 Exit Criteria): `contextforge search "<query>"` 可用并返回 Top-K 可解释结果。
-- [ ] **AC2** (PRD §Technical Approach REST/MCP 契约): 支持 `--collections / --agent-scope / --top-k / --filters / --explain`，语义与 search 请求契约一致。
-- [ ] **AC3** (PRD §Core Capabilities #2): 结果含全部可解释字段，CLI 人类可读输出 + `--json` 结构化输出二选一。
-- [ ] **AC4** (PRD §Constraints 安全): 结果默认不展示完整 secret（redaction_status 透传，复用 scanner/explain 行为）。
-- [ ] **AC5** (PRD §User Flow 主流程 5 步): search 与后续 export 命令共享检索结果模型，为 6.3 export search-result 提供接口。
+- [x] **AC1** (PRD §Implementation Phases Phase 6 Exit Criteria): `contextforge search "<query>"` 可用并返回 Top-K 可解释结果。
+- [x] **AC2** (PRD §Technical Approach REST/MCP 契约): 支持 `--collections / --agent-scope / --top-k / --filters / --explain`，语义与 search 请求契约一致。
+- [x] **AC3** (PRD §Core Capabilities #2): 结果含全部可解释字段，CLI 人类可读输出 + `--json` 结构化输出二选一。
+- [x] **AC4** (PRD §Constraints 安全): 结果默认不展示完整 secret（redaction_status 透传，复用 scanner/explain 行为）。
+- [x] **AC5** (PRD §User Flow 主流程 5 步): search 与后续 export 命令共享检索结果模型，为 6.3 export search-result 提供接口。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 search 返回 Top-K | SCEN-6.1.1 | TEST-6.1.1 | - | unit-test | Not Started |
-| AC2 flags 契约一致 | SCEN-6.1.2 | TEST-6.1.2 | - | unit-test | Not Started |
-| AC3 可解释字段+--json | SCEN-6.1.3 | TEST-6.1.3 | - | unit-test | Not Started |
-| AC4 不展示完整 secret | SCEN-6.1.4 | TEST-6.1.4 | - | unit-test | Not Started |
-| AC5 与 export 共享结果模型 | SCEN-6.1.5 | TEST-6.1.5 | core/tests/phase6_smoke.rs | unit-test | Not Started |
-
+| AC1 search 返回 Top-K | SCEN-6.1.1 | TEST-6.1.1 | - | unit-test | Done |
+| AC2 flags 契约一致 | SCEN-6.1.2 | TEST-6.1.2 | - | unit-test | Done |
+| AC3 可解释字段+--json | SCEN-6.1.3 | TEST-6.1.3 | - | unit-test | Done |
+| AC4 不展示完整 secret | SCEN-6.1.4 | TEST-6.1.4 | - | unit-test | Done |
+| AC5 与 export 共享结果模型 | SCEN-6.1.5 | TEST-6.1.5 | core/tests/phase6_smoke.rs | unit-test | Done |
 ## 8. Risks
 
 - 关联 PRD §Technical Risks **R9**（本地暴露面）：CLI 经 daemon 走本地 gRPC；daemon.Start 复用 task-1.4 `ensureLoopback` / `freeLoopbackAddr`，全程 127.0.0.1，不引入新监听口。无新 attack surface（task-1.4 缓解措施延续）。
@@ -342,15 +341,36 @@ fn resolve_data_dir(arg: Option<&str>) -> PathBuf;
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - core/src/server.rs（修改）— CoreService 加 data_dir 字段 + new 构造器；search 端到端 wire（错误映射 5 变种）；新增 provenance_to_proto / search_result_to_proto helpers；新增 serve_with_service / context_service_with_data_dir / resolve_data_dir；保留 Default 与 serve 旧入口
+  - core/src/main.rs（修改）— 接受第 2 个 cmd-arg + env CONTEXTFORGE_DATA_DIR / 全角 HOME 等价 fallback + 用 CoreService::new 注入 + 调 serve_with_service
+  - core/tests/core_skeleton.rs（修改）— test_1_3_3_search_unimplemented 断言从 Unimplemented 更新到 InvalidArgument，注释说明 §2A 决策 A 替换占位的历史
+  - core/tests/phase6_smoke.rs（新增）— TEST-6.1.5 / AC5 端到端 tonic transport smoke
+  - internal/cli/search.go（新增）— runSearch / parseSearchOpts / optsToProtoRequest / renderText / renderJSON + SearchBackend 类型 + SetSearchBackend 注入点（cli 不 import daemon 避免与 daemon_test → cli 循环）
+  - internal/cli/search_test.go（新增）— TEST-6.1.1 ~ 6.1.4 4 个 Go RED→GREEN 测试
+  - internal/cli/cli.go（修改）— dispatch case "search" 改 runSearch，取代 task-1.4 default not-implemented 分支
+  - internal/cli/cli_test.go（修改）— TestTask14_AC4 not-implemented 循环把 search 移出（共 6 个剩余 placeholder）
+  - internal/daemon/search.go（新增）— Daemon.Search 包装，复用 daemon.go lazy clientConn
+  - cmd/contextforge/main.go（修改）— 注入 cli.SetSearchBackend(searchViaDaemon)；per-invocation spawn daemon → 等 Health SERVING ≤ 15s → daemon.Search → Stop
+  - test/features/cli.feature（修改）— SCEN-6.1.1 ~ 6.1.5 五个占位 Given/When/Then 填实
+  - docs/specs/tasks/task-6.1-cli-search.md（修改）— Status Ready → In Progress → Done；§10 Completion Notes 回填
+- **commit 列表**：
+  - 1c1e154 test(cli-search): 加 SCEN-6.1.1~5 共 5 个 RED 测试 + Status: Ready → In Progress
+  - 3d83479 feat(cli-search): contextforge search 端到端实现 — Rust tonic Search wire + Go CLI/daemon
+  - （本 commit）docs(spec): 回填 task-6.1 §10 Completion Notes + Status → Done
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ skipped（无新依赖；Cargo.toml / go.mod / lockfile 均不动 — R7 严格通道 §2A 决策 E 兑现）
+  - typecheck: ✅ cargo check --workspace 干净 / go vet ./... 干净
+  - unit-test: Rust 55 passed / 0 failed（31 lib unit + 4 core_skeleton + 5 proto_contract + 11 scanner + 1 phase2_smoke + 1 phase3_importer_smoke + 1 phase4_smoke + 1 phase6_smoke=TEST-6.1.5）；Go 8 packages all pass（cli 6 含 TEST-6.1.1 ~ 6.1.4 含子 case / config / contract / daemon 3 含 TEST-1.4.2/3/5 / importer + 3 sub / memoryops + 2 sub），零回归
+- **剩余风险 / 未做项**：
+  - §2A 决策 E placeholder Timestamp::default()：proto.Provenance.imported_at / source_modified_at 在 v0.1 P0 一律返默认零值（1970-01-01）；CLI text 渲染目前不渲染 chunker::Provenance 原 RFC3339 字符串字段（proto v0.1 RetrievalResult schema 不暴露 chunker::Provenance 完整结构，只暴露映射后的 PbProvenance）。下游 task-6.3 export 触发 SPEC-DRIFT 时主 agent 走 R7 chore-dep PR 引 time / chrono crate 写 parse_rfc3339_utc helper 补齐保真。详见 §8 Risks 第 3 条。
+  - v0.1 schema gap 默认值（context_id / source_type / agent_scope / redaction_status）：本 task CLI 透传 retriever 输出，用户在 text/JSON 里见 v0.1 default 常量；SPEC-DRIFT-task-2.4 chore-spec PR 扩 indexer schema 后自动转真实值（本 task CLI 不需改）。详见 §8 Risks 第 3 条。
+- **下游 task 影响**：
+  - task-6.2 rest-api（强依赖）：直接复用本 task 已 wire 的 Rust gRPC Search server + Go daemon.Search 方法（HTTP handler 包装 daemon.Search）；REST `/v1/search` 仅需在已落实的 tonic 上加 HTTP wrapper
+  - task-6.3 exporter（强依赖 AC5）：直接消费 *contextforgev1.SearchResponse / RetrievalResult 序列化为 JSONL / Markdown bundle / agent draft；ADR-003 单一源 schema 已落地
+  - task-7.1 MCP context_search tool（下游）：MCP tool handler 复用同 Rust gRPC Search wire
+  - task-8.1 eval-harness（下游）：可调 `contextforge search --json` 跑 recall eval / 可解释字段覆盖率回归
 - **§2A Decisions**（2026-05-23 用户审定，主 agent 与用户预先审定后落 spec；worker 完工时按实际实施情况验证 / 补充）：
   - **AC1 Rust tonic Search server wire 位置（选项 A — 本 task wire 端到端真走通）**：替换 `core/src/server.rs` `CoreService::search` 的 `Status::unimplemented` 占位，task-6.1 实施时由 worker 完成 Rust 端 wire + Go 端 CLI/daemon Search 包装。task-4.2 §10「gRPC server 留 task-6.2」改解读为：task-4.2 自己不做 wire；本 task 接力完成。task-6.2 REST API 仅需在已 wire tonic 上加 HTTP wrapper。
   - **CLI 调用模式（选项 A — per-invocation spawn）**：每次 `contextforge search` 自启 daemon (内嵌 core 子进程)、HealthCheck、调 Search、Stop。v0.1 不引入 `contextforge serve` 持久 daemon；持续 / 高频检索 / Phase 7 MCP server 场景留未来 task。冷启动延迟 0.5-2s 在 v0.1 P0 可接受。

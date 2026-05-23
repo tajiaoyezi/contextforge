@@ -65,7 +65,13 @@ async fn test_1_3_2_health_serving() {
     assert_eq!(resp.status, "SERVING", "Health must report SERVING");
 }
 
-// SCEN-1.3.3 / AC3: tonic codegen wired; Search -> Status::unimplemented.
+// SCEN-1.3.3 / AC3: tonic codegen wired; Search reachable through the tonic
+// transport. task-1.3 originally asserted `Status::unimplemented`; task-6.1
+// (§2A 决策 A) replaced that placeholder with the real Retriever wire, so
+// an empty-collections request now returns `InvalidArgument` per task-6.1
+// §5.3 error mapping. AC3's core claim (tonic codegen wired) is still
+// satisfied: the request traverses tonic transport → ContextServiceServer
+// → CoreService::search, just with a richer error envelope.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_1_3_3_search_unimplemented() {
     // TEST-1.3.3
@@ -78,11 +84,13 @@ async fn test_1_3_3_search_unimplemented() {
     let err = client
         .search(SearchRequest::default())
         .await
-        .expect_err("Search must be unimplemented in task-1.3 skeleton");
+        .expect_err("Search with default (empty-collections) request must error");
+    // task-6.1 §5.3: collections empty → InvalidArgument (was Unimplemented
+    // in task-1.3 baseline before §2A decision A replaced the placeholder).
     assert_eq!(
         err.code(),
-        tonic::Code::Unimplemented,
-        "Search must return gRPC Unimplemented"
+        tonic::Code::InvalidArgument,
+        "Search must return InvalidArgument for empty collections (task-6.1 §5.3)"
     );
 }
 

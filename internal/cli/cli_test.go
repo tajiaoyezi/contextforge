@@ -76,7 +76,10 @@ func TestTask14_AC4_SubcommandsRegisteredUnimplementedNoPanic(t *testing.T) {
 		}
 	}
 
-	for _, sub := range []string{"import", "index", "search", "serve", "mcp", "eval", "export"} {
+	// task-6.1: `search` is now a real subcommand (see search.go); it dispatches
+	// to runSearch and returns exit 2 + a usage line when invoked with no args.
+	// The other six remain Phase 6+/7 placeholders that AC4 still asserts on.
+	for _, sub := range []string{"import", "index", "serve", "mcp", "eval", "export"} {
 		var stdout, stderr bytes.Buffer
 		code := mustNotPanic(t, func() int { return Execute([]string{sub}, &stdout, &stderr) })
 		if code == 0 {
