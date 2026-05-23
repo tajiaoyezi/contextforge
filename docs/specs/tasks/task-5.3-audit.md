@@ -178,7 +178,7 @@ pub fn scanner_override_event(collection: &str, source: &str, redacted_terms: Ve
   - `3e1a146` feat(memoryops): 实现 SQLite audit log 脱敏写入
   - `bf7d145` docs(spec): 回填 task-5.3 §10 Completion Notes + Status → Done
   - `a1dc57f` docs(adapter): 标记 task-5.3 为 Done
-  - 待本次 fix commit 后补填 fix(task-5.3): PR #31 FIX-1/FIX-2/FIX-3 — §3 wiring scope clarify + StaleStub stand-in 诚实承认 + §10 commit list 填实
+  - `b51d2c9` fix(task-5.3): PR #31 FIX-1/FIX-2/FIX-3 — §3 wiring scope clarify + StaleStub stand-in 诚实承认 + §10 commit list 填实
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`
