@@ -1,6 +1,6 @@
 # Task `8.1`: `eval-harness — golden questions + recall eval (contextforge eval run)`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -66,21 +66,21 @@
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Success Metrics Eval Measurement Protocol): golden questions 数据集 ≥ 30 条、每类 ≥ 5 条（6 类），每条含 query/expected_sources/expected_file_path/expected_line_range|expected_chunk_id/category/notes。
-- [ ] **AC2** (PRD §Success Metrics 命中规则): 按 Strong/Weak/Miss 判定；Top-5/Top-10 主命中率只统计 Strong hit，Weak hit 单独报告。
-- [ ] **AC3** (PRD §Implementation Phases Phase 8 Exit Criteria): `contextforge eval run` 输出 Top-5/Top-10、latency、miss cases。
-- [ ] **AC4** (PRD §Success Metrics 主指标计算方式): 延迟指标不含 embedding/reranker/远程 provider API 调用时间。
-- [ ] **AC5** (PRD §Constraints 兼容性导出): 可导出 Eval dataset JSONL，便于回归与外部工具兼容。
+- [x] **AC1** (PRD §Success Metrics Eval Measurement Protocol): golden questions 数据集 ≥ 30 条、每类 ≥ 5 条（6 类），每条含 query/expected_sources/expected_file_path/expected_line_range|expected_chunk_id/category/notes。
+- [x] **AC2** (PRD §Success Metrics 命中规则): 按 Strong/Weak/Miss 判定；Top-5/Top-10 主命中率只统计 Strong hit，Weak hit 单独报告。
+- [x] **AC3** (PRD §Implementation Phases Phase 8 Exit Criteria): `contextforge eval run` 输出 Top-5/Top-10、latency、miss cases。
+- [x] **AC4** (PRD §Success Metrics 主指标计算方式): 延迟指标不含 embedding/reranker/远程 provider API 调用时间。
+- [x] **AC5** (PRD §Constraints 兼容性导出): 可导出 Eval dataset JSONL，便于回归与外部工具兼容。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 golden ds ≥30/每类≥5 | SCEN-8.1.1 | TEST-8.1.1 | - | unit-test | Not Started |
-| AC2 Strong/Weak/Miss 规则 | SCEN-8.1.2 | TEST-8.1.2 | - | unit-test | Not Started |
-| AC3 eval run 输出报告 | SCEN-8.1.3 | TEST-8.1.3 | - | unit-test | Not Started |
-| AC4 延迟不含远程 | SCEN-8.1.4 | TEST-8.1.4 | - | unit-test | Not Started |
-| AC5 导出 eval JSONL | SCEN-8.1.5 | TEST-8.1.5 | - | unit-test | Not Started |
+| AC1 golden ds ≥30/每类≥5 | SCEN-8.1.1 | TEST-8.1.1 | - | unit-test | Done |
+| AC2 Strong/Weak/Miss 规则 | SCEN-8.1.2 | TEST-8.1.2 | - | unit-test | Done |
+| AC3 eval run 输出报告 | SCEN-8.1.3 | TEST-8.1.3 | - | unit-test | Done |
+| AC4 延迟不含远程 | SCEN-8.1.4 | TEST-8.1.4 | - | unit-test | Done |
+| AC5 导出 eval JSONL | SCEN-8.1.5 | TEST-8.1.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -96,12 +96,23 @@
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - `internal/eval/eval.go`（新增）
+  - `internal/eval/eval_test.go`（新增）
+  - `internal/cli/eval.go`（新增）
+  - `internal/cli/eval_test.go`（新增）
+  - `internal/cli/cli.go`（修改）
+  - `internal/cli/cli_test.go`（修改）
+  - `docs/specs/tasks/task-8.1-eval-harness.md`（修改）
+  - `test/features/eval.feature`（修改）
+- **commit 列表**：
+  - 874f94f docs(spec): task-8.1 §2A 自审 Ready
+  - 56b5400 test(eval): task-8.1 recall eval RED
+  - 0dbfedb feat(eval): 实现 task-8.1 recall eval harness
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`
+  - unit-test: ✅ `go test ./... && cargo test --workspace`（Go 含 `internal/eval` / `internal/cli` task-8.1 测试；Rust workspace 全绿）
+- **剩余风险 / 未做项**：真实 10 万 chunk 性能门和 release smoke 由 task-8.3 收口；本 task 仅提供 eval harness 与可复用 JSONL dataset。
+- **下游 task 影响**：task-8.3 release-smoke 可调用 `contextforge eval run` 并导出/复用 golden JSONL。
