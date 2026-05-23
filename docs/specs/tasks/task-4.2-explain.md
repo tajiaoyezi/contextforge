@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、AC1/AC3/AC4 schema-gap 三决策已确认（详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: In Progress
+**Status**: Done
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -136,21 +136,21 @@ impl Retriever {
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Technical Approach REST/MCP search response): 每条结果含 chunk_id/context_id/source_type/file_path/line_start/line_end/score/retrieval_method/reason/agent_scope/redaction_status/provenance。
-- [ ] **AC2** (PRD §Implementation Phases Phase 4 Exit Criteria): 结果能定位回原始文件和行号（file_path + line_start/line_end 精确）。
-- [ ] **AC3** (PRD §Success Metrics 次指标 / 反指标): 可解释性覆盖率 ≥ 90% 结果含全部可解释字段；禁止返回无 provenance 的"黑盒高分"结果。
-- [ ] **AC4** (PRD §Implementation Phases Phase 4 Exit Criteria): 可经内部 gRPC Search API / `contextforge search` 调试入口返回上述可解释结果。
-- [ ] **AC5** (本 task 新增): Phase 4 端到端 smoke 可执行（索引 fixture → 一组 query 校验每条结果 7+ 可解释字段 + 空 query 不 panic），为 phase spec §6 端到端 smoke 提供落点。
+- [x] **AC1** (PRD §Technical Approach REST/MCP search response): 每条结果含 chunk_id/context_id/source_type/file_path/line_start/line_end/score/retrieval_method/reason/agent_scope/redaction_status/provenance。
+- [x] **AC2** (PRD §Implementation Phases Phase 4 Exit Criteria): 结果能定位回原始文件和行号（file_path + line_start/line_end 精确）。
+- [x] **AC3** (PRD §Success Metrics 次指标 / 反指标): 可解释性覆盖率 ≥ 90% 结果含全部可解释字段；禁止返回无 provenance 的"黑盒高分"结果。
+- [x] **AC4** (PRD §Implementation Phases Phase 4 Exit Criteria): 可经内部 gRPC Search API / `contextforge search` 调试入口返回上述可解释结果。
+- [x] **AC5** (本 task 新增): Phase 4 端到端 smoke 可执行（索引 fixture → 一组 query 校验每条结果 7+ 可解释字段 + 空 query 不 panic），为 phase spec §6 端到端 smoke 提供落点。
 
 ## 7. SDD / BDD / TDD Traceability
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 可解释字段完整 | SCEN-4.2.1 | TEST-4.2.1 | - | unit-test | Not Started |
-| AC2 定位回原文行号 | SCEN-4.2.2 | TEST-4.2.2 | - | unit-test | Not Started |
-| AC3 覆盖率≥90%/禁黑盒 | SCEN-4.2.3 | TEST-4.2.3 | - | unit-test | Not Started |
-| AC4 gRPC/CLI 调试入口 | SCEN-4.2.4 | TEST-4.2.4 | - | unit-test | Not Started |
-| AC5 Phase4 端到端 smoke | SCEN-4.2.5 | TEST-4.2.5 | - | unit-test | Not Started |
+| AC1 可解释字段完整 | SCEN-4.2.1 | TEST-4.2.1 | - | unit-test | Done |
+| AC2 定位回原文行号 | SCEN-4.2.2 | TEST-4.2.2 | - | unit-test | Done |
+| AC3 覆盖率≥90%/禁黑盒 | SCEN-4.2.3 | TEST-4.2.3 | - | unit-test | Done |
+| AC4 gRPC/CLI 调试入口 | SCEN-4.2.4 | TEST-4.2.4 | - | unit-test | Done |
+| AC5 Phase4 端到端 smoke | SCEN-4.2.5 | TEST-4.2.5 | - | unit-test | Done |
 
 ## 8. Risks
 
@@ -166,12 +166,47 @@ impl Retriever {
 
 ## 10. Completion Notes
 
-- **完成日期**：`<TBD-after-impl>`
-- **改动文件**：`<TBD-after-impl>`
-- **commit 列表**：`<TBD-after-impl>`
+- **完成日期**：2026-05-23
+- **改动文件**：
+  - core/src/retriever/mod.rs（task-4.2 §2A: SearchResult 扩 12-field explainable contract + provenance 合成 helper read_provenance() + matched_terms enrichment helper enrich_matched_terms() + Retriever::explain() v0.1 调试入口 + 4 新 unit tests TEST-4.2.1~4；task-4.1 reason: Option<String>→String proto parity 向下兼容）
+  - core/tests/phase4_smoke.rs（新增 — TEST-4.2.5 phase_4_end_to_end_smoke；pattern 同 core/tests/phase2_smoke.rs；主 agent §4 Gate 3 phase-4 §6 端到端 smoke `cargo test --test phase4_smoke` 触发入口）
+  - test/features/retriever.feature（SCEN-4.2.1~5 Given/When/Then 填实）
+  - docs/specs/tasks/task-4.2-explain.md（§2A 业务承诺：Status Draft→Ready→In Progress→Done；§3/§4/§5.2/§5.3 §2A 填实；§6 AC1-5 全部勾选；§7 5 行 → Done；§10 终态回填）
+- **commit 列表**（本 task 全部 5 个，按时间顺序）：
+  - bc4d74b docs(spec): task-4.2 §2A 业务承诺 (Draft → Ready)
+  - 08210c2 test(retriever): 加 SCEN-4.2.1~5 共 5 个 RED 测试 + Status: Ready → In Progress
+  - 19d9a01 docs(spec): task-4.2 Status Ready → In Progress (RED 已落)
+  - 070f736 feat(retriever): 实现 12-field explainable result + provenance 合成 + explain() 通过全部 5 个 task-4.2 测试
+  - 本回填 docs(spec) commit（§6/§7/§10 终态 + Status → Done）
 - **§9 Verification 结果**：
-  - install: `<TBD-after-impl>`
-  - typecheck: `<TBD-after-impl>`
-  - unit-test: `<TBD-after-impl>`
-- **剩余风险 / 未做项**：`<TBD-after-impl>`
-- **下游 task 影响**：`<TBD-after-impl>`
+  - install: ✅ `go mod download && cargo fetch`（无新 deps；沿用 task-4.1 的 tantivy 0.26.1 + rusqlite 0.39.0 bundled + thiserror 2.0.18；R7 严格通道）
+  - typecheck: ✅ `go vet ./... && cargo check --workspace`（clean）
+  - unit-test: ✅ `go test ./... && cargo test --workspace`
+    - retriever 9/9 passed（task-4.1 5 + task-4.2 4 — TEST-4.2.1~4 全绿）
+    - phase4_smoke 1/1 passed（TEST-4.2.5 — 主 agent §4 Gate 3 phase-4 §6 端到端 smoke 触发入口已就位）
+    - 全 Rust 47 passed：lib 24 (parser 6 + chunker 5 + indexer 4 + retriever 9) + core_skeleton 4 + phase2_smoke 1 + phase4_smoke 1 + proto_contract 5 + scanner 12
+    - 全 Go 8 包 ok（cli / config / contract / daemon / importer 3.1 + 3 个 importer 子包 3.2/3.3/3.4 + memoryops/dedup）
+    - 零回归（task-4.1 / task-2.4 / phase2_smoke / 全 importer / 全 memoryops 子包全绿；reason: Option<String>→String 不破任何现有测试）
+- **剩余风险 / 未做项**：
+  - **5 字段 schema gap 持续**（context_id / source_type / agent_scope / redaction_status — 沿 task-4.1 §10 留档）：v0.1 用 §2A default 常量（"" / "" / vec![] / "applied"）；populated coverage（5 字段真实非空）留 SPEC-DRIFT-task-2.4 chore-spec PR 扩 indexer schema 后由 task-8.1 eval-harness 回归。彻底支持需 SPEC-DRIFT-task-2.4：(a) SQLite chunks 表加 4 列 + (b) Tantivy STRING/STORED 4 字段 + (c) Chunk struct (chunker) 加字段 + (d) 反向 backfill scan 历史数据；retriever 不需改即可自动 fill 真实值。
+  - **AC3 schema coverage 量化为 100%（struct 强制 12 字段）+ 反指标 provenance.len() ≥ 1**：v0.1 用 §2A 决策；populated coverage 留 §2.4 schema 扩后回归。当前 4 字段返默认值仍算"含可解释字段"（PRESENT），未跑实测覆盖率脚本（PRD §Success Metrics 90% 阈值 v0.1 自然达 100% 因 struct 强制）。
+  - **AC4 gRPC ContextService::Search tonic server / contextforge search Go CLI 未实现**（§2A 决策 — Out of Scope）：v0.1 调试入口 = Rust `Retriever::explain` public API；gRPC server 留 task-6.2 REST API + tonic wrapper；Go CLI 留 task-6.1 cli-search；MCP `context_search` tool 留 task-7.1。proto `contextforge.v1.RetrievalResult` 已 frozen in task-1.1（12 字段 1:1 对应 SearchResult），Phase 6/7 wrap 仅需简单 `SearchResult → RetrievalResult` field mapping。
+  - **AC4 reason / matched_terms enrichment 是简单 substring 匹配**（非 BM25-level token 解析）：enrich_matched_terms() split query on whitespace/quotes + trim non-alphanumeric + case-insensitive substring；适合 v0.1 调试可解释性场景。CJK / 复杂查询 / 高级 BM25 score component 拆解留 task-8.1 eval-harness + future enhancement task。
+  - **provenance 合成只考虑 scanner 路径**：当 indexer provenance 表无 chunk_id 行（scanner-indexed 而非 importer-imported）时合成 `[{importer:"scanner",...}]`；importer-imported 的 chunk 走真实 JOIN 取多条 importer 行。但 IndexSession::index_path 默认 provenance: vec![] — 即使是 importer 路径，scanner 默认也合成。下游 importer 直接调用 IndexSession::write_chunks 传 provenance 时正常拼真实行。
+- **下游 task 影响**：
+  - **Phase 4 收口 → Phase 6 task-6.1/6.2/6.3 解除阻塞**：本 task 完工 → Phase 4 全 Done（task-4.1 + 4.2 都 Done）→ 后置 chore PR 补 phase-4 spec §6 端到端 smoke 命令（pattern 同 Phase 2 chore PR #25 / Phase 3 chore PR #22）→ Phase 4 spec Status: Draft → Done → Phase 6 cli-api-export 满足 dep（dep Phase 4 + 5；Phase 5 task-5.1 已 done，5.2/5.3 仍 Draft 但 Phase 6 仅依赖 Phase 4 + 5 整体 Done）。
+  - **task-6.1 CLI `contextforge search`**：直接调用 `Retriever::open` + `Retriever::explain` → 终端展示 12 字段；CLI 不再需要后端实现，仅做 stdin/stdout 序列化。
+  - **task-6.2 REST API `POST /v1/search`**：HTTP handler 把 body 映射到 `SearchOptions` → 调 `Retriever::explain` → SearchResult → proto `RetrievalResult`（1:1 field mapping，proto 已 frozen）。
+  - **task-7.1 MCP `context_search` tool**：同 REST 形态，MCP tool handler 复用 SearchResult → proto.RetrievalResult 映射。
+  - **task-8.1 eval-harness**：
+    - schema coverage 回归：assert 每条结果 12 字段 PRESENT（compile-enforced，eval-harness 仅 sanity）
+    - 真实 populated coverage 回归：要等 SPEC-DRIFT-task-2.4 chore-spec PR 扩 indexer schema 后跑（assert 5 schema-gap 字段非空率 ≥ 90% — PRD §Success Metrics 次指标）
+    - 反指标 provenance 覆盖率：assert 每条结果 provenance.len() ≥ 1（黑盒守护）
+    - AC4 性能 P95 < 500ms：用 Retriever 做黑盒 + bench
+  - **未来 SPEC-DRIFT-task-2.4 chore-spec PR**（软依赖，本 task 不阻塞）：扩 indexer schema 让 5 schema-gap 字段真实存储；retriever 不需改即可自动 fill 真实值（仅 v0.1 default 常量逻辑会被 SQLite JOIN 真值覆盖）。
+- **§2A Decisions**（2026-05-23 用户审定）：
+  - **AC1 schema gap（选项 A — partial implement + provenance 合成）**：SearchResult 扩 12 字段 per AC1；context_id/source_type/agent_scope/redaction_status 用 §2A v0.1 default 常量（"" / "" / vec![] / "applied"）；provenance 优先 JOIN indexer provenance 表，缺失合成 `[{importer:"scanner", original_path:file_path, imported_at:indexed_at, source_modified_at:""}]` 保证 AC3 黑盒守护 ≥1 entry。schema gap 持续到 SPEC-DRIFT-task-2.4 chore-spec PR 扩 indexer schema。
+  - **AC4 调试入口（选项 A — 仅 Rust public API）**：v0.1 实现 `Retriever::explain(opts)` 公开方法（force explain=true delegate search）；gRPC `ContextService::Search` tonic server 留 task-6.2；Go `contextforge search` CLI 留 task-6.1；MCP tool 留 task-7.1。proto 已 frozen in task-1.1。
+  - **AC3 覆盖率（选项 A — schema 100% + 反指标 provenance≥1）**：v0.1 量化为 schema coverage 100%（struct 强制 12 字段，远超 90%）+ 反指标 `provenance.len() ≥ 1`（黑盒守护，合成兜底）。真实 populated coverage（5 schema-gap 字段非空率 ≥ 90%）留 SPEC-DRIFT-task-2.4 完成后 task-8.1 eval-harness 回归。
+  - **R7 严格通道**：未引入新 crate；沿用 task-4.1 引入的 tantivy 0.26.1 / rusqlite 0.39.0 bundled / thiserror 2.0.18。`use crate::chunker::Provenance` 单 crate 内复用（DRY — 与 indexer 同一类型）。
+  - **reason 类型 Option<String> → String 改动**：proto3 string 默认空串语义；task-4.1 5 测试无 reason 断言 → 向下兼容零回归。explain=false → reason=""，explain=true → enriched。
