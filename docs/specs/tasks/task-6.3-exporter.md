@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. 数据源=collection-wide + stale 默认过滤、B. 三格式=jsonl + md-bundle(.tar.gz multi-file) + agent-draft 4 .md、C. AC3 secret scan = Go inline sanity hit-count check（cross-language 修正不重做 task-2.1 完整 detection）、D. AC4 fidelity = exporter.CalcFidelity helper + 内部 fixture、E. AC5 Phase 6 端到端 smoke = 本 task 填实 phase-6 spec §6 — 详见 §10 §2A Decisions）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: tajiaoyezi
@@ -308,11 +308,11 @@ func writeAgentDraft(records []*contextforgev1.ContextRecord, dir string) error
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 jsonl/md-bundle 导出 | SCEN-6.3.1 | TEST-6.3.1 | - | unit-test | Not Started |
-| AC2 agent-draft + 不写回 | SCEN-6.3.2 | TEST-6.3.2 | - | unit-test | Not Started |
-| AC3 sanity secret scan | SCEN-6.3.3 | TEST-6.3.3 | - | unit-test | Not Started |
-| AC4 fidelity 三格式 | SCEN-6.3.4 | TEST-6.3.4 | - | unit-test | Not Started |
-| AC5 Phase6 端到端 smoke 骨架 | SCEN-6.3.5 | TEST-6.3.5 | phase-6 spec §6 | unit-test | Not Started |
+| AC1 jsonl/md-bundle 导出 | SCEN-6.3.1 | TEST-6.3.1 | - | unit-test | Test Red |
+| AC2 agent-draft + 不写回 | SCEN-6.3.2 | TEST-6.3.2 | - | unit-test | Test Red |
+| AC3 sanity secret scan | SCEN-6.3.3 | TEST-6.3.3 | - | unit-test | Test Red |
+| AC4 fidelity 三格式 | SCEN-6.3.4 | TEST-6.3.4 | - | unit-test | Test Red |
+| AC5 Phase6 端到端 smoke 骨架 | SCEN-6.3.5 | TEST-6.3.5 | phase-6 spec §6 | unit-test | Test Red |
 
 ## 8. Risks
 
