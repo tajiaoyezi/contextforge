@@ -144,13 +144,13 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 - Rust: `cargo tarpaulin` 输出 `Coverage Results: X/Y (Z%)` → 判读 Z%
 - task spec 写 "≥80%" 时，Go/Rust 分别对照各自百分比；聚合阈值在 §9 注明按哪侧为准
 
-### Coverage 未达标处理（task agent 行为约束）
+### Coverage 未达标处理（主 agent / subagent 行为约束）
 
 | 实测 vs 阈值 | 应当 | 禁止 |
 |---|---|---|
 | ≥ 阈值 | ✅ 直接通过 | — |
 | 差距 ≤ 2 行 | 检查 Uncovered → 补**真实** TEST-X.Y.Z | ❌ 凑数断言；❌ `// nolint`/`#[cfg(not(test))]` 跳过 |
-| 差距 > 2 行 / 路径无法测试 | 走 §卡住协议（AGENTS.md §8）→ 主 agent 决策 | ❌ 自行修改 task spec 阈值（违反 R6）|
+| 差距 > 2 行 / 路径无法测试 | 走 §卡住协议（AGENTS.md §8）→ 主 agent 决策 | ❌ subagent 自行修改 task spec 阈值（违反 R6）|
 
 ---
 
@@ -180,53 +180,38 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
       冻结的 canonical-record/gRPC proto + task-1.2 denylist/allowlist，**不消费**
       task-1.4 `contextforge init`；2.1(Rust)/2.2(Rust)/3.1(Go) 写路径互不相交。
       **硬约束**：早启动的 Phase 2/3 task **只读消费**冻结契约，**禁止修改**
-      `proto/contextforge/v1/*`；若实施中发现确需改 proto/config 契约 → 立即 STOP，
-      写 `SPEC-DRIFT-task-X.Y.md` 交主 agent 串行化处理（proto 仅 add-only，
+      `proto/contextforge/v1/*`；若实施中发现确需改 proto/config 契约 → subagent 立即 STOP
+      → return spec-drift 对象给主 agent，主 agent 串行化处理（proto 仅 add-only，
       影响有界）。task-1.4 仍照常走 AGENTS §4 Gate 3 phase-1 §6 端到端 smoke，
       Phase 1 仍按正常流程正式收口（本 override 不豁免 §4 任何 gate）。
 
-### Agent Roster（本项目固定 worker 名册 + 主 agent 内部 review subagent 协议）
+### Agent Topology（单驱动 + 内部 subagent，2026-05-23 起；前身 Agent Roster 见 ADR-011）
 
-> 本项目 multi-agent 协作分两层：(a) **外部 worker** 独立 Claude / Agent 终端跑 worktree 实施；(b) **主 agent 内部 review subagent** 用 Agent tool spawn 完成评审。主 agent 在新会话首次涉及 **worker 派工** 之前，必须按本节协议确认本次"备选 worker"是否在岗。
+本项目治理拓扑（[ADR-011](decisions/adr-011-single-driver-with-subagents.md) 决策）：
 
-#### Worker 名册（外部独立终端）
+- **唯一驱动**：主 agent（Claude Code 单 session）在主 repo `ContextForge/` 协调 + 实施
+- **subagent 调度**：主 agent 用 **Agent tool** spawn 内部子 agent 完成需隔离 context / 并行执行 / 角色专精的子任务；`subagent_type` 按任务选：
+  - `Explore` — 只读探索 / 定位文件 / 跨多目录 grep
+  - `Plan` — 实施前设计 + 验证方案 + 边界讨论
+  - `general-purpose` — 通用多步研究 / 搜索（适合不确定 scope 的任务）
+  - `code-reviewer` / `code-simplifier` / 项目自定义 agent type — 角色化任务
+  - `claude` — 默认 catch-all（不确定时用）
+- **worktree 隔离**：需写隔离时用 Agent tool `isolation: "worktree"` 参数 — 自动建 `../ContextForge-wt-task-<X.Y>` + `feat/task-<X.Y>-<name>` 分支；subagent 完成后主 agent 收回 worktree
+- **长任务自治**：主 agent 用 Claude Code `/goal <condition>` 让自身跨多轮工作至完成条件满足 — 完整规范见 [AGENTS.md §3.5](../AGENTS.md) / [ADR-011](decisions/adr-011-single-driver-with-subagents.md)
 
-| Worker | 在岗 | 派工优先级 |
-|---|---|---|
-| **claude-work1** | ✅ 常驻必在 | 1 |
-| **codex**        | ✅ 常驻必在 | 2 |
-| **grok**         | ⏳ 备选     | 3（**不能代替** claude-work1 / codex）  |
-| **droid**        | ⏳ 备选     | 4（**不能代替** claude-work1 / codex）  |
-| **agy**          | ⏳ 备选     | 5（**不能代替** claude-work1 / codex；2026-05-23 接入；首次派工 PR #38 chore-bdd-phase-1-backfill review Good — 已校准能力：BDD 业务可读场景回填 / 多文件 in-place 协同 / 跨语言 (Go+Rust) test↔spec↔BDD 三向对齐 / 硬 scope 约束遵守可靠 / 单 commit 节律规范；还需观察：实际代码实施 / SPEC-DRIFT 发现-上报反射 / 长链路 task 耐力与中途自修正）  |
-| **kimi**         | ⏳ 备选     | 6（**不能代替** claude-work1 / codex）  |
+#### Review subagent 协议（主 agent 内部，2026-05-22 起延用）
 
-- **Worker 派工优先级**：claude-work1 → codex → grok → droid → agy → kimi
-- **备选不能顶替常驻 worker 槽位** — 不要因为某备选更熟某领域就跳过 claude-work1 / codex
-
-#### Review subagent（主 agent 内部，2026-05-22 起）
-
-- **Reviewer 不再是独立终端**；改为**主 agent 用 Agent tool spawn 子 agent** 在主 agent context 内完成代码评审
-- 主 agent 根据 PR 复杂度 / 并行需要 **自行决定** subagent 数量（简单 PR 1 个；复杂多模块 PR 多维度可 2-3 个并行；多 PR 同时评可 N 个一对一）
-- subagent 跑 review → return 结构化结论给主 agent → 主 agent 直接评判 + 决策（merge / 派 worker fix）
-- **省掉** "reviewer 终端评 → 主 agent 接 review 报告 → 主 agent 写 fix 工单 → 用户中转" 的双向中转
-- subagent 引用的 prompt template 见 `_dispatch/reviewer__per-PR.md`（保留文件名；内容已改为 subagent 模式）
-- **约束：review subagent 不得再 spawn 子 subagent** — 必须**直接亲自评审**（亲自跑 temp clone verify + 读 spec + 写 review object），嵌套 spawn 会失控且信息二手转述损失。该硬约束已写进 `_dispatch/reviewer__per-PR.md` 第 28-29 行（"角色"段尾），本处与之保持单一源
-
-#### 主 agent 会话首 worker 派工前置 checklist
-
-新会话首次出现 **worker 派工** 动作之前：
-
-1. **AskUserQuestion 只问备选 worker**（grok / droid / kimi）哪些在岗 — claude-work1 / codex 默认在岗，不必问
-2. 收到答复后，把本次会话生效 worker 名单写进首条派工 prompt 的 `[本次在岗 worker]` 字段（见 §派工模板）
-3. 派工 worker 时按优先级 + "备选不顶常驻"规则选
-
-> **跳过条件**：单 agent 任务（只主 agent 在做，不外派 worker）不必触发。**Review 由主 agent 自行 spawn subagent，不计入 worker 派工**，不需 AskUserQuestion。
+- 主 agent 用 Agent tool spawn 子 agent 完成 PR 评审，PR 复杂度 / 并行需要决定 subagent 数量（简单 PR 1 个；多模块 PR 多维度可 2–3 个并行；多 PR 同时评可 N 个一对一）
+- subagent 跑 review → return 结构化结论给主 agent → 主 agent 直接评判 + 决策（merge / 自做小修 / 继续打磨）
+- 引用 prompt template：`_dispatch/reviewer__per-PR.md`
+- **硬约束：review subagent 不得再 spawn 子 subagent** — 必须直接亲自评审（亲自跑 temp clone verify + 读 spec + 写 review object），嵌套 spawn 会失控且信息二手转述损失。该硬约束写在 `_dispatch/reviewer__per-PR.md` 第 28-29 行（"角色"段尾），与本处单一源
 
 #### 与既有协议的关系
 
-- worker 派工后继续遵守 R6 PR-only + AGENTS §4 PR 合入流程
-- worker 派工 prompt 持久化：必须落盘到 `_dispatch/sessions/.../`（review subagent 调用是主 agent context 内行为，**不落盘** — Agent tool log 已审计）
-- worker 不得自走：**主 agent（含内部 review subagent）→ worker** 单一决策链不变（worker 看到 PR 评论 / review 结果不得自行修复 + push，必须等主 agent 派工 fix）
+- 所有 subagent 工作产出仍走 R6 PR-only + AGENTS §4 PR 合入流程
+- subagent 实施结果 / 卡住 / 需新 dep / 发现 spec drift → 通过 **return 结构化对象** 给主 agent（旧 worker 终端模式下的 `NEEDS-DEP-task-X.Y.md` / `BLOCKED-task-X.Y.md` / `READY-FOR-MERGE-task-X.Y.md` / `SPEC-DRIFT-task-X.Y.md` 文件载体已退役）
+- review subagent 调用是主 agent context 内行为，**不落盘**（Agent tool log 已审计）
+- subagent 不得自走：**主 agent → subagent** 单一决策链；subagent 完成 / 卡住后 return 即结束，由主 agent 决定下一步
 
 ---
 
@@ -327,38 +312,41 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 
 ---
 
-### 派工模板（仅 team 档使用）
+### subagent spawn 范式（单驱动变体，2026-05-23 起；前身"派工模板"见 ADR-011）
 
-`team` 档使用此精确 prompt 格式（避免 agent 自创 task spec + 衔接 PR-only 流程）：
+主 agent 用 Agent tool spawn 实施 subagent 时，prompt 应包含：
 
 ```
-[本次在岗 worker] claude-work1 ✅ / codex ✅ / grok <Y/N> / droid <Y/N> / agy <Y/N> / kimi <Y/N>
-[派工目标] task-<X.Y>（spec: docs/specs/tasks/task-<X.Y>-<name>.md）
-[Worktree] <worktree-path>（按 AGENTS.md §1 拓扑）
-[Branch]   feat/task-<X.Y>-<name>
+[task 目标]   task-<X.Y>（spec: docs/specs/tasks/task-<X.Y>-<name>.md）
+[Worktree]   ../ContextForge-wt-task-<X.Y>（Agent tool isolation: "worktree" 自动建）
+[Branch]     feat/task-<X.Y>-<name>
+[subagent_type]  按任务选（Explore / Plan / general-purpose / 项目自定义 agent / claude）
+[isolation]      worktree（需写隔离）/ 不设（只读探索）
 
 进入 worktree 后请：
   1. 跑 AGENTS.md §3 step 0-3 的环境校验 + 基线测试
-  2. 按顺序读：AGENTS.md / 本 adapter / 该 task spec / 该 spec §5 Required Reading 列出的上游 spec / 对应 .feature 文件
+  2. 按顺序读：AGENTS.md / 本 adapter / 该 task spec / 该 spec §5 Required Reading / 对应 .feature 文件
   3. 严格按 task spec §6 AC + §5 Behavior Contract + §7 追踪表执行
   4. RED → GREEN → REFACTOR 三段 commit（按 AGENTS §2.5 节律 + scope 约定）
   5. 每次 commit 后立即跑 R3 grep 校验 [branch]
   6. 完成后 push branch（如有 remote）+ 在 spec §10 Completion Notes 回填 6 项
-  7. 通知主 agent 跑 §4 phase smoke gate → merge PR
+  7. return ready 对象给主 agent（含 branch / commits / verification 结果摘要）
 
 【硬约束】
 - ✅ **允许**修改 task spec 的"流程字段"（按状态机推进）：
   - 顶部 `Status` 行（`Ready → In Progress → Done` / `Blocked` / `Waived`）
   - §7 追踪表的 Status 列（标 `Test Red` / `Verified` / `Done` 等）
   - §10 Completion Notes（完工时按 6 项回填）
-- ❌ **禁止**修改 task spec 的"业务契约字段"（这些是主 agent / 用户的领域）：
+- ❌ **禁止**修改 task spec 的"业务契约字段"（主 agent / 用户领域）：
   - §1 Background / §2 Goal / §3 Scope&Out-of-Scope / §4 Actors
   - §5 Behavior Contract（含 §5.1 Required Reading / §5.2 Imports / §5.3 函数签名）
   - §6 Acceptance Criteria
   - §8 Risks / §9 Verification Plan
-  - 如果发现这些字段写错或需要改，**写 SPEC-DRIFT-task-X.Y.md** 让主 agent 决定，不要私自改
-- ❌ 禁止新建任何 task spec（要新 task → 让主 agent 跑 `/s2v-add task <name>`）
-- ❌ 禁止改 go.mod / go.sum / Cargo.toml / Cargo.lock（R7：写 NEEDS-DEP-task-X.Y.md 求助）
+  - 如果发现这些字段写错或需要改，return spec-drift 对象给主 agent，不要私改
+- ❌ 禁止新建任何 task spec（要新 task → 主 agent 跑 `/s2v-add task <name>`）
+- ❌ 禁止改 go.mod / go.sum / Cargo.toml / Cargo.lock（R7：return needs-dep 对象给主 agent）
 - ❌ 禁止 cd 主 repo / push 到 main / 自己 merge PR（R6）
-- ⚠️ 卡住 → 写 BLOCKED-task-X.Y.md（AGENTS §8）→ 退出等主 agent
+- ⚠️ 卡住 → return blocked 对象给主 agent（AGENTS §8）→ subagent 退出等主 agent 决策
 ```
+
+长任务自治另外用 `/goal`（主 agent 自身跨多轮）— 见 [AGENTS.md §3.5](../AGENTS.md) / [ADR-011](decisions/adr-011-single-driver-with-subagents.md)。
