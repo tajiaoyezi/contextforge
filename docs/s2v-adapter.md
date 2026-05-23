@@ -298,6 +298,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 006 | recall-eval-acceptance-gate | Accepted | docs/decisions/adr-006-recall-eval-acceptance-gate.md |
 | 007 | minimal-tarball-distribution | Accepted | docs/decisions/adr-007-minimal-tarball-distribution.md |
 | 008 | core-library-selection | Accepted | docs/decisions/adr-008-core-library-selection.md |
+| 009 | provenance-timestamp-placeholder | Accepted | docs/decisions/adr-009-provenance-timestamp-placeholder.md |
 
 ## BDD Feature 索引
 
