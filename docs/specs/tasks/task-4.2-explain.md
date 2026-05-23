@@ -168,7 +168,7 @@ impl Retriever {
 
 - **完成日期**：2026-05-23
 - **改动文件**：
-  - core/src/retriever/mod.rs（task-4.2 §2A: SearchResult 扩 12-field explainable contract + provenance 合成 helper read_provenance() + matched_terms enrichment helper enrich_matched_terms() + Retriever::explain() v0.1 调试入口 + 4 新 unit tests TEST-4.2.1~4；task-4.1 reason: Option<String>→String proto parity 向下兼容）
+  - core/src/retriever/mod.rs（task-4.2 §2A: SearchResult 扩 12-field explainable contract + provenance 合成 helper read_provenance() + matched_terms enrichment helper enrich_matched_terms() + Retriever::explain() v0.1 调试入口 + 4 新 unit tests TEST-4.2.1~4；task-4.1 reason: Option-of-String → String proto parity 向下兼容）
   - core/tests/phase4_smoke.rs（新增 — TEST-4.2.5 phase_4_end_to_end_smoke；pattern 同 core/tests/phase2_smoke.rs；主 agent §4 Gate 3 phase-4 §6 端到端 smoke `cargo test --test phase4_smoke` 触发入口）
   - test/features/retriever.feature（SCEN-4.2.1~5 Given/When/Then 填实）
   - docs/specs/tasks/task-4.2-explain.md（§2A 业务承诺：Status Draft→Ready→In Progress→Done；§3/§4/§5.2/§5.3 §2A 填实；§6 AC1-5 全部勾选；§7 5 行 → Done；§10 终态回填）
@@ -186,7 +186,7 @@ impl Retriever {
     - phase4_smoke 1/1 passed（TEST-4.2.5 — 主 agent §4 Gate 3 phase-4 §6 端到端 smoke 触发入口已就位）
     - 全 Rust 47 passed：lib 24 (parser 6 + chunker 5 + indexer 4 + retriever 9) + core_skeleton 4 + phase2_smoke 1 + phase4_smoke 1 + proto_contract 5 + scanner 12
     - 全 Go 8 包 ok（cli / config / contract / daemon / importer 3.1 + 3 个 importer 子包 3.2/3.3/3.4 + memoryops/dedup）
-    - 零回归（task-4.1 / task-2.4 / phase2_smoke / 全 importer / 全 memoryops 子包全绿；reason: Option<String>→String 不破任何现有测试）
+    - 零回归（task-4.1 / task-2.4 / phase2_smoke / 全 importer / 全 memoryops 子包全绿；reason: Option-of-String → String 不破任何现有测试）
 - **剩余风险 / 未做项**：
   - **5 字段 schema gap 持续**（context_id / source_type / agent_scope / redaction_status — 沿 task-4.1 §10 留档）：v0.1 用 §2A default 常量（"" / "" / vec![] / "applied"）；populated coverage（5 字段真实非空）留 SPEC-DRIFT-task-2.4 chore-spec PR 扩 indexer schema 后由 task-8.1 eval-harness 回归。彻底支持需 SPEC-DRIFT-task-2.4：(a) SQLite chunks 表加 4 列 + (b) Tantivy STRING/STORED 4 字段 + (c) Chunk struct (chunker) 加字段 + (d) 反向 backfill scan 历史数据；retriever 不需改即可自动 fill 真实值。
   - **AC3 schema coverage 量化为 100%（struct 强制 12 字段）+ 反指标 provenance.len() ≥ 1**：v0.1 用 §2A 决策；populated coverage 留 §2.4 schema 扩后回归。当前 4 字段返默认值仍算"含可解释字段"（PRESENT），未跑实测覆盖率脚本（PRD §Success Metrics 90% 阈值 v0.1 自然达 100% 因 struct 强制）。
@@ -209,4 +209,4 @@ impl Retriever {
   - **AC4 调试入口（选项 A — 仅 Rust public API）**：v0.1 实现 `Retriever::explain(opts)` 公开方法（force explain=true delegate search）；gRPC `ContextService::Search` tonic server 留 task-6.2；Go `contextforge search` CLI 留 task-6.1；MCP tool 留 task-7.1。proto 已 frozen in task-1.1。
   - **AC3 覆盖率（选项 A — schema 100% + 反指标 provenance≥1）**：v0.1 量化为 schema coverage 100%（struct 强制 12 字段，远超 90%）+ 反指标 `provenance.len() ≥ 1`（黑盒守护，合成兜底）。真实 populated coverage（5 schema-gap 字段非空率 ≥ 90%）留 SPEC-DRIFT-task-2.4 完成后 task-8.1 eval-harness 回归。
   - **R7 严格通道**：未引入新 crate；沿用 task-4.1 引入的 tantivy 0.26.1 / rusqlite 0.39.0 bundled / thiserror 2.0.18。`use crate::chunker::Provenance` 单 crate 内复用（DRY — 与 indexer 同一类型）。
-  - **reason 类型 Option<String> → String 改动**：proto3 string 默认空串语义；task-4.1 5 测试无 reason 断言 → 向下兼容零回归。explain=false → reason=""，explain=true → enriched。
+  - **reason 类型 Option-of-String → String 改动**：proto3 string 默认空串语义；task-4.1 5 测试无 reason 断言 → 向下兼容零回归。explain=false → reason=""，explain=true → enriched。
