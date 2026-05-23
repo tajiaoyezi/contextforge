@@ -85,11 +85,7 @@ func runSearch(args []string, stdout, stderr io.Writer) int {
 
 	resp, err := fetchSearchResults(ctx, req)
 	if err != nil {
-		// %w preserves grpc Status wrapping for downstream consumers (task-6.2
-		// REST handler reuses daemon.Search; grpc Status code is needed for
-		// HTTP status mapping). For end-user CLI output, fmt.Fprintf still
-		// renders the message via err.Error(); the unwrap chain is the bonus.
-		fmt.Fprintf(stderr, "contextforge search: %v\n", fmt.Errorf("%w", err))
+		fmt.Fprintf(stderr, "contextforge search: %v\n", err)
 		return 1
 	}
 
