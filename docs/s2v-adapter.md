@@ -232,7 +232,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 5 | `memoryops` | `docs/specs/phases/phase-5-memoryops.md` | Done | 3 | `../ContextForge-wt-memoryops` |
 | 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Done | 3 | `../ContextForge-wt-cli-api-export` |
 | 7 | `mcp-adapter` | `docs/specs/phases/phase-7-mcp-adapter.md` | Done | 1 | `../ContextForge-wt-mcp-adapter` |
-| 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Draft | 3 | `../ContextForge-wt-eval-and-reliability` |
+| 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | In Progress | 3 | `../ContextForge-wt-eval-and-reliability` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -265,8 +265,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 6.2 | daemon | docs/specs/tasks/task-6.2-rest-api.md | Done | Phase6 #2（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 6.3 | exporter | docs/specs/tasks/task-6.3-exporter.md | Done | Phase6 #3（dep 6.1）| `../ContextForge-wt-cli-api-export` |
 | 7.1 | mcp-adapter | docs/specs/tasks/task-7.1-mcp-server.md | Done | Phase7 #1 | `../ContextForge-wt-mcp-adapter` |
-| 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Draft | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
-| 8.2 | reliability | docs/specs/tasks/task-8.2-reliability.md | Draft | Phase8 #2 | `../ContextForge-wt-eval-and-reliability` |
+| 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Done | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
+| 8.2 | reliability | docs/specs/tasks/task-8.2-reliability.md | Done | Phase8 #2 | `../ContextForge-wt-eval-and-reliability` |
 | 8.3 | release | docs/specs/tasks/task-8.3-release-smoke.md | Draft | Phase8 #3（dep 8.1,8.2）| `../ContextForge-wt-eval-and-reliability` |
 
 ## ADR 索引
