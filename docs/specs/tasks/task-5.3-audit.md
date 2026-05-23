@@ -143,11 +143,11 @@ pub fn scanner_override_event(collection: &str, source: &str, redacted_terms: Ve
 
 | Acceptance Criterion | BDD Scenario | TDD Test | Integration / E2E Test | Verification | Status |
 |---|---|---|---|---|---|
-| AC1 四类事件写 audit.log | SCEN-5.3.1 | TEST-5.3.1 | - | unit-test | Not Started |
-| AC2 默认字段不含 query 全文 | SCEN-5.3.2 | TEST-5.3.2 | - | unit-test | Not Started |
-| AC3 不记录完整 secret/导出 | SCEN-5.3.3 | TEST-5.3.3 | - | unit-test | Not Started |
-| AC4 secret override 写 audit | SCEN-5.3.4 | TEST-5.3.4 | - | unit-test | Not Started |
-| AC5 Phase5 端到端 smoke | SCEN-5.3.5 | TEST-5.3.5 | - | unit-test | Not Started |
+| AC1 四类事件写 audit.log | SCEN-5.3.1 | TEST-5.3.1 | - | unit-test | Test Red |
+| AC2 默认字段不含 query 全文 | SCEN-5.3.2 | TEST-5.3.2 | - | unit-test | Test Red |
+| AC3 不记录完整 secret/导出 | SCEN-5.3.3 | TEST-5.3.3 | - | unit-test | Test Red |
+| AC4 secret override 写 audit | SCEN-5.3.4 | TEST-5.3.4 | - | unit-test | Test Red |
+| AC5 Phase5 端到端 smoke | SCEN-5.3.5 | TEST-5.3.5 | - | unit-test | Test Red |
 
 ## 8. Risks
 

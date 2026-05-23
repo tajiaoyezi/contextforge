@@ -59,26 +59,26 @@ Feature: memoryops
   # ---
   # Maps to: docs/specs/tasks/task-5.3-audit.md
   Scenario: SCEN-5.3.1 — 对应 AC1（四类事件写 audit.log）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given a collection audit sink
+    When import, search, export, and redact operations are recorded
+    Then audit.log contains one event for each operation
 
   Scenario: SCEN-5.3.2 — 对应 AC2（默认字段不含 query 全文）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given a search operation with sensitive raw query content
+    When the search audit event is recorded
+    Then audit.log stores query hash and length but not the raw query text
 
   Scenario: SCEN-5.3.3 — 对应 AC3（不记录完整 secret/导出）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given redact and export operations containing sensitive source material
+    When the audit events are recorded
+    Then audit.log keeps redaction labels and chunk ids without full secret or export content
 
   Scenario: SCEN-5.3.4 — 对应 AC4（secret override 写 audit）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given scanner secret override is explicitly confirmed
+    When the override is translated into an audit event
+    Then audit.log records a redact event with only redaction labels
 
   Scenario: SCEN-5.3.5 — 对应 AC5（Phase5 端到端 smoke）
-    Given <TBD>
-    When <TBD>
-    Then <TBD>
+    Given duplicate facts, a redacted secret, and a Phase 5 smoke collection
+    When chunker, indexer, retrieval, stale marking, and audit logging run
+    Then provenance is preserved, stale state is retrievable, four audit operations exist, and no full secret appears in audit.log
