@@ -557,7 +557,7 @@ v0.1 recall eval 使用 golden questions 数据集进行评测。
 - [ ] **O1 反对者抵制缓解策略**（源自 Q8，业务 / 产品层）：单 Agent 用户、极简主义者、隐私敏感者、团队平台负责人、Agent / memory provider 厂商、高级检索用户的抵制 → 需产品负责人在 v0.1 早期做 PM / UR 调研，定位首批种子用户画像与对外话术（「兼容 / 治理 / 评测层」而非「替代 memory」）。
 - [ ] **O2 向量后端最终选型**（源自 D2 / 技术 TBD）：SQLite vec ext / Qdrant local / LanceDB / 内嵌 HNSW，需核心开发在 Phase 5-6 期间做 spike 压测后定。
 - [ ] **O3 OpenClaw / Hermes / Cursor / Zed 实际 memory schema 与路径**（技术 TBD）：需在 Phase 3 开始前基于实测版本与真实工作区样本收集 fixture 确定适配范围。
-- [ ] **O4 MCP 协议 / SDK 目标版本**（技术 TBD）：需在 Phase 7 启动前跟随当时主流 spec / SDK 锁定。
+- [x] **O4 MCP 协议 / SDK 目标版本**（技术 TBD）：需在 Phase 7 启动前跟随当时主流 spec / SDK 锁定。**Resolved by task-7.1 §2A Decision E**：锁 MCP spec `2025-06-18`（current per modelcontextprotocol.io 是 `2025-11-25` — 选熟成版本 trade-off；2025-11-25 newer features 接入留 future SPEC-DRIFT-task-7.1.spec-bump；client 高版本 → MCP initialize handshake 原生 negotiate down）。
 - [ ] **O5 canonical record schema 无损承载边界**：迁移保真 ≥ 80% 字段，但哪些字段属「结构化必保留」、哪些可降级 free-text，需 Phase 3 实测样本后定标。
 - [ ] **O6 golden questions 数据集构建与维护**：谁标注、覆盖哪些场景（配置定位 / 错误复现 / 历史决策 / 日志排查 / 跨 Agent memory 检索）、如何防过拟合，需在 Phase 4 前确定。
 - [ ] **O7 v0.1 威胁模型边界**：本地单用户模式下哪些风险由 ContextForge 负责、哪些交给 OS / 用户环境（本地磁盘被其他进程读取、用户主动导出敏感 bundle、远程 provider opt-in 后数据外发、MCP client 权限边界），需在安全设计文档中明确。
