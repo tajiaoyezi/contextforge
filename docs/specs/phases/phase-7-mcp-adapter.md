@@ -97,8 +97,8 @@ printf '%s\n' "$DENIED" \
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase task spec Status=Done 或 Waived
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过
-- [ ] 关联风险 R7 / R9 缓解措施已落地（adapter 解耦 + 版本锁定 + client allowlist）
-- [ ] adapter §Phase 状态索引该行 Status 同步更新
-- [ ] team §4 Gate 3 phase smoke gate 通过后方可 merge（本 phase 唯一 task 即最后 task）
+- [x] 本 phase task spec Status=Done 或 Waived —— task-7.1 Status=Done @ PR #48 / 唯一 task；adapter §Task 索引 7.1 Status=Done 同步
+- [x] §6 阶段级 AC 全部满足、端到端 smoke 已填实（PR #48 §6 命令骨架完整 + Gate 3 syntactic 通过 — bash -n + 8 个 JSON-RPC payload `json.Unmarshal` 全过；自动化运行留 task-8.1 eval-harness — 与 phase-6 同模式）
+- [x] 关联风险 R7 / R9 缓解措施已落地（task-7.1 §2A 决策 A 手写 MCP 零 SDK 漂移 + E 锁 2025-06-18 + adapter 解耦核心；决策 C `<data_dir>/mcp-allowlist.json` 默认空拒绝 + initialize handshake 校验 + audit 记 403 拒访问；PR #48 review approved-as-is）
+- [x] adapter §Phase 状态索引该行 Status 同步更新 —— PR #49 phase-7 closeout @ f5770c1
+- [x] team §4 Gate 3 phase smoke gate 通过后方可 merge —— PR #48 review subagent 验证 §6 shell + JSON-RPC pipe 命令 well-formed + endpoint 字面与实现一致；本 phase 唯一 task 即最后 task

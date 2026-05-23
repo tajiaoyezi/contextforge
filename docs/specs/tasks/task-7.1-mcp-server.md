@@ -309,11 +309,11 @@ type ToolContent struct {
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (PRD §Implementation Phases Phase 7 Exit Criteria): MCP `context_search` 返回可解释结果，字段与 REST search result 一致。
-- [ ] **AC2** (PRD §Implementation Phases Phase 7 Exit Criteria): MCP `context_read` 读取指定 chunk/context；`context_explain` 返回召回理由+provenance；`context_collections` 列出可用 collection。
-- [ ] **AC3** (PRD §Constraints Local service security baseline / §Technical Risks R9): MCP client 未被 allowlist 时拒绝访问，访问写 audit log。
-- [ ] **AC4** (PRD §Technical Risks R7 / §Open Questions O4): mcp-adapter 与核心检索解耦（仅协议翻译）；锁定一个已发布 MCP spec 版本并在 spec 标注兼容范围（**§2A 决策 E 锁定 MCP spec 2025-06-18**；2025-11-25 等 newer 版本接入留 future SPEC-DRIFT-task-7.1.spec-bump）。
-- [ ] **AC5** (本 task 新增): Phase 7 端到端 smoke 可执行（起 MCP server → client 调 4 tool 校验字段与 REST 一致 + 未 allowlist client 被拒），本 task 填实 phase-7 spec §6 端到端 smoke 命令骨架（自动化运行留 task-8.1 eval-harness）。
+- [x] **AC1** (PRD §Implementation Phases Phase 7 Exit Criteria): MCP `context_search` 返回可解释结果，字段与 REST search result 一致。
+- [x] **AC2** (PRD §Implementation Phases Phase 7 Exit Criteria): MCP `context_read` 读取指定 chunk/context；`context_explain` 返回召回理由+provenance；`context_collections` 列出可用 collection。
+- [x] **AC3** (PRD §Constraints Local service security baseline / §Technical Risks R9): MCP client 未被 allowlist 时拒绝访问，访问写 audit log。
+- [x] **AC4** (PRD §Technical Risks R7 / §Open Questions O4): mcp-adapter 与核心检索解耦（仅协议翻译）；锁定一个已发布 MCP spec 版本并在 spec 标注兼容范围（**§2A 决策 E 锁定 MCP spec 2025-06-18**；2025-11-25 等 newer 版本接入留 future SPEC-DRIFT-task-7.1.spec-bump）。
+- [x] **AC5** (本 task 新增): Phase 7 端到端 smoke 可执行（起 MCP server → client 调 4 tool 校验字段与 REST 一致 + 未 allowlist client 被拒），本 task 填实 phase-7 spec §6 端到端 smoke 命令骨架（自动化运行留 task-8.1 eval-harness）。
 
 ## 7. SDD / BDD / TDD Traceability
 
@@ -365,7 +365,7 @@ type ToolContent struct {
 - **commit 列表**：
   - `4623926` test(mcp-server): 加 SCEN-7.1.1~5 共 5 个 RED 测试 + Status: Ready → In Progress
   - `82f825e` feat(mcp-server): contextforge mcp 端到端实现 — 手写 MCP 2025-06-18 stdio JSON-RPC + 4 tool + allowlist + audit 通过全部 5 个测试 + phase-7 §6 端到端 smoke 命令骨架填实
-  - `本 docs commit` docs(spec): 回填 task-7.1 Completion Notes + Status → Done
+  - `3d428b6` docs(spec): 回填 task-7.1 Completion Notes + Status → Done
 - **§9 Verification 结果**：
   - install: ✅ `go mod download && cargo fetch`
   - typecheck: ✅ `go vet ./... && cargo check --workspace`

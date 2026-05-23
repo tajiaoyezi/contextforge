@@ -101,8 +101,8 @@ grep -E 'fidelity=0\.[6-9]|fidelity=1\.000' "$CF_ROOT/export-agent-draft.log"
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done 或 Waived
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过
-- [ ] 关联风险 R9 / R4 缓解措施已落地（监听限制 + token + export 二次扫描）
-- [ ] adapter §Phase 状态索引该行 Status 同步更新
-- [ ] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task
+- [x] 本 phase 全部 task spec Status=Done 或 Waived —— task-6.1/6.2/6.3 全 Done @ PR #41/#44/#43；adapter §Task 索引同步
+- [x] §6 阶段级 AC 全部满足、端到端 smoke 已填实（PR #45 phase-6 closeout 填实 §6 命令骨架；自动化运行留 task-8.1 eval-harness — 与 phase-7 同模式）
+- [x] 关联风险 R9 / R4 缓解措施已落地（task-6.2 默认 127.0.0.1 监听 + secret-token mode 0600；task-6.3 export 二次 sanity secret scan + 保护路径拒写）
+- [x] adapter §Phase 状态索引该行 Status 同步更新 —— PR #45 phase-6 closeout
+- [x] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task —— PR #44 task-6.2 phase-last Gate 3 通过 + PR #45 closeout 后 master Done
