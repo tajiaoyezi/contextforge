@@ -2,7 +2,7 @@
 
 > ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23）：§3/§4/§5.2/§5.3 的待定字段已清零；决策为嵌入 collection SQLite `audit_log` 表、默认仅记录脱敏元数据、Phase 5 smoke 落 `core/tests/phase5_smoke.rs`，task-5.2 stale API 合并前 smoke 使用局部 stub 标明衔接点。实施硬约束：不改 `proto/`，不改依赖/lockfile，audit log 不记录完整 query / secret / export content。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Ready
+**Status**: In Progress
 
 **Priority**: P0
 **Owner**: codex
