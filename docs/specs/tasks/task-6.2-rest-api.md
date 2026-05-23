@@ -71,7 +71,7 @@ daemon 暴露 `POST /v1/search` / `GET /v1/chunks/{id}` / `POST /v1/import` / `P
   - `internal/daemon/rest_test.go` 中 — TEST-6.2.2 AC2 chunks/{id} 真返 + collections 真返 + import/eval stub 501 + 错误码映射
 - **跨 task 影响（必须同 PR 完成）**：
   - **task-4.x retriever 加公开 API**（§2A 决策 E）：`core/src/retriever/mod.rs` 新增 `pub fn get_chunk(&self, chunk_id: &str) -> Result<Option<SearchResult>, RetrieverError>` — SQLite `WHERE chunk_id=?` + provenance JOIN + 复用 task-4.2 12-field SearchResult 映射；返 `Option<SearchResult>` 让上层区分 not-found vs error
-  - **Rust gRPC ContextService 加 `GetChunk` RPC**：proto 已 frozen，需要走 SPEC-DRIFT 流程？— **不需要**：现有 `Search` 已能用 `collections` + 实际命中过滤实现等价 `GetChunk` 行为（短 query = chunk_id 字串完全匹配）。**v0.1 P0 决策：REST handler 内部 `daemon.Search` with `query = chunk_id` + filters 反查 chunk_id，不引入新 gRPC RPC**（避免 SPEC-DRIFT 串行）；retriever Rust 层 `get_chunk` API 作为 future 优化路径，本 task 仅扩 retriever Rust 层 API（gRPC 不动），server.rs `ContextService::search` 内部当 query 看起来像 chunk_id format 时优先调 retriever.get_chunk 走精确路径（fast-path optimization；fallback 仍走 full BM25 search）— **本 §3 In Scope 落实此 fast-path**
+  - **Rust gRPC ContextService 加 `GetChunk` RPC**：proto 已 frozen，需要走 SPEC-DRIFT 流程？— **不需要**：现有 `Search` 已能用 `collections` + 实际命中过滤实现等价 `GetChunk` 行为（短 query = chunk_id 字串完全匹配）。**v0.1 P0 决策（§10 决策 E 全貌）**：Go REST handler 调 `daemon.Search` with `query = chunk_id`（不引新 gRPC RPC）+ Rust `server.rs` `ContextService::search` 内部 fast-path 调 `retriever.get_chunk` 走精确路径（fast-path optimization；fallback 仍走 full BM25 search）。本 task 仅扩 retriever Rust 层 `get_chunk` 公开 API（gRPC 契约不变）— **本 §3 In Scope 落实此 fast-path**
 - **填实 `test/features/daemon.feature` SCEN-6.2.1~5** 占位 Given/When/Then（与 TEST-6.2.X 一一映射）
 
 ### Out Of Scope
@@ -299,6 +299,7 @@ async fn search(
 - 关联 PRD §Technical Risks **R9**（本地 daemon/MCP 暴露面）：监听限制（loopback / Unix socket / 拒 0.0.0.0）+ token Bearer + audit 脱敏 三层缓解齐全；与 task-1.4 baseline 同构（无新 attack surface）。
 - **gRPC Search fast-path 对 chunk_id 误判风险**：query 看起来像 chunk_id format 时优先调 retriever.get_chunk；若用户故意输入 chunk_id-pattern 的 BM25 query → fast-path 命中后不再 fallback。**缓解**：fast-path 仅 chunk_id 精确匹配命中时返；未命中（None）则 fallback 全文 search；用户场景仅 REST GET /v1/chunks/{id} 触发（CLI search 不走 fast-path 因 query 内容多样）。
 - **持久 daemon 资源管理**：`contextforge serve` 长生命周期 daemon.Start(AutoRestart=true) 沿 task-1.4 supervisor pattern；SIGTERM 触发 srv.Shutdown(ctx, 5s timeout) + daemon.Stop。**风险**：Windows 上 Unix socket 不支持 → fallback TCP loopback 已写 stderr warning（与 PRD platform 平台支持一致：v0.1 P0 = Linux/WSL2）。
+- **`internal/cli/cli.go` dispatch case 并行修改 rebase 风险**：本 task 改 dispatch case `"serve"`（task-1.4 默认 not-implemented）；同期 task-6.3 改 case `"export"`（同函数体不同 case 分支）。后 merge 一侧需 rebase 解决（trivial）— §4 Gate 1 必须验证。两 task worker 之间不直接协调，主 agent 在 §4 Gate 1 切到第二个 PR 时执行 rebase。
 
 ## 9. Verification Plan
 

@@ -35,10 +35,11 @@
     - `type Options struct { Format Format; Collection string; DataDir string; Output string; IncludeStale bool }`
     - `type Format string` 枚举: `FormatJSONL` / `FormatMarkdownBundle` / `FormatAgentDraft`
     - `type Result struct { RecordsExported int; OutputPath string; FidelityScore float64; SecretHits []SecretHit }`
-- **collection 读取（§2A 决策 A）**：
+- **collection 读取（§2A 决策 A：daemon.Search pseudo full-scan，避免 R7 chore-dep）**：
   - `internal/exporter/source.go`：`loadRecords(ctx, dataDir, collection string) ([]*contextforgev1.ContextRecord, error)`
-  - 直读 indexer SQLite (`<data_dir>/<collection>/chunks.db`)：`SELECT * FROM chunks JOIN provenance ON ...`
-  - 复用 retriever 已有的 SearchResult → ContextRecord 反向映射（如未有则 build minimal mapping）；亦可走 `daemon.Search(query="*", top_k=large)` pseudo full-scan（备选 — v0.1 P0 直读 SQLite 更简单 + 不 dep daemon）
+  - 走 `daemon.Search(query="*", top_k=large)` pseudo full-scan（v0.1 P0 选 — 避免引 SQLite Go driver R7 chore-dep；复用 task-6.1 已 wire 的 daemon.Search 入口）
+  - **fallback / future**：如 RED 阶段发现 Tantivy BM25 `*` 不全集（standard query parser 不一定接受 wildcard 单 token） → 写 `SPEC-DRIFT-task-6.3.list-chunks.md` 报主 agent 串行加 gRPC RPC `ListAllChunks(collection_id)`（add-only proto 扩展）；SQLite 直读由于 R7 chore-dep PR 成本高仅作 future 备选
+  - 复用 retriever 已有的 SearchResult → ContextRecord 反向映射（如未有则 build minimal mapping）
   - 默认 stale 过滤：调 `lifecycle.Mark(records, SystemOracle{})` + `lifecycle.FilterStale(records, marks)`（复用 task-5.2 ✅）；`--include-stale` 透传 bypass
 - **三格式实现（§2A 决策 B）**：
   - **JSONL（`internal/exporter/jsonl.go`）**：
@@ -125,9 +126,9 @@
 ## 4. Users / Actors
 
 - **PRD §Core Capabilities #5 跨 Agent 上下文迁移消费者**：通过 `contextforge export` 把 ContextForge 治理后的上下文导出为 JSONL / Markdown / Agent draft 供其他 Agent 接入
-- **task-6.1 cli-search / daemon.Search**（上游 ✅ done）：本 task 不直调 search，但复用 task-6.1 落地的 proto-generated `ContextRecord` Go 消费模式
-- **task-6.2 rest-api**（同期并行）：与本 task 不冲突；exporter 仅消费 indexer 数据 + lifecycle filter，不调 daemon.Search
-- **task-2.4 indexer**（上游 ✅ done）：本 task 直读 indexer SQLite (`chunks.db` + `provenance` 表)
+- **task-6.1 cli-search / daemon.Search**（上游 ✅ done）：本 task **通过 daemon.Search(query="*") pseudo full-scan** 拉 collection 全集（§2A 决策 A 避免引 SQLite driver R7 chore-dep）；复用 task-6.1 落地的 proto-generated `ContextRecord` Go 消费模式
+- **task-6.2 rest-api**（同期并行）：与本 task 共享 daemon.Search 入口但不与其 REST handler 写路径冲突（task-6.2 改 `internal/daemon/rest.go` + cli.go dispatch case `"serve"`；本 task 改 `internal/exporter/` + cli.go dispatch case `"export"`；仅 cli.go 同函数体不同 case 分支会触发后 merge rebase — 见 §8 Risks）
+- **task-2.4 indexer**（上游 ✅ done）：本 task **通过 daemon.Search 间接消费** indexer SQLite（§2A 决策 A 避免引 Go SQLite driver）；不直读 indexer 文件层 — 由 daemon → core gRPC → retriever → Tantivy/SQLite 走标准 read path
 - **task-5.2 lifecycle**（上游 ✅ done）：本 task 默认调 `lifecycle.Mark + FilterStale` 过滤 stale records（`--include-stale` 显式 bypass）
 - **task-2.1 scanner**（上游 ✅ done，cross-language 限制）：本 task **不直调** scanner（Rust）— §2A 决策 C 用 Go inline sanity scan；但 secret pattern 知识同源（部分参考 task-2.1 fixture 已用的 pattern）
 - **task-1.4 cli-init**（上游 ✅ done）：本 task `contextforge export` 子命令复用 CLI dispatch 框架
@@ -166,10 +167,10 @@
 - **Go proto（已有，task-1.1 codegen）**:
   - `contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"`（ContextRecord / Provenance / Chunk — 全 23 字段）
 - **Go SQLite**: **不引入新 module**！本 task 直读 SQLite 需要 driver。**关键约束**：Go 端目前**没有** SQLite driver dep（`go.mod` 现状），如要直读 indexer SQLite 需要 R7 chore-dep PR 引 `modernc.org/sqlite` (CGO-free) 或 `mattn/go-sqlite3` (CGO)。**v0.1 P0 决策**：避免 R7 chore-dep PR，改走 **替代路径**：
-  - **替代 A**：通过 `daemon.Start` + 多次 `daemon.Search(query="*", top_k=large)` pseudo full-scan — 不需 SQLite driver，但 BM25 `*` 查询语义不一定全集（取决于 Tantivy `*` 是否 wildcard 全命中）
-  - **替代 B**：扩 Rust core 加新 gRPC RPC `ListAllChunks(collection_id)` — 走 SPEC-DRIFT + phase23-gate add-only；主 agent 串行处理
-  - **替代 C**：扩 Rust core 加 CLI 子命令 `contextforge-core dump --collection <id>` 输出 JSONL → Go 端读 stdin — 简单但需要 binary spawn
-  - **推荐 C**：实施时由主 agent 与你协调；本 spec 暂用 **A**（daemon.Search 全集 pseudo-scan），若实施时发现 BM25 `*` 不全集，转 SPEC-DRIFT-task-6.3.list-chunks 让主 agent 串行加 gRPC RPC（B 路径）
+  - **路径 A（v0.1 选定 — §2A 决策 2026-05-23）**：通过 `daemon.Start` + 多次 `daemon.Search(query="*", top_k=large)` pseudo full-scan — 不需 SQLite driver，但 BM25 `*` 查询语义不一定全集（取决于 Tantivy `*` 是否 wildcard 全命中）
+  - **路径 B（fallback）**：扩 Rust core 加新 gRPC RPC `ListAllChunks(collection_id)` — 走 SPEC-DRIFT + phase23-gate add-only；主 agent 串行处理（见 §8 SPEC-DRIFT-task-6.3.list-chunks 名牌）
+  - **路径 C（future）**：扩 Rust core 加 CLI 子命令 `contextforge-core dump --collection <id>` 输出 JSONL → Go 端读 stdin — 简单但需要 binary spawn，v0.1 不引入
+  - **选定 A（§2A 决策 2026-05-23）**：如 RED 阶段发现 BM25 `*` 不全集 → 写 `SPEC-DRIFT-task-6.3.list-chunks.md` 报主 agent 串行升级到路径 B
 - **R7 严格通道**：不引入新 Go module / Rust crate；本 task 选 SQLite **替代路径 A**（daemon.Search 全集 pseudo-scan）避免引 SQLite driver；YAML 也手写 minimal emit/parse 避免引 yaml dep
 
 ### 5.3 函数签名
@@ -318,7 +319,8 @@ func writeAgentDraft(records []*contextforgev1.ContextRecord, dir string) error
 - 关联 PRD §Technical Risks **R4**（export 二次扫描漏检）：§2A 决策 C cross-language 修正 — 本 task 的 sanity check 是 5-7 pattern 子集，**不替代** task-2.1 完整 detection；理论上 ContextRecord.content 已 redacted（上游 scanner+indexer 保证），sanity 命中即上游漏 redact 的边缘情况 → 拒 export + 报告促修。**剩余漏检风险**：sanity pattern 未覆盖的新 secret 类型（如 OpenAI key 新 format）→ task-8.1 eval-harness 跑大规模 corpus 暴露 + 主 agent 增 pattern。
 - 关联 PRD §Technical Risks **R5**（agent-draft 格式随上游漂移）：Hermes / Cursor / Claude / OpenClaw 各 Agent 配置 schema 实际变更可能让 v0.1 agent-draft 不再被它们识别。**缓解**：v0.1 agent-draft 仅作为 ContextForge 自治模板（YAML frontmatter ContextRecord 字段完整）；用户人工 cp 到 Agent dir 时根据当时 Agent 实际 schema 适配 — **draft/bundle 不写回**（AC2 硬约束已限制）。task-7.1 MCP wrap 或 future SPEC-DRIFT 跟进具体 Agent schema。
 - 关联 PRD §Open Questions **O5**（schema 无损承载边界）：23 字段全集 fidelity 假设各 Agent target schema 容纳；agent-draft 是 lossy 已专门阈值化（≥0.6 vs ≥0.8）。
-- **§2A 决策 A SQLite 替代路径风险**：本 spec 暂用 daemon.Search(query="*", top_k=large) pseudo full-scan；若实施时发现 BM25 `*` 不全集（Tantivy 标准 query parser 不一定接受 wildcard 单 token）→ SPEC-DRIFT-task-6.3.list-chunks 让主 agent 串行加 gRPC RPC `ListAllChunks` 走 add-only proto 扩展。
+- **§2A 决策 A SQLite 替代路径风险**：v0.1 选定路径 A（daemon.Search(query="*", top_k=large) pseudo full-scan）；若 RED 阶段发现 BM25 `*` 不全集（Tantivy 标准 query parser 不一定接受 wildcard 单 token）→ 写 **`SPEC-DRIFT-task-6.3.list-chunks.md`**（名牌）让主 agent 串行加 gRPC RPC `ListAllChunks(collection_id)` 走 add-only proto 扩展（路径 B）。
+- **`internal/cli/cli.go` dispatch case 并行修改 rebase 风险**：本 task 改 dispatch case `"export"`（task-1.4 默认 not-implemented）；同期 task-6.2 改 case `"serve"`（同函数体不同 case 分支）。后 merge 一侧需 rebase 解决（trivial）— §4 Gate 1 必须验证。两 task worker 之间不直接协调，主 agent 在 §4 Gate 1 切到第二个 PR 时执行 rebase。
 
 ## 9. Verification Plan
 
