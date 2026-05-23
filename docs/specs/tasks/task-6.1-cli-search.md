@@ -1,6 +1,6 @@
 # Task `6.1`: `cli-search — contextforge search 命令`
 
-> ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、AC1/CLI-spawn-mode/AC4/AC5 四决策已确认（详见 §10 §2A Decisions — 由实施 agent 完工时回填）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
+> ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23，主 agent 与用户预先审定，worker 终端可直接进入 RED）：§3/§4/§5.2/§5.3 `<TBD-by-user>` 已清零、§6 AC 经用户审定接受、A/B/C/D/E 五决策已确认（A. AC1 Rust tonic Search wire 本 task 端到端、B. CLI per-invocation spawn、C. AC4 secret 透传 redaction_status、D. AC5 直接用 proto-generated RetrievalResult、E. Provenance 时间字段 v0.1 placeholder — 详见 §10 §2A Decisions）。**PR #37 review 补判定**：原草稿 `RetrieverError::DataDirMissing` 是写错（实际 5 变种 `Io/Sqlite/Tantivy/InvalidConfig/CollectionNotFound`）；chunker::Provenance 时间字段是 `String` 不是 `chrono::DateTime`（→ §2A 决策 E）。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
 **Status**: Ready
 
@@ -27,7 +27,7 @@
   - `core/src/main.rs` 启动时把 cmd-arg listen_addr 之后的第 2 个 arg（或 env `CONTEXTFORGE_DATA_DIR`）传入 `CoreService::new(data_dir)`（向后兼容：缺省走 `config::DefaultRootDir` 等价路径解析）
   - search() 实现：
     - 校验 `req.collections` 非空（v0.1 P0 仅消费 `collections[0]`；为空 → `Status::invalid_argument("collections is required (v0.1 single-collection)")`）
-    - `Retriever::open(&data_dir, &collections[0])` → `Status::failed_precondition` on `RetrieverError::DataDirMissing`，`Status::internal` on 其他错
+    - `Retriever::open(&data_dir, &collections[0])` → 错误映射（按 task-4.1 / 4.2 实际暴露的 `RetrieverError` 5 变种 `Io / Sqlite / Tantivy / InvalidConfig / CollectionNotFound`）：`RetrieverError::Io`（NotFound — 路径不存在）/ `RetrieverError::CollectionNotFound` → `Status::failed_precondition`；`RetrieverError::InvalidConfig` → `Status::invalid_argument`；`RetrieverError::Sqlite` / `RetrieverError::Tantivy` / `RetrieverError::Io`（非 NotFound） → `Status::internal`
     - 映射 `SearchRequest → SearchOptions`：`query`、`top_k`（≤0 → 默认 10）、`agent_scope`、`filters.source_type`、`filters.language`、`explain`
     - explain=true → `retriever.explain(opts)`；否则 `retriever.search(opts)`（同 task-4.2 公开 API）
     - 映射 `Vec<retriever::SearchResult> → Vec<proto::RetrievalResult>`：12 字段 1:1（`provenance` 用 `chunker::Provenance → proto::Provenance` field mapping helper；`google.protobuf.Timestamp` 走 `prost_types::Timestamp`）
@@ -134,7 +134,8 @@
 - **Rust 第三方（已有）**:
   - `tonic`（codegen + Status + Request/Response）
   - `tokio` / `async-trait`（沿 task-1.3）
-  - `prost-types`（`Timestamp` 类型用于 chunker::Provenance.imported_at / source_modified_at → PbProvenance 映射；Cargo.toml 已声明）
+  - `prost-types`（`Timestamp` 类型用于 PbProvenance.imported_at / source_modified_at；Cargo.toml 已声明）
+  - **时间字段映射（FIX-2 / §2A 决策 E）**：`chunker::Provenance.imported_at` / `source_modified_at` 实际类型是 **`String`**（RFC3339 with Z suffix，indexer SQLite TEXT 直存原样；chrono 不在 Cargo.toml 中，不引入新 dep）。v0.1 P0 选项 X — placeholder：proto.Provenance.imported_at / source_modified_at 一律返 `prost_types::Timestamp::default()`（seconds=0 nanos=0）+ §8 Risks 留档时间字段保真 gap，下游 task-6.3 export 必要时引入 R7 chore-dep 推 `time` / `chrono` crate；CLI text 渲染时直接 print `chunker::Provenance.imported_at` String（不经 proto.Provenance.imported_at），用户终端仍能看到原始 RFC3339 串
 - **R7 严格通道**：**不引入新 Go module / Rust crate**；不改 `Cargo.toml` / `Cargo.lock` / `go.mod` / `go.sum`。所有依赖沿 task-1.3 / 1.4 / 4.2 已落定的版本。
 
 ### 5.3 函数签名
@@ -265,10 +266,11 @@ impl ContextService for CoreService {
 
     /// task-6.1 §5.3: SearchRequest → Retriever.search/explain → SearchResponse.
     ///
-    /// 错误映射:
+    /// 错误映射（按 task-4.1/4.2 暴露的 RetrieverError 5 变种）:
     ///   collections 为空 → InvalidArgument
-    ///   RetrieverError::DataDirMissing → FailedPrecondition
-    ///   其他 RetrieverError → Internal
+    ///   RetrieverError::Io (NotFound) / CollectionNotFound → FailedPrecondition
+    ///   RetrieverError::InvalidConfig → InvalidArgument
+    ///   RetrieverError::Sqlite / Tantivy / Io (非 NotFound) → Internal
     async fn search(
         &self,
         req: Request<SearchRequest>,
@@ -276,7 +278,16 @@ impl ContextService for CoreService {
 }
 
 /// task-6.1 §5.3: chunker::Provenance → proto::Provenance field mapping.
-/// imported_at / source_modified_at: chrono::DateTime<Utc> → prost_types::Timestamp.
+///
+/// **时间字段映射（§2A 决策 E）**：chunker::Provenance.imported_at /
+/// source_modified_at 实际类型是 `String`（RFC3339 with Z；indexer SQLite TEXT
+/// 直存）。v0.1 P0 placeholder：
+///   imported_at:        prost_types::Timestamp::default() (seconds=0, nanos=0)
+///   source_modified_at: prost_types::Timestamp::default()
+/// 不引入 chrono / time crate（R7 严格通道）。CLI text 渲染时直接 print
+/// chunker::Provenance 原 String 字段（不走 proto.Provenance.imported_at），
+/// 用户终端仍能看 RFC3339 原值；--json 输出会显示 placeholder timestamps —
+/// §8 Risks 留档，下游 task-6.3 export 触发 SPEC-DRIFT 走 R7 chore-dep 修复.
 fn provenance_to_proto(p: &RetrieverProvenance) -> PbProvenance;
 
 /// task-6.1 §5.3: retriever::SearchResult → proto::RetrievalResult.
@@ -319,6 +330,7 @@ fn resolve_data_dir(arg: Option<&str>) -> PathBuf;
 - 关联 PRD §Technical Risks **R9**（本地暴露面）：CLI 经 daemon 走本地 gRPC；daemon.Start 复用 task-1.4 `ensureLoopback` / `freeLoopbackAddr`，全程 127.0.0.1，不引入新监听口。无新 attack surface（task-1.4 缓解措施延续）。
 - **CLI 冷启动延迟（§2A per-invocation spawn 后果）**：每次 `contextforge search` 都要 spawn `contextforge-core` + 等 gRPC SERVING，单次延迟约 0.5-2s（cargo target/release 启动 + tonic listener bind + Tantivy index open）。v0.1 P0 用户脚本化场景可接受；持续 / 高频检索场景留 Phase 6+ daemon-lifecycle task 切持久 daemon。本 task 不优化。
 - **5 schema-gap 字段返默认值**（context_id / source_type / agent_scope / redaction_status — task-4.2 §10 留档）：本 task 透传 retriever 输出；用户 CLI 看到 `redaction_status=applied`（v0.1 default）/ 4 字段为空。SPEC-DRIFT-task-2.4 chore-spec PR 扩 indexer schema 后自动转真实值（retriever 不需改即自动 fill；本 task CLI 不需改）。
+- **Provenance 时间字段保真 gap（§2A 决策 E）**：proto.Provenance.imported_at / source_modified_at 是 `google.protobuf.Timestamp`，但 chunker::Provenance 同名字段实际类型是 `String`（RFC3339 with Z；indexer SQLite TEXT 直存）。chrono / time crate 不在 Cargo.toml（R7 严格通道，不引入新 dep）→ v0.1 P0 placeholder `Timestamp::default()`（seconds=0 nanos=0）；CLI text 渲染走 `chunker::Provenance` String 字段保留 RFC3339 原值，--json 输出会显示 1970-01-01 placeholder。下游 task-6.3 export 触发 SPEC-DRIFT 时由主 agent 走 R7 chore-dep PR 引 `time` / `chrono` crate 写 `parse_rfc3339_utc` helper 补齐保真。PRD §Success Metrics 次指标「跨 Agent 迁移保真 ≥ 80% 结构化字段」用 23 字段全集统计，本 gap（2 字段 placeholder）落在 17% 容差内可吸收。
 
 ## 9. Verification Plan
 
@@ -345,3 +357,5 @@ fn resolve_data_dir(arg: Option<&str>) -> PathBuf;
   - **AC4 secret redaction（选项 A — 透传 redaction_status）**：CLI 渲染只读 `RetrievalResult.RedactionStatus` 字段值（"applied" / 等）；不在 CLI 二次扫描 content。AC4「结果默认不展示完整 secret」由上游 scanner+indexer+retriever 已 redact content 保证；task-6.3 exporter 会在 export 前再跑一次 secret scan（其 §3 责任）。
   - **AC5 共享 result model（选项 A — 直接用 proto-generated `contextforgev1.RetrievalResult`）**：不新建 Go wrapper struct；不写 ProtoTo/FromProto helper。task-6.3 exporter 直接消费 `*contextforgev1.RetrievalResult` 序列化为 JSONL / Markdown bundle / agent draft。ADR-003「result schema 单一源」原则即 proto。
   - **R7 严格通道**：未引入新 Go module / Rust crate；沿用 task-1.3 / 1.4 / 4.2 已落定依赖（tonic / tokio / prost-types / google.golang.org/grpc / encoding/json stdlib）。Go CLI flags 沿 task-1.4 §2A 决策（stdlib `flag`，不引 cobra）。
+  - **Provenance 时间字段映射（选项 X — placeholder Timestamp::default()）**（FIX-2 / 主 agent 与用户 PR #37 review 跟进补判定）：chunker::Provenance.imported_at / source_modified_at 是 `String`（RFC3339 with Z；indexer SQLite TEXT 直存），与 proto.Provenance.imported_at / source_modified_at（`google.protobuf.Timestamp`）类型不匹配。chrono 不在 Cargo.toml，引入需 R7 chore-dep PR，会延后 task-6.1 派工 → 选 placeholder 路径：v0.1 P0 proto.Provenance.imported_at / source_modified_at 一律返 `Timestamp::default()`（seconds=0 nanos=0）；CLI text 渲染直接 print `chunker::Provenance.imported_at` String，用户终端仍能看 RFC3339 原值；--json 输出 placeholder 时间清晰可辨（1970-01-01）。task-6.3 export 触发 SPEC-DRIFT 时主 agent 走 R7 chore-dep PR 修复（§8 Risks 留档）。
+  - **RetrieverError 变种 mapping（FIX-1）**（主 agent 与用户 PR #37 review 跟进补判定）：原 spec 草稿引用 `RetrieverError::DataDirMissing` 是写错（实际 `RetrieverError` 5 变种 = `Io / Sqlite / Tantivy / InvalidConfig / CollectionNotFound`，无 DataDirMissing）。正确映射写入 §3 In Scope + §5.3 search() doc comment：`Io`（NotFound）/ `CollectionNotFound` → `FailedPrecondition`；`InvalidConfig` → `InvalidArgument`；`Sqlite` / `Tantivy` / `Io`（非 NotFound）→ `Internal`。
