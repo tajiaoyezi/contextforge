@@ -1,11 +1,11 @@
 # Task `5.3`: `audit — 审计事件 + audit log`
 
-> ⚠️ **Status: Draft** — 禁止进入实施。进入前清零 `<TBD-by-user>`、审 §6/§7/§9、Status→Ready。详见 `docs/s2v/standard.md` §10.5.1。
+> ✅ 已过 `/s2v-implement` §2A 前置审核（2026-05-23）：§3/§4/§5.2/§5.3 的待定字段已清零；决策为嵌入 collection SQLite `audit_log` 表、默认仅记录脱敏元数据、Phase 5 smoke 落 `core/tests/phase5_smoke.rs`，task-5.2 stale API 合并前 smoke 使用局部 stub 标明衔接点。实施硬约束：不改 `proto/`，不改依赖/lockfile，audit log 不记录完整 query / secret / export content。实时状态以下方 `**Status**` 字段为准；状态机见 `docs/s2v/standard.md` §10.5.1。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
-**Owner**: `<TBD-by-user>`
+**Owner**: codex
 **Related Phase**: Phase 5 (memoryops)
 **Dependencies**: 5.1 (dedup)
 
@@ -21,15 +21,26 @@
 
 ### In Scope
 
-- `<TBD-by-user>`
+- 在 Rust data-plane `core/src/memoryops/` 新增 audit 能力，使用 collection 现有 `metadata.sqlite` 内的 `audit_log` 表记录审计事件；不新增依赖、不拆单独 DB。
+- 支持 import / search / export / redact 四类事件写入，默认字段为 operation / collection / source / result_count / redaction_count / timestamp。
+- 对敏感上下文字段只写脱敏元数据：query 仅写 hash 和长度；secret 仅写 `[REDACTED:TYPE]` 标签；export 仅写 chunk_id 列表和总字节数。
+- 暴露 scanner override 审计 helper，供用户显式覆盖 scanner redaction / denylist 保护时写入 redact 事件。
+- 新增 `core/tests/phase5_smoke.rs` 作为 Phase 5 Gate 3 精准 smoke 入口；在 task-5.2 merge 前使用测试内 stale stub，后续 rebase 后替换为真实 lifecycle API。
 
 ### Out Of Scope
 
-- `<TBD-by-user>`
+- CLI / REST / MCP 层的 audit 查询、展示、筛选、分页与权限控制。
+- 单独 JSONL audit 文件、单独 audit.db、log rotation、retention policy、跨 collection 全局审计汇总。
+- exporter 正式导出实现、export 二次 secret scan 的完整产品 wiring（本 task 只验证 audit 记录不泄露导出内容）。
+- task-5.2 的生产 stale / conflict API 实现，以及 task-6 之后的 search/export 用户命令 wiring。
+- 修改 `proto/contextforge/v1/*`、`Cargo.toml`、`Cargo.lock`、`go.mod`、`go.sum`。
 
 ## 4. Users / Actors
 
-- `<TBD-by-user>`
+- MemoryOps 调度器：在 import / search / export / redact 关键操作后写审计事件。
+- Scanner / indexer / retriever / exporter 调用方：通过 audit helper 记录安全相关操作结果。
+- 本地优先 / 隐私敏感开发者：依赖 audit log 可追溯关键操作，同时 audit log 本身不泄露敏感内容。
+- Phase 5 Gate 3 主 agent：通过 `cargo test --test phase5_smoke` 验证去重、stale 衔接点与 audit 脱敏闭环。
 
 ## 5. Behavior Contract
 
@@ -44,11 +55,79 @@
 
 ### 5.2 Imports
 
-- `<TBD-by-user>`
+- Rust 标准库：`std::fs` / `std::path::{Path, PathBuf}` / `std::time::{SystemTime, UNIX_EPOCH}` / `std::fmt`。
+- 既有直接依赖：`rusqlite::{params, Connection}`、`sha2::{Digest, Sha256}`。
+- 上游 Rust 模块（只读消费）：`crate::scanner`（redaction labels / scanner override 场景）、`crate::indexer::IndexSession`、`crate::retriever::Retriever`、`crate::chunker::{ChunkPolicy, Provenance}`（Phase 5 smoke）。
+- 上游 Go task-5.1 语义（只读契约）：exact duplicate 去重按 content_hash，provenance 链合并不丢来源；Rust phase smoke 用测试内 fixture/stub 验证该联动，不复制 Go 生产包。
 
 ### 5.3 函数签名
 
-- `<TBD-by-user>`
+> Rust crate `contextforge_core::memoryops::audit`，落 `core/src/memoryops/audit.rs`。Phase 5 smoke 落 `core/tests/phase5_smoke.rs`。
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditOperation {
+    Import,
+    Search,
+    Export,
+    Redact,
+}
+
+impl AuditOperation {
+    pub fn as_str(self) -> &'static str;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditEvent {
+    pub operation: AuditOperation,
+    pub collection: String,
+    pub source: String,
+    pub result_count: u64,
+    pub redaction_count: u64,
+    pub query: Option<String>,
+    pub redacted_terms: Vec<String>,
+    pub chunk_ids: Vec<String>,
+    pub export_total_byte_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditLogEntry {
+    pub id: i64,
+    pub operation: String,
+    pub collection: String,
+    pub source: String,
+    pub result_count: u64,
+    pub redaction_count: u64,
+    pub timestamp: String,
+    pub query_hash: Option<String>,
+    pub query_length: Option<u64>,
+    pub redacted_terms: Vec<String>,
+    pub chunk_ids: Vec<String>,
+    pub export_total_byte_count: Option<u64>,
+}
+
+#[derive(Debug)]
+pub enum AuditError {
+    Io(std::io::Error),
+    Sqlite(String),
+    InvalidEvent(String),
+}
+
+pub struct AuditSink;
+
+impl AuditSink {
+    pub fn open(data_dir: impl AsRef<std::path::Path>, collection: &str) -> Result<Self, AuditError>;
+    pub fn record(&mut self, event: AuditEvent) -> Result<AuditLogEntry, AuditError>;
+    pub fn list(&self) -> Result<Vec<AuditLogEntry>, AuditError>;
+    pub fn count_by_operation(&self, operation: AuditOperation) -> Result<u64, AuditError>;
+}
+
+pub fn import_event(collection: &str, source: &str, result_count: u64, redaction_count: u64) -> AuditEvent;
+pub fn search_event(collection: &str, source: &str, query: &str, result_count: u64, redaction_count: u64) -> AuditEvent;
+pub fn export_event(collection: &str, source: &str, chunk_ids: Vec<String>, total_byte_count: u64, redaction_count: u64) -> AuditEvent;
+pub fn redact_event(collection: &str, source: &str, redacted_terms: Vec<String>, redaction_count: u64) -> AuditEvent;
+pub fn scanner_override_event(collection: &str, source: &str, redacted_terms: Vec<String>, redaction_count: u64) -> AuditEvent;
+```
 
 ## 6. Acceptance Criteria
 
