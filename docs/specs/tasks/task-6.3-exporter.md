@@ -262,7 +262,9 @@ type SecretHit struct {
 //   3. format-specific writer 写到 buffer
 //   4. ScanForSecrets(buffer) — 命中 → 拒 + Result.SecretHits + error
 //   5. 写 opts.Output (file mode 0600 / dir mode 0700)
-//   6. (jsonl only) CalcFidelity(records, exported, format) → Result.FidelityScore
+//   6. CalcFidelity(records, exported, format) → Result.FidelityScore（三格式都计算；
+//      与 §6 AC4 / §10 §2A 决策 D / fidelity_test.go 一致：jsonl/md-bundle ≥ 0.8 /
+//      agent-draft ≥ 0.6 — PR #44 review FIX-4 修正）
 func Export(ctx context.Context, opts Options) (*Result, error)
 
 // ScanForSecrets — Go inline sanity hit-count check（§2A 决策 C）.

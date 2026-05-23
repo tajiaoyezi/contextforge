@@ -12,6 +12,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -97,21 +98,28 @@ func authMiddleware(next http.Handler, token, dataDir string) http.Handler {
 
 		if !checkBearerToken(r, token) {
 			writeJSON(rec, 401, map[string]any{"error": "missing or invalid token"})
-			_ = audit.Write(dataDir, audit.Event{
+			if err := audit.Write(dataDir, audit.Event{
 				Endpoint:  r.URL.Path,
 				Status:    401,
 				Timestamp: time.Now().UTC(),
 				Reason:    "missing or invalid token",
-			})
+			}); err != nil {
+				// audit chain break is a v0.1 operability signal (disk full /
+				// permission error). Stay non-blocking for the response, but
+				// surface on stderr so ops can notice (PR #44 review FIX-2).
+				fmt.Fprintf(os.Stderr, "contextforge audit: %v\n", err)
+			}
 			return
 		}
 
 		next.ServeHTTP(rec, r)
-		_ = audit.Write(dataDir, audit.Event{
+		if err := audit.Write(dataDir, audit.Event{
 			Endpoint:  r.URL.Path,
 			Status:    rec.status,
 			Timestamp: time.Now().UTC(),
-		})
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "contextforge audit: %v\n", err)
+		}
 	})
 }
 

@@ -30,7 +30,12 @@ type manifestFile struct {
 func writeMarkdownBundle(records []*contextforgev1.ContextRecord, w io.Writer) error {
 	var payload bytes.Buffer
 	gzw := gzip.NewWriter(&payload)
+	// defer Close 增强稳健性：早 return 路径（writeTarFile err / recordMarkdown
+	// err / manifest marshal err 等）也能保证 writer GC 之前关闭。tw/gzw 写
+	// bytes.Buffer 无 OS fd 仅 GC-leak，但 PR #44 review FIX-3 防御性加固。
+	defer gzw.Close()
 	tw := tar.NewWriter(gzw)
+	defer tw.Close()
 
 	files := make([]manifestFile, 0, len(records))
 	for i, rec := range records {
@@ -57,6 +62,8 @@ func writeMarkdownBundle(records []*contextforgev1.ContextRecord, w io.Writer) e
 	if err := writeTarFile(tw, "manifest.json", body); err != nil {
 		return err
 	}
+	// 显式 Close 让 tar/gzip flush trailer 在 Write(payload) 之前完成（defer
+	// 也会关，重复 close 无害但 trailer 时机决定 payload 完整性）。
 	if err := tw.Close(); err != nil {
 		return err
 	}

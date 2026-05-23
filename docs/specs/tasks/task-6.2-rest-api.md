@@ -64,7 +64,7 @@ daemon 暴露 `POST /v1/search` / `GET /v1/chunks/{id}` / `POST /v1/import` / `P
 - **AC3 + AC5 安全基线（监听限制 + audit）**：
   - 沿 task-1.4 `ensureLoopback` / `freeLoopbackAddr` — `--addr` 非 loopback / `--unix=` 路径非绝对 → 启动 error；0.0.0.0 / :: 拒绝（defense in depth）
   - **Unix socket 支持**：`--unix=<path>` 走 `net.Listen("unix", path)` + 启动后 chmod 0600（私有 socket）；解决 Windows 不支持时 fallback to TCP loopback（warning 写 stderr）
-  - **Audit log integration（AC5）**：复用 `internal/memoryops/audit/`（task-5.3 已 ✅）公开 API `audit.Write(event)`；每个 access（含 401）写一条事件：endpoint / status / timestamp / **不记 token 值 / 不记完整 query**（脱敏）
+  - **Audit log integration（AC5）— Go-side 互补 task-5.3 Rust audit（cross-language 修正，phase-6 closeout PR 落实）**：本 task 新建 Go 端 `internal/memoryops/audit/audit.go` 公开 API `audit.Write(dataDir, Event)` 写 `<dataDir>/audit-rest.log` JSON-lines；**与 task-5.3 Rust SQLite collection-scoped audit_log 互补不重叠**（Rust 记 memoryops 操作 dedup/stale/import；Go 记 REST 控制平面访问 401/200）。每个 access（含 401）写一条事件：endpoint / status / timestamp / **不记 token 值 / 不记完整 query**（脱敏）
 - **新增 RED→GREEN 测试**（5 个，落在以下文件）：
   - `internal/daemon/rest_test.go`（新建）— TEST-6.2.1 AC1 search 契约 + TEST-6.2.3 AC3 ensureLoopback + TEST-6.2.5 AC5 无 token 401 + audit；用 httptest.Server + 真实 daemon + in-memory tempdir Retriever
   - `internal/cli/serve_test.go`（新建）— TEST-6.2.4 AC4 token file 0600 + 启动时生成；用 t.TempDir() + os.Stat mode
@@ -83,7 +83,7 @@ daemon 暴露 `POST /v1/search` / `GET /v1/chunks/{id}` / `POST /v1/import` / `P
 - **跨 collection 联邦 API**：v0.1 单 collection 范围；联邦留 future
 - **POST `/v1/audit/query` 或其他 admin endpoint**：仅 5 个 PRD 列出的 endpoint；admin 留 future
 - **修改 task-4.2 `Retriever::search` / `explain` 行为契约**：仅扩 `get_chunk` 新公开 API；search/explain 不动（向下兼容）
-- **修改 task-5.3 audit `audit.Write` 公开 API**：复用现有 API；事件 schema 不改
+- **修改 task-5.3 Rust audit 公开 API / SQLite schema**：本 task 在 Go 端**新建** `internal/memoryops/audit/audit.go` 互补 task-5.3 Rust audit（cross-language 限制下职责分工，互补不重叠 — Go REST 访问 / Rust memoryops 操作）；task-5.3 Rust 包不动
 - **修改 `Cargo.toml` / `go.mod` / `Cargo.lock` / `go.sum`**：R7 严格通道；本 task 不引新 dep（stdlib net/http / crypto/rand / encoding/json / archive/tar / encoding/hex / crypto/subtle 全 stdlib）
 - **修改 `proto/contextforge/v1/*.proto`**：proto frozen + phase23-start-gate；fast-path 复用现有 Search RPC
 
@@ -93,7 +93,7 @@ daemon 暴露 `POST /v1/search` / `GET /v1/chunks/{id}` / `POST /v1/import` / `P
 - **task-6.1 daemon.Search**（上游 ✅ done）：本 task REST `/v1/search` handler 内部调 daemon.Search；不改 daemon.Search 契约
 - **task-1.4 daemon.Start / HealthCheck / Stop**（上游 ✅ done）：本 task `contextforge serve` 子命令复用，新增长生命周期管理（AutoRestart=true）
 - **task-4.x retriever**（上游 ✅ done）：本 task **扩 `Retriever::get_chunk` 公开 API**（§2A 决策 E）；search/explain 行为不动；retriever 内部 Rust SearchResult 12-field schema 沿用
-- **task-5.3 audit**（上游 ✅ done）：本 task REST middleware 写 audit.log；复用 `audit.Write(event)` 公开 API
+- **task-5.3 audit**（Rust SQLite collection-scoped 上游 ✅ done）：与本 task 新建 Go 端 daemon-scoped audit 包**互补**（cross-language 修正，phase-6 closeout PR 落实）；Rust 记 memoryops 操作（dedup/stale/import 等）/ Go 记 REST 访问（401/200 等）；未来 SPEC-DRIFT 跨语言 audit 统一 schema 留 task-8.x backlog
 - **task-1.2 config**（上游 ✅ done）：本 task token file 路径解析复用 `config.DefaultRootDir` 等价路径
 - **task-6.3 exporter**（同期并行，codex 同会话跑）：与本 task 共享 daemon.Search + retriever；本 task 不改 exporter 边界
 - **task-7.1 MCP tool**（下游强依赖）：MCP server 复用本 task REST handler 内部逻辑（gRPC 调用 + Authorization 等）；本 task 不直接 wire MCP
@@ -127,7 +127,7 @@ daemon 暴露 `POST /v1/search` / `GET /v1/chunks/{id}` / `POST /v1/import` / `P
 - **Go 内部（已有）**:
   - `github.com/tajiaoyezi/contextforge/internal/config`（DataDir / DefaultRootDir）
   - `github.com/tajiaoyezi/contextforge/internal/daemon`（Start / HealthCheck / Stop / Search — task-6.1 已 wire 的全部）
-  - `github.com/tajiaoyezi/contextforge/internal/memoryops/audit`（audit.Write — task-5.3 已 ✅）
+  - `github.com/tajiaoyezi/contextforge/internal/memoryops/audit`（本 task 新建 Go 端 audit.Write；与 task-5.3 Rust SQLite audit 互补不重叠 — phase-6 closeout PR 字面修正）
 - **Go proto（已有，task-1.1 codegen）**:
   - `contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"`（SearchRequest / SearchResponse / RetrievalResult / SearchFilters / Provenance — 同 task-6.1）
 - **Go gRPC（已有）**:
@@ -282,7 +282,7 @@ async fn search(
 - [x] **AC2** (PRD §Technical Approach REST/MCP 契约): `GET /v1/chunks/{id}` / `POST /v1/import` / `POST /v1/eval/run` / `GET /v1/collections` 可用（**v0.1 解读**：chunks/{id} + collections 真实施返业务数据；import + eval/run stub 501 + 显式 deferred note —— §2A 决策 B）。
 - [x] **AC3** (PRD §Constraints Local service security baseline): daemon 默认只监听 `127.0.0.1` 或 Unix socket，v0.1 禁默认绑定 `0.0.0.0`。
 - [x] **AC4** (PRD §Constraints Local service security baseline): REST API 默认启用本地随机 token，token 文件权限 `0600`。
-- [x] **AC5** (PRD §Technical Risks R9): 未带有效 token 的请求被拒；访问写 audit log（脱敏，复用 task 5.3）。
+- [x] **AC5** (PRD §Technical Risks R9): 未带有效 token 的请求被拒；访问写 audit log（脱敏，Go-side 新建 `internal/memoryops/audit/` 与 task-5.3 Rust SQLite audit 互补 — cross-language 限制下职责分工：Rust 记 memoryops 操作 / Go 记 REST 访问；phase-6 closeout PR 字面修正）。
 
 ## 7. SDD / BDD / TDD Traceability
 

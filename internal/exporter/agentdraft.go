@@ -110,11 +110,32 @@ func isProtectedAgentPath(path string) bool {
 	}
 	home = cleanComparablePath(home)
 	protected := []string{
+		// Unix-style agent config dirs
 		filepath.Join(home, ".cursor"),
 		filepath.Join(home, ".claude"),
 		filepath.Join(home, ".cursor-claude"),
 		filepath.Join(home, ".config", "claude"),
 		filepath.Join(home, ".config", "cursor"),
+	}
+	// Windows-style agent config dirs (PR #44 review FIX-2)
+	// Project primary env per docs/s2v-adapter.md §Constraints platform 是
+	// Windows + WSL2；agent 软件 (Claude Desktop / Cursor) 在 Windows 用
+	// %APPDATA% / %LOCALAPPDATA% 而非 ~/.config — 必须覆盖
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		appData = cleanComparablePath(appData)
+		protected = append(protected,
+			filepath.Join(appData, "Claude"),
+			filepath.Join(appData, "Cursor"),
+			filepath.Join(appData, "anthropic"),
+		)
+	}
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		localAppData = cleanComparablePath(localAppData)
+		protected = append(protected,
+			filepath.Join(localAppData, "Claude"),
+			filepath.Join(localAppData, "Cursor"),
+			filepath.Join(localAppData, "Programs", "Claude"),
+		)
 	}
 	for _, p := range protected {
 		p = cleanComparablePath(p)
