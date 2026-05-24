@@ -308,6 +308,11 @@ pub enum JobError {
     Indexer(String),
 }
 
+/// task-11.3 (Phase 11): real `IndexerBackend` impl wrapping `IndexSession::
+/// index_path_cancellable`. See `index_session_backend.rs`.
+pub mod index_session_backend;
+pub use index_session_backend::IndexSessionBackend;
+
 /// IndexerBackend trait — JobRunner 注入式 indexer 接口（实际实现可能包装
 /// IndexSession::index_path_with_progress，但本 trait 不依赖 indexer 模块以
 /// 便测试 + 解耦）。回调返回 Decision::Cancel 让 indexer 提前退出。
@@ -399,7 +404,7 @@ impl<I: IndexerBackend + 'static> JobRunner<I> {
             let mut cancelled = false;
 
             let mut on_progress = |evt: &JobProgressEvent| -> ProgressDecision {
-                // heartbeat condition
+                // heartbeat condition (task-11.3: every 100 files OR 5s)
                 let now = now_unix();
                 let time_elapsed = now - last_heartbeat_unix;
                 let files_since = evt.processed_files - last_heartbeat_files;
@@ -414,10 +419,16 @@ impl<I: IndexerBackend + 'static> JobRunner<I> {
                     );
                     last_heartbeat_unix = now;
                     last_heartbeat_files = evt.processed_files;
-                    if let Ok(true) = store_for_blocking.is_cancel_requested(&job_id_for_closure) {
-                        cancelled = true;
-                        return ProgressDecision::Cancel;
-                    }
+                }
+                // task-11.3 §6 AC3: cancel check is per-file (not only at
+                // heartbeat boundary) so small fixtures still observe cancel
+                // within the iteration window. The check is a single SELECT
+                // — cheaper than the per-file Tantivy chunk write that just
+                // ran. Heartbeat SQL update is the throttled write; cancel
+                // SELECT is the always-poll signal.
+                if let Ok(true) = store_for_blocking.is_cancel_requested(&job_id_for_closure) {
+                    cancelled = true;
+                    return ProgressDecision::Cancel;
                 }
                 ProgressDecision::Continue
             };
@@ -467,6 +478,38 @@ pub mod status {
     pub const SUCCEEDED: &str = super::STATUS_SUCCEEDED;
     pub const FAILED: &str = super::STATUS_FAILED;
     pub const CANCELLED: &str = super::STATUS_CANCELLED;
+}
+
+/// task-11.3 §6 AC4: orphan reaper — at daemon `serve_full` startup, scan
+/// every queued/running job left over from a previous boot (the JobRunner
+/// owning them is dead) and mark them as failed/cancelled. Returns the count
+/// reaped.
+///
+/// - `cancel_requested == true` → status=cancelled + error_message="user
+///   requested cancel; daemon restarted mid-cancel"
+/// - else → status=failed + error_message="job lost: daemon restart"
+///
+/// Must run BEFORE the gRPC server binds, so no fresh Enqueue can see a stale
+/// running row from the previous boot.
+pub fn orphan_reaper(store: &SqliteJobStore) -> Result<usize, JobError> {
+    let active = store.list_active()?;
+    let mut count = 0usize;
+    for job in active {
+        let cancel_requested = store
+            .is_cancel_requested(&job.job_id)
+            .unwrap_or(false);
+        let (status_label, msg) = if cancel_requested {
+            (
+                STATUS_CANCELLED,
+                "user requested cancel; daemon restarted mid-cancel",
+            )
+        } else {
+            (STATUS_FAILED, "job lost: daemon restart")
+        };
+        store.mark_terminal(&job.job_id, status_label, Some(msg))?;
+        count += 1;
+    }
+    Ok(count)
 }
 
 #[cfg(test)]

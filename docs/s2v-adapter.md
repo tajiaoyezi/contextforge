@@ -293,7 +293,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 10.6 | scripts/console_smoke | docs/specs/tasks/task-10.6-console-integration-smoke.md | Done | Phase10 #6（dep 10.5，收口）| `../ContextForge-wt-console-contract-v1` |
 | 11.1 | core/proto + core/src/data_plane | docs/specs/tasks/task-11.1-rust-data-plane-grpc-services.md | Done | Phase11 #1 | `../ContextForge-wt-console-real-data-plane` |
 | 11.2 | internal/consoleapi/grpcclient | docs/specs/tasks/task-11.2-go-rest-to-grpc-proxy.md | Done | Phase11 #2（dep 11.1）| `../ContextForge-wt-console-real-data-plane` |
-| 11.3 | core/src/data_plane/job + IndexSession wiring | docs/specs/tasks/task-11.3-indexjob-real-runner-wiring.md | Ready | Phase11 #3（dep 11.1,11.2）| `../ContextForge-wt-console-real-data-plane` |
+| 11.3 | core/src/data_plane/job + IndexSession wiring | docs/specs/tasks/task-11.3-indexjob-real-runner-wiring.md | Done | Phase11 #3（dep 11.1,11.2）| `../ContextForge-wt-console-real-data-plane` |
 | 11.4 | core/src/data_plane/search + events | docs/specs/tasks/task-11.4-search-real-retriever-and-events.md | Ready | Phase11 #4（dep 11.1,11.2,11.3，收口）| `../ContextForge-wt-console-real-data-plane` |
 
 ## ADR 索引

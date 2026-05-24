@@ -294,6 +294,78 @@ impl IndexSession {
         Ok(stats)
     }
 
+    /// task-11.3 (Phase 11, ADR-016 D3): co-operative cancellable variant of
+    /// `index_path_with_progress`. Identical semantics + an extra `cancel_token`
+    /// that is checked at file boundaries (between each scanned file). When
+    /// `cancel_token.load(Ordering::Relaxed) == true`, the iteration breaks
+    /// after the current file finishes its chunk write, and the returned
+    /// `IndexStats` reflects the partial work done.
+    ///
+    /// The caller (`JobRunner` via `IndexerBackend`) uses this to honor the
+    /// task-11.3 §6 AC3 contract: POST `/v1/index-jobs/<id>/cancel` → ≤5s
+    /// `status=cancelled`.
+    ///
+    /// API extension justification (task-11.3 §10 trade-off T1): the existing
+    /// `index_path_with_progress` callback signature is `FnMut(&Snapshot) ->
+    /// ()` and cannot signal a break upstream. Rather than break source
+    /// compatibility (would require all callers to be updated), this method is
+    /// add-only: existing callers (`server.rs::CoreService::index` from
+    /// Phase 9) are unaffected.
+    pub fn index_path_cancellable<F>(
+        &mut self,
+        root: &Path,
+        scan_options: &ScanOptions,
+        policy: &ChunkPolicy,
+        provenance: Vec<Provenance>,
+        mut on_progress: F,
+        cancel_token: &std::sync::atomic::AtomicBool,
+    ) -> Result<(IndexStats, bool), IndexError>
+    where
+        F: FnMut(&IndexProgressSnapshot<'_>),
+    {
+        let report = scan_path(root, scan_options).map_err(|e| IndexError::Scan(e.to_string()))?;
+        let mut stats = IndexStats::default();
+        stats.files_skipped_denied = report.skipped.len();
+
+        for sf in &report.files {
+            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                return Ok((stats, true));
+            }
+            let body: &str = match (sf.redacted_content.as_ref(), sf.content.as_ref()) {
+                (Some(r), _) => r.as_str(),
+                (None, Some(c)) => c.as_str(),
+                (None, None) => {
+                    stats.files_skipped_redaction += 1;
+                    on_progress(&IndexProgressSnapshot {
+                        files_processed: stats.files_indexed,
+                        files_skipped_denied: stats.files_skipped_denied,
+                        files_skipped_redaction: stats.files_skipped_redaction,
+                        chunks_written: stats.chunks_written,
+                        current_file: Some(sf.path.as_path()),
+                    });
+                    continue;
+                }
+            };
+
+            let chunks = self.parse_and_chunk(&sf.path, body, policy, &provenance)?;
+            if !chunks.is_empty() {
+                self.write_chunks(&sf.path, body, &chunks)?;
+                stats.chunks_written += chunks.len();
+                stats.files_indexed += 1;
+            }
+
+            on_progress(&IndexProgressSnapshot {
+                files_processed: stats.files_indexed,
+                files_skipped_denied: stats.files_skipped_denied,
+                files_skipped_redaction: stats.files_skipped_redaction,
+                chunks_written: stats.chunks_written,
+                current_file: Some(sf.path.as_path()),
+            });
+        }
+
+        Ok((stats, false))
+    }
+
     /// 增量：单文件 partial reindex（AC4）— 比对 files.content_hash → 不同则删旧 chunks 重插.
     pub fn reindex_file(
         &mut self,

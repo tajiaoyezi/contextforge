@@ -18,6 +18,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::jobs::{IndexJob as RustIndexJob, JobError, JobStore};
+use crate::workspace::WorkspaceStore;
 use crate::pb_console::job_service_server::JobService;
 use crate::pb_console::{
     CancelJobRequest, CancelJobResponse, EnqueueJobRequest, GetJobRequest, IndexJob as PbIndexJob,
@@ -89,11 +90,40 @@ impl JobService for JobServer {
         } else {
             req.trigger_source
         };
+        let workspace_id = req.workspace_id.clone();
         let job = self
             .stores
             .job_store
-            .enqueue(&req.workspace_id, &trigger)
+            .enqueue(&workspace_id, &trigger)
             .map_err(job_err_to_status)?;
+        let job_id = job.job_id.clone();
+
+        // task-11.3 §6 AC1: spawn the real JobRunner when configured. Without
+        // a JobRunner (task-11.1 unit tests / in-memory dev mode) we keep the
+        // job at status=queued and let callers move it manually.
+        if let Some(runner) = &self.stores.job_runner {
+            if let Some(workspace) = self
+                .stores
+                .workspace_store
+                .get(&workspace_id)
+                .map_err(|e| Status::internal(format!("workspace lookup: {e}")))?
+            {
+                let source = std::path::PathBuf::from(workspace.root_path);
+                let data = self.stores.data_dir.clone();
+                let runner = runner.clone();
+                let job_id_owned = job_id.clone();
+                tokio::spawn(async move {
+                    // Honor the task-11.3 §6 AC1 contract: queued → running
+                    // ≤1s. JobRunner.run_one marks running, then completes
+                    // via JobOutcome → mark_terminal. Any error is recorded
+                    // back into SqliteJobStore so the caller can poll Get().
+                    if let Err(e) = runner.run_one(&job_id_owned, &source, &data).await {
+                        eprintln!("WARN job {} run_one failed: {e}", job_id_owned);
+                    }
+                });
+            }
+        }
+
         Ok(Response::new(job_to_pb(job)))
     }
 
