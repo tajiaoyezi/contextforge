@@ -25,3 +25,6 @@ pub mod scanner;
 
 // task-10.2 (Phase 10): Console Contract v1 Workspace resource + SQLite 持久化.
 pub mod workspace;
+
+// task-10.3 (Phase 10): Console Contract v1 IndexJob 异步 lifecycle + heartbeat.
+pub mod jobs;
