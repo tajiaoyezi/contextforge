@@ -96,6 +96,18 @@ pub struct IndexStats {
     pub chunks_deleted: usize,
 }
 
+/// task-9.2 §5.3: per-file progress snapshot 喂给 `index_path_with_progress` 回调。
+/// 独立于 `crate::pb::IndexProgress`（保 indexer 模块不依赖 proto package）。
+/// 调用方（如 `server.rs::CoreService::index`）按需 map 到 proto 消息。
+#[derive(Debug, Clone, Copy)]
+pub struct IndexProgressSnapshot<'a> {
+    pub files_processed: usize,
+    pub files_skipped_denied: usize,
+    pub files_skipped_redaction: usize,
+    pub chunks_written: usize,
+    pub current_file: Option<&'a Path>,
+}
+
 /// SQLite 3 表 schema — chunks / files / provenance. §5.3 已冻结。
 const SQL_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS chunks (
@@ -209,7 +221,9 @@ impl IndexSession {
         })
     }
 
-    /// 全量索引：scan root → for ScannedFile → parse → chunk → 写双存储。
+    /// 全量索引（task-2.4 历史 API）：thin wrapper 调 `index_path_with_progress`
+    /// 传 no-op callback；签名 + 行为不变以保 task-2.4 现有调用方（phase2_smoke /
+    /// phase6_smoke / server.rs test fixture）零回归。
     pub fn index_path(
         &mut self,
         root: &Path,
@@ -217,6 +231,26 @@ impl IndexSession {
         policy: &ChunkPolicy,
         provenance: Vec<Provenance>,
     ) -> Result<IndexStats, IndexError> {
+        self.index_path_with_progress(root, scan_options, policy, provenance, |_| {})
+    }
+
+    /// task-9.2 §5.3：全量索引带 per-file progress 回调。
+    ///
+    /// 回调时机：每处理完一个 ScannedFile（含 skip-redaction / empty-chunks 情况）
+    /// 触发一次；调用方（如 `server.rs::CoreService::index`）决定何时 emit proto
+    /// `IndexProgress`（初始 / 终态由 caller 控制）。回调内 `current_file` 持当前
+    /// 处理文件路径；累计计数随处理推进。
+    pub fn index_path_with_progress<F>(
+        &mut self,
+        root: &Path,
+        scan_options: &ScanOptions,
+        policy: &ChunkPolicy,
+        provenance: Vec<Provenance>,
+        mut on_progress: F,
+    ) -> Result<IndexStats, IndexError>
+    where
+        F: FnMut(&IndexProgressSnapshot<'_>),
+    {
         let report = scan_path(root, scan_options).map_err(|e| IndexError::Scan(e.to_string()))?;
         let mut stats = IndexStats::default();
         stats.files_skipped_denied = report.skipped.len();
@@ -230,18 +264,31 @@ impl IndexSession {
                 (None, Some(c)) => c.as_str(),
                 (None, None) => {
                     stats.files_skipped_redaction += 1;
+                    on_progress(&IndexProgressSnapshot {
+                        files_processed: stats.files_indexed,
+                        files_skipped_denied: stats.files_skipped_denied,
+                        files_skipped_redaction: stats.files_skipped_redaction,
+                        chunks_written: stats.chunks_written,
+                        current_file: Some(sf.path.as_path()),
+                    });
                     continue;
                 }
             };
 
             let chunks = self.parse_and_chunk(&sf.path, body, policy, &provenance)?;
-            if chunks.is_empty() {
-                continue;
+            if !chunks.is_empty() {
+                self.write_chunks(&sf.path, body, &chunks)?;
+                stats.chunks_written += chunks.len();
+                stats.files_indexed += 1;
             }
 
-            self.write_chunks(&sf.path, body, &chunks)?;
-            stats.chunks_written += chunks.len();
-            stats.files_indexed += 1;
+            on_progress(&IndexProgressSnapshot {
+                files_processed: stats.files_indexed,
+                files_skipped_denied: stats.files_skipped_denied,
+                files_skipped_redaction: stats.files_skipped_redaction,
+                chunks_written: stats.chunks_written,
+                current_file: Some(sf.path.as_path()),
+            });
         }
 
         Ok(stats)

@@ -241,6 +241,7 @@ dependencies = [
  "tantivy",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tonic-build",
  "tree-sitter",

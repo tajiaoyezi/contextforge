@@ -1,8 +1,8 @@
 # Task `9.2`: `rust-grpc-index — CoreService::index 流式实现 wrap IndexSession::index_path`
 
-> Status=Ready；主 agent §2A 自审通过（ADR-012 + goal §自决规则 6）。本 task 依赖 task-9.1 codegen 产物。
+> Status=Done；主 agent §2A 自审 + §6 AC 5/5 + §9 verify 全绿（ADR-012 + goal §自决规则 6）。本 task 依赖 task-9.1 codegen 产物。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -151,11 +151,11 @@ impl ContextService for CoreService {
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1** (本 task 新增 / ADR-013 §Decision #2): `IndexSession::index_path_with_progress` 实现按 ScannedFile 粒度触发 `on_progress` 回调；签名按 §5.3；对 ≥3 文件 fixture 触发 ≥3 次回调；累计 files_processed 与 IndexStats 一致
-- [ ] **AC2** (PRD §Decisions Log D1 backward compatibility): 原 `IndexSession::index_path` 签名不变；现有 `core/tests/phase2_smoke.rs` + `core/tests/phase6_smoke.rs` 不修改即可继续通过（baseline 不回归）
-- [ ] **AC3** (PRD §Decisions Log D3 / §REST·MCP 接口契约): `CoreService::index` 对 source_path 空 / 不存在 → 流建立前返回 `Status::InvalidArgument`；data_dir 空 → fallback `self.data_dir`；collection_id 空 → fallback `"default"`
-- [ ] **AC4** (PRD §User Flow 异常流"索引中断"进度显示): `CoreService::index` 成功路径流含 ≥N+1 条 IndexProgress 消息（N = 处理文件数），按文件粒度 emit + final done=true 消息；error 字段 in-band 传递 indexer 内部错误（不通过 tonic::Status 中断 stream）；client 收 done=true 后通道关闭
-- [ ] **AC5** (Phase 9 §6 端到端 smoke 落点 / 本 task 新增): `core/tests/phase9_index_smoke.rs::phase_9_index_grpc_end_to_end_smoke` 通过 — 临时 data_dir + 临时 source_path（≥3 .md + 1 .env denied + 1 secret-redacted .yaml） + tonic in-process server + client.index() stream consume + SQLite chunks > 0 + Tantivy 搜索 fixture marker 命中 + .env skipped + .yaml redacted（secret 不入索引）
+- [x] **AC1** (本 task 新增 / ADR-013 §Decision #2): `IndexSession::index_path_with_progress` 实现按 ScannedFile 粒度触发 `on_progress` 回调；签名按 §5.3；对 ≥3 文件 fixture 触发 ≥3 次回调；累计 files_processed 与 IndexStats 一致
+- [x] **AC2** (PRD §Decisions Log D1 backward compatibility): 原 `IndexSession::index_path` 签名不变；现有 `core/tests/phase2_smoke.rs` + `core/tests/phase6_smoke.rs` 不修改即可继续通过（baseline 不回归）
+- [x] **AC3** (PRD §Decisions Log D3 / §REST·MCP 接口契约): `CoreService::index` 对 source_path 空 / 不存在 → 流建立前返回 `Status::InvalidArgument`；data_dir 空 → fallback `self.data_dir`；collection_id 空 → fallback `"default"`
+- [x] **AC4** (PRD §User Flow 异常流"索引中断"进度显示): `CoreService::index` 成功路径流含 ≥N+1 条 IndexProgress 消息（N = 处理文件数），按文件粒度 emit + final done=true 消息；error 字段 in-band 传递 indexer 内部错误（不通过 tonic::Status 中断 stream）；client 收 done=true 后通道关闭
+- [x] **AC5** (Phase 9 §6 端到端 smoke 落点 / 本 task 新增): `core/tests/phase9_index_smoke.rs::phase_9_index_grpc_end_to_end_smoke` 通过 — 临时 data_dir + 临时 source_path（≥3 .md + 1 .env denied + 1 secret-redacted .yaml） + tonic in-process server + client.index() stream consume + SQLite chunks > 0 + Tantivy 搜索 fixture marker 命中 + .env skipped + .yaml redacted（secret 不入索引）
 
 ## 7. SDD / BDD / TDD Traceability
 
@@ -183,4 +183,38 @@ impl ContextService for CoreService {
 
 ## 10. Completion Notes
 
-> 待 task 完成后回填。
+### 实施摘要
+
+- `core/src/indexer/mod.rs`：新增 `IndexProgressSnapshot<'a>` struct + `pub fn index_path_with_progress<F>(.., F: FnMut(&Snapshot))` 方法；现有 `index_path` 改 thin wrapper 调 with_progress 传 `|_| {}` no-op callback（task-2.4 调用方零修改）。回调时机：每 ScannedFile 一次（含 skip-redaction 情况）。
+- `core/src/server.rs`：删除 task-9.1 unimplemented 占位 + IndexProgressStream alias 改为 `ReceiverStream<Result<IndexProgress, Status>>`；`async fn index` 真实现：校验 source_path 非空 + 存在 → fallback data_dir / collection_id → mpsc(32) → spawn_blocking 跑 `index_path_with_progress` 喂 stream → 完成 commit + emit final `done=true` (error 字段 in-band)。
+- `core/Cargo.toml`：lift `tokio-stream = "0.1"` 为 direct dep（spec §5.2 NEEDS-DEP 主 agent §2A 决策 — 已在 Cargo.lock as tonic transitive，按 task-1.3 R7 lift pattern 无新供应链表面）。
+- `core/tests/phase9_index_smoke.rs`（新）：2 个集成测试 — `phase_9_index_grpc_end_to_end_smoke`（AC5 主路径）+ `phase_9_index_invalid_source_path_returns_invalid_argument`（AC3 错误路径）。fixture：3 .md (含 marker) + 1 .env (denylist) + 1 .yaml (含 AKIA fake secret)。
+
+### 6 项 trade-off 记录
+
+1. **`tokio-stream` direct dep lift**：spec §5.2 NEEDS-DEP 已预案，主 agent §2A 决策按 task-1.3 R7 lift pattern lift（tokio-stream 0.1.18 已在 Cargo.lock as tonic transitive，无新供应链表面）。Cargo.toml 加注释引用本 task spec + ADR-013，未启 chore-dep 独立 PR（folded 入本 task §10 disclosed，同 task-1.3 §2A "tokio/serde lift" 先例）
+2. **`tokio` features 加 `sync`**：spawn_blocking 内用 `tokio::sync::mpsc::channel`，需要 sync feature。原 features 已有 rt-multi-thread/macros/net，加 sync 是最小扩展不引新 crate
+3. **mpsc 容量 32**：spec §5.3 推荐 buffer slow-consumer 不过度占用内存；选择与 spec 一致；测试中 5 文件 fixture 测下来 1 次 channel send 立即被 consumer 取走，无 backpressure
+4. **错误 in-band via final IndexProgress.error**：spec §3 §5.3 显式 — indexer 内部错误（IndexError）不打断 stream，经 final message 传递；用户体验更友好（client 收到部分 progress 后才报错，避免"突然 RST"）。tonic::Status 仅用于校验阶段（path 不存在等流建立前错误）
+5. **`commit()` 在 spawn_blocking 内 fall-through**：indexer index_path_with_progress 跑完后必须 commit Tantivy writer 才持久化；commit 失败也通过 error 字段传递。AC5 测试 re-open IndexSession 验证 chunk_count > 0 + marker 可检索，证明 commit 走通
+6. **`drop(tx)` 显式释放 server clone**：spawn_blocking 内的 tx_indexer move 取代 caller 的 tx 后 caller 必须 `drop(tx)` 释放最后一个 sender，否则 ReceiverStream 不会 close —— 这是 mpsc 标准 idiom，spec §5.3 隐含
+
+### 验证证据
+
+```
+$ cargo test --test phase9_index_smoke
+running 2 tests
+test phase_9_index_invalid_source_path_returns_invalid_argument ... ok
+test phase_9_index_grpc_end_to_end_smoke ... ok
+test result: ok. 2 passed; 0 failed; finished in 0.61s
+exit: 0
+
+$ cargo test --workspace  # baseline 不回归
+... 5 + 11 + 全部其它 ok ...
+exit: 0
+
+$ go vet ./... && go test ./...
+... 16 包 ok; exit: 0 ...
+
+$ go vet ./...; exit 0
+```
