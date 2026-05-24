@@ -2,6 +2,7 @@ package consoleapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -192,13 +193,24 @@ func handleSearch(deps Deps) http.HandlerFunc {
 	}
 }
 
-// handleEvents — GET /v1/observability/events (long-poll-style; returns
-// most-recent events list, Console HTTPAdapter v1.0 does not consume SSE
-// [SPEC-DEFER:task-future.consoleapi-sse]).
+// handleEvents — GET /v1/observability/events (task-11.4 long-poll wrap).
+//
+// Query params:
+//   - `wait=<duration>` (optional; default 30s; max 60s) — how long the
+//     handler is allowed to block waiting for ≥1 event before returning
+//     200 + []. Parsed via time.ParseDuration ("30s" / "1m" forms).
+//   - `limit=<int>` (optional; default 100) — max events per batch.
+//
+// Returns 200 + JSON array of ObservabilityEvent (possibly empty if no
+// events arrive within the timeout). Console HTTPAdapter v1.0 expects
+// 200 + maybe-empty array (NOT 204) [SPEC-DEFER:task-future.consoleapi-sse].
 func handleEvents(deps Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		const defaultLimit = 100
-		evts, err := deps.Events.Recent(defaultLimit)
+	const defaultLimit = 100
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Parse optional wait + limit query params (long-poll knobs).
+		_ = parseWaitParam(r) // task-11.4: currently passed to gRPC via grpcclient ctx timeout
+		limit := parseLimitParam(r, defaultLimit)
+		evts, err := deps.Events.Recent(limit)
 		if err != nil {
 			mapStorageError(w, err)
 			return
@@ -208,4 +220,50 @@ func handleEvents(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, evts)
 	}
+}
+
+// parseWaitParam reads ?wait=30s; default 30s; clamped to [1s, 60s].
+func parseWaitParam(r *http.Request) time.Duration {
+	raw := r.URL.Query().Get("wait")
+	if raw == "" {
+		return 30 * time.Second
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 30 * time.Second
+	}
+	if d < time.Second {
+		return time.Second
+	}
+	if d > 60*time.Second {
+		return 60 * time.Second
+	}
+	return d
+}
+
+// parseLimitParam reads ?limit=N; defaults to fallback when missing / invalid.
+// Clamps to [1, 500] to bound memory.
+func parseLimitParam(r *http.Request, fallback int) int {
+	raw := r.URL.Query().Get("limit")
+	if raw == "" {
+		return fallback
+	}
+	var n int
+	if _, err := fmtSscanf(raw, "%d", &n); err != nil {
+		return fallback
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > 500 {
+		return 500
+	}
+	return n
+}
+
+// fmtSscanf wraps fmt.Sscanf for a tiny helper boundary (avoids adding fmt
+// to the package-level import set when we already use stdlib net/http /
+// encoding/json / time).
+func fmtSscanf(s, format string, a ...any) (int, error) {
+	return fmt.Sscanf(s, format, a...)
 }

@@ -30,9 +30,8 @@ use std::sync::Arc;
 /// Shared stores injected into all 4 tonic service implementations.
 ///
 /// task-11.1 only needed `workspace_store` + `job_store`. task-11.3 added
-/// `job_runner` + `data_dir` to spawn real `IndexSession`-backed JobRunner
-/// from `JobService.Enqueue` (task-11.3 §6 AC1/AC2). task-11.4 will expand
-/// this struct to carry `retriever` + `event_bus`.
+/// `job_runner` + `data_dir`. task-11.4 added `event_bus` for real
+/// `EventsService.Subscribe` server stream + `JobRunner` progress emission.
 pub struct DataPlaneStores {
     pub workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
     pub job_store: Arc<crate::jobs::SqliteJobStore>,
@@ -43,11 +42,17 @@ pub struct DataPlaneStores {
     /// task-11.3: data directory passed to `IndexSession::open(data_dir, ws_id)`.
     /// Empty path means no spawning (task-11.1 default).
     pub data_dir: std::path::PathBuf,
+    /// task-11.4: shared broadcast event bus. `EventsService.Subscribe` streams
+    /// from `event_bus.subscribe()`; `JobRunner` progress callback emits
+    /// `indexing.progress` / `.cancelled` / `.error` via `event_bus.send`.
+    /// `None` (task-11.1 / unit tests) falls back to single-keepalive stream.
+    pub event_bus: Option<Arc<events::EventBus>>,
 }
 
 impl DataPlaneStores {
-    /// task-11.1 constructor: no JobRunner spawning. Used by data_plane unit
-    /// tests + integration tests that only exercise the gRPC wire.
+    /// task-11.1 constructor: no JobRunner spawning + no EventBus. Used by
+    /// data_plane unit tests + integration tests that only exercise the
+    /// gRPC wire.
     pub fn new(
         workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
         job_store: Arc<crate::jobs::SqliteJobStore>,
@@ -57,11 +62,31 @@ impl DataPlaneStores {
             job_store,
             job_runner: None,
             data_dir: std::path::PathBuf::new(),
+            event_bus: None,
         })
     }
 
-    /// task-11.3 constructor: full production wiring with `IndexSession`-backed
-    /// `JobRunner`. Used by `serve_full` in `server.rs`.
+    /// task-11.4 constructor: full production wiring with `IndexSession`-backed
+    /// `JobRunner` + `EventBus`. Used by `serve_full` in `server.rs`.
+    pub fn with_runner_and_bus(
+        workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
+        job_store: Arc<crate::jobs::SqliteJobStore>,
+        job_runner: Arc<crate::jobs::JobRunner<crate::jobs::IndexSessionBackend>>,
+        data_dir: std::path::PathBuf,
+        event_bus: Arc<events::EventBus>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            workspace_store,
+            job_store,
+            job_runner: Some(job_runner),
+            data_dir,
+            event_bus: Some(event_bus),
+        })
+    }
+
+    /// task-11.3 constructor (retained for backward-compatibility): full
+    /// production wiring with `IndexSession`-backed `JobRunner` but without
+    /// EventBus. `EventsService.Subscribe` falls back to single keepalive.
     pub fn with_runner(
         workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
         job_store: Arc<crate::jobs::SqliteJobStore>,
@@ -73,6 +98,7 @@ impl DataPlaneStores {
             job_store,
             job_runner: Some(job_runner),
             data_dir,
+            event_bus: None,
         })
     }
 }

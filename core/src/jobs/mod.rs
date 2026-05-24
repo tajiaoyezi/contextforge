@@ -316,12 +316,17 @@ pub use index_session_backend::IndexSessionBackend;
 /// IndexerBackend trait — JobRunner 注入式 indexer 接口（实际实现可能包装
 /// IndexSession::index_path_with_progress，但本 trait 不依赖 indexer 模块以
 /// 便测试 + 解耦）。回调返回 Decision::Cancel 让 indexer 提前退出。
+///
+/// task-11.4: `job_id` added so implementations can tag emitted EventBus
+/// events with the originating job (required by Console UI for per-job
+/// progress filtering).
 pub trait IndexerBackend: Send + Sync {
     fn index(
         &self,
         source: &Path,
         data: &Path,
         workspace_id: &str,
+        job_id: &str,
         on_progress: &mut dyn FnMut(&JobProgressEvent) -> ProgressDecision,
     ) -> Result<JobOutcome, String>;
 }
@@ -433,7 +438,7 @@ impl<I: IndexerBackend + 'static> JobRunner<I> {
                 ProgressDecision::Continue
             };
 
-            let result = indexer.index(&source_owned, &data_owned, &workspace_id, &mut on_progress);
+            let result = indexer.index(&source_owned, &data_owned, &workspace_id, &job_id_for_closure, &mut on_progress);
             (result, cancelled)
         })
         .await
@@ -629,6 +634,7 @@ mod tests {
             _source: &Path,
             _data: &Path,
             _workspace_id: &str,
+            _job_id: &str,
             on_progress: &mut dyn FnMut(&JobProgressEvent) -> ProgressDecision,
         ) -> Result<JobOutcome, String> {
             let mut cancelled = false;
@@ -668,6 +674,7 @@ mod tests {
             &self,
             _: &Path,
             _: &Path,
+            _: &str,
             _: &str,
             _on_progress: &mut dyn FnMut(&JobProgressEvent) -> ProgressDecision,
         ) -> Result<JobOutcome, String> {
