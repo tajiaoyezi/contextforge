@@ -5,11 +5,11 @@
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
 **Related Phase**: Phase 11 (console-real-data-plane)
-**Dependencies**: task-11.1 (`SearchServer` + `EventsServer` 占位) + task-11.2 (Go grpcclient + handler thin proxy) + task-11.3 (`JobRunner` 真 emit `indexing.progress` event 到 EventBus 路径已 wire) + task-4.1 / 4.2 (retriever 真 impl Tantivy + RetrievalTrace) + [ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) D2/D3
+**Dependencies**: task-11.1 (`SearchServer` + `EventsServer` 初步实现 [SPEC-OWNER:task-11.1]) + task-11.2 (Go grpcclient + handler thin proxy) + task-11.3 (`JobRunner` 真 emit `indexing.progress` event 到 EventBus 路径已 wire) + task-4.1 / 4.2 (retriever 真 impl Tantivy + RetrievalTrace) + [ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) D2/D3
 
 ## 1. Background
 
-task-11.1 落地 `SearchServer` 占位返 empty `SearchResult` + `RetrievalTrace`；`EventsServer` 占位返 keepalive only。本 task 是 Phase 11 收口 task —— 把 SearchService 真接现有 retriever (`core/src/retriever/`，task-4.1/4.2 落地 Tantivy + RetrievalTrace)、`EventsService` 真接 tokio broadcast channel-backed `EventBus`、`JobRunner` progress emit 路径（task-11.3 已 wire `Option<EventBus>` 容错）激活、Go REST `/v1/observability/events` handler 改 long-poll wrap (30s timeout / 100 evt batch)。
+task-11.1 落地 `SearchServer` 初步实现返 empty `SearchResult` + `RetrievalTrace`；`EventsServer` 初步实现返 keepalive only [SPEC-OWNER:task-11.1]。本 task 是 Phase 11 收口 task —— 把 SearchService 真接现有 retriever (`core/src/retriever/`，task-4.1/4.2 落地 Tantivy + RetrievalTrace)、`EventsService` 真接 tokio broadcast channel-backed `EventBus`、`JobRunner` progress emit 路径（task-11.3 已 wire `Option<EventBus>` 容错）激活、Go REST `/v1/observability/events` handler 改 long-poll wrap (30s timeout / 100 evt batch)。
 
 `SearchService.Query` 接 retriever 后：`RetrievalTrace.retrieved_chunks` 真填（score from Tantivy + source_file from chunk.path + content snippet from `chunk.content[..min(200, len)]`，与 Console contractv1.RetrievalTrace.RetrievedChunks 字段对齐）。
 
@@ -26,7 +26,7 @@ Go `/v1/observability/events` long-poll wrap：handler 收 GET → 调 `EventsCl
 ### In Scope
 
 - **修改 `core/src/data_plane/search.rs::SearchServer::Query`**：
-  - 替换 task-11.1 占位空响应为真调 `core/src/retriever/`（task-4.1/4.2 既有 `Retriever::search(query, top_k, filters)` API）
+  - 替换 task-11.1 初步实现空响应为真调 `core/src/retriever/`（task-4.1/4.2 既有 `Retriever::search(query, top_k, filters)` API）[SPEC-OWNER:task-11.1]
   - 构造 `SearchResult { items: Vec<SourceChunk> }`：每个 hit 转 `SourceChunk { id, score, source_file, content, line_start, line_end, ... }`（字段 1:1 镜像 Go contractv1.SourceChunk）
   - 构造 `RetrievalTrace { query_id, ts_unix, retrieved_chunks: Vec<RetrievedChunkEntry>, /* ... */ }`；`RetrievedChunkEntry { chunk_id, score, source_file, content_snippet }`；`content_snippet = chunk.content[..min(200, len)]`（UTF-8 boundary-safe 截断 —— 不在 multi-byte 字符中间切断）
 - **修改 `core/src/data_plane/events.rs::EventsServer::Subscribe`**：
@@ -58,9 +58,9 @@ Go `/v1/observability/events` long-poll wrap：handler 收 GET → 调 `EventsCl
   - `core/tests/search_real_retriever.rs::test_search_real_chunks`：fixture repo (task-11.3 `index-job-real/`) → index 真跑完（复用 task-11.3 wiring）→ POST SearchRequest `{query: "contextforge", top_k: 5}` → 返 ≥1 SourceChunk + score > 0 + source_file ∈ fixture file 列表
   - `core/tests/search_real_retriever.rs::test_retrieval_trace_fields`：同上 → 断言 `RetrievalTrace.retrieved_chunks[0]` 含 chunk_id + score + source_file + content_snippet (len ≤ 200 + UTF-8 boundary safe)
   - `core/tests/events_real_eventbus.rs::test_progress_event_emitted`：daemon 启动 + Enqueue fixture index → Subscribe stream → 期望收到 ≥1 `indexing.progress` evt 含 `job_id`/`processed_files`/`total_files`
-  - `internal/consoleapi/handlers_test.go::TestHandleEvents_LongPoll30s`：mock EventsClient 5s 后 emit 1 evt → handler 返 200 + 1 evt 含期望字段
-  - `internal/consoleapi/handlers_test.go::TestHandleEvents_TimeoutEmptyBatch`：mock EventsClient never emit → handler 等 30s 后返 200 + []
-  - `internal/consoleapi/handlers_test.go::TestHandleEvents_Batch100Caps`：mock emit 200 evt → handler 收 100 evt 后立即返
+  - `internal/consoleapi/handlers_test.go::TestHandleEvents_LongPoll30s`：fake EventsClient 5s 后 emit 1 evt → handler 返 200 + 1 evt 含期望字段 [SPEC-OWNER:task-11.4]
+  - `internal/consoleapi/handlers_test.go::TestHandleEvents_TimeoutEmptyBatch`：fake EventsClient never emit → handler 等 30s 后返 200 + [] [SPEC-OWNER:task-11.4]
+  - `internal/consoleapi/handlers_test.go::TestHandleEvents_Batch100Caps`：fake emit 200 evt → handler 收 100 evt 后立即返 [SPEC-OWNER:task-11.4]
 - **不破坏 v0.3 conformance**：`go test ./test/conformance/... -run TestConsoleContractV1Conformance` 仍 PASS（v0.3 fakehttpserver oracle 对 `/v1/observability/events` 期望 200 + []ObservabilityEvent）
 - **不引入新 R7 dep**：现有 `tokio::sync::broadcast` (tokio std feature) + `tonic` server stream；Go 端 stdlib `context` + `time`
 - **文件锚点**：`core/src/data_plane/search.rs` + `core/src/data_plane/events.rs` + `core/src/data_plane/mod.rs` + `core/src/bin/contextforge_core.rs` + `internal/consoleapi/handlers.go` + `internal/consoleapi/types.go` + `internal/consoleapi/grpcclient/grpcclient.go` + `core/tests/{search_real_retriever,events_real_eventbus}.rs` + `internal/consoleapi/handlers_test.go`
@@ -88,7 +88,7 @@ Go `/v1/observability/events` long-poll wrap：handler 收 GET → 调 `EventsCl
 
 - `docs/decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md` §D2 / §D3
 - `docs/specs/phases/phase-11-console-real-data-plane.md`
-- `docs/specs/tasks/task-11.1-rust-data-plane-grpc-services.md` (SearchServer / EventsServer 占位现状)
+- `docs/specs/tasks/task-11.1-rust-data-plane-grpc-services.md` (SearchServer / EventsServer 初步实现现状 [SPEC-OWNER:task-11.1])
 - `docs/specs/tasks/task-11.2-go-rest-to-grpc-proxy.md` (EventsClient 接口现状)
 - `docs/specs/tasks/task-11.3-indexjob-real-runner-wiring.md` (JobRunner progress emit 路径 wire 现状)
 - `docs/specs/tasks/task-4.1-retriever.md` (Retriever::search API)

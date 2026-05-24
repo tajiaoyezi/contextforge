@@ -17,7 +17,7 @@
 闭环 v0.3 Phase 10 收口时显式留下的两处 conscious gap（task-10.4 §10 Trade-off #1 + #2）。直接支撑：
 
 - **Console UI 端真业务面**：workspace 跨 daemon 重启不丢；POST `/v1/index-jobs` 真启动 Rust 索引；POST `/v1/search` 真返回 indexed 分块；GET `/v1/observability/events` 真流 progress 事件 — 不再是 v0.3 demo 状态机 in-memory 模拟
-- **Rust 持 SoT 制度落地**：ADR-016 D1/D5 把 SQLite schema 单 owner = Rust 团队 固化下来；为 v0.4.x Console endpoint expansion (`/v1/memory*` / `/v1/eval-runs*` 等) 提供 cross-process gRPC bridge 复用模板
+- **Rust 持 SoT 制度落地**：ADR-016 D1/D5 把 SQLite schema 单 owner = Rust 团队 固化下来；为后续 Console endpoint expansion (`/v1/memory*` / `/v1/eval-runs*` 等) 提供 cross-process gRPC bridge 复用模板 [SPEC-DEFER:console-endpoint-expansion]
 - **复用 ADR-013 cli-data-plane gRPC**：Phase 9 已建立的 tonic + prost + `:48180` 模式延伸到 business plane，不引入新端口/auth 边界
 - **MemStore 降级为 env-gated fallback**：v0.3 集成测试 fixture (`internal/consoleapi/e2e_test.go` 等) 不破坏；运维 degraded 模式有明确信号 (`/v1/health` `missing=["data_plane"]`)
 
@@ -55,7 +55,7 @@
 ## 5. 依赖关系
 
 - **依赖**：Phase 10（console-contract-v1）— 复用 [ADR-015](../../decisions/adr-015-console-contract-v1-compatibility.md) task-10.2 `SqliteWorkspaceStore` (`core/migrations/0010_workspaces.sql`) + task-10.3 `SqliteJobStore` + `JobRunner` 框架 (`core/migrations/0011_index_jobs.sql`) + task-10.4 Go `internal/consoleapi/` 9 REST handler + bearer middleware + sentinel error mapping；Phase 9（cli-pipeline）— 复用 [ADR-013](../../decisions/adr-013-cli-data-plane-grpc-bridge.md) task-9.1 proto + task-9.2 Rust gRPC server pattern + tonic + prost 工具链；Phase 2/4（index-core / retrieval-explain）— 复用 task-2.4 `IndexSession::index_path_with_progress` API + task-4.1/4.2 retriever (Tantivy + SqliteChunkStore)。
-- **可并行**：否（v0.4 收口 phase）。Phase 内顺序：task-11.1（proto + tonic server 框架占位 stub）→ task-11.2（Go grpcclient + handler thin proxy + MemStore 降级）→ task-11.3（JobService 真触发 JobRunner.spawn_blocking）→ task-11.4（SearchService + EventsService 真接通）。
+- **可并行**：否（v0.4 收口 phase）。Phase 内顺序：task-11.1（proto + tonic server 框架初步实现，service 内部细节由后续 task 替换 [SPEC-OWNER:task-11.3]）→ task-11.2（Go grpcclient + handler thin proxy + MemStore 降级）→ task-11.3（JobService 真触发 JobRunner.spawn_blocking）→ task-11.4（SearchService + EventsService 真接通）。
 - **Phase 内并行机会**：task-11.3 (JobRunner ↔ IndexSession wiring) ∥ task-11.4 (Search + Events) 在 task-11.2 完成后可并行 — 两者各自独立 Rust module（`data_plane/job.rs` vs `data_plane/search.rs` + `events.rs`），写路径互不相交；但 task-11.4 EventsService 真接 progress 依赖 task-11.3 JobRunner emit `indexing.progress`，故 task-11.4 §6 AC3 (event 真流) 必须 task-11.3 完成后才能 verify —— 主 agent 选串行实施（v0.4 简化策略，并行收益小）。
 
 ## 6. 阶段级验收标准 + 端到端 smoke

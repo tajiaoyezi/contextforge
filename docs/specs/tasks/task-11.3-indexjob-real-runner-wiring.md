@@ -5,11 +5,11 @@
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
 **Related Phase**: Phase 11 (console-real-data-plane)
-**Dependencies**: task-11.1 (`JobServer` 占位 + SqliteJobStore 接通) + task-10.3 (`JobRunner` 框架 + `SqliteJobStore` 已建) + task-2.4 (`IndexSession::index_path_with_progress` API) + task-11.2 (Go gRPC dispatch + sentinel error mapping 不变) + [ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) D1/D3
+**Dependencies**: task-11.1 (`JobServer` 初步实现 [SPEC-OWNER:task-11.1] + SqliteJobStore 接通) + task-10.3 (`JobRunner` 框架 + `SqliteJobStore` 已建) + task-2.4 (`IndexSession::index_path_with_progress` API) + task-11.2 (Go gRPC dispatch + sentinel error mapping 不变) + [ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) D1/D3
 
 ## 1. Background
 
-task-11.1 落地的 `JobServer` 在 `Enqueue` 仅占位写 `status=queued` 后调 v0.3 的 task-10.3 现有 stub 行为（200ms tick 模拟 status 推进）—— Console UI 看到 status 推进 succeeded 但 Rust 没真索引；这是 [ADR-015](../../decisions/adr-015-console-contract-v1-compatibility.md) task-10.4 §10 Trade-off #2 显式记录的 v0.3 conscious gap。本 task 是 [ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) 在 Rust 数据面 wiring 层的 resolve 项 —— 把 `JobRunner.spawn_blocking` 真接 `IndexSession::index_path_with_progress`，让 POST `/v1/index-jobs` 真触发 Rust 索引。
+task-11.1 落地的 `JobServer` 在 `Enqueue` 仅初步实现写 `status=queued` 后调 v0.3 的 task-10.3 现有行为（200ms tick 模拟 status 推进）—— Console UI 看到 status 推进 succeeded 但 Rust 没真索引；这是 [ADR-015](../../decisions/adr-015-console-contract-v1-compatibility.md) task-10.4 §10 Trade-off #2 显式记录的 v0.3 conscious gap [SPEC-OWNER:task-11.3]。本 task 是 [ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) 在 Rust 数据面 wiring 层的 resolve 项 —— 把 `JobRunner.spawn_blocking` 真接 `IndexSession::index_path_with_progress`，让 POST `/v1/index-jobs` 真触发 Rust 索引。
 
 复用 Phase 2/4 已建立的 `IndexSession` API（task-2.4 落地，task-9.2 沿用作 Index gRPC 后端）+ 现有 `SqliteJobStore` heartbeat 字段（task-10.3 `0011_index_jobs.sql` 已含 `processed_files` + `total_files` + `last_heartbeat_at`）。
 
@@ -42,7 +42,7 @@ Orphan reaper：daemon 启动时 `SqliteJobStore.list_running()` → 每个标 `
 ### In Scope
 
 - **修改 `core/src/data_plane/job.rs::JobServer::Enqueue`**：
-  - 把 task-11.1 占位 stub 替换为真 wiring：
+  - 把 task-11.1 初步实现替换为真 wiring [SPEC-OWNER:task-11.1]：
     1. 写 `status=queued` 到 `SqliteJobStore` (复用 task-11.1 既有 path)
     2. 构造 `CancelToken = Arc::new(AtomicBool::new(false))`
     3. clone `Arc<SqliteJobStore>` + `Arc<DataPlaneStores.workspace_store>` + `CancelToken` 进闭包
@@ -55,7 +55,7 @@ Orphan reaper：daemon 启动时 `SqliteJobStore.list_running()` → 每个标 `
     4. `progress_callback(processed: u64, total: u64) -> Result<(), JobError>`：
        - 每 100 files 或 5s 调 `SqliteJobStore.update_progress(...)`
        - 检查 `cancel_token.load(Ordering::Relaxed)` → if true return `Err(JobError::Cancelled)`
-       - 同时 emit `ObservabilityEvent { event_type: "indexing.progress", payload: {job_id, processed_files, total_files, ts_unix} }` 到 EventBus broadcast channel（EventBus impl 在 task-11.4，本 task 占位 `if let Some(eb) = &stores.event_bus { eb.send(...) }` 容错路径）
+       - 同时 emit `ObservabilityEvent { event_type: "indexing.progress", payload: {job_id, processed_files, total_files, ts_unix} }` 到 EventBus broadcast channel（EventBus impl 在 task-11.4，本 task 仅 wire 路径 `if let Some(eb) = &stores.event_bus { eb.send(...) }` 容错 [SPEC-OWNER:task-11.4]）
     5. completion：
        - Ok(()) → `SqliteJobStore.set_terminal(job_id, "succeeded", ended_at_unix, None)`
        - Err(JobError::Cancelled) → `set_terminal(job_id, "cancelled", ended_at_unix, Some("user requested cancel"))`
@@ -70,7 +70,7 @@ Orphan reaper：daemon 启动时 `SqliteJobStore.list_running()` → 每个标 `
   - log info `"orphan reaper: marked N jobs as failed"`
 - **修改 `core/src/bin/contextforge_core.rs`** (或 daemon serve 子命令入口)：
   - 在 `register_services` 调用前 调 `orphan_reaper(&stores.job_store).await?`
-- **新增 fixture `test/fixtures/index-job-real/`**：≥5 markdown 文件 (file1.md ~ file5.md)，每个 ≥10 行非平凡内容（含 word "contextforge" 至少 2 次，供 task-11.4 search 真返回测试用）；fixture **必须真有内容**（非 `echo > file` 占位）—— 与 §自决规则 R9 一致
+- **新增 fixture `test/fixtures/index-job-real/`**：≥5 markdown 文件 (file1.md ~ file5.md)，每个 ≥10 行非平凡内容（含 word "contextforge" 至少 2 次，供 task-11.4 search 真返回测试用）；fixture **必须真有内容**（非 `echo > file` 空文件）—— 与 §自决规则 R9 一致 [SPEC-OWNER:task-11.3]
 - **集成测试 `core/tests/indexjob_real_runner.rs`**：
   - `test_enqueue_starts_running`：POST 后 ≤1s 内 status queued → running（spawn_blocking 启动 + set_running 已写）
   - `test_job_succeeds_real_index`：fixture repo (≥5 files) → 等 status=succeeded（≤30s）→ processed_files == total_files == 5 + 无 error_message
@@ -80,7 +80,7 @@ Orphan reaper：daemon 启动时 `SqliteJobStore.list_running()` → 每个标 `
 - **单元测试**：
   - `test_cancel_token_arc_atomic_visibility` (两 thread + Arc<AtomicBool>)
   - `test_job_error_to_terminal_mapping`
-- **不破坏 task-10.3 现有 JobRunner 测试**：v0.3 task-10.3 `core/src/jobs/*_test.rs` 仍 PASS（行为兼容：v0.3 stub callback path 现在 fallback 到 in-memory cancel_token + spawn_blocking 仍然存在；测试若依赖 stub 状态机推进周期 → 改为依赖 set_terminal 真写）
+- **不破坏 task-10.3 现有 JobRunner 测试**：v0.3 task-10.3 `core/src/jobs/*_test.rs` 仍 PASS（行为兼容：v0.3 callback path 现在 fallback 到 in-memory cancel_token + spawn_blocking 仍然存在；测试若依赖 状态机推进周期 → 改为依赖 set_terminal 真写）[SPEC-OWNER:task-10.3]
 - **不引入新 SQLite migration**：复用 task-10.3 `0011_index_jobs.sql` 既有字段 (`processed_files` / `total_files` / `last_heartbeat_at` / `cancel_requested` / `error_message` / `ended_at_unix`)；若某字段不存在（task-10.3 历史 scope 不全）→ 本 task 单独 `0012_index_jobs_progress_extension.sql` add-only migration（[ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md) D5 Rust 单 owner）
 - **文件锚点**：`core/src/data_plane/job.rs` (Enqueue/Cancel/run_index_job/orphan_reaper) + `core/src/bin/contextforge_core.rs` (daemon serve 早期 orphan reaper) + `test/fixtures/index-job-real/file{1..5}.md` + `core/tests/indexjob_real_runner.rs`
 - **task spec §6 / §7 / §10 / Status 推进**：完工时按 standard.md §8.3 6 项 schema 回填
@@ -106,7 +106,7 @@ Orphan reaper：daemon 启动时 `SqliteJobStore.list_running()` → 每个标 `
 
 - `docs/decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md` §D1 / §D3
 - `docs/specs/phases/phase-11-console-real-data-plane.md`
-- `docs/specs/tasks/task-11.1-rust-data-plane-grpc-services.md` (JobServer 占位现状)
+- `docs/specs/tasks/task-11.1-rust-data-plane-grpc-services.md` (JobServer 初步实现现状 [SPEC-OWNER:task-11.1])
 - `docs/specs/tasks/task-10.3-indexjob-resource.md` (SqliteJobStore + JobRunner 框架 + 0011 schema)
 - `docs/specs/tasks/task-2.4-indexer.md` (IndexSession::index_path_with_progress API)
 - `core/src/index.rs` (IndexSession 当前签名)

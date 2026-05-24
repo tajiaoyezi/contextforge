@@ -17,7 +17,7 @@
 
 ## 2. Goal
 
-`core/proto/console_data_plane.proto` 含 4 service × 14 RPC + 11 message 类型，1:1 镜像 Go `internal/contractv1/contractv1.go` JSON tag (snake_case)；`core/src/data_plane/` Rust module 含 4 个 tonic service trait 实现 + 接 `SqliteWorkspaceStore` (task-10.2) + `SqliteJobStore` + `JobRunner` 框架 (task-10.3 现有 v0.3 stub 行为)；contextforge-core daemon `serve` 子命令启动时把 4 service `add_service` 到现有 `:48180` tonic Server；`cargo test --workspace` 全绿（不破坏 task-10.3 现有 JobRunner 测试）；≥6 单元测试 + ≥2 集成测试（真 `tonic::transport::Server::bind` 真 TCP + tonic `Channel::from_static` client）。
+`core/proto/console_data_plane.proto` 含 4 service × 14 RPC + 11 message 类型，1:1 镜像 Go `internal/contractv1/contractv1.go` JSON tag (snake_case)；`core/src/data_plane/` Rust module 含 4 个 tonic service trait 实现 + 接 `SqliteWorkspaceStore` (task-10.2) + `SqliteJobStore` + `JobRunner` 框架 (task-10.3 现有 v0.3 行为 [SPEC-OWNER:task-11.3])；contextforge-core daemon `serve` 子命令启动时把 4 service `add_service` 到现有 `:48180` tonic Server；`cargo test --workspace` 全绿（不破坏 task-10.3 现有 JobRunner 测试）；≥6 单元测试 + ≥2 集成测试（真 `tonic::transport::Server::bind` 真 TCP + tonic `Channel::from_static` client）。
 
 ## 3. Scope
 
@@ -27,9 +27,9 @@
   - 包声明 `package contextforge.console_data_plane.v1;`（与 Phase 9 `contextforge.v1` namespace 分离）
   - 4 service × 14 RPC：
     - `WorkspaceService` (4 RPC): `Create(CreateWorkspaceRequest) returns (Workspace)` / `Get(GetWorkspaceRequest) returns (Workspace)` / `List(ListWorkspacesRequest) returns (ListWorkspacesResponse)` / `Delete(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse)`
-    - `JobService` (4 RPC): `Enqueue(EnqueueJobRequest) returns (IndexJob)` / `Get(GetJobRequest) returns (IndexJob)` / `Cancel(CancelJobRequest) returns (CancelJobResponse)` / `Stream(StreamJobsRequest) returns (stream IndexJob)`（reserved for v0.4.x; 本 task 占位实现返单条 keepalive）
+    - `JobService` (4 RPC): `Enqueue(EnqueueJobRequest) returns (IndexJob)` / `Get(GetJobRequest) returns (IndexJob)` / `Cancel(CancelJobRequest) returns (CancelJobResponse)` / `Stream(StreamJobsRequest) returns (stream IndexJob)`（Stream 完整 multi-job 实现 [SPEC-OWNER:task-11.4]；本 task 初步实现返单条 keepalive）
     - `SearchService` (1 RPC): `Query(SearchRequest) returns (SearchResponse)`（SearchResponse = `{result: SearchResult, trace: RetrievalTrace}`，与 Console contractv1 嵌套约定一致）
-    - `EventsService` (1 RPC): `Subscribe(SubscribeEventsRequest) returns (stream ObservabilityEvent)`（v0.4.x extension reserved 3 RPC: Recent/Filter/Replay）
+    - `EventsService` (1 RPC): `Subscribe(SubscribeEventsRequest) returns (stream ObservabilityEvent)`（reserved 3 RPC Recent/Filter/Replay 在 [SPEC-DEFER:console-endpoint-expansion]）
     - Health (1 RPC): `Health(HealthRequest) returns (HealthResponse)` reused at top-level package（或单独 nested HealthService；spec 内允许两种 — task implementation 自决）
   - 11 message 类型：`Workspace` / `WorkspaceCreate` / `IndexJob` / `SearchRequest` / `SearchResult` / `RetrievalTrace` / `SourceChunk` / `Citation` / `ObservabilityEvent` / `CoreHealth` / `FieldAvailability`
   - 字段 snake_case + int64 for Unix epoch + string for enum-like status (`"queued"|"running"|"succeeded"|"failed"|"cancelled"`，**不**用 proto enum —— 与 Go `contractv1.IndexJob.Status` string 类型对齐)
@@ -47,12 +47,12 @@
   - `pub struct JobServer { store: Arc<SqliteJobStore>, runner: Arc<JobRunner> }` impl `JobService` trait
   - `Enqueue` 写 `status=queued` + 调 `JobRunner.spawn_blocking(stub_callback)` —— **本 task 仅占位使用 task-10.3 现有 v0.3 stub 行为**（真接 `IndexSession::index_path_with_progress` 在 [SPEC-OWNER:task-11.3]）
   - `Get` 真读 `SqliteJobStore`；`Cancel` 真设 `cancel_requested=true`；`Stream` 本 task 实现 keepalive only（每 1s emit current job state 然后 break；真完整 stream 在 [SPEC-OWNER:task-11.4]）
-- **新增 `core/src/data_plane/search.rs`**：
-  - `pub struct SearchServer { /* 占位 */ }` impl `SearchService` trait
+- **新增 `core/src/data_plane/search.rs`** [SPEC-OWNER:task-11.4]：
+  - `pub struct SearchServer { /* placeholder */ }` impl `SearchService` trait
   - `Query` 本 task 返 `SearchResult { items: vec![] }` + `RetrievalTrace { retrieved_chunks: vec![] }`（真接 retriever 在 [SPEC-OWNER:task-11.4]）
   - **必须有显式 TODO 注释 + verified by task-11.4 §6 AC1 锚点**
-- **新增 `core/src/data_plane/events.rs`**：
-  - `pub struct EventsServer { /* 占位 broadcast channel sender */ }` impl `EventsService` trait
+- **新增 `core/src/data_plane/events.rs`** [SPEC-OWNER:task-11.4]：
+  - `pub struct EventsServer { /* placeholder broadcast channel sender */ }` impl `EventsService` trait
   - `Subscribe` 本 task 返 keepalive only（每 5s emit 1 个 `ObservabilityEvent { event_type: "core.keepalive", ts_unix: now }` 然后 break）；真接 `JobRunner` progress 在 [SPEC-OWNER:task-11.4]
 - **修改 `core/src/bin/contextforge_core.rs`** 或 daemon `serve` 子命令入口：
   - 启动时实例化 `Arc<SqliteWorkspaceStore>` + `Arc<SqliteJobStore>` + `Arc<JobRunner>`（复用 task-10.2/10.3 既有 init 链）
@@ -84,7 +84,7 @@
 
 ## 4. Users / Actors
 
-- **task-11.2 go-rest-to-grpc-proxy 实施 agent**（下游）：消费本 task 产出的 4 个 service stub 作为 Go grpcclient 桥梁
+- **task-11.2 go-rest-to-grpc-proxy 实施 agent**（下游）：消费本 task 产出的 4 个 service 实现作为 Go grpcclient 桥梁 [SPEC-OWNER:task-11.2]
 - **task-11.3 indexjob-real-runner-wiring 实施 agent**（下游）：在本 task 的 `JobServer` 基础上把 `Enqueue` 真接 `IndexSession::index_path_with_progress`
 - **task-11.4 search-real-retriever-and-events 实施 agent**（下游）：在本 task 的 `SearchServer` + `EventsServer` 基础上真接 retriever + EventBus broadcast channel
 
@@ -184,7 +184,7 @@ message Workspace {
 - [ ] AC1：`core/proto/console_data_plane.proto` 含 4 service × 14 RPC + 11 message 类型；字段命名 snake_case 与 Go `internal/contractv1/contractv1.go` JSON tag 1:1；包声明 `contextforge.console_data_plane.v1` — **verified by unit-test step `cargo test -p contextforge-core --test data_plane_integration -- test_proto_field_snake_case_consistency` + grpcurl describe (cmd: `grpcurl -plaintext 127.0.0.1:48180 describe contextforge.console_data_plane.v1.WorkspaceService`)**
 - [ ] AC2：tonic server 启动时 4 service 全注册可见 (`Server::builder().add_service(...)` × 4)；`register_services` helper 真返 `Router` 含 4 service — **verified by unit-test step `cargo test -p contextforge-core --lib data_plane -- test_register_services_adds_4_services`**
 - [ ] AC3：`WorkspaceService.Create/Get/List/Delete` 真走 `SqliteWorkspaceStore` 持久化（task-10.2 既有 CRUD）+ 错误映射 `NotFound`→`not_found` / `Conflict`→`failed_precondition` / Internal→`internal` — **verified by integration-test step `cargo test -p contextforge-core --test data_plane_integration -- test_workspace_crud_via_grpc`**
-- [ ] AC4：`JobService.Enqueue/Get/Cancel` 真走 `SqliteJobStore` (status=queued / Get 同 job / Cancel 设 cancel_requested=true)；`JobService.Stream` 占位 keepalive only — **verified by integration-test step `cargo test -p contextforge-core --test data_plane_integration -- test_job_enqueue_get_cancel`**
+- [ ] AC4：`JobService.Enqueue/Get/Cancel` 真走 `SqliteJobStore` (status=queued / Get 同 job / Cancel 设 cancel_requested=true)；`JobService.Stream` 初步实现 keepalive only [SPEC-OWNER:task-11.4] — **verified by integration-test step `cargo test -p contextforge-core --test data_plane_integration -- test_job_enqueue_get_cancel`**
 - [ ] AC5：contextforge-core daemon `serve` 子命令启动后 `:48180` 真监听 + 4 service 注册到 tonic Server；`cargo test --workspace` 全绿（不破坏 task-10.3 现有 JobRunner 测试） — **verified by typecheck + unit-test phase smoke + integration `test_daemon_listens_data_plane`**
 
 ## 7. 追踪表
@@ -231,4 +231,4 @@ message Workspace {
   - SearchService.Query 真接 retriever [SPEC-OWNER:task-11.4]
   - EventsService.Subscribe 真接 EventBus [SPEC-OWNER:task-11.4]
   - JobService.Stream 完整 multi-job server stream [SPEC-OWNER:task-11.4]
-- **下游 task 影响**：task-11.2 用本 task 4 service 作 grpcclient 桥梁；task-11.3 / 11.4 在本 task service stub 基础上替换为真接通
+- **下游 task 影响**：task-11.2 用本 task 4 service 作 grpcclient 桥梁；task-11.3 / 11.4 在本 task service 基础上替换内部实现为真接通 [SPEC-OWNER:task-11.3]
