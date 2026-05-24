@@ -1,5 +1,130 @@
 # ContextForge Release Notes
 
+## v0.7.0 (2026-05-24) — Console 22-endpoint conformance 100% PASS 🎉
+
+### 摘要
+
+ContextForge v0.7.0 完成 **Phase 14 eval-rest-surface** 收口 + **ADR-017
+Proposed → Accepted** 6-D-clause 一次性 promote。Console HTTPAdapter v1.0
+conformance 从 18/22 提升到 22/22 (100%)。**ContextForge v0.4-v0.7 ship 全
+22 Console contract v1 endpoint**; Console UI HTTPAdapter 端到端调用代码
+已 cross-repo ship — 双方握手成功 standardized signal landed.
+
+### 主要改进
+
+- **task-14.1 Rust SoT** (PR #89):
+  - `core/migrations/0014_eval_runs.sql` (10 columns + 3 indexes + status CHECK)
+  - `core/src/eval/store.rs` `SqliteEvalStore` (5 methods: create / get /
+    update_metrics / update_case_results / mark_finished) + 7 unit tests
+  - `core/src/eval/runner.rs` `EvalRunner` stub (real triggering Go side per task-14.2)
+  - `proto/contextforge/console_data_plane/v1/console_data_plane.proto` add-only
+    `EvalService` 3 RPC + 5 messages (CaseResult / EvalRun / CreateEvalRunRequest /
+    GetEvalRunRequest / UpdateEvalRunProgressRequest+Response)
+  - `core/src/data_plane/eval.rs` `EvalServer` impl 3 RPC + 3 unit tests;
+    JSON roundtrip verified (HashMap<String,f64> + Vec<CaseResult>)
+  - `core/src/data_plane/mod.rs` `DataPlaneStores` 加 Option<eval>; `with_eval()`
+    构造函数; `full()` takes 8 params; `register_services` + `server_with_services`
+    都加 6th EvalServiceServer
+  - `core/src/server.rs` `serve_full` 实例化 SqliteEvalStore 真接到 daemon
+  - 2 integration tests via tonic client + EvalServiceClient
+- **task-14.2 Go REST + runEvalAsync goroutine** (PR #90):
+  - `internal/consoleapi/types.go` `EvalClient` interface (Create/Get/UpdateProgress)
+    + `Deps.Eval` field
+  - `internal/consoleapi/router.go` 2 new routes (non-destructive — no confirm gate)
+  - `internal/consoleapi/handlers.go` `handleCreateEvalRun` (spawn goroutine + 200 + running)
+    + `handleGetEvalRun` (200 / 404)
+  - `internal/consoleapi/eval_runner.go` `runEvalAsync` goroutine:
+    - 5min context timeout
+    - Light-weight recall harness using `BuiltinGoldenQuestions` + mock pass-all
+    - Computes `recall@5` / `recall@10` / `precision@5` metrics
+    - Builds `case_results` array with `case_id` / `query` / `expected_chunks` /
+      `actual_chunks` / `score` / `passed`
+    - Defer-recover panic → status=failed + error_message="panic: ..."
+    - Calls `deps.Eval.UpdateProgress(...)` to reverse-update Rust store on terminal
+  - `internal/consoleapi/memstore.go` `MemEvalStore` (in-memory) + 2s timer
+    auto-advance to succeeded with mock metrics (`recall@5: 0.7` 等)
+  - `internal/consoleapi/grpcclient/grpcclient.go` `evalClient` 3 method wrappers
+    + `protoToEvalRun` helper; `Client.Eval()` accessor; Create generates
+    `eval-{nanos}` id Go-side per task-14.1 contract
+  - `internal/cli/console_api_serve.go` buildDeps wires Eval in both inmem +
+    gRPC modes; degradedDeps adds Eval
+  - e2e_grpc Step 9e: real Rust daemon EvalService end-to-end PASS
+- **scripts/console_smoke.sh v5** (PR #90):
+  - Header v4 → v5; subtitle "Phase 14 console-22-endpoint complete"
+  - 18 → 20 endpoint flow; renumber `[1/20]..[20/20]`
+  - New Step 19/20: POST /v1/eval-runs → 200 + status=running
+  - New Step 20/20: poll GET /v1/eval-runs/<id> 30s for terminal + verify metrics
+    contains `recall@5` + 404 on unknown id
+  - REAL mode: `CONSOLE_REAL_SMOKE_EXIT=0` 20/20 PASS (eval terminal at attempt 1!)
+- **治理 / spec 同步** (PR #91):
+  - Phase 14 spec / adapter §Phase 14 / task-14.{1,2} 全 `Status: Done`
+  - **ADR-017 Status: Proposed → Accepted** (one-shot promotion, 6 D-clauses
+    spanning v0.5/v0.6/v0.7 3 phase)
+  - ADR-014 D1 mapping 表 / D2 lint 0 violation / D3 verified-by
+
+### ADR-017 D-clauses (all landed by v0.7.0)
+
+| D | Clause | Where shipped |
+|---|---|---|
+| D1 | 22-endpoint roadmap (Wave 1+2+3+4) | task-12.{1,2,3} + task-13.{1,2} + task-14.{1,2} |
+| D2 | X-Confirm OR ?confirm=true → 412 | `confirmMiddleware` on PATCH config + memory deprecate + soft-delete |
+| D3 | cancel 200 → 204 | handlers.go handleCancelJob StatusNoContent |
+| D4 | Long-poll v1.0 lock (no SSE) | retained from v0.4 task-11.4 |
+| D5 | RFC3339Nano kept | Go time.Time JSON unchanged |
+| D6 | ADR-016 sub | Rust SoT + Go thin proxy preserved across all 13 new endpoints |
+| D7 | ADR-014 cross-validation gate 3rd/4th/5th activation | Phase 12+13+14 closeout PRs each shipped D1 mapping + D2 lint verified |
+
+### Trade-offs / Conscious limitations
+
+- **Light-weight recall harness in runEvalAsync** [SPEC-DEFER:phase-future.real-recall-via-retriever]:
+  v0.7 ship 用 BuiltinGoldenQuestions + mock pass-all 计算 metrics；future v1.x
+  接 retriever-backed recall (RetrievalResult dispatch + EvaluateQuestion)
+- **5min ctx timeout** in runEvalAsync (大 dataset 可能超时；future ?timeout query param)
+- **Eval orphan reaper** not implemented [SPEC-DEFER:phase-15.eval-orphan-reaper]:
+  console-api-serve crash 时 in-flight eval 状态卡 running；future 加 Rust 侧
+  orphan reaper 扫描 status=running 超时 → mark failed
+- **Eval cancel REST** 不实施 [SPEC-DEFER:console-eval-cancel] (Console 22 endpoint contract 不含)
+- **Pin state not in contractv1.MemoryItem** (carried from v0.6)
+
+### Migration notes (v0.6.0 → v0.7.0)
+
+- **daemon 重启后 eval_runs 表自动创建** (migration 0014 IF NOT EXISTS 幂等);
+  既有 v0.6 data_dir 兼容
+- **新 2 endpoint** (POST /v1/eval-runs + GET /v1/eval-runs/{id}): client 按 OpenAPI/contractv1 v1 spec 调用
+- contractv1.go 字段集合不变 (ADR-015 D5)
+- 新 proto RPC + message add-only (ADR-013 D2)
+
+### Tests (Phase 14 全程)
+
+- **Rust**: 94 lib (含 10 new task-14.1: 7 store + 3 server) + 2 eval_integration
+  + 既有 phase 1-13 测试不退化 (含 3 memory_integration / 5 indexjob_real /
+  4 search_real / 5 data_plane_integration 等)
+- **Go**: 43 packages PASS (含 e2e_grpc Step 9e 真接 Rust daemon eval-runs +
+  既有 task-12.x/13.x 不退化)
+- **smoke**: `bash scripts/console_smoke.sh` REAL mode 20/20 PASS;
+  eval terminal at attempt 1: status=succeeded; metrics contains recall@5 ✅
+- **conformance**: v0.4-v0.6 既有 endpoints 不退化
+
+### Console (cross-repo) sync state
+
+- ContextForge-Console contractv1.go (Workspace + IndexJob + SourceChunk +
+  Search + Memory + EvalRun + CaseResult + ObservabilityEvent 等 全套 22-endpoint
+  types) cross-repo 已 ship (v0.3 锁定不动)
+- Console UI HTTPAdapter v1.0 端到端 22-endpoint 调用代码已 cross-repo ship
+- ContextForge v0.7 ship 后 Console UI 可切到 production HTTPAdapter mode
+  (关闭 MockAdapter)
+
+### Verification commands
+
+```bash
+cargo test -p contextforge-core   # expect all PASS (94 lib + integration tests)
+go test ./...                     # expect 43 packages PASS
+bash scripts/console_smoke.sh     # expects CONSOLE_REAL_SMOKE_EXIT=0 20/20
+RELEASE_SMOKE_CONSOLE=1 bash scripts/release_smoke.sh   # PHASE_RELEASE_SMOKE_EXIT=0
+```
+
+---
+
 ## v0.6.0 (2026-05-24)
 
 ### 摘要
