@@ -1,6 +1,6 @@
 # ADR `014`: `cross-phase-exit-criteria-validation`
 
-**Status**: Proposed
+**Status**: Accepted
 **Category**: Governance / 治理流程
 **Date**: 2026-05-24
 **Decided By**: tajiaoyezi objective + main agent execution
@@ -30,13 +30,16 @@ phase closeout PR 的 PR body **必须**包含一张 "Phase §6 ↔ Task §6 AC 
 
 | Phase §6 AC 编号 + 字面 | 拥有 task / 验证方式 | task §6 AC 编号 + 字面 | Evidence 链接 |
 
-- 空 mapping 或字段未填 → closeout PR review 自动阻塞
+- 空 mapping 或字段未填 → 视为 §2A 未满足，按 D4 降级用户审或升级 §8 STOP；本 D1 不引入自动化工具，依赖 closeout PR review 阶段主 agent / reviewer 显式检查（与 D2 的脚本化 lint 互补）
 - "phase-level smoke 验证" 是合法的 "拥有 task / 验证方式" 值，但 evidence 必须指向 smoke 脚本退出码 + 验证对象的具体命令（如 `scripts/phase_N_smoke.sh` 退出 0 + 真跑 CLI binary，**不接受**仅跑 Rust API 内部测试作为 CLI 能力字面承诺的证据）
 - "无对应 task / 仅 phase-level 验证" 必须显式声明，且 phase §6 字面不得包含 "CLI" / "user-facing endpoint" / "外部可调用" 等用户能力词
 
 ### D2 — 击鼓传花条款 lint（`scripts/spec_drift_lint.sh`）
 
 新建 `scripts/spec_drift_lint.sh`：grep `docs/specs/` 中 anti-pattern 关键词，输出每个命中的 `file:line` + 强制要求 spec 作者就近标注：
+
+**Lint scope 明确**：lint 只扫 `docs/specs/`（phase + task spec 是契约源）。`docs/decisions/` (ADR) / `docs/retrospectives/` (回顾) / `docs/prds/` (PRD) **不在 lint scope** — 这些目录讨论 anti-pattern 概念本身是合法语境（如本 ADR 列举 "stub" / "out of scope" / "scaffold" 作为词表举例），强制 `[SPEC-DEFER]` / `[SPEC-OWNER]` 标注无意义。`AGENTS.md` / `README.md` 等顶层文档同样不扫。
+
 
 **A 类标注 — 合法延后**：必须含 `[SPEC-DEFER:<name>]` 命名 marker + 命名 target phase/task；closeout 时可被 lint 验真（grep target phase 是否真接管）。例：
 ```markdown
@@ -82,6 +85,7 @@ ADR-012 §2A / R6 merge / §8 Waive 的主 agent 自治范围**在 phase closeou
 - **不适用**：Phase 1-9 已 closeout 的 phase / task spec 不重审（包括其 §6 AC 和 §3 OOS 标注）。Phase 9 已通过 ADR-013 单独修复 v0.1 实现层 drift
 - **适用**：Phase 10 起所有新建 phase spec + task spec 适用 D1 / D2 / D3 / D4
 - **特例**：v0.2.0 后若新增对 Phase 1-9 范围的修补 task（如 task-6.2 GetChunk RPC future 兑现），新 task spec 自身适用 D2 / D3；其所属 phase 不重新 closeout
+- **In-flight 修补补丁规则**：任何对 Phase 1-9 已 closeout spec 的 post-merge amendment PR（如 §3 OOS 措辞 fix / §6 AC 增补 / §10 Completion Notes 补遗），仅其触及行适用 D2 lint；未触及行不补标注。amendment PR 不重启 closeout 流程，不要求 D1 mapping 表
 
 ## Rationale
 
