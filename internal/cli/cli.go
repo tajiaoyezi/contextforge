@@ -101,6 +101,13 @@ func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		// injection set by cmd/contextforge/main.go.
 		return runEval(rest, stdout, stderr)
 
+	case "import":
+		// task-9.4: real subcommand entry; supersedes the task-1.4
+		// "not implemented" default-arm response for `import`.
+		// Calls internal/importer/<src> + writes canonical .md to
+		// <data-dir>/imports/<src>/ (D1 two-step flow per ADR-013).
+		return runImport(rest, stdout, stderr)
+
 	default:
 		if known(sub) {
 			fmt.Fprintf(stderr, "contextforge %s: not implemented "+
