@@ -1,6 +1,6 @@
 # ADR `017`: `console-contract-completion-22-endpoint`
 
-**Status**: Proposed
+**Status**: Accepted (2026-05-24, via Phase 14 closeout PR)
 **Category**: 协议接口 / 兼容性
 **Date**: 2026-05-24
 **Decided By**: tajiaoyezi objective + main agent execution
