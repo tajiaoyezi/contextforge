@@ -22,6 +22,11 @@ use super::{IndexerBackend, JobOutcome, JobProgressEvent, ProgressDecision};
 /// `JobProgressEvent` so the `on_progress` callback can plumb heartbeat +
 /// cancel-check through `SqliteJobStore`.
 ///
+/// task-11.4: optionally holds an `Arc<EventBus>` so heartbeat boundaries emit
+/// `indexing.progress` events to `EventsService.Subscribe` server stream.
+/// Cancel observed (closure returns `ProgressDecision::Cancel`) emits an
+/// `indexing.cancelled` event before returning.
+///
 /// Cancel is co-operative at file granularity (between scanned files);
 /// see `index_path_cancellable` doc for trade-off detail.
 pub struct IndexSessionBackend {
@@ -30,6 +35,19 @@ pub struct IndexSessionBackend {
     pub scan_options_override: Option<ScanOptions>,
     /// Override chunk policy. None = ChunkPolicy::default().
     pub chunk_policy_override: Option<ChunkPolicy>,
+    /// task-11.4: optional broadcast event bus. When Some, progress callback
+    /// emits `indexing.progress` at every heartbeat boundary + final
+    /// `indexing.cancelled` / `indexing.error` event on terminal.
+    pub event_bus: Option<Arc<crate::data_plane::events::EventBus>>,
+    /// task-11.4: job_id used for event_bus event payload tagging. Set by
+    /// `with_job_context` before each index() call.
+    pub job_id_context: parking_lot_like::Mutex<String>,
+}
+
+/// Tiny parking_lot-like Mutex shim built on std (we already depend on std::
+/// sync::Mutex; named for self-documentation only).
+mod parking_lot_like {
+    pub use std::sync::Mutex;
 }
 
 impl Default for IndexSessionBackend {
@@ -37,6 +55,8 @@ impl Default for IndexSessionBackend {
         Self {
             scan_options_override: None,
             chunk_policy_override: None,
+            event_bus: None,
+            job_id_context: parking_lot_like::Mutex::new(String::new()),
         }
     }
 }
@@ -44,6 +64,33 @@ impl Default for IndexSessionBackend {
 impl IndexSessionBackend {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    /// task-11.4: build with EventBus wired so progress events flow to
+    /// `EventsService.Subscribe` subscribers.
+    pub fn with_event_bus(event_bus: Arc<crate::data_plane::events::EventBus>) -> Arc<Self> {
+        Arc::new(Self {
+            scan_options_override: None,
+            chunk_policy_override: None,
+            event_bus: Some(event_bus),
+            job_id_context: parking_lot_like::Mutex::new(String::new()),
+        })
+    }
+
+    /// Set the current job_id context (called by JobServer::Enqueue right
+    /// before invoking JobRunner.run_one). The progress callback reads this
+    /// for event payload tagging.
+    pub fn set_job_context(&self, job_id: &str) {
+        if let Ok(mut g) = self.job_id_context.lock() {
+            *g = job_id.to_string();
+        }
+    }
+
+    fn current_job_id(&self) -> String {
+        self.job_id_context
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     fn scan_options(&self) -> ScanOptions {
@@ -70,8 +117,11 @@ impl IndexerBackend for IndexSessionBackend {
         source: &Path,
         data: &Path,
         workspace_id: &str,
+        job_id: &str,
         on_progress: &mut dyn FnMut(&JobProgressEvent) -> ProgressDecision,
     ) -> Result<JobOutcome, String> {
+        // task-11.4: stash job_id so the emit-progress closure can tag events.
+        self.set_job_context(job_id);
         // task-11.3 §6 AC2: open IndexSession for the workspace; workspace_id
         // maps 1:1 to collection_id (ADR-015 D2).
         let mut session = IndexSession::open(data, workspace_id)
@@ -83,6 +133,8 @@ impl IndexerBackend for IndexSessionBackend {
         let cancel_for_closure = cancel_flag.clone();
         let mut total_estimate: i64 = 0;
 
+        let event_bus = self.event_bus.clone();
+        let job_id_context = self.current_job_id();
         let on_inner = |snap: &IndexProgressSnapshot<'_>| {
             // Sum of all seen file outcomes (indexed + denied + redaction skip)
             // is the "files processed" envelope; total = estimate hits final
@@ -102,6 +154,18 @@ impl IndexerBackend for IndexSessionBackend {
                     .unwrap_or_default(),
                 stage: "indexing".to_string(),
             };
+            // task-11.4 §6 AC4: emit progress event to EventBus (best-effort;
+            // SendError swallowed since no subscribers is acceptable).
+            if let Some(eb) = &event_bus {
+                if !job_id_context.is_empty() {
+                    let pb_evt = crate::data_plane::events::build_progress_event(
+                        &job_id_context,
+                        evt.processed_files,
+                        evt.total_files,
+                    );
+                    let _ = eb.send(pb_evt);
+                }
+            }
             if matches!(on_progress(&evt), ProgressDecision::Cancel) {
                 cancel_for_closure.store(true, std::sync::atomic::Ordering::Relaxed);
             }
@@ -111,13 +175,47 @@ impl IndexerBackend for IndexSessionBackend {
         let policy = self.chunk_policy();
         let provenance: Vec<Provenance> = Vec::new();
 
+        let job_id_for_terminal = self.current_job_id();
         let (stats, cancelled) = session
             .index_path_cancellable(source, &scan_opts, &policy, provenance, on_inner, &cancel_flag)
-            .map_err(|e| format!("IndexSession::index_path_cancellable: {e}"))?;
+            .map_err(|e| {
+                // task-11.4 §6 AC4: emit indexing.error event on terminal failure.
+                if let Some(eb) = &self.event_bus {
+                    if !job_id_for_terminal.is_empty() {
+                        let pb_evt = crate::data_plane::events::build_error_event(
+                            &job_id_for_terminal,
+                            &format!("IndexSession::index_path_cancellable: {e}"),
+                        );
+                        let _ = eb.send(pb_evt);
+                    }
+                }
+                format!("IndexSession::index_path_cancellable: {e}")
+            })?;
 
         // Always attempt to commit Tantivy writer (mirrors server.rs's contract
         // — indexer is only durable after commit).
-        session.commit().map_err(|e| format!("commit: {e}"))?;
+        session.commit().map_err(|e| {
+            if let Some(eb) = &self.event_bus {
+                if !job_id_for_terminal.is_empty() {
+                    let pb_evt = crate::data_plane::events::build_error_event(
+                        &job_id_for_terminal,
+                        &format!("commit: {e}"),
+                    );
+                    let _ = eb.send(pb_evt);
+                }
+            }
+            format!("commit: {e}")
+        })?;
+
+        // task-11.4 §6 AC4: emit terminal cancel event when cancelled.
+        if cancelled {
+            if let Some(eb) = &self.event_bus {
+                if !job_id_for_terminal.is_empty() {
+                    let pb_evt = crate::data_plane::events::build_cancelled_event(&job_id_for_terminal);
+                    let _ = eb.send(pb_evt);
+                }
+            }
+        }
 
         Ok(JobOutcome {
             processed_files: stats.files_indexed as i64,
@@ -195,7 +293,7 @@ mod tests {
             ProgressDecision::Continue
         };
         let outcome = backend
-            .index(&fixture_dir(), &data_dir, workspace_id, &mut on_progress)
+            .index(&fixture_dir(), &data_dir, workspace_id, "test-job-id", &mut on_progress)
             .expect("index ok");
         assert!(outcome.processed_files >= 5, "≥5 files indexed; got {}", outcome.processed_files);
         assert!(!outcome.cancelled);
@@ -216,7 +314,7 @@ mod tests {
             ProgressDecision::Cancel
         };
         let outcome = backend
-            .index(&fixture_dir(), &data_dir, workspace_id, &mut on_progress)
+            .index(&fixture_dir(), &data_dir, workspace_id, "test-job-id", &mut on_progress)
             .expect("index ok despite cancel");
         // cancel_token was set after the first progress callback; the second
         // iteration check at file boundary should observe it + break.

@@ -494,18 +494,23 @@ pub async fn serve_full(
                 eprintln!("INFO orphan reaper: marked {} stale job(s) terminal at startup", reaped);
             }
 
-            // task-11.3 §6 AC1/AC2: wire the real JobRunner backed by
-            // IndexSessionBackend so JobService.Enqueue truly triggers the
-            // Tantivy/SQLite index pipeline.
-            let indexer = IndexSessionBackend::new();
+            // task-11.4 §6 AC4: shared EventBus for indexing.progress /
+            // indexing.cancelled / indexing.error emission + EventsService
+            // .Subscribe broadcast stream.
+            let event_bus = crate::data_plane::events::EventBus::new();
+
+            // task-11.3 §6 AC1/AC2 + task-11.4: real JobRunner backed by
+            // IndexSessionBackend wired to EventBus.
+            let indexer = IndexSessionBackend::with_event_bus(event_bus.clone());
             let job_store_dyn: Arc<dyn JobStore> = job_store.clone();
             let runner = Arc::new(JobRunner::new(job_store_dyn, indexer));
 
-            let stores = DataPlaneStores::with_runner(
+            let stores = DataPlaneStores::with_runner_and_bus(
                 ws_store,
                 job_store,
                 runner,
                 data_dir.to_path_buf(),
+                event_bus,
             );
 
             let mut builder = tonic::transport::Server::builder();

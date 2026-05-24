@@ -57,6 +57,7 @@ impl IndexerBackend for CountingIndexer {
         _source: &Path,
         _data: &Path,
         _workspace_id: &str,
+        _job_id: &str,
         on_progress: &mut dyn FnMut(&JobProgressEvent) -> ProgressDecision,
     ) -> Result<JobOutcome, String> {
         let mut processed = 0;
