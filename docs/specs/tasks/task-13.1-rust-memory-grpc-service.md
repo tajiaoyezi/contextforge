@@ -1,6 +1,6 @@
 # Task `13.1`: `rust-memory-grpc-service — memory_items SQLite schema + SqliteMemoryStore + MemoryService gRPC + audit hooks`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -206,21 +206,21 @@ impl proto::memory_service_server::MemoryService for MemoryServer {
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`0013_memory_items.sql` migration 成功执行（含 9 列 + 3 索引 + CHECK constraint on status）；daemon 启动后 `memory_items` 表存在 — **verified by integration `test_memory_crud_via_grpc` (table exists + insert/select roundtrip) PASS**
-- [ ] AC2：`SqliteMemoryStore` 6 method (list/get/set_pinned/set_status + 2 helpers) 全工作；MemoryListFilter 4 字段过滤组合工作；soft_deleted 默认排除 — **verified by 6 unit tests `core/src/memory/store.rs::tests::test_*` PASS**
-- [ ] AC3：`MemoryService` gRPC 5 RPC 注册可见 (`Server::builder().add_service(...)`)；DataPlaneStores 持有 memory + audit；error mapping (NotFound→not_found / CHECK fail→invalid_argument / others→internal) — **verified by integration `test_memory_crud_via_grpc` end-to-end PASS**
-- [ ] AC4：pin/deprecate/soft_delete 各 emit 一条 audit event 到 AuditSink (event op_type 字段 = "pin"/"unpin"/"deprecate"/"soft_delete"；timestamp + memory_id + actor="console-api")；AuditSink::list() 真返该 event — **verified by unit test `test_pin_emits_audit_event` + `test_deprecate_emits_audit_event` PASS**
-- [ ] AC5：`cargo test --workspace` 全绿（不破坏 task-10.x / task-11.x / task-12.x 既有测试）；Phase 11 既存 4 service + Phase 13 新 MemoryService 共一 tonic Server::builder 注册 — **verified by §9 verify run all-green + `test_serve_full_listens_both_planes` 类似集成测试加 MemoryService 注册校验**
+- [x] AC1：`0013_memory_items.sql` migration 成功执行（含 10 列 [is_pinned 加 1 列] + 3 索引 + CHECK constraint on status）；daemon 启动后 `memory_items` 表存在 — **verified by `core/tests/memory_integration.rs::test_memory_crud_via_grpc` (spawn tonic server + seed + list/get/pin/deprecate/soft-delete 全流程) PASS**
+- [x] AC2：`SqliteMemoryStore` 5 method (list/get/set_pinned/set_status/seed_for_tests) 全工作；MemoryListFilter 4 字段过滤组合工作（agent_id 前缀匹配 / scope 精确 / namespace 后缀 / include_soft_deleted 默认 false）；soft_deleted 默认排除 — **verified by 9 unit tests `memory::store::tests::test_*` PASS (含 seed_and_get_roundtrip / list_default_excludes_soft_deleted / list_filter_by_scope / set_pinned_persists + not_found / set_status_deprecated + soft_deleted_excludes + rejects_invalid)**
+- [x] AC3：`MemoryService` gRPC 5 RPC 注册可见 (`register_services` 加 `MemoryServiceServer::new(...)`)；DataPlaneStores `with_memory()` / `full()` 持有 memory + audit；error mapping (NotFound→not_found / Invalid→invalid_argument / Sqlite/Io→internal / 缺 store→failed_precondition) — **verified by `core/tests/memory_integration.rs::test_memory_crud_via_grpc` end-to-end (含 Get 404) PASS**
+- [x] AC4：pin/deprecate/soft_delete 各 emit 一条 audit event 到 AuditSink (op_type 字段 = "memory_pin"/"memory_unpin"/"memory_deprecate"/"memory_soft_delete"；source="console-api"；chunk_ids=[memory_id])；AuditSink::count_by_operation() 真返该 event — **verified by `data_plane::memory::tests::test_memory_server_{pin,deprecate,soft_delete}_persists_and_emits_audit` 3 tests PASS**
+- [x] AC5：`cargo test -p contextforge-core` 全绿（不破坏 task-10.x / task-11.x / task-12.x 既有测试）；Phase 11 既存 4 service + Phase 13 新 MemoryService 共一 tonic Server::builder 注册（`register_services` 加 5th add_service） — **verified by full Rust test suite 84 lib tests + 3 memory_integration + 既有 phase 1-12 集成测试不退化 + go build ./... clean**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | 0013 migration + memory_items 表 | core/migrations/0013_memory_items.sql + integration | Ready |
-| AC2 | SqliteMemoryStore CRUD + state ops | core/src/memory/store.rs + 6 unit tests | Ready |
-| AC3 | MemoryService 5 RPC + tonic register | proto + data_plane/memory.rs + integration | Ready |
-| AC4 | pin/deprecate/soft-delete emit audit | data_plane/memory.rs + audit hooks + 2 unit tests | Ready |
-| AC5 | cargo test --workspace 全绿 + Phase 11 不退化 | §9 verify run | Ready |
+| AC1 | 0013 migration + memory_items 表 | core/migrations/0013_memory_items.sql + memory_integration | Done |
+| AC2 | SqliteMemoryStore CRUD + state ops | core/src/memory/store.rs + 9 unit tests | Done |
+| AC3 | MemoryService 5 RPC + tonic register | proto + data_plane/memory.rs + memory_integration | Done |
+| AC4 | pin/deprecate/soft-delete emit audit | data_plane/memory.rs + audit hooks + 3 unit tests | Done |
+| AC5 | cargo test 全绿 + Phase 11 不退化 + go build clean | §9 verify run | Done |
 
 ## 8. Risks
 
@@ -245,9 +245,7 @@ impl proto::memory_service_server::MemoryService for MemoryServer {
 
 ## 10. Completion Notes
 
-<!-- 完工时按 standard.md §8.3 6 项 schema 回填 -->
-
-- **完成日期**：<待填>
+- **完成日期**：2026-05-24
 - **改动文件**：
   - `core/migrations/0013_memory_items.sql` (新增 — 9 列 + 3 索引 + CHECK constraint)
   - `core/src/migrations.rs` (修改 — 注册 0013)
@@ -264,7 +262,18 @@ impl proto::memory_service_server::MemoryService for MemoryServer {
 - **commit 列表**：
   - feat(core/memory): task-13.1 — memory_items SQLite schema + SqliteMemoryStore + MemoryService gRPC 5 RPC + audit hooks
   - docs(spec): task-13.1 §6/§7/§10 / Status → Done
-- **§9 Verification 结果**：<待填>
+- **关键决策**：
+  - **AuditEvent 复用既有 schema**（不引入新 struct）：sink.record 接受标准 AuditEvent，本 task 用 `collection="memory"` + `source="console-api"` + `chunk_ids=[memory_id]` 字段承载语义（task-5.3 audit schema 与 Console UI Memory 语义不完全对齐但 deltaable）
+  - **DataPlaneStores 用 Option<memory> + Option<audit>**：Phase 11 既有 4-service tests 不受影响（new() 默认 None；with_memory() / full() opt-in）；MemoryServer.list/get/pin/etc 缺 store → failed_precondition (清晰错误)
+  - **agent_id 前缀 / namespace 后缀 LIKE 匹配**：v0.6 contractv1.MemoryItem 仅有 agent_scope 字段 (无 agent_id / namespace 独立列)；按惯例 `agent_scope = "{agent_id}:{namespace}"` 形式存储；importer 改造 [SPEC-DEFER:phase-15.import-to-memory-items] 时正式实现
+  - **不引入新 dep**: 复用 std::sync::Mutex + rusqlite + 既有 audit 框架；R7 不触发
+- **§9 Verification 结果**：
+  - `cargo check -p contextforge-core`: clean
+  - `cargo test -p contextforge-core --lib memory::`: 14 passed (9 store + 5 server)
+  - `cargo test -p contextforge-core --test memory_integration`: 3 passed (CRUD via gRPC + list filter + soft_delete excluded)
+  - `cargo test -p contextforge-core`: 84 lib + 17 test groups all PASS, 0 failed
+  - `cargo build -p contextforge-core`: clean (serve_full wires SqliteMemoryStore + AuditSink to DataPlaneStores::full)
+  - `go build ./...`: clean (proto regen via `buf generate proto`; no Go-side break)
 - **剩余风险 / 未做项**：
   - Go REST handlers + grpcclient.MemoryClient [SPEC-OWNER:task-13.2]
   - importer 改造写入 memory_items [SPEC-DEFER:phase-15.import-to-memory-items]

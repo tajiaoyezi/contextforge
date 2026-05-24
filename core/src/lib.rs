@@ -39,3 +39,6 @@ pub mod jobs;
 // task-11.1 (Phase 11, ADR-016): Console data plane gRPC services
 // (WorkspaceService / JobService / SearchService / EventsService).
 pub mod data_plane;
+
+// task-13.1 (Phase 13, ADR-017 D1 Wave 3): Memory persistence + state-ops.
+pub mod memory;

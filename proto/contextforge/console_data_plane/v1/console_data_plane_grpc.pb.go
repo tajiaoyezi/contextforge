@@ -727,6 +727,260 @@ var SearchService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	MemoryService_List_FullMethodName       = "/contextforge.console_data_plane.v1.MemoryService/List"
+	MemoryService_Get_FullMethodName        = "/contextforge.console_data_plane.v1.MemoryService/Get"
+	MemoryService_Pin_FullMethodName        = "/contextforge.console_data_plane.v1.MemoryService/Pin"
+	MemoryService_Deprecate_FullMethodName  = "/contextforge.console_data_plane.v1.MemoryService/Deprecate"
+	MemoryService_SoftDelete_FullMethodName = "/contextforge.console_data_plane.v1.MemoryService/SoftDelete"
+)
+
+// MemoryServiceClient is the client API for MemoryService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type MemoryServiceClient interface {
+	List(ctx context.Context, in *ListMemoryRequest, opts ...grpc.CallOption) (*ListMemoryResponse, error)
+	Get(ctx context.Context, in *GetMemoryRequest, opts ...grpc.CallOption) (*MemoryItem, error)
+	Pin(ctx context.Context, in *PinMemoryRequest, opts ...grpc.CallOption) (*PinMemoryResponse, error)
+	Deprecate(ctx context.Context, in *DeprecateMemoryRequest, opts ...grpc.CallOption) (*DeprecateMemoryResponse, error)
+	SoftDelete(ctx context.Context, in *SoftDeleteMemoryRequest, opts ...grpc.CallOption) (*SoftDeleteMemoryResponse, error)
+}
+
+type memoryServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewMemoryServiceClient(cc grpc.ClientConnInterface) MemoryServiceClient {
+	return &memoryServiceClient{cc}
+}
+
+func (c *memoryServiceClient) List(ctx context.Context, in *ListMemoryRequest, opts ...grpc.CallOption) (*ListMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMemoryResponse)
+	err := c.cc.Invoke(ctx, MemoryService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) Get(ctx context.Context, in *GetMemoryRequest, opts ...grpc.CallOption) (*MemoryItem, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MemoryItem)
+	err := c.cc.Invoke(ctx, MemoryService_Get_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) Pin(ctx context.Context, in *PinMemoryRequest, opts ...grpc.CallOption) (*PinMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PinMemoryResponse)
+	err := c.cc.Invoke(ctx, MemoryService_Pin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) Deprecate(ctx context.Context, in *DeprecateMemoryRequest, opts ...grpc.CallOption) (*DeprecateMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeprecateMemoryResponse)
+	err := c.cc.Invoke(ctx, MemoryService_Deprecate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) SoftDelete(ctx context.Context, in *SoftDeleteMemoryRequest, opts ...grpc.CallOption) (*SoftDeleteMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SoftDeleteMemoryResponse)
+	err := c.cc.Invoke(ctx, MemoryService_SoftDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// MemoryServiceServer is the server API for MemoryService service.
+// All implementations must embed UnimplementedMemoryServiceServer
+// for forward compatibility.
+type MemoryServiceServer interface {
+	List(context.Context, *ListMemoryRequest) (*ListMemoryResponse, error)
+	Get(context.Context, *GetMemoryRequest) (*MemoryItem, error)
+	Pin(context.Context, *PinMemoryRequest) (*PinMemoryResponse, error)
+	Deprecate(context.Context, *DeprecateMemoryRequest) (*DeprecateMemoryResponse, error)
+	SoftDelete(context.Context, *SoftDeleteMemoryRequest) (*SoftDeleteMemoryResponse, error)
+	mustEmbedUnimplementedMemoryServiceServer()
+}
+
+// UnimplementedMemoryServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedMemoryServiceServer struct{}
+
+func (UnimplementedMemoryServiceServer) List(context.Context, *ListMemoryRequest) (*ListMemoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedMemoryServiceServer) Get(context.Context, *GetMemoryRequest) (*MemoryItem, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
+}
+func (UnimplementedMemoryServiceServer) Pin(context.Context, *PinMemoryRequest) (*PinMemoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Pin not implemented")
+}
+func (UnimplementedMemoryServiceServer) Deprecate(context.Context, *DeprecateMemoryRequest) (*DeprecateMemoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Deprecate not implemented")
+}
+func (UnimplementedMemoryServiceServer) SoftDelete(context.Context, *SoftDeleteMemoryRequest) (*SoftDeleteMemoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SoftDelete not implemented")
+}
+func (UnimplementedMemoryServiceServer) mustEmbedUnimplementedMemoryServiceServer() {}
+func (UnimplementedMemoryServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeMemoryServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to MemoryServiceServer will
+// result in compilation errors.
+type UnsafeMemoryServiceServer interface {
+	mustEmbedUnimplementedMemoryServiceServer()
+}
+
+func RegisterMemoryServiceServer(s grpc.ServiceRegistrar, srv MemoryServiceServer) {
+	// If the following call pancis, it indicates UnimplementedMemoryServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&MemoryService_ServiceDesc, srv)
+}
+
+func _MemoryService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).List(ctx, req.(*ListMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).Get(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_Get_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).Get(ctx, req.(*GetMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_Pin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PinMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).Pin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_Pin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).Pin(ctx, req.(*PinMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_Deprecate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeprecateMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).Deprecate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_Deprecate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).Deprecate(ctx, req.(*DeprecateMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_SoftDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SoftDeleteMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).SoftDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_SoftDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).SoftDelete(ctx, req.(*SoftDeleteMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// MemoryService_ServiceDesc is the grpc.ServiceDesc for MemoryService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var MemoryService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "contextforge.console_data_plane.v1.MemoryService",
+	HandlerType: (*MemoryServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "List",
+			Handler:    _MemoryService_List_Handler,
+		},
+		{
+			MethodName: "Get",
+			Handler:    _MemoryService_Get_Handler,
+		},
+		{
+			MethodName: "Pin",
+			Handler:    _MemoryService_Pin_Handler,
+		},
+		{
+			MethodName: "Deprecate",
+			Handler:    _MemoryService_Deprecate_Handler,
+		},
+		{
+			MethodName: "SoftDelete",
+			Handler:    _MemoryService_SoftDelete_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "contextforge/console_data_plane/v1/console_data_plane.proto",
+}
+
+const (
 	EventsService_Subscribe_FullMethodName = "/contextforge.console_data_plane.v1.EventsService/Subscribe"
 )
 

@@ -14,6 +14,12 @@ pub enum AuditOperation {
     Search,
     Export,
     Redact,
+    // task-13.1 (ADR-017 D1 Wave 3): memory state-op audit events emitted by
+    // `data_plane::memory::MemoryServer` on Pin / Deprecate / SoftDelete.
+    MemoryPin,
+    MemoryUnpin,
+    MemoryDeprecate,
+    MemorySoftDelete,
 }
 
 impl AuditOperation {
@@ -23,6 +29,10 @@ impl AuditOperation {
             AuditOperation::Search => "search",
             AuditOperation::Export => "export",
             AuditOperation::Redact => "redact",
+            AuditOperation::MemoryPin => "memory_pin",
+            AuditOperation::MemoryUnpin => "memory_unpin",
+            AuditOperation::MemoryDeprecate => "memory_deprecate",
+            AuditOperation::MemorySoftDelete => "memory_soft_delete",
         }
     }
 }

@@ -18,14 +18,16 @@
 
 pub mod events;
 pub mod job;
+pub mod memory;
 pub mod search;
 pub mod workspace;
 
 use crate::pb_console::events_service_server::EventsServiceServer;
 use crate::pb_console::job_service_server::JobServiceServer;
+use crate::pb_console::memory_service_server::MemoryServiceServer;
 use crate::pb_console::search_service_server::SearchServiceServer;
 use crate::pb_console::workspace_service_server::WorkspaceServiceServer;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Shared stores injected into all 4 tonic service implementations.
 ///
@@ -47,6 +49,15 @@ pub struct DataPlaneStores {
     /// `indexing.progress` / `.cancelled` / `.error` via `event_bus.send`.
     /// `None` (task-11.1 / unit tests) falls back to single-keepalive stream.
     pub event_bus: Option<Arc<events::EventBus>>,
+    /// task-13.1: shared `SqliteMemoryStore` backing the `MemoryService` 5 RPC.
+    /// `None` for the 4-service Phase 11 baseline (workspace/job/search/events
+    /// tests don't need the memory store). `MemoryServer.list/get/...` returns
+    /// `failed_precondition` when this is None.
+    pub memory: Option<Arc<crate::memory::SqliteMemoryStore>>,
+    /// task-13.1: shared `AuditSink` used by `MemoryServer` to emit
+    /// pin/deprecate/soft-delete audit events. `None` falls back to silent
+    /// no-op (state ops still succeed; audit is observability).
+    pub audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
 }
 
 impl DataPlaneStores {
@@ -63,6 +74,28 @@ impl DataPlaneStores {
             job_runner: None,
             data_dir: std::path::PathBuf::new(),
             event_bus: None,
+            memory: None,
+            audit: None,
+        })
+    }
+
+    /// task-13.1 constructor: 4 Phase 11 stores + MemoryStore + AuditSink for
+    /// the new MemoryService 5 RPC. Used by memory tests + `serve_full` once
+    /// production wiring lands.
+    pub fn with_memory(
+        workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
+        job_store: Arc<crate::jobs::SqliteJobStore>,
+        memory: Arc<crate::memory::SqliteMemoryStore>,
+        audit: Arc<Mutex<crate::memoryops::audit::AuditSink>>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            workspace_store,
+            job_store,
+            job_runner: None,
+            data_dir: std::path::PathBuf::new(),
+            event_bus: None,
+            memory: Some(memory),
+            audit: Some(audit),
         })
     }
 
@@ -75,12 +108,30 @@ impl DataPlaneStores {
         data_dir: std::path::PathBuf,
         event_bus: Arc<events::EventBus>,
     ) -> Arc<Self> {
+        Self::full(workspace_store, job_store, job_runner, data_dir, event_bus, None, None)
+    }
+
+    /// task-13.1 full production wiring constructor — Phase 11 4 stores +
+    /// memory + audit. `serve_full` in `server.rs` uses this to register all
+    /// 5 services (workspace / job / search / events / memory).
+    #[allow(clippy::too_many_arguments)]
+    pub fn full(
+        workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
+        job_store: Arc<crate::jobs::SqliteJobStore>,
+        job_runner: Arc<crate::jobs::JobRunner<crate::jobs::IndexSessionBackend>>,
+        data_dir: std::path::PathBuf,
+        event_bus: Arc<events::EventBus>,
+        memory: Option<Arc<crate::memory::SqliteMemoryStore>>,
+        audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             workspace_store,
             job_store,
             job_runner: Some(job_runner),
             data_dir,
             event_bus: Some(event_bus),
+            memory,
+            audit,
         })
     }
 
@@ -99,6 +150,8 @@ impl DataPlaneStores {
             job_runner: Some(job_runner),
             data_dir,
             event_bus: None,
+            memory: None,
+            audit: None,
         })
     }
 }
@@ -123,9 +176,12 @@ pub fn register_services(
         .add_service(EventsServiceServer::new(events::EventsServer::new(
             stores.clone(),
         )))
+        .add_service(MemoryServiceServer::new(memory::MemoryServer::new(
+            stores.clone(),
+        )))
 }
 
-/// Add 4 services to a fresh `Server::builder()` (no other services).
+/// Add 5 services to a fresh `Server::builder()` (no other services).
 /// Useful for tests where only the Console data plane is needed.
 pub fn server_with_services(
     stores: Arc<DataPlaneStores>,
@@ -139,7 +195,10 @@ pub fn server_with_services(
         .add_service(SearchServiceServer::new(search::SearchServer::new(
             stores.clone(),
         )))
-        .add_service(EventsServiceServer::new(events::EventsServer::new(stores)))
+        .add_service(EventsServiceServer::new(events::EventsServer::new(
+            stores.clone(),
+        )))
+        .add_service(MemoryServiceServer::new(memory::MemoryServer::new(stores)))
 }
 
 #[cfg(test)]

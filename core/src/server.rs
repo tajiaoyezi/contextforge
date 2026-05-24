@@ -505,12 +505,23 @@ pub async fn serve_full(
             let job_store_dyn: Arc<dyn JobStore> = job_store.clone();
             let runner = Arc::new(JobRunner::new(job_store_dyn, indexer));
 
-            let stores = DataPlaneStores::with_runner_and_bus(
+            // task-13.1 (ADR-017 D1 Wave 3): SqliteMemoryStore + AuditSink wired
+            // into DataPlaneStores so MemoryService 5 RPC are backed by a real
+            // store and Pin/Deprecate/SoftDelete emit audit events.
+            let memory_store = std::sync::Arc::new(
+                crate::memory::SqliteMemoryStore::open(data_dir)?,
+            );
+            let audit_sink = std::sync::Arc::new(std::sync::Mutex::new(
+                crate::memoryops::audit::AuditSink::open(data_dir, "memory")?,
+            ));
+            let stores = DataPlaneStores::full(
                 ws_store,
                 job_store,
                 runner,
                 data_dir.to_path_buf(),
                 event_bus,
+                Some(memory_store),
+                Some(audit_sink),
             );
 
             let mut builder = tonic::transport::Server::builder();
