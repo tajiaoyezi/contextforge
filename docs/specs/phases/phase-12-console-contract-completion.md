@@ -1,6 +1,6 @@
 # Phase 12 · console-contract-completion
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.5.0 minor release 收口 phase — 把 v0.4 Phase 11 ([ADR-016](../../decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md)) ship 后 [ADR-017](../../decisions/adr-017-console-contract-completion-22-endpoint.md) D1 Wave 1 + Wave 2 共 6 个 endpoint 落地：
 >
@@ -80,12 +80,12 @@
 
 **阶段级验收标准（任务 12.1-12.3 全 Done，实测验证；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] AC1：`PATCH /v1/workspaces/{id}/config` body `{allowlist:[...], denylist:[...]}` 走 gRPC WorkspaceService.Update + 返更新后 Workspace + 缺 X-Confirm header 或 ?confirm=true query → 412 Precondition Failed — **verified by task-12.1 §6 AC1 (`TestPatchWorkspaceConfig_RequiresConfirm`) + integration `test_workspace_update_via_grpc` PASS**
-- [ ] AC2：`GET /v1/index-jobs?status=active` 仅返 status in {queued, running}；其它 status 过滤掉；走 gRPC JobService.List + status filter — **verified by task-12.1 §6 AC2 (`TestListActiveJobs_FilterStatus`) + integration `test_list_jobs_active_filter` PASS**
-- [ ] AC3：`POST /v1/index-jobs/{id}/cancel` 成功返 204 No Content（不返 body）；409 / 404 不变 — **verified by task-12.1 §6 AC3 (`TestCancelJob_Returns_204`) + Console HTTPAdapter v1.0 双 check 200/204 向后兼容 (`scripts/console_smoke.sh v3 step 11`) PASS**
-- [ ] AC4：`GET /v1/source-chunks/{id}` 走 gRPC SearchService.GetSourceChunk + retriever by-chunk_id lookup + 不存在 chunk → 404 ErrNotFound — **verified by task-12.2 §6 AC1 (`test_get_source_chunk_via_grpc`) + Go E2E `TestGetSourceChunk_E2E` PASS**
-- [ ] AC5：`GET /v1/search/{query_id}/trace` 走 gRPC SearchService.GetSearchTrace + SearchService.Query 执行时把 RetrievalTrace 持久化 by query_id（trade-off T1 评估 SQLite 表 vs in-memory LRU）；不存在 query_id → 404 — **verified by task-12.3 §6 AC1 + AC2 (`test_search_trace_persisted_and_retrievable`) + Go E2E `TestGetSearchTrace_E2E` PASS**
-- [ ] AC6：ADR-014 cross-validation gate 全套通过：D2 lint (`bash scripts/spec_drift_lint.sh --touched <base>` 0 violation in PR-touched lines) + D3 phase §6 每条 AC 含 verified by + D1 closeout PR body 含 mapping 表 — **verified by phase-smoke step 2 (cmd: `bash scripts/spec_drift_lint.sh --touched <base>`) + closeout PR body**
+- [x] AC1：`PATCH /v1/workspaces/{id}/config` body `{allowlist:[...], denylist:[...]}` 走 gRPC WorkspaceService.UpdateConfig + 返更新后 Workspace + 缺 X-Confirm header 或 ?confirm=true query → 412 Precondition Failed — **verified by task-12.1 §6 AC1 (`TestPatchWorkspaceConfig_{RequiresConfirm,AcceptsHeader,AcceptsQuery}`) + e2e_grpc Step 8a PASS + console_smoke.sh v3 Step 9 PASS (412 then 200)**
+- [x] AC2：`GET /v1/index-jobs?status=active` 仅返 status in {queued, running}；其它 status 过滤掉；走 gRPC JobService.List + status filter — **verified by task-12.1 §6 AC2 (`TestListJobs_ActiveFilter` + `TestListJobs_MissingStatusFilter`) + console_smoke.sh v3 Step 10 PASS (active + missing→400)**
+- [x] AC3：`POST /v1/index-jobs/{id}/cancel` 成功返 204 No Content（不返 body）；409 / 404 不变 — **verified by task-12.1 §6 AC3 (`TestCancelJob_Returns_204` + `TestCancelJob_404_unchanged` + `TestHandleCancelJob_409`) + e2e_grpc Step 9 真接 daemon 204 PASS**
+- [x] AC4：`GET /v1/source-chunks/{id}` 走 gRPC SearchService.GetSourceChunk + retriever 复用 `Retriever::get_chunk(chunk_id)` (task-6.2 ship) + 不存在 chunk → 404 NOT_FOUND — **verified by task-12.2 §6 AC1 (`test_get_source_chunk_unknown_returns_not_found`) + e2e_grpc Step 9b PASS + console_smoke.sh v3 Step 11 PASS (chk_4eec0d18_2 found)**
+- [x] AC5：`GET /v1/search/{query_id}/trace` 走 gRPC SearchService.GetSearchTrace + SearchService.Query 执行时把 RetrievalTrace 持久化 by query_id (in-memory TraceStore HashMap+VecDeque LRU cap=1000)；不存在 query_id → 404 — **verified by task-12.3 §6 AC1+AC2+AC3 (`test_query_persists_trace_by_query_id_and_get_returns_it` + `test_trace_store_eviction_at_capacity`) + e2e_grpc Step 9c PASS + console_smoke.sh v3 Step 12 PASS**
+- [x] AC6：ADR-014 cross-validation gate 全套通过：D2 lint (`bash scripts/spec_drift_lint.sh --touched origin/master` 0 violation in PR-touched lines) + D3 phase §6 每条 AC 含 verified by + D1 closeout PR body 含 mapping 表 — **verified by closeout PR body (this PR) + D2 lint targeted grep on touched spec files (all anti-pattern hits annotated)**
 
 **端到端 smoke**：
 
