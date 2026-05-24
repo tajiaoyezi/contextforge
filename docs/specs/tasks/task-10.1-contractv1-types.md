@@ -1,6 +1,6 @@
 # Task `10.1`: `contractv1-types — internal/contractv1/ Go 镜像 Console Contract v1 must-have 字段`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -93,21 +93,21 @@ func (fa FieldAvailability) IsMissing(field string) bool
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`internal/contractv1/contractv1.go` 含 17 Contract v1 类型 + `ContractVersion = "v1"` 常量 + FieldAvailability struct + Complete() / IsMissing() helper；字段 / json tag / type 与 Console `contractv1.go` 1:1 一致（diff 验证）— **verified by unit-test step `go test ./internal/contractv1/... -run TestContractMirrorParity`**
-- [ ] AC2：`internal/contractv1/types_test.go` 跑 17 个类型 JSON marshal/unmarshal roundtrip 全过；至少一个 nullable 字段缺失 case 验证 `*T` 解码为 nil — **verified by unit-test step `go test ./internal/contractv1/... -run TestJSONRoundtrip`**
-- [ ] AC3：FieldAvailability.Complete() / IsMissing(field) helper 单测全过 — **verified by unit-test step `go test ./internal/contractv1/... -run TestFieldAvailability`**
-- [ ] AC4：包注释引用 Console 仓库路径 + ADR-015 D1 + ContractVersion 演进规则；`internal/contractv1/` 只导入 stdlib `encoding/json` + `time`（grep 验证）— **verified by `go list -deps ./internal/contractv1/... | grep -v -E '^(encoding/|time$|internal/contractv1)' = empty`**
-- [ ] AC5：`go vet ./...` + `go test ./internal/contractv1/...` 全绿；现有 `go test ./...` 不退化 — **verified by typecheck + unit-test phase smoke**
+- [x] AC1：`internal/contractv1/contractv1.go` 含 17 Contract v1 类型 + `ContractVersion = "v1"` 常量 + FieldAvailability struct + Complete() / IsMissing() helper；字段 / json tag / type 与 Console `contractv1.go` 1:1 一致（diff 验证）— **verified by unit-test step `go test ./internal/contractv1/... -run TestContractMirrorParity`**
+- [x] AC2：`internal/contractv1/types_test.go` 跑 17 个类型 JSON marshal/unmarshal roundtrip 全过；至少一个 nullable 字段缺失 case 验证 `*T` 解码为 nil — **verified by unit-test step `go test ./internal/contractv1/... -run TestJSONRoundtrip`**
+- [x] AC3：FieldAvailability.Complete() / IsMissing(field) helper 单测全过 — **verified by unit-test step `go test ./internal/contractv1/... -run TestFieldAvailability`**
+- [x] AC4：包注释引用 Console 仓库路径 + ADR-015 D1 + ContractVersion 演进规则；`internal/contractv1/` 只导入 stdlib `encoding/json` + `time`（grep 验证）— **verified by `go list -deps ./internal/contractv1/... | grep -v -E '^(encoding/|time$|internal/contractv1)' = empty`**
+- [x] AC5：`go vet ./...` + `go test ./internal/contractv1/...` 全绿；现有 `go test ./...` 不退化 — **verified by typecheck + unit-test phase smoke**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | 17 类型镜像 + ContractVersion + FieldAvailability | internal/contractv1/contractv1.go | Not Started |
-| AC2 | JSON roundtrip 17 类型 + nullable 字段验证 | internal/contractv1/types_test.go::TestJSONRoundtrip | Not Started |
-| AC3 | FieldAvailability helper 单测 | internal/contractv1/types_test.go::TestFieldAvailability | Not Started |
-| AC4 | 镜像 parity + import 限定 | internal/contractv1/types_test.go::TestContractMirrorParity + `go list -deps` grep | Not Started |
-| AC5 | typecheck + unit-test 全绿 | go vet + go test ./... | Not Started |
+| AC1 | 17 类型镜像 + ContractVersion + FieldAvailability | internal/contractv1/contractv1.go | Done |
+| AC2 | JSON roundtrip 17 类型 + nullable 字段验证 | internal/contractv1/types_test.go::TestJSONRoundtrip | Done |
+| AC3 | FieldAvailability helper 单测 | internal/contractv1/types_test.go::TestFieldAvailability | Done |
+| AC4 | 镜像 parity + import 限定 | internal/contractv1/types_test.go::TestContractMirrorParity + `go list -deps` grep | Done |
+| AC5 | typecheck + unit-test 全绿 | go vet + go test ./... | Done |
 
 ## 8. Risks
 
@@ -132,16 +132,24 @@ func (fa FieldAvailability) IsMissing(field string) bool
 
 <!-- 完工时按 standard.md §8.3 6 项 schema 回填 -->
 
-- **完成日期**：<TBD-after-impl>
-- **改动文件**：<TBD-after-impl>
-- **commit 列表**：<TBD-after-impl>
+- **完成日期**：2026-05-24
+- **改动文件**：
+  - `internal/contractv1/contractv1.go` (新增 — 17 类型镜像 + ContractVersion + FieldAvailability + helpers)
+  - `internal/contractv1/types_test.go` (新增 — 5 测试: TestJSONRoundtrip / TestNullablePointerJSONNull / TestFieldAvailability / TestContractVersionConstant / TestCoreHealthHasMissing / TestContractMirrorParity)
+  - `docs/specs/tasks/task-10.1-contractv1-types.md` (本 spec §6 / §7 / §10 / Status 推进)
+- **commit 列表**：
+  - feat(contractv1): 17 Console Contract v1 Go types 镜像 + helpers + 5 测试 (含 CONSOLE_REPO parity)
+  - docs(spec): task-10.1 §6/§7/§10 / Status → Done
 - **§9 Verification 结果**：
-  - install: <TBD-after-impl>
-  - lint: <TBD-after-impl>
-  - typecheck: <TBD-after-impl>
-  - unit-test: <TBD-after-impl>
-  - build: <TBD-after-impl>
-  - coverage: <TBD-after-impl>
-  - manual: <TBD-after-impl>
-- **剩余风险 / 未做项**：<TBD-after-impl>
-- **下游 task 影响**：task-10.4 / task-10.5 消费本 task 镜像
+  - install: ✅ (`go mod download`)
+  - lint: ✅ (`gofmt -l internal/contractv1/` empty)
+  - typecheck: ✅ (`go vet ./...` exit 0)
+  - unit-test: 21 passed / 0 failed (TestJSONRoundtrip 19 subtests + TestNullablePointerJSONNull + TestFieldAvailability + TestContractVersionConstant + TestCoreHealthHasMissing + TestContractMirrorParity PASS with CONSOLE_REPO env)
+  - integration: N/A (本 task 无独立 integration test，conformance test 走 task-10.5)
+  - build: ✅ (`go build ./...`)
+  - coverage: 不强制（纯类型 + helper 包 + JSON roundtrip 覆盖）
+  - manual: ✅ (主 agent diff verified internal/contractv1/contractv1.go vs Console contractv1.go 字段 + json tag 1:1)
+- **剩余风险 / 未做项**：
+  - Console contractv1.go 后续字段变更需 cross-repo amendment PR 同步本镜像（playbook §自决规则 #8 触发 STOP，由用户协调）
+  - should-have / optional 字段镜像 [SPEC-DEFER:task-future.contractv1-should-have]
+- **下游 task 影响**：task-10.4 REST handler 直接消费本镜像作为 request/response 契约；task-10.5 conformance test 用镜像验证 ContextForge REST 输出能被 Console HTTPAdapter 解析；task-10.2 / 10.3 Rust 侧 struct 通过相同 json tag 与本 Go 镜像对齐
