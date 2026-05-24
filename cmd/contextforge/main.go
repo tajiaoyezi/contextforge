@@ -37,8 +37,32 @@ func main() {
 	cli.SetSearchBackend(searchViaDaemon)
 	cli.SetServeBackend(doServe)
 	cli.SetMCPBackend(doMCP)
+	cli.SetIndexBackend(indexViaDaemon)
 	exporter.SetSearchBackend(searchViaDaemonWithDataDir)
 	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// indexViaDaemon is the production `cli.IndexBackend` (task-9.3): per-invocation
+// spawn of contextforge-core (same pattern as searchViaDaemon §2A 决策 B), wait
+// for Health=SERVING, then consume the gRPC Index stream via Daemon.Index. The
+// caller-provided onProgress callback is invoked per IndexProgress message
+// (CLI renders to stdout). Returns the first gRPC transport error or nil on
+// clean stream completion; indexer-internal errors arrive in-band via the
+// final IndexProgress.Error field (caller inspects).
+func indexViaDaemon(
+	ctx context.Context,
+	req *contextforgev1.IndexRequest,
+	onProgress func(*contextforgev1.IndexProgress),
+) error {
+	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: false})
+	if err != nil {
+		return fmt.Errorf("start core daemon: %w", err)
+	}
+	defer d.Stop()
+	if err := waitDaemonHealthy(ctx, d); err != nil {
+		return err
+	}
+	return d.Index(ctx, req, onProgress)
 }
 
 // searchViaDaemon is the production `cli.SearchBackend`: spawn a transient
