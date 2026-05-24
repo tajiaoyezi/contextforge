@@ -1,0 +1,96 @@
+# task-10.6 (Phase 10) — ContextForge ↔ ContextForge-Console docker compose.
+#
+# Layout (ADR-015 §D6 / Console PRD §Constraints "发布"):
+#   * postgres        — Console BFF metadata (Console PRD requires Postgres)
+#   * redis           — Console BFF task / event cache
+#   * contextforge    — ContextForge daemon serving Contract v1 REST on 48181
+#   * console-api     — Console BFF (Gin) → calls contextforge:48181 via HTTPAdapter
+#   * console-web     — Console UI (Next.js)
+#
+# v0.3 trade-off: the console-api / console-web services are gated on
+# the `CONSOLE_IMAGE` env (e.g. CONSOLE_IMAGE=ghcr.io/.../console-api:v1.0.0).
+# Without it, only contextforge + postgres + redis come up — enough to
+# exercise the Contract v1 REST surface via `curl` (scripts/console_smoke.sh
+# default mode).
+#
+# Bring up minimum (ContextForge only):
+#   docker compose -f deploy/console-stack.yml up -d contextforge
+#
+# Bring up full stack:
+#   CONSOLE_API_IMAGE=... CONSOLE_WEB_IMAGE=... \
+#     docker compose -f deploy/console-stack.yml --profile console up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["console"]
+    environment:
+      POSTGRES_USER: console
+      POSTGRES_PASSWORD: console
+      POSTGRES_DB: console
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U console -d console"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["console"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  contextforge:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: contextforge-daemon:v0.3.0
+    ports:
+      - "48181:48181"
+    environment:
+      CONTEXTFORGE_DATA_DIR: /data
+    volumes:
+      - contextforge-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:48181/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  console-api:
+    image: ${CONSOLE_API_IMAGE:-contextforge-console-api:v1.0.0}
+    profiles: ["console"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      contextforge: { condition: service_healthy }
+    environment:
+      CONSOLE_API_DB_URL: postgres://console:console@postgres:5432/console?sslmode=disable
+      CONSOLE_API_REDIS_URL: redis://redis:6379/0
+      CONSOLE_API_CORE_ADAPTER: http
+      CONSOLE_API_CORE_URL: http://contextforge:48181
+      CONSOLE_API_CORE_AUTH_MODE: trusted-network
+      CONSOLE_API_BIND: 0.0.0.0:3000
+    ports:
+      - "3001:3000"
+
+  console-web:
+    image: ${CONSOLE_WEB_IMAGE:-contextforge-console-web:v1.0.0}
+    profiles: ["console"]
+    depends_on:
+      console-api: { condition: service_started }
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+
+volumes:
+  contextforge-data:

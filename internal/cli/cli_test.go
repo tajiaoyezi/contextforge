@@ -63,9 +63,10 @@ func TestTask14_AC1_InitGeneratesConfigIdempotent(t *testing.T) {
 }
 
 // TEST-1.4.4
-// SCEN-1.4.4 / AC4: 8 子命令注册齐全；未实现子命令返回非 0 + stderr "not implemented"，绝不 panic。
+// SCEN-1.4.4 / AC4: 9 子命令注册齐全；未实现子命令返回非 0 + stderr "not implemented"，绝不 panic。
+// task-10.6 (Phase 10) 新增 "console-api-serve" 子命令 → 列表从 8 扩到 9。
 func TestTask14_AC4_SubcommandsRegisteredUnimplementedNoPanic(t *testing.T) {
-	want := []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export"}
+	want := []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export", "console-api-serve"}
 	got := SubcommandNames()
 	if len(got) != len(want) {
 		t.Fatalf("SubcommandNames()=%v (len %d), want %v (len %d)", got, len(got), want, len(want))

@@ -20,7 +20,7 @@ import (
 // subcommands is the registered subcommand set in stable order (AC4). Only
 // "init" is implemented in task-1.4; the rest are Phase 2+/6/7/8 and return an
 // explicit not-implemented message (task-1.4 §3 Out-of-Scope).
-var subcommands = []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export"}
+var subcommands = []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export", "console-api-serve"}
 
 // SubcommandNames returns a copy of the registered subcommand names (AC4).
 func SubcommandNames() []string {
@@ -107,6 +107,14 @@ func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		// Calls internal/importer/<src> + writes canonical .md to
 		// <data-dir>/imports/<src>/ (D1 two-step flow per ADR-013).
 		return runImport(rest, stdout, stderr)
+
+	case "console-api-serve":
+		// task-10.4 / 10.6 (Phase 10 console-contract-v1): serve
+		// internal/consoleapi 9 Console Contract v1 REST endpoints on a
+		// loopback HTTP port. Backed by the v0.3 in-memory MemStore
+		// (cross-process Rust↔Go SQLite sharing is task-future per
+		// task-10.4 §10 trade-off #1).
+		return runConsoleAPIServe(rest, stdout, stderr)
 
 	default:
 		if known(sub) {
