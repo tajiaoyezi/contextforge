@@ -11,16 +11,46 @@ import (
 // handleHealth — GET /v1/health.
 // Returns CoreHealth with contract_version "v1" (Console HTTPAdapter expects
 // this constant in a must-have field).
-func handleHealth(_ Deps) http.HandlerFunc {
+//
+// task-11.2 (ADR-016 §D4): BackendKind drives degraded reporting —
+//   - "grpc" / "" (default): 200 + status="healthy"
+//   - "inmem-fallback": 200 + status="degraded" + ErrorReason mentions inmem fallback
+//   - "degraded": 503 + status="degraded" + MissingMustHaveFields=[{Object:"core",Missing:["data_plane"]}]
+func handleHealth(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		now := time.Now().UTC()
-		writeJSON(w, http.StatusOK, contractv1.CoreHealth{
-			Status:                "healthy",
-			ContractVersion:       contractv1.ContractVersion,
-			LastConnectedAt:       &now,
-			ErrorReason:           nil,
-			MissingMustHaveFields: nil,
-		})
+		switch deps.BackendKind {
+		case "inmem-fallback":
+			reason := "console-api: in-memory fallback store active (data plane bypassed; ADR-016 §D4)"
+			writeJSON(w, http.StatusOK, contractv1.CoreHealth{
+				Status:          "degraded",
+				ContractVersion: contractv1.ContractVersion,
+				LastConnectedAt: nil,
+				ErrorReason:     &reason,
+				MissingMustHaveFields: []contractv1.FieldAvailability{
+					{Object: "core", Missing: []string{"data_plane_persistence"}},
+				},
+			})
+		case "degraded":
+			reason := "console-api: data plane gRPC unreachable; set CONSOLE_API_FALLBACK_INMEM=1 OR start contextforge-core daemon (ADR-016 §D4)"
+			writeJSON(w, http.StatusServiceUnavailable, contractv1.CoreHealth{
+				Status:          "degraded",
+				ContractVersion: contractv1.ContractVersion,
+				LastConnectedAt: nil,
+				ErrorReason:     &reason,
+				MissingMustHaveFields: []contractv1.FieldAvailability{
+					{Object: "core", Missing: []string{"data_plane"}},
+				},
+			})
+		default: // "grpc" or unset
+			writeJSON(w, http.StatusOK, contractv1.CoreHealth{
+				Status:                "healthy",
+				ContractVersion:       contractv1.ContractVersion,
+				LastConnectedAt:       &now,
+				ErrorReason:           nil,
+				MissingMustHaveFields: nil,
+			})
+		}
 	}
 }
 

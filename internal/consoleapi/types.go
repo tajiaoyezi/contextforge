@@ -19,11 +19,16 @@ import (
 )
 
 // Sentinel errors used by handlers and clients for the Console HTTPAdapter
-// error-mapping convention (404 → ErrNotFound / 409 → ErrConflict).
+// error-mapping convention (404 → ErrNotFound / 409 → ErrConflict / 503 →
+// ErrDataPlaneUnavailable).
+//
+// task-11.2 (ADR-016 §D3 + §D4): ErrDataPlaneUnavailable lights up the
+// degraded mode UI (gRPC unreachable + CONSOLE_API_FALLBACK_INMEM unset).
 var (
-	ErrNotFound       = errors.New("not found")
-	ErrJobTerminal    = errors.New("job already terminal")
-	ErrInvalidRequest = errors.New("invalid request")
+	ErrNotFound             = errors.New("not found")
+	ErrJobTerminal          = errors.New("job already terminal")
+	ErrInvalidRequest       = errors.New("invalid request")
+	ErrDataPlaneUnavailable = errors.New("data plane unavailable")
 )
 
 // WorkspaceClient backs the /v1/workspaces[*] handlers.
@@ -53,12 +58,17 @@ type EventsClient interface {
 // Deps bundles all four backends + the bearer auth token for NewRouter.
 // AuthToken == "" means "trusted-network" (no Authorization header required —
 // aligns with Console CONSOLE_API_CORE_AUTH_MODE=trusted-network default).
+//
+// task-11.2 (ADR-016 §D4): BackendKind tags how /v1/health reports degraded
+// state — "grpc" (default, healthy), "inmem-fallback" (degraded, MemStore
+// fallback active), or "degraded" (data plane unreachable, 503).
 type Deps struct {
-	Workspace WorkspaceClient
-	Job       JobClient
-	Search    SearchClient
-	Events    EventsClient
-	AuthToken string
+	Workspace   WorkspaceClient
+	Job         JobClient
+	Search      SearchClient
+	Events      EventsClient
+	AuthToken   string
+	BackendKind string
 }
 
 // SearchResponse is the Console HTTPAdapter-expected nested JSON envelope

@@ -61,6 +61,10 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 
 // mapStorageError translates a backend error into a writeError + return so
 // handlers stay tiny.
+//
+// task-11.2 (ADR-016 §D4): ErrDataPlaneUnavailable → 503 Service Unavailable
+// so Console UI can render the "Core unreachable" degraded mode (REST adapter
+// treats 503 as transient + retries; Mock Adapter swaps in if configured).
 func mapStorageError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -69,6 +73,8 @@ func mapStorageError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "CONFLICT", err.Error())
 	case errors.Is(err, ErrInvalidRequest):
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+	case errors.Is(err, ErrDataPlaneUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}
