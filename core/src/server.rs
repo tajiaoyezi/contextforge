@@ -20,8 +20,8 @@ use tonic::{Request, Response, Status};
 use crate::chunker::Provenance as RetrieverProvenance;
 use crate::pb::context_service_server::{ContextService, ContextServiceServer};
 use crate::pb::{
-    HealthRequest, HealthResponse, Provenance as PbProvenance, RetrievalResult, SearchRequest,
-    SearchResponse,
+    HealthRequest, HealthResponse, IndexProgress, IndexRequest, Provenance as PbProvenance,
+    RetrievalResult, SearchRequest, SearchResponse,
 };
 use crate::retriever::{
     is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
@@ -70,8 +70,30 @@ impl std::fmt::Display for AddrError {
 }
 impl std::error::Error for AddrError {}
 
+/// task-9.1 §3 OOS: stream 占位类型 — `Index` 真实现由 task-9.2 替换为
+/// `ReceiverStream`-based stream（spec task-9.2 §5.3）。task-9.1 用
+/// `Pin<Box<dyn Stream + Send>>` 兼容 trait associated-type 约束而不引入新
+/// dep（R7 严格通道：tokio-stream 留 task-9.2 §5.2 NEEDS-DEP）。
+pub type IndexProgressStream =
+    std::pin::Pin<Box<dyn tonic::codegen::tokio_stream::Stream<Item = Result<IndexProgress, Status>> + Send + 'static>>;
+
 #[tonic::async_trait]
 impl ContextService for CoreService {
+    type IndexStream = IndexProgressStream;
+
+    /// task-9.1 §3 OOS 占位：Rust `CoreService::index` 业务实现由 task-9.2 替换
+    /// (`IndexSession::index_path_with_progress` + per-file IndexProgress emit)。
+    /// 本 task 仅完成 proto 契约 + codegen 骨架，保证 trait 完整以编译；CLI
+    /// 实测调用会返 `Status::Unimplemented` 直到 task-9.2 落地。
+    async fn index(
+        &self,
+        _request: Request<IndexRequest>,
+    ) -> Result<Response<Self::IndexStream>, Status> {
+        Err(Status::unimplemented(
+            "contextforge-core::Index 占位 — task-9.2 (rust-grpc-index) 接入 IndexSession",
+        ))
+    }
+
     async fn health(
         &self,
         _req: Request<HealthRequest>,

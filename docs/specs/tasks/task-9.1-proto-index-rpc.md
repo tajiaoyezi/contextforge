@@ -1,8 +1,8 @@
 # Task `9.1`: `proto-index-rpc — service.proto add-only rpc Index stream + IndexRequest / IndexProgress messages`
 
-> Status=Ready；主 agent §2A 自审通过（ADR-012 主 agent 自治 + 用户 goal §自决规则 6）。本 task 是 Phase 9 cli-pipeline 首个 task — 解锁 9.2/9.3/9.4 实施依赖。
+> Status=Done；主 agent §2A 自审通过 + §6 AC 5/5 + §9 verify 全绿（ADR-012 + goal §自决规则 6）。本 task 是 Phase 9 cli-pipeline 首个 task — 解锁 9.2/9.3/9.4 实施依赖。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -176,11 +176,11 @@ pub trait ContextService: Send + Sync + 'static {
 
 <!-- 渲染规则（**模式 A：完整给值 + PRD 引用标注**）：完整写出 AC；`- [ ] **AC<N>** (PRD §<ref>): <内容>`；PRD 未写标 `(本 task 新增)`；review 改内容不删注释；严禁混合写法 -->
 
-- [ ] **AC1** (ADR-013 §Decision #1 / PRD §Decisions Log D3 协议接口): `proto/contextforge/v1/service.proto` `service ContextService` 内含 `rpc Index(IndexRequest) returns (stream IndexProgress);` 字面（grep 精确命中）
-- [ ] **AC2** (本 task 新增 / ADR-013 §Decision #1): 新建 `proto/contextforge/v1/index.proto`，含 `IndexRequest`（3 字段：source_path / data_dir / collection_id）+ `IndexProgress`（7 字段：files_processed / files_skipped_denied / files_skipped_redaction / chunks_written / current_file / done / error）；schema_version 字面 `0.1` 不动
-- [ ] **AC3** (PRD §Technical Risks R1 / task-1.1 contract freeze): `proto/contextforge/v1/index.pb.go` 已生成并 commit；`service.pb.go` / `service_grpc.pb.go` 更新含 `ContextServiceClient.Index` + `ContextServiceServer.Index`；`go vet ./...` 全绿；`go test ./proto/...` 全绿
-- [ ] **AC4** (PRD §Technical Risks R1): Rust 绑定 regen（`cargo check --workspace` 触发 tonic-build）；`cargo check --workspace` 全绿；`cargo test --workspace --no-run` 全绿（编译阶段）
-- [ ] **AC5** (PRD §Decisions Log D1 R1 add-only freeze): 现有 Search RPC / Health RPC 二进制兼容 — 不修改 `internal/cli/search.go` / `internal/daemon/search.go` / `core/src/server.rs::CoreService::search` 任何代码；`go test ./internal/cli/... ./internal/daemon/...` 全绿（baseline 不回归）；`cargo test --workspace` 全绿
+- [x] **AC1** (ADR-013 §Decision #1 / PRD §Decisions Log D3 协议接口): `proto/contextforge/v1/service.proto` `service ContextService` 内含 `rpc Index(IndexRequest) returns (stream IndexProgress);` 字面（grep 精确命中）
+- [x] **AC2** (本 task 新增 / ADR-013 §Decision #1): 新建 `proto/contextforge/v1/index.proto`，含 `IndexRequest`（3 字段：source_path / data_dir / collection_id）+ `IndexProgress`（7 字段：files_processed / files_skipped_denied / files_skipped_redaction / chunks_written / current_file / done / error）；schema_version 字面 `0.1` 不动
+- [x] **AC3** (PRD §Technical Risks R1 / task-1.1 contract freeze): `proto/contextforge/v1/index.pb.go` 已生成并 commit；`service.pb.go` / `service_grpc.pb.go` 更新含 `ContextServiceClient.Index` + `ContextServiceServer.Index`；`go vet ./...` 全绿；`go test ./proto/...` 全绿
+- [x] **AC4** (PRD §Technical Risks R1): Rust 绑定 regen（`cargo check --workspace` 触发 tonic-build）；`cargo check --workspace` 全绿；`cargo test --workspace --no-run` 全绿（编译阶段）
+- [x] **AC5** (PRD §Decisions Log D1 R1 add-only freeze): 现有 Search RPC / Health RPC 二进制兼容 — 不修改 `internal/cli/search.go` / `internal/daemon/search.go` / `core/src/server.rs::CoreService::search` 任何代码；`go test ./internal/cli/... ./internal/daemon/...` 全绿（baseline 不回归）；`cargo test --workspace` 全绿
 
 ## 7. SDD / BDD / TDD Traceability
 
@@ -207,4 +207,33 @@ pub trait ContextService: Send + Sync + 'static {
 
 ## 10. Completion Notes
 
-> 待 task 完成后回填。
+### 实施摘要
+
+- 新增 `proto/contextforge/v1/index.proto`（IndexRequest 3 字段 + IndexProgress 7 字段，按 §5.3 定义）
+- 修改 `proto/contextforge/v1/service.proto`：append `rpc Index(IndexRequest) returns (stream IndexProgress)` + `import "contextforge/v1/index.proto"`
+- `buf generate proto` 产出 `proto/contextforge/v1/index.pb.go`（新）+ 更新 `service.pb.go` / `service_grpc.pb.go`（按 §5.3 codegen 接口）
+- Rust 侧 `cargo check --workspace` 触发 `core/build.rs` tonic-build regen — `core/src/server.rs::CoreService impl ContextService` 加最小 `index` 占位返 `Status::unimplemented` + `IndexStream` associated type alias，task-9.2 替换为真实现
+
+### 6 项 trade-off 记录
+
+1. **protoc-gen-go / protoc-gen-go-grpc 版本 sticky**：本地初次 `buf generate` 用 `protoc-gen-go@latest` (v1.36.11) 导致全部 .pb.go regen 含 `protogen:"open.v1"` state 布局变化。按 spec §8 风险次"sticky to current protoc-gen-go version"，降级 `go install protoc-gen-go@v1.34.2 + protoc-gen-go-grpc@v1.5.1`（匹配仓库现存 generated header version 注释）后 regen — 最终只 service.pb.go / service_grpc.pb.go / 新 index.pb.go 改动，其它 .pb.go 字节不变（OOS 保住"不动 message 字段"）
+2. **Rust trait method 占位策略**：spec §3 OOS 写"codegen 默认 trait method 即 unimplemented"，但 Rust tonic 实际**不像 protoc-gen-go-grpc 提供 `mustEmbedUnimplementedXXX` 默认实现** — 必须显式实现 trait method 否则 cargo check E0046。落实方案：在 `core/src/server.rs::impl ContextService for CoreService` 加最小 `index` method 占位返 `Status::unimplemented("task-9.2 接入")` + `type IndexStream = Pin<Box<dyn Stream<...> + Send + 'static>>` alias；保守优先：不引 tokio-stream 新 dep（R7 留 task-9.2 §5.2 NEEDS-DEP 决策），用 `Pin<Box<dyn Stream>>` 兼容 trait 约束
+3. **`pub type IndexProgressStream` 命名**：避免与 `tonic::Streaming<IndexProgress>`（client-side wrap）冲突，命名独立为 `IndexProgressStream`；task-9.2 替换为 `ReceiverStream<...>` 时直接覆盖 type alias
+4. **buf install via winget**：本地无 buf/protoc/protoc-gen-go 工具链 → `winget install bufbuild.buf` (v1.69.0) + `go install protoc-gen-go@v1.34.2 + protoc-gen-go-grpc@v1.5.1`。无需 protoc 系统二进制（buf 自带 protoc-builtin）
+5. **`docs/playbooks/` untracked 留作私人 playbook 不入 PR**：根目录有 `docs/playbooks/autonomous-v0.{1,2}-*.md` 文件 untracked，与本 task scope 无关，不 stage
+6. **AC4 验证范围**：`cargo test --workspace --no-run`（编译阶段，spec §6 AC4 严格要求）+ `cargo test --workspace`（实际跑全套，5 + 11 + ... unit + integration 全 0 失败）— 双重保证 Rust 绑定 regen 后 baseline 不回归
+
+### 验证证据
+
+```
+$ grep -c "rpc Index(IndexRequest) returns (stream IndexProgress)" proto/contextforge/v1/service.proto
+1
+$ grep -c "files_processed\|files_skipped_denied\|files_skipped_redaction\|chunks_written\|current_file\|done\|error" proto/contextforge/v1/index.proto
+9   # 7 字段名 + 2 'error' 字符串（field + comment）
+$ go vet ./...            # exit 0
+$ go test ./proto/...     # ok no test files; exit 0
+$ go test ./...           # all 16 packages ok; exit 0
+$ cargo check --workspace # Finished `dev` profile; exit 0
+$ cargo test --workspace --no-run  # 8 executables compile; exit 0
+$ cargo test --workspace  # 5 + 11 + 其它 unit/integration 全过; exit 0
+```
