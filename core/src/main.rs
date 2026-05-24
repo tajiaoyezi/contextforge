@@ -17,6 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let addr = server::resolve_listen_addr(args.get(1).map(String::as_str))?;
     let data_dir = server::resolve_data_dir(args.get(2).map(String::as_str));
-    let svc = server::CoreService::new(data_dir);
-    server::serve_with_service(addr, svc).await
+    let svc = server::CoreService::new(data_dir.clone());
+    // task-11.1 §6 AC5 (ADR-016 §D2): register Phase 9 ContextService +
+    // Phase 11 4 Console data plane services on one tonic Server.
+    server::serve_full(addr, svc, &data_dir).await
 }
