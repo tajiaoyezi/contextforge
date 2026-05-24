@@ -6,28 +6,81 @@
 //! is built from the same hit set with `retrieved_chunks` populated
 //! (score + source_file + UTF-8-safe content snippet ≤ 200 chars).
 
-use std::sync::Arc;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
 
 use tonic::{Request, Response, Status};
 
 use crate::pb_console::search_service_server::SearchService;
 use crate::pb_console::{
-    Citation as PbCitation, GetSourceChunkRequest, RetrievalTrace as PbRetrievalTrace,
-    SearchRequest as PbSearchRequest, SearchResponse, SearchResultItem,
-    SourceChunk as PbSourceChunk,
+    Citation as PbCitation, GetSearchTraceRequest, GetSourceChunkRequest,
+    RetrievalTrace as PbRetrievalTrace, SearchRequest as PbSearchRequest, SearchResponse,
+    SearchResultItem, SourceChunk as PbSourceChunk,
 };
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
 use crate::workspace::WorkspaceStore;
 
 use super::DataPlaneStores;
 
+/// task-12.3 (ADR-017 D1 Wave 2): in-memory LRU cap for trace_store. Picked
+/// to bound memory under sustained Console UI debug usage; daemon restart
+/// loses entries [SPEC-DEFER:task-future.search-trace-sqlite-persistence].
+const TRACE_STORE_CAP: usize = 1000;
+
+/// LRU-FIFO trace store: HashMap for O(1) lookup + VecDeque for insertion-order
+/// eviction. Newer inserts of an existing key refresh recency by re-pushing.
+struct TraceStore {
+    map: HashMap<String, PbRetrievalTrace>,
+    order: VecDeque<String>,
+    cap: usize,
+}
+
+impl TraceStore {
+    fn new(cap: usize) -> Self {
+        Self {
+            map: HashMap::with_capacity(cap),
+            order: VecDeque::with_capacity(cap),
+            cap,
+        }
+    }
+
+    fn put(&mut self, key: String, value: PbRetrievalTrace) {
+        if self.map.contains_key(&key) {
+            // Refresh recency: remove old position, push to back.
+            if let Some(pos) = self.order.iter().position(|k| k == &key) {
+                self.order.remove(pos);
+            }
+        } else if self.map.len() >= self.cap {
+            // Evict oldest.
+            if let Some(oldest) = self.order.pop_front() {
+                self.map.remove(&oldest);
+            }
+        }
+        self.order.push_back(key.clone());
+        self.map.insert(key, value);
+    }
+
+    fn get(&self, key: &str) -> Option<PbRetrievalTrace> {
+        self.map.get(key).cloned()
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+}
+
 pub struct SearchServer {
     stores: Arc<DataPlaneStores>,
+    trace_store: Arc<Mutex<TraceStore>>,
 }
 
 impl SearchServer {
     pub fn new(stores: Arc<DataPlaneStores>) -> Self {
-        Self { stores }
+        Self {
+            stores,
+            trace_store: Arc::new(Mutex::new(TraceStore::new(TRACE_STORE_CAP))),
+        }
     }
 }
 
@@ -103,12 +156,17 @@ impl SearchService for SearchServer {
             })
             .collect();
 
+        // task-12.3 (ADR-017 D1 Wave 2): generate a unique query_id once per
+        // Query and stamp it on every result + trace, then persist the trace
+        // into the in-memory store keyed by that query_id (Console UI can
+        // later GET /v1/search/{query_id}/trace).
+        let query_id = format!("qry-{}", trace_seq());
         let results: Vec<SearchResultItem> = hits
             .iter()
             .enumerate()
             .map(|(idx, h)| SearchResultItem {
                 result_id: format!("res-{}", idx),
-                query_id: String::new(),
+                query_id: query_id.clone(),
                 workspace_id: req.workspace_id.clone(),
                 source_file_path: h.file_path.clone(),
                 source_file_type: h.source_type.clone(),
@@ -145,6 +203,11 @@ impl SearchService for SearchServer {
             final_context_count,
             retrieved_chunks: chunks,
         };
+
+        // task-12.3: persist trace by query_id for later GetSearchTrace lookup.
+        if let Ok(mut store) = self.trace_store.lock() {
+            store.put(query_id, trace.clone());
+        }
 
         Ok(Response::new(SearchResponse {
             results,
@@ -218,6 +281,28 @@ impl SearchService for SearchServer {
             req.chunk_id
         )))
     }
+
+    async fn get_search_trace(
+        &self,
+        req: Request<GetSearchTraceRequest>,
+    ) -> Result<Response<PbRetrievalTrace>, Status> {
+        let req = req.into_inner();
+        if req.query_id.is_empty() {
+            return Err(Status::invalid_argument("query_id must not be empty"));
+        }
+        let trace = self
+            .trace_store
+            .lock()
+            .map_err(|_| Status::internal("trace_store poisoned"))?
+            .get(&req.query_id);
+        match trace {
+            Some(t) => Ok(Response::new(t)),
+            None => Err(Status::not_found(format!(
+                "trace not found: {}",
+                req.query_id
+            ))),
+        }
+    }
 }
 
 fn empty_response(query: &str) -> SearchResponse {
@@ -271,6 +356,93 @@ mod tests {
         let ws = Arc::new(SqliteWorkspaceStore::open(&dir).unwrap());
         let js = Arc::new(SqliteJobStore::open(&dir).unwrap());
         SearchServer::new(DataPlaneStores::new(ws, js))
+    }
+
+    #[tokio::test]
+    async fn test_get_search_trace_empty_query_id_returns_invalid_argument() {
+        let server = fresh_server();
+        let err = server
+            .get_search_trace(Request::new(GetSearchTraceRequest {
+                query_id: "".into(),
+            }))
+            .await
+            .expect_err("expect invalid_argument");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_search_trace_unknown_returns_not_found() {
+        let server = fresh_server();
+        let err = server
+            .get_search_trace(Request::new(GetSearchTraceRequest {
+                query_id: "qry-does-not-exist".into(),
+            }))
+            .await
+            .expect_err("expect not_found");
+        assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_query_persists_trace_by_query_id_and_get_returns_it() {
+        // Query() with an unindexed workspace falls through to empty_response()
+        // which does NOT touch trace_store; to exercise persistence we put
+        // directly via the helper, then verify get_search_trace.
+        let server = fresh_server();
+        let synthetic = PbRetrievalTrace {
+            trace_id: "trace-test".into(),
+            query: "hello".into(),
+            expanded_query: None,
+            candidate_generation_steps: vec!["bm25".into()],
+            lexical_candidates_count: 0,
+            vector_candidates_count: 0,
+            rerank_steps: vec![],
+            scope_filter_result: "no-op".into(),
+            final_context_count: 0,
+            retrieved_chunks: vec![],
+        };
+        server
+            .trace_store
+            .lock()
+            .unwrap()
+            .put("qry-test-1".into(), synthetic.clone());
+        let resp = server
+            .get_search_trace(Request::new(GetSearchTraceRequest {
+                query_id: "qry-test-1".into(),
+            }))
+            .await
+            .expect("get_search_trace ok");
+        let got = resp.into_inner();
+        assert_eq!(got.trace_id, "trace-test");
+        assert_eq!(got.query, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_trace_store_eviction_at_capacity() {
+        let mut store = TraceStore::new(3);
+        for i in 0..5 {
+            store.put(
+                format!("qry-{i}"),
+                PbRetrievalTrace {
+                    trace_id: format!("trace-{i}"),
+                    query: format!("q{i}"),
+                    expanded_query: None,
+                    candidate_generation_steps: vec![],
+                    lexical_candidates_count: 0,
+                    vector_candidates_count: 0,
+                    rerank_steps: vec![],
+                    scope_filter_result: "".into(),
+                    final_context_count: 0,
+                    retrieved_chunks: vec![],
+                },
+            );
+        }
+        assert_eq!(store.len(), 3);
+        // Oldest 2 (qry-0, qry-1) evicted; newest 3 (qry-2, 3, 4) retained.
+        assert!(store.get("qry-0").is_none());
+        assert!(store.get("qry-1").is_none());
+        assert!(store.get("qry-2").is_some());
+        assert!(store.get("qry-3").is_some());
+        assert!(store.get("qry-4").is_some());
     }
 
     #[tokio::test]

@@ -56,12 +56,15 @@ type JobClient interface {
 	ListActive() ([]contractv1.IndexJob, error)
 }
 
-// SearchClient backs POST /v1/search + GET /v1/source-chunks/{id} (task-12.2).
+// SearchClient backs POST /v1/search + GET /v1/source-chunks/{id} (task-12.2)
+// + GET /v1/search/{query_id}/trace (task-12.3).
 type SearchClient interface {
 	Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error)
-	// task-12.2 (ADR-017 D1 Wave 2): chunk-by-id lookup. Returns ErrNotFound
-	// when the chunk does not exist.
 	GetSourceChunk(chunkID string) (contractv1.SourceChunk, error)
+	// task-12.3 (ADR-017 D1 Wave 2): trace-by-query_id lookup. Returns
+	// ErrNotFound when the query has not been executed (or was evicted from
+	// the in-memory LRU; daemon restart wipes the cache).
+	GetSearchTrace(queryID string) (contractv1.RetrievalTrace, error)
 }
 
 // EventsClient backs GET /v1/observability/events.

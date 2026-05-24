@@ -261,6 +261,14 @@ func (s *MemStore) GetSourceChunk(_ string) (contractv1.SourceChunk, error) {
 	return contractv1.SourceChunk{}, ErrDataPlaneUnavailable
 }
 
+// GetSearchTrace — task-12.3 fallback path. Same rationale as GetSourceChunk.
+func (s *MemStore) GetSearchTrace(_ string) (contractv1.RetrievalTrace, error) {
+	if s.SearchBackend != nil {
+		return s.SearchBackend.GetSearchTrace("")
+	}
+	return contractv1.RetrievalTrace{}, ErrDataPlaneUnavailable
+}
+
 func (s *MemStore) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	if s.SearchBackend != nil {
 		return s.SearchBackend.Search(req)
