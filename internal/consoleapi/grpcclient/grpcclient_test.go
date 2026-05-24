@@ -308,6 +308,138 @@ func TestPingSucceedsAgainstFakeServer(t *testing.T) {
 	}
 }
 
+// =====================================================================
+// task-12.1 (ADR-017 D1 Wave 1) — UpdateConfig + ListActive wire coverage.
+// =====================================================================
+
+// fakeWorkspaceServer extension: capture UpdateConfig calls + return canned.
+type fakeWorkspaceUpdateServer struct {
+	fakeWorkspaceServer
+	gotID        string
+	gotAllowlist []string
+	gotDenylist  []string
+	updateErr    error
+}
+
+func (f *fakeWorkspaceUpdateServer) UpdateConfig(_ context.Context, req *pb.UpdateWorkspaceConfigRequest) (*pb.Workspace, error) {
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	f.gotID = req.WorkspaceId
+	f.gotAllowlist = req.Allowlist
+	f.gotDenylist = req.Denylist
+	return &pb.Workspace{
+		WorkspaceId:   req.WorkspaceId,
+		Name:          "updated",
+		RootPath:      "/tmp/x",
+		Status:        "ready",
+		Allowlist:     req.Allowlist,
+		Denylist:      req.Denylist,
+		CreatedAtUnix: 1700000000,
+		UpdatedAtUnix: 1700000100,
+	}, nil
+}
+
+func TestGrpcClient_WorkspaceUpdate_WiresFields(t *testing.T) {
+	fake := &fakeWorkspaceUpdateServer{}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterWorkspaceServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, err := New(ctx, addr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+	ws, err := cli.Workspace().Update("ws-x", []string{"src/**"}, []string{"node_modules/**"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if ws.WorkspaceID != "ws-x" {
+		t.Errorf("WorkspaceID drift: %s", ws.WorkspaceID)
+	}
+	if fake.gotID != "ws-x" || len(fake.gotAllowlist) != 1 || fake.gotAllowlist[0] != "src/**" {
+		t.Errorf("server-side request drift: id=%s allow=%v deny=%v", fake.gotID, fake.gotAllowlist, fake.gotDenylist)
+	}
+}
+
+func TestGrpcClient_WorkspaceUpdate_Maps_NotFound(t *testing.T) {
+	fake := &fakeWorkspaceUpdateServer{updateErr: status.Error(codes.NotFound, "missing")}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterWorkspaceServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	_, err := cli.Workspace().Update("missing", nil, nil)
+	if !errors.Is(err, consoleapi.ErrNotFound) {
+		t.Errorf("expected ErrNotFound; got %v", err)
+	}
+}
+
+// fakeJobListServer captures ListJobs requests + returns canned IndexJobs.
+type fakeJobListServer struct {
+	pb.UnimplementedJobServiceServer
+	gotFilter []string
+	listErr   error
+}
+
+func (f *fakeJobListServer) List(_ context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	f.gotFilter = append([]string{}, req.StatusFilter...)
+	return &pb.ListJobsResponse{
+		Items: []*pb.IndexJob{
+			{JobId: "job-a", WorkspaceId: "ws", Status: "queued"},
+			{JobId: "job-b", WorkspaceId: "ws", Status: "running"},
+		},
+	}, nil
+}
+
+func TestGrpcClient_JobListActive_FiltersAndMaps(t *testing.T) {
+	fake := &fakeJobListServer{}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterJobServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	jobs, err := cli.Job().ListActive()
+	if err != nil {
+		t.Fatalf("ListActive: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs; got %d", len(jobs))
+	}
+	wantFilter := map[string]bool{"queued": true, "running": true}
+	if len(fake.gotFilter) != 2 || !wantFilter[fake.gotFilter[0]] || !wantFilter[fake.gotFilter[1]] {
+		t.Errorf("expected filter ['queued','running']; got %v", fake.gotFilter)
+	}
+}
+
+func TestGrpcClient_JobListActive_Maps_Unavailable(t *testing.T) {
+	fake := &fakeJobListServer{listErr: status.Error(codes.Unavailable, "down")}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterJobServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	_, err := cli.Job().ListActive()
+	if !errors.Is(err, consoleapi.ErrDataPlaneUnavailable) {
+		t.Errorf("expected ErrDataPlaneUnavailable; got %v", err)
+	}
+}
+
 // Guard: unused imports (net/http) — kept for future fallback-inmem HTTP
 // tests in cli pkg.
 var _ = http.StatusServiceUnavailable

@@ -29,6 +29,11 @@ var (
 	ErrJobTerminal          = errors.New("job already terminal")
 	ErrInvalidRequest       = errors.New("invalid request")
 	ErrDataPlaneUnavailable = errors.New("data plane unavailable")
+	// task-12.1 (ADR-017 D2): X-Confirm: yes header OR ?confirm=true query
+	// required for destructive endpoints (PATCH workspace/config + memory
+	// deprecate/soft-delete in phase-13). Server-side bottom defense: if
+	// Console BFF forgets to inject, ops curl gets 412 not silent succeed.
+	ErrPreconditionRequired = errors.New("X-Confirm: yes header or ?confirm=true query required")
 )
 
 // WorkspaceClient backs the /v1/workspaces[*] handlers.
@@ -36,6 +41,9 @@ type WorkspaceClient interface {
 	Create(req contractv1.WorkspaceCreate) (contractv1.Workspace, error)
 	List() ([]contractv1.Workspace, error)
 	Get(id string) (*contractv1.Workspace, error) // nil if not found
+	// task-12.1: Update overwrites allowlist + denylist, bumps updated_at.
+	// Returns ErrNotFound when workspace missing.
+	Update(workspaceID string, allowlist, denylist []string) (contractv1.Workspace, error)
 }
 
 // JobClient backs the /v1/index-jobs[*] handlers.
@@ -43,6 +51,9 @@ type JobClient interface {
 	Enqueue(workspaceID, triggerSource string) (contractv1.IndexJob, error)
 	Get(jobID string) (*contractv1.IndexJob, error) // nil if not found
 	Cancel(jobID string) error                       // returns ErrJobTerminal if already terminal; ErrNotFound if missing
+	// task-12.1: ListActive returns queued + running jobs (v1.0 scope).
+	// Non-active filters (succeeded/failed/cancelled) [SPEC-DEFER:console-list-all-jobs] 留 v1.x.
+	ListActive() ([]contractv1.IndexJob, error)
 }
 
 // SearchClient backs POST /v1/search.

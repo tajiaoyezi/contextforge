@@ -156,8 +156,8 @@ func TestRESTEndpoints_E2E(t *testing.T) {
 		t.Fatalf("GET /v1/index-jobs/{id}: %d", code)
 	}
 
-	// 7. POST /v1/index-jobs/{id}/cancel
-	if code := httpCall(t, "POST", baseURL+"/v1/index-jobs/"+job.JobID+"/cancel", nil, nil, nil); code != 200 {
+	// 7. POST /v1/index-jobs/{id}/cancel — task-12.1 (ADR-017 D3) returns 204
+	if code := httpCall(t, "POST", baseURL+"/v1/index-jobs/"+job.JobID+"/cancel", nil, nil, nil); code != 204 {
 		t.Fatalf("POST cancel: %d", code)
 	}
 	// re-cancel → 409

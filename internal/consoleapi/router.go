@@ -8,20 +8,45 @@ import (
 	"strings"
 )
 
-// NewRouter returns the http.Handler tree for the 9 Console Contract v1
+// NewRouter returns the http.Handler tree for the Console Contract v1
 // endpoints + bearer auth middleware + JSON error mapping.
+//
+// task-12.1 (ADR-017 D1 Wave 1) extends v0.4 9 endpoints with:
+//   - PATCH /v1/workspaces/{id}/config (confirmMiddleware-guarded)
+//   - GET /v1/index-jobs?status=active (active-only list)
+//   - POST /v1/index-jobs/{id}/cancel returns 204 No Content
 func NewRouter(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", handleHealth(deps))
 	mux.HandleFunc("POST /v1/workspaces", handleCreateWorkspace(deps))
 	mux.HandleFunc("GET /v1/workspaces", handleListWorkspaces(deps))
 	mux.HandleFunc("GET /v1/workspaces/{id}", handleGetWorkspace(deps))
+	mux.HandleFunc("PATCH /v1/workspaces/{id}/config", confirmMiddleware(handlePatchWorkspaceConfig(deps)))
 	mux.HandleFunc("POST /v1/index-jobs", handleEnqueueJob(deps))
+	mux.HandleFunc("GET /v1/index-jobs", handleListJobs(deps))
 	mux.HandleFunc("GET /v1/index-jobs/{id}", handleGetJob(deps))
 	mux.HandleFunc("POST /v1/index-jobs/{id}/cancel", handleCancelJob(deps))
 	mux.HandleFunc("POST /v1/search", handleSearch(deps))
 	mux.HandleFunc("GET /v1/observability/events", handleEvents(deps))
 	return bearerAuthMiddleware(mux, deps.AuthToken)
+}
+
+// confirmMiddleware enforces ADR-017 D2 server-side bottom defense for
+// destructive endpoints: caller must pass `X-Confirm: yes` header OR
+// `?confirm=true` query (OR semantics — either suffices). Missing both
+// → 412 Precondition Failed.
+//
+// Console BFF auto-injects the header; ops curl callers may use the query.
+// Catches the rare BFF regression that silently strips X-Confirm.
+func confirmMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Confirm") == "yes" || r.URL.Query().Get("confirm") == "true" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		writeError(w, http.StatusPreconditionFailed, "PRECONDITION_FAILED",
+			"X-Confirm: yes header or ?confirm=true query required for destructive op (ADR-017 D2)")
+	}
 }
 
 // bearerAuthMiddleware enforces `Authorization: Bearer <token>` when
@@ -75,6 +100,8 @@ func mapStorageError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 	case errors.Is(err, ErrDataPlaneUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", err.Error())
+	case errors.Is(err, ErrPreconditionRequired):
+		writeError(w, http.StatusPreconditionFailed, "PRECONDITION_FAILED", err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}

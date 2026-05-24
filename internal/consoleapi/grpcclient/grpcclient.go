@@ -168,6 +168,25 @@ func (w *workspaceClient) Get(id string) (*contractv1.Workspace, error) {
 	return &ws, nil
 }
 
+// Update wraps WorkspaceService.UpdateConfig (task-12.1 / ADR-017 D1 Wave 1).
+func (w *workspaceClient) Update(id string, allowlist, denylist []string) (contractv1.Workspace, error) {
+	if allowlist == nil {
+		allowlist = []string{}
+	}
+	if denylist == nil {
+		denylist = []string{}
+	}
+	resp, err := w.c.UpdateConfig(context.Background(), &pb.UpdateWorkspaceConfigRequest{
+		WorkspaceId: id,
+		Allowlist:   allowlist,
+		Denylist:    denylist,
+	})
+	if err != nil {
+		return contractv1.Workspace{}, mapGrpcErr(err)
+	}
+	return protoToWorkspace(resp), nil
+}
+
 // =====================================================================
 // Job wrapper
 // =====================================================================
@@ -201,6 +220,23 @@ func (j *jobClient) Get(jobID string) (*contractv1.IndexJob, error) {
 func (j *jobClient) Cancel(jobID string) error {
 	_, err := j.c.Cancel(context.Background(), &pb.CancelJobRequest{JobId: jobID})
 	return mapGrpcErr(err)
+}
+
+// ListActive wraps JobService.List with status_filter = ["queued","running"]
+// (task-12.1 / ADR-017 D1 Wave 1). Server-side filter is the Rust authority;
+// Go side does not post-filter (ADR-016 D3 thin proxy).
+func (j *jobClient) ListActive() ([]contractv1.IndexJob, error) {
+	resp, err := j.c.List(context.Background(), &pb.ListJobsRequest{
+		StatusFilter: []string{"queued", "running"},
+	})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]contractv1.IndexJob, 0, len(resp.Items))
+	for _, item := range resp.Items {
+		out = append(out, protoToIndexJob(item))
+	}
+	return out, nil
 }
 
 // =====================================================================

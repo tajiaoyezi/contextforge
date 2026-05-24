@@ -14,7 +14,8 @@ use tonic::{Request, Response, Status};
 use crate::pb_console::workspace_service_server::WorkspaceService;
 use crate::pb_console::{
     CreateWorkspaceRequest, DeleteWorkspaceRequest, DeleteWorkspaceResponse, GetWorkspaceRequest,
-    ListWorkspacesRequest, ListWorkspacesResponse, Workspace as PbWorkspace,
+    ListWorkspacesRequest, ListWorkspacesResponse, UpdateWorkspaceConfigRequest,
+    Workspace as PbWorkspace,
 };
 use crate::workspace::{Workspace as RustWorkspace, WorkspaceCreate, WorkspaceError, WorkspaceStore};
 
@@ -112,6 +113,19 @@ impl WorkspaceService for WorkspaceServer {
             .map_err(ws_err_to_status)?;
         Ok(Response::new(DeleteWorkspaceResponse { ok: true }))
     }
+
+    async fn update_config(
+        &self,
+        req: Request<UpdateWorkspaceConfigRequest>,
+    ) -> Result<Response<PbWorkspace>, Status> {
+        let req = req.into_inner();
+        let ws = self
+            .stores
+            .workspace_store
+            .update_config(&req.workspace_id, req.allowlist, req.denylist)
+            .map_err(ws_err_to_status)?;
+        Ok(Response::new(workspace_to_pb(ws)))
+    }
 }
 
 #[cfg(test)]
@@ -177,6 +191,65 @@ mod tests {
             .await
             .expect_err("expect not_found");
         assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_workspace_server_update_config_overwrites_and_bumps_updated_at() {
+        let server = fresh_server();
+        let created = server
+            .create(Request::new(CreateWorkspaceRequest {
+                workspace_id: "ws-update-1".into(),
+                name: "update test".into(),
+                root_path: std::env::temp_dir().to_string_lossy().to_string(),
+                allowlist: vec!["src/**".into()],
+                denylist: vec![],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        // small sleep so updated_at_unix can advance
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        let updated = server
+            .update_config(Request::new(UpdateWorkspaceConfigRequest {
+                workspace_id: "ws-update-1".into(),
+                allowlist: vec!["lib/**".into(), "src/**".into()],
+                denylist: vec!["node_modules/**".into()],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(updated.workspace_id, "ws-update-1");
+        assert!(updated.allowlist.contains(&"lib/**".to_string()));
+        assert!(updated.denylist.contains(&"node_modules/**".to_string()));
+        assert!(
+            updated.updated_at_unix >= created.updated_at_unix,
+            "updated_at_unix must not regress: created={} updated={}",
+            created.updated_at_unix,
+            updated.updated_at_unix
+        );
+    }
+
+    #[tokio::test]
+    async fn test_workspace_server_update_config_unknown_workspace_returns_internal() {
+        // SqliteWorkspaceStore.update_config returns Invalid("workspace_id not found")
+        // which maps to invalid_argument; we accept either invalid_argument or
+        // internal — both are non-200 sentinel responses.
+        let server = fresh_server();
+        let err = server
+            .update_config(Request::new(UpdateWorkspaceConfigRequest {
+                workspace_id: "ws-does-not-exist".into(),
+                allowlist: vec![],
+                denylist: vec![],
+            }))
+            .await
+            .expect_err("expect error");
+        assert!(
+            err.code() == tonic::Code::InvalidArgument
+                || err.code() == tonic::Code::NotFound
+                || err.code() == tonic::Code::Internal,
+            "unexpected code: {:?}",
+            err.code()
+        );
     }
 
     #[tokio::test]

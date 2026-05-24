@@ -22,7 +22,7 @@ use crate::workspace::WorkspaceStore;
 use crate::pb_console::job_service_server::JobService;
 use crate::pb_console::{
     CancelJobRequest, CancelJobResponse, EnqueueJobRequest, GetJobRequest, IndexJob as PbIndexJob,
-    StreamJobsRequest,
+    ListJobsRequest, ListJobsResponse, StreamJobsRequest,
 };
 
 use super::DataPlaneStores;
@@ -150,6 +150,35 @@ impl JobService for JobServer {
         }
     }
 
+    async fn list(
+        &self,
+        req: Request<ListJobsRequest>,
+    ) -> Result<Response<ListJobsResponse>, Status> {
+        // task-12.1 (ADR-017 D1 Wave 1): v1.0 only supports active filter
+        // (queued + running). Go REST layer returns 400 when ?status != "active"
+        // [SPEC-DEFER:console-list-all-jobs]. workspace_id filter is post-filter
+        // on the active set when set.
+        let req = req.into_inner();
+        let mut items = self
+            .stores
+            .job_store
+            .list_active()
+            .map_err(job_err_to_status)?;
+        if let Some(ws) = req.workspace_id.as_deref() {
+            if !ws.is_empty() {
+                items.retain(|j| j.workspace_id == ws);
+            }
+        }
+        if !req.status_filter.is_empty() {
+            let allowed: std::collections::HashSet<&str> =
+                req.status_filter.iter().map(String::as_str).collect();
+            items.retain(|j| allowed.contains(j.status.as_str()));
+        }
+        Ok(Response::new(ListJobsResponse {
+            items: items.into_iter().map(job_to_pb).collect(),
+        }))
+    }
+
     type StreamStream = ReceiverStream<Result<PbIndexJob, Status>>;
 
     async fn stream(
@@ -258,6 +287,77 @@ mod tests {
             .await
             .expect_err("expect not_found");
         assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_job_server_list_returns_queued_jobs() {
+        let (_dir, server, _ws) = fresh_server();
+        // enqueue two jobs (both queued)
+        let job_a = server
+            .enqueue(Request::new(EnqueueJobRequest {
+                workspace_id: "ws-job-test".into(),
+                trigger_source: "test".into(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let _job_b = server
+            .enqueue(Request::new(EnqueueJobRequest {
+                workspace_id: "ws-job-test".into(),
+                trigger_source: "test".into(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let resp = server
+            .list(Request::new(ListJobsRequest {
+                status_filter: vec!["queued".into(), "running".into()],
+                workspace_id: None,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(resp.items.len(), 2);
+        assert!(resp.items.iter().any(|j| j.job_id == job_a.job_id));
+        for j in resp.items.iter() {
+            assert!(j.status == "queued" || j.status == "running");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_job_server_list_excludes_terminal_jobs() {
+        let (_dir, server, _ws) = fresh_server();
+        let job = server
+            .enqueue(Request::new(EnqueueJobRequest {
+                workspace_id: "ws-job-test".into(),
+                trigger_source: "test".into(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        // mark terminal by request_cancel + then mark_terminal directly via store
+        server
+            .stores
+            .job_store
+            .request_cancel(&job.job_id)
+            .unwrap();
+        // Simulate runner mark_terminal so list_active no longer includes it
+        let _ = server.stores.job_store.mark_terminal(
+            &job.job_id,
+            "cancelled",
+            Some("cancelled by test"),
+        );
+        let resp = server
+            .list(Request::new(ListJobsRequest {
+                status_filter: vec!["queued".into(), "running".into()],
+                workspace_id: None,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        for j in resp.items.iter() {
+            assert_ne!(j.job_id, job.job_id, "terminal job must be excluded");
+        }
     }
 
     #[tokio::test]

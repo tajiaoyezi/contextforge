@@ -37,10 +37,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	WorkspaceService_Create_FullMethodName = "/contextforge.console_data_plane.v1.WorkspaceService/Create"
-	WorkspaceService_Get_FullMethodName    = "/contextforge.console_data_plane.v1.WorkspaceService/Get"
-	WorkspaceService_List_FullMethodName   = "/contextforge.console_data_plane.v1.WorkspaceService/List"
-	WorkspaceService_Delete_FullMethodName = "/contextforge.console_data_plane.v1.WorkspaceService/Delete"
+	WorkspaceService_Create_FullMethodName       = "/contextforge.console_data_plane.v1.WorkspaceService/Create"
+	WorkspaceService_Get_FullMethodName          = "/contextforge.console_data_plane.v1.WorkspaceService/Get"
+	WorkspaceService_List_FullMethodName         = "/contextforge.console_data_plane.v1.WorkspaceService/List"
+	WorkspaceService_Delete_FullMethodName       = "/contextforge.console_data_plane.v1.WorkspaceService/Delete"
+	WorkspaceService_UpdateConfig_FullMethodName = "/contextforge.console_data_plane.v1.WorkspaceService/UpdateConfig"
 )
 
 // WorkspaceServiceClient is the client API for WorkspaceService service.
@@ -51,6 +52,7 @@ type WorkspaceServiceClient interface {
 	Get(ctx context.Context, in *GetWorkspaceRequest, opts ...grpc.CallOption) (*Workspace, error)
 	List(ctx context.Context, in *ListWorkspacesRequest, opts ...grpc.CallOption) (*ListWorkspacesResponse, error)
 	Delete(ctx context.Context, in *DeleteWorkspaceRequest, opts ...grpc.CallOption) (*DeleteWorkspaceResponse, error)
+	UpdateConfig(ctx context.Context, in *UpdateWorkspaceConfigRequest, opts ...grpc.CallOption) (*Workspace, error)
 }
 
 type workspaceServiceClient struct {
@@ -101,6 +103,16 @@ func (c *workspaceServiceClient) Delete(ctx context.Context, in *DeleteWorkspace
 	return out, nil
 }
 
+func (c *workspaceServiceClient) UpdateConfig(ctx context.Context, in *UpdateWorkspaceConfigRequest, opts ...grpc.CallOption) (*Workspace, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Workspace)
+	err := c.cc.Invoke(ctx, WorkspaceService_UpdateConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkspaceServiceServer is the server API for WorkspaceService service.
 // All implementations must embed UnimplementedWorkspaceServiceServer
 // for forward compatibility.
@@ -109,6 +121,7 @@ type WorkspaceServiceServer interface {
 	Get(context.Context, *GetWorkspaceRequest) (*Workspace, error)
 	List(context.Context, *ListWorkspacesRequest) (*ListWorkspacesResponse, error)
 	Delete(context.Context, *DeleteWorkspaceRequest) (*DeleteWorkspaceResponse, error)
+	UpdateConfig(context.Context, *UpdateWorkspaceConfigRequest) (*Workspace, error)
 	mustEmbedUnimplementedWorkspaceServiceServer()
 }
 
@@ -130,6 +143,9 @@ func (UnimplementedWorkspaceServiceServer) List(context.Context, *ListWorkspaces
 }
 func (UnimplementedWorkspaceServiceServer) Delete(context.Context, *DeleteWorkspaceRequest) (*DeleteWorkspaceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedWorkspaceServiceServer) UpdateConfig(context.Context, *UpdateWorkspaceConfigRequest) (*Workspace, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateConfig not implemented")
 }
 func (UnimplementedWorkspaceServiceServer) mustEmbedUnimplementedWorkspaceServiceServer() {}
 func (UnimplementedWorkspaceServiceServer) testEmbeddedByValue()                          {}
@@ -224,6 +240,24 @@ func _WorkspaceService_Delete_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkspaceService_UpdateConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateWorkspaceConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceServiceServer).UpdateConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkspaceService_UpdateConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceServiceServer).UpdateConfig(ctx, req.(*UpdateWorkspaceConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkspaceService_ServiceDesc is the grpc.ServiceDesc for WorkspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -247,6 +281,10 @@ var WorkspaceService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Delete",
 			Handler:    _WorkspaceService_Delete_Handler,
 		},
+		{
+			MethodName: "UpdateConfig",
+			Handler:    _WorkspaceService_UpdateConfig_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "contextforge/console_data_plane/v1/console_data_plane.proto",
@@ -257,6 +295,7 @@ const (
 	JobService_Get_FullMethodName     = "/contextforge.console_data_plane.v1.JobService/Get"
 	JobService_Cancel_FullMethodName  = "/contextforge.console_data_plane.v1.JobService/Cancel"
 	JobService_Stream_FullMethodName  = "/contextforge.console_data_plane.v1.JobService/Stream"
+	JobService_List_FullMethodName    = "/contextforge.console_data_plane.v1.JobService/List"
 )
 
 // JobServiceClient is the client API for JobService service.
@@ -267,6 +306,7 @@ type JobServiceClient interface {
 	Get(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*IndexJob, error)
 	Cancel(ctx context.Context, in *CancelJobRequest, opts ...grpc.CallOption) (*CancelJobResponse, error)
 	Stream(ctx context.Context, in *StreamJobsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IndexJob], error)
+	List(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
 }
 
 type jobServiceClient struct {
@@ -326,6 +366,16 @@ func (c *jobServiceClient) Stream(ctx context.Context, in *StreamJobsRequest, op
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type JobService_StreamClient = grpc.ServerStreamingClient[IndexJob]
 
+func (c *jobServiceClient) List(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListJobsResponse)
+	err := c.cc.Invoke(ctx, JobService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // JobServiceServer is the server API for JobService service.
 // All implementations must embed UnimplementedJobServiceServer
 // for forward compatibility.
@@ -334,6 +384,7 @@ type JobServiceServer interface {
 	Get(context.Context, *GetJobRequest) (*IndexJob, error)
 	Cancel(context.Context, *CancelJobRequest) (*CancelJobResponse, error)
 	Stream(*StreamJobsRequest, grpc.ServerStreamingServer[IndexJob]) error
+	List(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
 	mustEmbedUnimplementedJobServiceServer()
 }
 
@@ -355,6 +406,9 @@ func (UnimplementedJobServiceServer) Cancel(context.Context, *CancelJobRequest) 
 }
 func (UnimplementedJobServiceServer) Stream(*StreamJobsRequest, grpc.ServerStreamingServer[IndexJob]) error {
 	return status.Errorf(codes.Unimplemented, "method Stream not implemented")
+}
+func (UnimplementedJobServiceServer) List(context.Context, *ListJobsRequest) (*ListJobsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
 }
 func (UnimplementedJobServiceServer) mustEmbedUnimplementedJobServiceServer() {}
 func (UnimplementedJobServiceServer) testEmbeddedByValue()                    {}
@@ -442,6 +496,24 @@ func _JobService_Stream_Handler(srv interface{}, stream grpc.ServerStream) error
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type JobService_StreamServer = grpc.ServerStreamingServer[IndexJob]
 
+func _JobService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobServiceServer).List(ctx, req.(*ListJobsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // JobService_ServiceDesc is the grpc.ServiceDesc for JobService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -460,6 +532,10 @@ var JobService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Cancel",
 			Handler:    _JobService_Cancel_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _JobService_List_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

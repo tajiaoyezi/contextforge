@@ -144,12 +144,23 @@ func buildRouterWithGrpc(t *testing.T, grpcAddr string) (http.Handler, *grpcclie
 
 func doJSON(t *testing.T, srv *httptest.Server, method, path string, body string) (int, []byte) {
 	t.Helper()
+	return doJSONHeaders(t, srv, method, path, body, nil)
+}
+
+// doJSONHeaders extends doJSON with optional extra headers. Used by task-12.1
+// sub-steps to inject X-Confirm: yes for the PATCH /v1/workspaces/{id}/config
+// destructive endpoint.
+func doJSONHeaders(t *testing.T, srv *httptest.Server, method, path, body string, headers map[string]string) (int, []byte) {
+	t.Helper()
 	req, err := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new req: %v", err)
 	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -171,7 +182,7 @@ func doJSON(t *testing.T, srv *httptest.Server, method, path string, body string
 //	6. GET /v1/workspaces/<id> → 200 + same workspace
 //	7. POST /v1/index-jobs → 200 + job status=queued
 //	8. GET /v1/index-jobs/<id> → 200 + same job
-//	9. POST /v1/index-jobs/<id>/cancel → 200
+//	9. POST /v1/index-jobs/<id>/cancel → 204 (task-12.1 / ADR-017 D3)
 //	10. POST /v1/search → 200 + nested {result, trace} (results empty per
 //	    task-11.1 [SPEC-OWNER:task-11.4])
 //	11. GET /v1/observability/events → 200 + [] (only keepalive emitted
@@ -252,10 +263,62 @@ func TestRESTEndpoints_E2E_GrpcBacked(t *testing.T) {
 		t.Fatalf("GET index-job by id: code=%d body=%s", code, body)
 	}
 
-	// Step 9: cancel
-	code, body = doJSON(t, srv, "POST", "/v1/index-jobs/"+jobID+"/cancel", "")
+	// Step 8a: task-12.1 (ADR-017 D1 Wave 1) — PATCH /v1/workspaces/{id}/config
+	// without X-Confirm → 412 Precondition Failed (server-side bottom defense).
+	patchBody := `{"allowlist":["src/**"],"denylist":["node_modules/**"]}`
+	code, body = doJSON(t, srv, "PATCH", "/v1/workspaces/"+wsID+"/config", patchBody)
+	if code != 412 {
+		t.Fatalf("PATCH config without X-Confirm: expected 412; got code=%d body=%s", code, body)
+	}
+	// With X-Confirm: yes → 200 + updated workspace
+	code, body = doJSONHeaders(t, srv, "PATCH", "/v1/workspaces/"+wsID+"/config", patchBody,
+		map[string]string{"X-Confirm": "yes"})
 	if code != 200 {
+		t.Fatalf("PATCH config with X-Confirm: code=%d body=%s", code, body)
+	}
+	var updated map[string]any
+	_ = json.Unmarshal(body, &updated)
+	if updated["workspace_id"] != wsID {
+		t.Errorf("PATCH config: workspace_id drift; body=%s", body)
+	}
+	// With ?confirm=true → 200 (OR-semantics verified)
+	code, body = doJSON(t, srv, "PATCH", "/v1/workspaces/"+wsID+"/config?confirm=true", patchBody)
+	if code != 200 {
+		t.Fatalf("PATCH config with ?confirm=true: code=%d body=%s", code, body)
+	}
+
+	// Step 8b: GET /v1/index-jobs?status=active includes the queued job
+	code, body = doJSON(t, srv, "GET", "/v1/index-jobs?status=active", "")
+	if code != 200 {
+		t.Fatalf("GET active jobs: code=%d body=%s", code, body)
+	}
+	var activeJobs []map[string]any
+	_ = json.Unmarshal(body, &activeJobs)
+	foundActive := false
+	for _, j := range activeJobs {
+		if j["job_id"] == jobID {
+			foundActive = true
+			break
+		}
+	}
+	if !foundActive {
+		t.Fatalf("active jobs list missing newly enqueued job %q; body=%s", jobID, body)
+	}
+	// Missing status filter → 400
+	code, body = doJSON(t, srv, "GET", "/v1/index-jobs", "")
+	if code != 400 {
+		t.Fatalf("GET index-jobs without status: expected 400; got code=%d body=%s", code, body)
+	}
+
+	// Step 9: cancel — task-12.1 (ADR-017 D3) returns 204 No Content.
+	// (Async cancel → terminal status propagation is task-11.3 scope; the
+	// REST contract here verifies only the 204 + 204-body=empty invariants.)
+	code, body = doJSON(t, srv, "POST", "/v1/index-jobs/"+jobID+"/cancel", "")
+	if code != 204 {
 		t.Fatalf("POST cancel: code=%d body=%s", code, body)
+	}
+	if len(body) != 0 {
+		t.Errorf("204 must have empty body; got %q", body)
 	}
 
 	// Step 10: POST /v1/search (empty result per task-11.1 [SPEC-OWNER:task-11.4])
