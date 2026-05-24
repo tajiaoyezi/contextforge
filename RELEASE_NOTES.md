@@ -1,5 +1,118 @@
 # ContextForge Release Notes
 
+## v0.5.0 (2026-05-24)
+
+### 摘要
+
+ContextForge v0.5.0 完成 **Phase 12 console-contract-completion** 收口：把
+ADR-017 D1 Wave 1（quick win 4 个 endpoint）+ Wave 2（mid scope 2 个 endpoint）
+共 5 个新 endpoint + 1 个 behavior 切换（cancel 200→204）一次性 ship，把 Console
+HTTPAdapter conformance 从 9/22 提升到 13/22（route inventory 9→14 含 PATCH
+config）。ADR-014 cross-validation gate **第三次完整激活** 验证制度稳定性。
+
+### 主要改进
+
+- **task-12.1 Wave 1 quick win** (PR #78):
+  - `PATCH /v1/workspaces/{id}/config` 走 gRPC `WorkspaceService.UpdateConfig`
+    (proto add-only `UpdateWorkspaceConfigRequest`)；body `{allowlist, denylist}`
+    覆盖式更新；SqliteWorkspaceStore.update_config 真持久化 + updated_at_unix 推进
+  - `GET /v1/index-jobs?status=active` 走 gRPC `JobService.List` + status_filter
+    (proto add-only `ListJobsRequest{status_filter, workspace_id}` + `ListJobsResponse`)；
+    Rust 端 `list_active()` 包装 + Go 端 missing-filter → 400
+  - `POST /v1/index-jobs/{id}/cancel` 返 **204 No Content** (ADR-017 D3)
+  - `confirmMiddleware` 服务端 X-Confirm 兜底 (ADR-017 D2): 破坏性 endpoint
+    必须 `X-Confirm: yes` header **或** `?confirm=true` query (OR-semantics);
+    缺失 → 412 PRECONDITION_FAILED + ErrorBody `{code:"PRECONDITION_FAILED",...}`
+- **task-12.2 source-chunk-by-id** (PR #79):
+  - `GET /v1/source-chunks/{id}` 走 gRPC `SearchService.GetSourceChunk` (proto
+    add-only `GetSourceChunkRequest{chunk_id, workspace_id(optional)}`)
+  - Rust impl 复用既存 `Retriever::get_chunk(chunk_id)` (task-6.2 ship 的 SQL
+    fast-path)；workspace_id 缺失时枚举 SqliteWorkspaceStore.list() 真试每个
+    workspace 寻 chunk (chunk_id 全局唯一 SqliteChunkStore 假设
+    `[SPEC-DEFER:phase-15.multi-workspace-strict]`)
+  - chunk_offset_start/end = 0 占位 `[SPEC-DEFER:chunk-byte-offsets]` (current
+    schema 不存 byte offsets; Console UI 用 line_start/end)
+- **task-12.3 search-trace-by-query-id** (PR #80):
+  - `GET /v1/search/{query_id}/trace` 走 gRPC `SearchService.GetSearchTrace`
+    (proto add-only `GetSearchTraceRequest{query_id}`)
+  - 自研 `TraceStore { HashMap, VecDeque, cap=1000 }` ~30 行 LRU/FIFO eviction
+    (避免 `lru` crate R7 风险)；`std::sync::Mutex` 包裹 read-heavy 场景足够
+  - `SearchService.Query` 内统一生成 `qry-{nanos}` 唯一 query_id 字段
+    (task-11.4 既存返 empty query_id 字段被替换)；每次 Query 自动 put trace
+    到 trace_store
+- **scripts/console_smoke.sh v3** (PR #80):
+  - Header bump v2 → v3；subtitle "Phase 12 console-contract-completion"
+  - 9 → 13 endpoint flow；renumber [1/13]..[13/13]
+  - 新 Step 9/13: task-12.1 PATCH workspace/config (412→200×2)
+  - 新 Step 10/13: task-12.1 GET active jobs + missing-status 400
+  - 新 Step 11/13: task-12.2 GET source-chunks/{id} (uses chunk_id from search)
+  - 新 Step 12/13: task-12.3 GET search/{query_id}/trace + unknown 404
+  - REAL mode 真接 daemon: `CONSOLE_REAL_SMOKE_EXIT=0` 13/13 PASS
+- **治理 / spec 同步** (PR #81):
+  - Phase 12 spec / adapter §Phase 12 / task-12.{1,2,3} 全 `Status: Done`
+  - ADR-017 Status: Proposed (full Accepted 推到 Phase 14 closeout 一次性)
+  - ADR-014 D1 mapping 表 / D2 lint 0 violation / D3 verified-by 显式
+
+### Trade-offs / Conscious limitations
+
+- **task-12.2 §10**: chunk_offset_start/end = 0 占位
+  `[SPEC-DEFER:chunk-byte-offsets]` — current SqliteChunkStore schema 不存
+  byte offsets; Console UI 用 line_start/end 显示足够；future schema migration
+  填充字节偏移留 v0.5.x
+- **task-12.2 §10**: workspace_id 全局唯一假设
+  `[SPEC-DEFER:phase-15.multi-workspace-strict]` — multi-workspace strict
+  isolation 留 v1.x
+- **task-12.3 §10**: trace_store 重启即丢 `[SPEC-DEFER:task-future.search-trace-sqlite-persistence]`
+  — SQLite 持久化跨 daemon 重启留 v0.5.x；Console UI 端 graceful degrade 承接
+- **task-12.3 §10**: trace_store cap=1000 硬编码 — env var 参数化留 v0.5.x
+
+### Migration notes (v0.4.0 → v0.5.0)
+
+- **`POST /v1/index-jobs/{id}/cancel` 改 204 No Content** — Console HTTPAdapter
+  v1.0 已 200/204 双 check (cross-repo 验证)，应不出现 break；如发现 strict
+  200 only 的旧 client → rollback path 是把 handlers.go handleCancelJob 回退
+  到 `StatusOK`
+- **PATCH /v1/workspaces/{id}/config + 新破坏性 endpoint** 现在强制
+  X-Confirm/?confirm=true — Console BFF 自动注入；ops curl 用户须显式加
+- **新 4 endpoint (PATCH config + active filter + source-chunks + trace)**
+  无 v0.4 baseline; client 端按 OpenAPI/contractv1 v1 spec 调用
+- contractv1.go 字段集合不变 (ADR-015 D5 字段镜像约束沿用)
+- 新 RPC 全 proto add-only (ADR-013 D2)，既有 RPC 字段编号不动
+
+### Tests (Phase 12 全程)
+
+- **Rust**: 70 lib tests (含 4 new task-12.1 workspace UpdateConfig/job List + 3
+  new task-12.2 GetSourceChunk + 4 new task-12.3 GetSearchTrace+TraceStore +
+  既有 phase 1-11 测试不退化)
+- **Go**: 43 packages PASS (含 task-12.1 7 new router_test + 4 new grpcclient_test
+  + task-12.2 2 new + task-12.3 1 new + degraded fallback impls + e2e_grpc with
+  real Rust daemon Step 8a/8b/9/9b/9c PASS)
+- **conformance**: `test/conformance/console_contractv1_test.go` v0.4 9 endpoint
+  不退化
+- **smoke**: `bash scripts/console_smoke.sh` REAL mode 13/13 endpoint PASS
+  with `CONSOLE_REAL_SMOKE_EXIT=0` final marker
+
+### Verification commands
+
+```bash
+# Rust workspace
+cargo test -p contextforge-core --lib   # expect 70/70 PASS
+
+# Go full
+go test ./...   # expect 43 packages PASS
+
+# Phase 12 console real smoke v3 (default REAL mode)
+bash scripts/console_smoke.sh   # expects CONSOLE_REAL_SMOKE_EXIT=0
+
+# Release smoke (§5 enables console smoke via env)
+RELEASE_SMOKE_CONSOLE=1 bash scripts/release_smoke.sh   # PHASE_RELEASE_SMOKE_EXIT=0
+
+# ADR-014 D2 lint
+bash scripts/spec_drift_lint.sh --touched origin/master   # 0 violation
+```
+
+---
+
 ## v0.4.0 (2026-05-25)
 
 ### 摘要
