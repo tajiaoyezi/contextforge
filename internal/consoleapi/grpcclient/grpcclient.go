@@ -245,6 +245,17 @@ func (j *jobClient) ListActive() ([]contractv1.IndexJob, error) {
 
 type searchClient struct{ c pb.SearchServiceClient }
 
+// GetSourceChunk wraps SearchService.GetSourceChunk (task-12.2 / ADR-017 D1 Wave 2).
+func (s *searchClient) GetSourceChunk(chunkID string) (contractv1.SourceChunk, error) {
+	resp, err := s.c.GetSourceChunk(context.Background(), &pb.GetSourceChunkRequest{
+		ChunkId: chunkID,
+	})
+	if err != nil {
+		return contractv1.SourceChunk{}, mapGrpcErr(err)
+	}
+	return protoToSourceChunk(resp), nil
+}
+
 func (s *searchClient) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	resp, err := s.c.Query(context.Background(), &pb.SearchRequest{
 		Query:           req.Query,
@@ -389,6 +400,25 @@ func protoToSearchResult(p *pb.SearchResultItem) contractv1.SearchResult {
 		}
 	}
 	return out
+}
+
+// protoToSourceChunk maps proto.SourceChunk → contractv1.SourceChunk (task-12.2).
+// Field shapes match 1:1 (snake_case proto ↔ Go json tag); int64 line / offset
+// fields downcast to int. Availability marker is set so FieldAvailability.Complete()
+// downstream returns true.
+func protoToSourceChunk(p *pb.SourceChunk) contractv1.SourceChunk {
+	return contractv1.SourceChunk{
+		ChunkID:          p.ChunkId,
+		WorkspaceID:      p.WorkspaceId,
+		SourceFilePath:   p.SourceFilePath,
+		LineStart:        int(p.LineStart),
+		LineEnd:          int(p.LineEnd),
+		ChunkTextPreview: p.ChunkTextPreview,
+		ChunkOffsetStart: int(p.ChunkOffsetStart),
+		ChunkOffsetEnd:   int(p.ChunkOffsetEnd),
+		RedactionStatus:  p.RedactionStatus,
+		Availability:     contractv1.FieldAvailability{Object: "SourceChunk"},
+	}
 }
 
 func protoToRetrievalTrace(p *pb.RetrievalTrace) contractv1.RetrievalTrace {

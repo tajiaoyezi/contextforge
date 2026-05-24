@@ -49,6 +49,9 @@ type degradedSearch struct{}
 func (degradedSearch) Search(_ contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	return contractv1.SearchResult{}, contractv1.RetrievalTrace{}, consoleapi.ErrDataPlaneUnavailable
 }
+func (degradedSearch) GetSourceChunk(_ string) (contractv1.SourceChunk, error) {
+	return contractv1.SourceChunk{}, consoleapi.ErrDataPlaneUnavailable
+}
 
 type degradedEvents struct{}
 

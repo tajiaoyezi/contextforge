@@ -12,10 +12,12 @@ use tonic::{Request, Response, Status};
 
 use crate::pb_console::search_service_server::SearchService;
 use crate::pb_console::{
-    Citation as PbCitation, RetrievalTrace as PbRetrievalTrace, SearchRequest as PbSearchRequest,
-    SearchResponse, SearchResultItem, SourceChunk as PbSourceChunk,
+    Citation as PbCitation, GetSourceChunkRequest, RetrievalTrace as PbRetrievalTrace,
+    SearchRequest as PbSearchRequest, SearchResponse, SearchResultItem,
+    SourceChunk as PbSourceChunk,
 };
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
+use crate::workspace::WorkspaceStore;
 
 use super::DataPlaneStores;
 
@@ -149,6 +151,73 @@ impl SearchService for SearchServer {
             trace: Some(trace),
         }))
     }
+
+    async fn get_source_chunk(
+        &self,
+        req: Request<GetSourceChunkRequest>,
+    ) -> Result<Response<PbSourceChunk>, Status> {
+        let req = req.into_inner();
+        if req.chunk_id.is_empty() {
+            return Err(Status::invalid_argument("chunk_id must not be empty"));
+        }
+        if self.stores.data_dir.as_os_str().is_empty() {
+            return Err(Status::not_found(format!(
+                "chunk not found: {} (no data plane index)",
+                req.chunk_id
+            )));
+        }
+        // task-12.2 (ADR-017 D1 Wave 2): workspace_id is optional. When set,
+        // open that collection directly; when empty, probe known workspaces
+        // (Phase 12 v1.0: chunk_id is global-unique per SqliteChunkStore
+        // schema so any open collection finding it is the right one).
+        let candidates: Vec<String> = if !req.workspace_id.is_empty() {
+            vec![req.workspace_id.clone()]
+        } else {
+            self.stores
+                .workspace_store
+                .list()
+                .map_err(|e| Status::internal(format!("workspace list: {e}")))?
+                .into_iter()
+                .map(|w| w.workspace_id)
+                .collect()
+        };
+        for ws_id in candidates {
+            let retriever = match Retriever::open(&self.stores.data_dir, &ws_id) {
+                Ok(r) => r,
+                Err(RetrieverError::CollectionNotFound(_)) | Err(RetrieverError::Io(_)) => continue,
+                Err(RetrieverError::Tantivy(msg))
+                    if msg.contains("FileDoesNotExist") || msg.contains("meta.json") =>
+                {
+                    continue;
+                }
+                Err(e) => return Err(Status::internal(format!("retriever open: {e}"))),
+            };
+            match retriever.get_chunk(&req.chunk_id) {
+                Ok(Some(sr)) => {
+                    return Ok(Response::new(PbSourceChunk {
+                        chunk_id: sr.chunk_id,
+                        workspace_id: ws_id,
+                        source_file_path: sr.file_path,
+                        line_start: sr.line_start as i64,
+                        line_end: sr.line_end as i64,
+                        chunk_text_preview: utf8_safe_truncate(&sr.content, 200).to_string(),
+                        // SourceChunk byte offsets [SPEC-DEFER:chunk-byte-offsets]
+                        // — SqliteChunkStore current schema does not store byte
+                        // offsets; v0.5 returns 0/0; Console UI uses line ranges.
+                        chunk_offset_start: 0,
+                        chunk_offset_end: 0,
+                        redaction_status: sr.redaction_status,
+                    }));
+                }
+                Ok(None) => continue,
+                Err(e) => return Err(Status::internal(format!("retriever get_chunk: {e}"))),
+            }
+        }
+        Err(Status::not_found(format!(
+            "chunk not found: {}",
+            req.chunk_id
+        )))
+    }
 }
 
 fn empty_response(query: &str) -> SearchResponse {
@@ -202,6 +271,32 @@ mod tests {
         let ws = Arc::new(SqliteWorkspaceStore::open(&dir).unwrap());
         let js = Arc::new(SqliteJobStore::open(&dir).unwrap());
         SearchServer::new(DataPlaneStores::new(ws, js))
+    }
+
+    #[tokio::test]
+    async fn test_get_source_chunk_empty_chunk_id_returns_invalid_argument() {
+        let server = fresh_server();
+        let err = server
+            .get_source_chunk(Request::new(GetSourceChunkRequest {
+                chunk_id: "".into(),
+                workspace_id: "".into(),
+            }))
+            .await
+            .expect_err("expect error");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_source_chunk_unknown_returns_not_found() {
+        let server = fresh_server();
+        let err = server
+            .get_source_chunk(Request::new(GetSourceChunkRequest {
+                chunk_id: "chk_dead_0".into(),
+                workspace_id: "".into(),
+            }))
+            .await
+            .expect_err("expect not_found");
+        assert_eq!(err.code(), tonic::Code::NotFound);
     }
 
     #[tokio::test]

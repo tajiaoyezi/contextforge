@@ -252,6 +252,15 @@ func (s *MemStore) CancelJob(jobID string) error {
 
 // ---- SearchClient (delegates to injected backend; provides stub for tests) ----
 
+// GetSourceChunk — task-12.2 fallback path. MemStore has no real index → return
+// ErrDataPlaneUnavailable so the REST layer surfaces 503 (deep defense; ADR-016 D4).
+func (s *MemStore) GetSourceChunk(_ string) (contractv1.SourceChunk, error) {
+	if s.SearchBackend != nil {
+		return s.SearchBackend.GetSourceChunk("")
+	}
+	return contractv1.SourceChunk{}, ErrDataPlaneUnavailable
+}
+
 func (s *MemStore) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	if s.SearchBackend != nil {
 		return s.SearchBackend.Search(req)

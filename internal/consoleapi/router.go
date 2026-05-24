@@ -27,6 +27,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /v1/index-jobs/{id}", handleGetJob(deps))
 	mux.HandleFunc("POST /v1/index-jobs/{id}/cancel", handleCancelJob(deps))
 	mux.HandleFunc("POST /v1/search", handleSearch(deps))
+	mux.HandleFunc("GET /v1/source-chunks/{id}", handleGetSourceChunk(deps))
 	mux.HandleFunc("GET /v1/observability/events", handleEvents(deps))
 	return bearerAuthMiddleware(mux, deps.AuthToken)
 }

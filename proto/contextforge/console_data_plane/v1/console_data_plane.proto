@@ -215,8 +215,18 @@ message SearchResponse {
   RetrievalTrace trace = 2;
 }
 
+// task-12.2 (ADR-017 D1 Wave 2): chunk-by-id lookup driving REST
+// GET /v1/source-chunks/{id}. workspace_id is optional (Phase 12 v1.0 assumes
+// chunk_id is global-unique per SqliteChunkStore schema); future multi-workspace
+// strict isolation [SPEC-DEFER:phase-15.multi-workspace-strict] would require it.
+message GetSourceChunkRequest {
+  string chunk_id = 1;
+  string workspace_id = 2;  // optional in v1
+}
+
 service SearchService {
   rpc Query(SearchRequest) returns (SearchResponse);
+  rpc GetSourceChunk(GetSourceChunkRequest) returns (SourceChunk);
 }
 
 // =====================================================================

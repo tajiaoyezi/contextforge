@@ -242,6 +242,25 @@ func handleCancelJob(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleGetSourceChunk — GET /v1/source-chunks/{id} (task-12.2 / ADR-017 D1 Wave 2).
+// Returns 200 + SourceChunk on hit; 404 when chunk missing; 503 in fallback mode.
+// Non-destructive — no confirmMiddleware.
+func handleGetSourceChunk(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		chunk, err := deps.Search.GetSourceChunk(id)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, chunk)
+	}
+}
+
 // handleSearch — POST /v1/search.
 // Body shape: contractv1.SearchRequest. Response: nested {"result":...,"trace":...}.
 func handleSearch(deps Deps) http.HandlerFunc {

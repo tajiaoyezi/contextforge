@@ -440,6 +440,75 @@ func TestGrpcClient_JobListActive_Maps_Unavailable(t *testing.T) {
 	}
 }
 
+// =====================================================================
+// task-12.2 (ADR-017 D1 Wave 2) — GetSourceChunk wire coverage.
+// =====================================================================
+
+type fakeSearchServer struct {
+	pb.UnimplementedSearchServiceServer
+	chunkResp *pb.SourceChunk
+	chunkErr  error
+}
+
+func (f *fakeSearchServer) GetSourceChunk(_ context.Context, req *pb.GetSourceChunkRequest) (*pb.SourceChunk, error) {
+	if f.chunkErr != nil {
+		return nil, f.chunkErr
+	}
+	if f.chunkResp != nil {
+		return f.chunkResp, nil
+	}
+	return &pb.SourceChunk{
+		ChunkId:          req.ChunkId,
+		WorkspaceId:      "ws-x",
+		SourceFilePath:   "/tmp/foo.md",
+		LineStart:        1,
+		LineEnd:          10,
+		ChunkTextPreview: "preview text",
+		RedactionStatus:  "applied",
+	}, nil
+}
+
+func TestGrpcClient_GetSourceChunk_MapsFields(t *testing.T) {
+	fake := &fakeSearchServer{}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterSearchServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	chunk, err := cli.Search().GetSourceChunk("chk_abc_0")
+	if err != nil {
+		t.Fatalf("GetSourceChunk: %v", err)
+	}
+	if chunk.ChunkID != "chk_abc_0" || chunk.WorkspaceID != "ws-x" {
+		t.Errorf("field drift: %+v", chunk)
+	}
+	if chunk.LineStart != 1 || chunk.LineEnd != 10 {
+		t.Errorf("line range drift: %+v", chunk)
+	}
+	if chunk.ChunkTextPreview != "preview text" {
+		t.Errorf("preview drift: %+v", chunk)
+	}
+}
+
+func TestGrpcClient_GetSourceChunk_Maps_NotFound(t *testing.T) {
+	fake := &fakeSearchServer{chunkErr: status.Error(codes.NotFound, "missing")}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterSearchServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	_, err := cli.Search().GetSourceChunk("missing")
+	if !errors.Is(err, consoleapi.ErrNotFound) {
+		t.Errorf("expected ErrNotFound; got %v", err)
+	}
+}
+
 // Guard: unused imports (net/http) — kept for future fallback-inmem HTTP
 // tests in cli pkg.
 var _ = http.StatusServiceUnavailable
