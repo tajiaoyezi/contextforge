@@ -67,6 +67,9 @@ func (a WorkspaceAdapter) List() ([]contractv1.Workspace, error) { return a.S.Li
 func (a WorkspaceAdapter) Get(id string) (*contractv1.Workspace, error) {
 	return a.S.GetWorkspace(id)
 }
+func (a WorkspaceAdapter) Update(id string, allowlist, denylist []string) (contractv1.Workspace, error) {
+	return a.S.UpdateWorkspaceConfig(id, allowlist, denylist)
+}
 
 // JobAdapter wraps MemStore for JobClient interface.
 type JobAdapter struct{ S *MemStore }
@@ -76,6 +79,7 @@ func (a JobAdapter) Enqueue(workspaceID, triggerSource string) (contractv1.Index
 }
 func (a JobAdapter) Get(jobID string) (*contractv1.IndexJob, error) { return a.S.GetJob(jobID) }
 func (a JobAdapter) Cancel(jobID string) error                      { return a.S.CancelJob(jobID) }
+func (a JobAdapter) ListActive() ([]contractv1.IndexJob, error)     { return a.S.ListActiveJobs() }
 
 // ---- MemStore raw methods ----
 
@@ -144,6 +148,32 @@ func (s *MemStore) GetWorkspace(id string) (*contractv1.Workspace, error) {
 	return &ws, nil
 }
 
+// UpdateWorkspaceConfig overwrites allowlist + denylist and bumps UpdatedAt.
+// task-12.1 (ADR-017 D1 Wave 1) fallback mode pair to gRPC WorkspaceService.UpdateConfig.
+func (s *MemStore) UpdateWorkspaceConfig(id string, allowlist, denylist []string) (contractv1.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ws, ok := s.workspaces[id]
+	if !ok {
+		return contractv1.Workspace{}, fmt.Errorf("%w: workspace %s", ErrNotFound, id)
+	}
+	if allowlist == nil {
+		allowlist = []string{}
+	}
+	if denylist == nil {
+		denylist = []string{}
+	}
+	cfg, _ := json.Marshal(map[string]any{
+		"allowlist": allowlist,
+		"denylist":  denylist,
+	})
+	ws.ConfigSnapshot = cfg
+	ws.UpdatedAt = time.Now().UTC()
+	s.workspaces[id] = ws
+	s.emitEvent("workspace.updated", "info", "consoleapi", "workspace config updated: "+id, nil)
+	return ws, nil
+}
+
 // ---- Job raw methods ----
 
 func (s *MemStore) EnqueueJob(workspaceID, triggerSource string) (contractv1.IndexJob, error) {
@@ -180,6 +210,24 @@ func (s *MemStore) GetJob(id string) (*contractv1.IndexJob, error) {
 		return nil, nil
 	}
 	return &job, nil
+}
+
+// ListActiveJobs returns jobs in status queued or running (insertion order).
+// task-12.1 (ADR-017 D1 Wave 1) fallback pair to gRPC JobService.List status=active.
+func (s *MemStore) ListActiveJobs() ([]contractv1.IndexJob, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]contractv1.IndexJob, 0, len(s.jobOrder))
+	for _, id := range s.jobOrder {
+		j, ok := s.jobs[id]
+		if !ok {
+			continue
+		}
+		if j.Status == "queued" || j.Status == "running" {
+			out = append(out, j)
+		}
+	}
+	return out, nil
 }
 
 func (s *MemStore) CancelJob(jobID string) error {

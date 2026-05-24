@@ -107,6 +107,44 @@ func handleGetWorkspace(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handlePatchWorkspaceConfig — PATCH /v1/workspaces/{id}/config.
+// Body shape: {"allowlist": [...], "denylist": [...]}. Both fields required
+// (覆盖式更新)。X-Confirm/?confirm=true enforced upstream by confirmMiddleware.
+//
+// task-12.1 (ADR-017 D1 Wave 1) — calls deps.Workspace.Update; returns 200 +
+// updated Workspace on success; ErrNotFound → 404; ErrInvalidRequest → 400.
+func handlePatchWorkspaceConfig(deps Deps) http.HandlerFunc {
+	type patchBody struct {
+		Allowlist []string `json:"allowlist"`
+		Denylist  []string `json:"denylist"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		var body patchBody
+		if !readJSONBody(w, r, &body) {
+			return
+		}
+		allow := body.Allowlist
+		deny := body.Denylist
+		if allow == nil {
+			allow = []string{}
+		}
+		if deny == nil {
+			deny = []string{}
+		}
+		ws, err := deps.Workspace.Update(id, allow, deny)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, ws)
+	}
+}
+
 // handleEnqueueJob — POST /v1/index-jobs.
 // Body shape: {"workspace_id": "..."} (Console HTTPAdapter convention).
 func handleEnqueueJob(deps Deps) http.HandlerFunc {
@@ -132,6 +170,31 @@ func handleEnqueueJob(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleListJobs — GET /v1/index-jobs?status=active.
+//
+// task-12.1 (ADR-017 D1 Wave 1) — v1.0 only supports the ?status=active filter
+// (queued + running). Missing or other status returns 400 [SPEC-DEFER:console-list-all-jobs]
+// 留 v1.x. Empty active set returns 200 + [] (not 204).
+func handleListJobs(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status := r.URL.Query().Get("status")
+		if status != "active" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST",
+				"?status=active required (v1 only supports active filter)")
+			return
+		}
+		jobs, err := deps.Job.ListActive()
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		if jobs == nil {
+			jobs = []contractv1.IndexJob{}
+		}
+		writeJSON(w, http.StatusOK, jobs)
+	}
+}
+
 // handleGetJob — GET /v1/index-jobs/{id}.
 func handleGetJob(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +217,10 @@ func handleGetJob(deps Deps) http.HandlerFunc {
 }
 
 // handleCancelJob — POST /v1/index-jobs/{id}/cancel.
-// 200 OK on accepted cancel; 409 Conflict if terminal; 404 if not found.
+//
+// task-12.1 (ADR-017 D3): 204 No Content on accepted cancel (was 200 in v0.4).
+// Console HTTPAdapter accepts both per cross-repo v1.0 dual-check; ops scripts
+// should treat 2xx as success. 409 Conflict if terminal; 404 if not found.
 func handleCancelJob(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := trimID(r)
@@ -165,7 +231,7 @@ func handleCancelJob(deps Deps) http.HandlerFunc {
 		err := deps.Job.Cancel(id)
 		switch {
 		case err == nil:
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 		case errors.Is(err, ErrNotFound):
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "index job not found: "+id)
 		case errors.Is(err, ErrJobTerminal):

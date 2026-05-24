@@ -50,7 +50,7 @@ func TestRouterRegistration(t *testing.T) {
 		{"get_workspace", "GET", "/v1/workspaces/" + ws.WorkspaceID, nil, http.StatusOK},
 		{"enqueue_job", "POST", "/v1/index-jobs", map[string]string{"workspace_id": ws.WorkspaceID}, http.StatusOK},
 		{"get_job", "GET", "/v1/index-jobs/" + job.JobID, nil, http.StatusOK},
-		{"cancel_job", "POST", "/v1/index-jobs/" + job.JobID + "/cancel", nil, http.StatusOK},
+		{"cancel_job", "POST", "/v1/index-jobs/" + job.JobID + "/cancel", nil, http.StatusNoContent},
 		{"search", "POST", "/v1/search", contractv1.SearchRequest{Query: "q", WorkspaceID: ws.WorkspaceID, TopK: 5, RetrievalMethod: "bm25"}, http.StatusOK},
 		{"events", "GET", "/v1/observability/events", nil, http.StatusOK},
 	}
@@ -159,6 +159,152 @@ func TestHandleSearch_NestedShape(t *testing.T) {
 	}
 	if got.Trace.TraceID == "" {
 		t.Errorf("expected non-empty trace_id; got %#v", got.Trace)
+	}
+}
+
+// =====================================================================
+// task-12.1 (ADR-017 D1 Wave 1) new unit tests:
+//   - confirmMiddleware OR-semantics (412 / 200 via header / 200 via query)
+//   - GET /v1/index-jobs?status=active filter
+//   - cancel returns 204
+//   - WorkspaceClient.Update + JobClient.ListActive coverage
+// =====================================================================
+
+// TestPatchWorkspaceConfig_RequiresConfirm — confirmMiddleware emits 412 when
+// neither header nor query is supplied (ADR-017 D2 bottom defense).
+func TestPatchWorkspaceConfig_RequiresConfirm(t *testing.T) {
+	router, store := newTestRouter(t, "")
+	ws, _ := store.CreateWorkspace(contractv1.WorkspaceCreate{Name: "patch-demo", RootPath: "/tmp/patch"})
+	body := bytes.NewBufferString(`{"allowlist":["a"],"denylist":["b"]}`)
+	req := httptest.NewRequest("PATCH", "/v1/workspaces/"+ws.WorkspaceID+"/config", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("expected 412; got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"code":"PRECONDITION_FAILED"`) {
+		t.Errorf("expected PRECONDITION_FAILED code; got %s", w.Body.String())
+	}
+}
+
+// TestPatchWorkspaceConfig_AcceptsHeader — X-Confirm: yes passes the middleware.
+func TestPatchWorkspaceConfig_AcceptsHeader(t *testing.T) {
+	router, store := newTestRouter(t, "")
+	ws, _ := store.CreateWorkspace(contractv1.WorkspaceCreate{Name: "patch-hdr", RootPath: "/tmp/hdr"})
+	body := bytes.NewBufferString(`{"allowlist":["src/**"],"denylist":["node_modules/**"]}`)
+	req := httptest.NewRequest("PATCH", "/v1/workspaces/"+ws.WorkspaceID+"/config", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Confirm", "yes")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var got contractv1.Workspace
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.WorkspaceID != ws.WorkspaceID {
+		t.Errorf("workspace_id drift: got %q want %q", got.WorkspaceID, ws.WorkspaceID)
+	}
+	if !strings.Contains(string(got.ConfigSnapshot), `"src/**"`) {
+		t.Errorf("allowlist not persisted in config_snapshot: %s", got.ConfigSnapshot)
+	}
+}
+
+// TestPatchWorkspaceConfig_AcceptsQuery — ?confirm=true passes the middleware.
+func TestPatchWorkspaceConfig_AcceptsQuery(t *testing.T) {
+	router, store := newTestRouter(t, "")
+	ws, _ := store.CreateWorkspace(contractv1.WorkspaceCreate{Name: "patch-qry", RootPath: "/tmp/qry"})
+	body := bytes.NewBufferString(`{"allowlist":[],"denylist":["secrets/**"]}`)
+	req := httptest.NewRequest("PATCH", "/v1/workspaces/"+ws.WorkspaceID+"/config?confirm=true", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestPatchWorkspaceConfig_404 — non-existent workspace returns 404.
+func TestPatchWorkspaceConfig_404(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	body := bytes.NewBufferString(`{"allowlist":[],"denylist":[]}`)
+	req := httptest.NewRequest("PATCH", "/v1/workspaces/missing-ws/config", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Confirm", "yes")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestListJobs_ActiveFilter — ?status=active returns queued+running only.
+func TestListJobs_ActiveFilter(t *testing.T) {
+	router, store := newTestRouter(t, "")
+	ws, _ := store.CreateWorkspace(contractv1.WorkspaceCreate{Name: "list-demo", RootPath: "/tmp/list"})
+	jobA, _ := store.EnqueueJob(ws.WorkspaceID, "test")        // queued
+	jobB, _ := store.EnqueueJob(ws.WorkspaceID, "test")        // queued
+	if err := store.CancelJob(jobB.JobID); err != nil {        // → cancelled (terminal)
+		t.Fatalf("cancel seed job: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/v1/index-jobs?status=active", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var got []contractv1.IndexJob
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 active job; got %d (%+v)", len(got), got)
+	}
+	if got[0].JobID != jobA.JobID {
+		t.Errorf("expected active job %q; got %q", jobA.JobID, got[0].JobID)
+	}
+}
+
+// TestListJobs_MissingStatusFilter — v1 only supports active filter; missing →
+// 400 [SPEC-DEFER:console-list-all-jobs] 留 v1.x.
+func TestListJobs_MissingStatusFilter(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/index-jobs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestCancelJob_Returns_204 — task-12.1 (ADR-017 D3) success path now emits
+// 204 No Content (was 200 in v0.4).
+func TestCancelJob_Returns_204(t *testing.T) {
+	router, store := newTestRouter(t, "")
+	ws, _ := store.CreateWorkspace(contractv1.WorkspaceCreate{Name: "c204", RootPath: "/tmp/c204"})
+	job, _ := store.EnqueueJob(ws.WorkspaceID, "rest")
+	req := httptest.NewRequest("POST", "/v1/index-jobs/"+job.JobID+"/cancel", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204; got %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("204 must have empty body; got %q", w.Body.String())
+	}
+}
+
+// TestCancelJob_404_unchanged — sentinel mapping for unknown job IDs.
+func TestCancelJob_404_unchanged(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("POST", "/v1/index-jobs/job-does-not-exist/cancel", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404; got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

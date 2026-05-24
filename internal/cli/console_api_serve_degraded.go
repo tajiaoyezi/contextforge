@@ -25,6 +25,9 @@ func (degradedWorkspace) List() ([]contractv1.Workspace, error) {
 func (degradedWorkspace) Get(_ string) (*contractv1.Workspace, error) {
 	return nil, consoleapi.ErrDataPlaneUnavailable
 }
+func (degradedWorkspace) Update(_ string, _, _ []string) (contractv1.Workspace, error) {
+	return contractv1.Workspace{}, consoleapi.ErrDataPlaneUnavailable
+}
 
 type degradedJob struct{}
 
@@ -36,6 +39,9 @@ func (degradedJob) Get(_ string) (*contractv1.IndexJob, error) {
 }
 func (degradedJob) Cancel(_ string) error {
 	return consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedJob) ListActive() ([]contractv1.IndexJob, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
 }
 
 type degradedSearch struct{}

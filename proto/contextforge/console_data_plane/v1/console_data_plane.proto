@@ -66,11 +66,21 @@ message DeleteWorkspaceResponse {
   bool ok = 1;
 }
 
+// task-12.1 (ADR-017 D1 Wave 1): PATCH /v1/workspaces/{id}/config maps to
+// WorkspaceService.UpdateConfig — overwrites allowlist + denylist; SqliteWorkspaceStore
+// bumps updated_at_unix. Add-only RPC (ADR-013 D2 / ADR-016 D2 sub).
+message UpdateWorkspaceConfigRequest {
+  string workspace_id = 1;
+  repeated string allowlist = 2;
+  repeated string denylist = 3;
+}
+
 service WorkspaceService {
   rpc Create(CreateWorkspaceRequest) returns (Workspace);
   rpc Get(GetWorkspaceRequest) returns (Workspace);
   rpc List(ListWorkspacesRequest) returns (ListWorkspacesResponse);
   rpc Delete(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
+  rpc UpdateConfig(UpdateWorkspaceConfigRequest) returns (Workspace);
 }
 
 // =====================================================================
@@ -114,11 +124,24 @@ message StreamJobsRequest {
   optional string workspace_id = 1;
 }
 
+// task-12.1 (ADR-017 D1 Wave 1): GET /v1/index-jobs?status=active maps to
+// JobService.List — empty status_filter returns all non-terminal jobs; future filters
+// (workspace_id / since_unix) can be added on this add-only message.
+message ListJobsRequest {
+  repeated string status_filter = 1;  // queued|running|succeeded|failed|cancelled; empty → all
+  optional string workspace_id = 2;   // optional workspace filter
+}
+
+message ListJobsResponse {
+  repeated IndexJob items = 1;
+}
+
 service JobService {
   rpc Enqueue(EnqueueJobRequest) returns (IndexJob);
   rpc Get(GetJobRequest) returns (IndexJob);
   rpc Cancel(CancelJobRequest) returns (CancelJobResponse);
   rpc Stream(StreamJobsRequest) returns (stream IndexJob);
+  rpc List(ListJobsRequest) returns (ListJobsResponse);
 }
 
 // =====================================================================
