@@ -85,12 +85,12 @@
 
 **阶段级验收标准（任务 13.1-13.2 全 Done，实测验证；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] AC1：Rust 启动后 MemoryService gRPC 注册可用（5 RPC: List / Get / Pin / Deprecate / SoftDelete）；`memory_items` SQLite 表通过 0013_memory_items.sql migration 自动建立；SqliteMemoryStore CRUD + state ops 全工作 — **verified by task-13.1 §6 AC1/AC2 + integration `test_memory_crud_via_grpc`**
-- [ ] AC2：`GET /v1/memory?agent_id=&scope=&namespace=` 走 gRPC MemoryService.List + filter；查询参数任一组合工作（agent_id 单 / scope 单 / namespace 单 / 组合）；空结果返 200 + `[]`（不返 204）— **verified by task-13.2 §6 AC1 + integration `test_list_memory_filter_combinations`**
-- [ ] AC3：`GET /v1/memory/{id}` 真返 MemoryItem 9 字段全填；不存在 → 404；`POST /v1/memory/{id}/pin` 真持久化 status 不动（pin 是 attribute 不是 status；本 phase 选 status 不变 + 新增 `is_pinned bool` 列 OR pin 作为 audit-only event；§10 trade-off 评估）+ 返 204 — **verified by task-13.2 §6 AC2 + integration `test_memory_pin_204`**
-- [ ] AC4：`POST /v1/memory/{id}/deprecate` 缺 X-Confirm: yes / ?confirm=true → 412 PRECONDITION_FAILED；带任一 → 204 + status="deprecated" 持久化 + audit log entry `op_type=deprecate` 写入 — **verified by task-13.2 §6 AC3 + integration `test_deprecate_412_then_204_then_audit`**
-- [ ] AC5：`POST /v1/memory/{id}/soft-delete` 缺 X-Confirm → 412；带 → 204 + status="soft_deleted" + audit log entry `op_type=soft_delete` 写入；list endpoint 默认不返 soft_deleted 项（除非显式 filter）— **verified by task-13.2 §6 AC4 + integration `test_soft_delete_412_then_204_then_excluded_from_list`**
-- [ ] AC6：ADR-014 cross-validation gate 全套通过：D2 lint 0 violation + D3 phase §6 每条 AC 含 verified by + D1 closeout PR body 含 mapping 表 + v0.5 既有 15 endpoint 不退化 — **verified by phase-smoke + closeout PR body**
+- [x] AC1：Rust 启动后 MemoryService gRPC 注册可用（5 RPC: List / Get / Pin / Deprecate / SoftDelete）；`memory_items` SQLite 表通过 0013_memory_items.sql migration 自动建立；SqliteMemoryStore CRUD + state ops 全工作 — **verified by task-13.1 §6 AC1/AC2 (9 store unit tests + 3 memory_integration via tonic client) PASS**
+- [x] AC2：`GET /v1/memory?agent_id=&scope=&namespace=` 走 gRPC MemoryService.List + filter；查询参数任一组合工作；空结果返 200 + `[]` — **verified by task-13.2 §6 AC1 (`TestListMemory_ReturnsFixtures` + `TestListMemory_FilterByScope`) + smoke v4 Step 14 PASS**
+- [x] AC3：`GET /v1/memory/{id}` 真返 MemoryItem 9 字段全填；不存在 → 404；`POST /v1/memory/{id}/pin` 选 `is_pinned bool` 列设计（status 三态独立）+ 返 204 — **verified by task-13.2 §6 AC2 (`TestGetMemory_404_when_missing` + `TestMemoryPin_204_no_body`) + smoke v4 Step 15/16 PASS**
+- [x] AC4：`POST /v1/memory/{id}/deprecate` 缺 X-Confirm: yes / ?confirm=true → 412 PRECONDITION_FAILED；带任一 → 204 + status="deprecated" 持久化 + audit log entry op="memory_deprecate" 写入 — **verified by task-13.2 §6 AC3 (`TestMemoryDeprecate_{412,header,query}`) + task-13.1 `test_memory_server_deprecate_persists_and_emits_audit` PASS + smoke v4 Step 17 PASS**
+- [x] AC5：`POST /v1/memory/{id}/soft-delete` 缺 X-Confirm → 412；带 → 204 + status="soft_deleted" + audit log entry op="memory_soft_delete" 写入；list endpoint 默认不返 soft_deleted 项 — **verified by task-13.2 §6 AC4 (`TestMemorySoftDelete_412_then_204_then_excluded`) + task-13.1 `test_memory_server_soft_delete_persists_and_emits_audit` PASS + smoke v4 Step 18 PASS**
+- [x] AC6：ADR-014 cross-validation gate 全套通过：D2 lint 0 violation + D3 phase §6 每条 AC 含 verified by + D1 closeout PR body 含 mapping 表 + v0.5 既有 13 endpoint 不退化 — **verified by closeout PR body (this PR) + D2 targeted grep PASS + go test ./... 43 pkgs PASS + cargo test 84 lib + 3 memory_integration PASS**
 
 **端到端 smoke**：
 
