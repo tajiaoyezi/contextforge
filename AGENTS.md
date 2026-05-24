@@ -268,6 +268,17 @@ s2v_baseline_green "<UNIT_TEST_AREAS>" || { echo "❌ 基线非绿 - 先解决�
 #    e. 对应 .feature 文件
 #    f. 相关 ADR
 
+# 4.4. ADR-014 cross-validation gate（自 Phase 10 起强制；详 docs/decisions/adr-014-cross-phase-exit-criteria-validation.md）
+#      新 spec 起草 / 触及 §3 OOS / §6 AC 行的 PR 须先跑：
+#        bash scripts/spec_drift_lint.sh --touched origin/master  # PR 增量模式（D2 lint）
+#      未标注 anti-pattern 命中（"留给 Phase X+" / "本 task 仅" / "out of scope" / "stub" /
+#      "占位" 等）须就近加 [SPEC-DEFER:<name>] 或 [SPEC-OWNER:<task>] 标注（D2）。
+#      task spec §6 每条 AC 必须显式 "verified by phase-smoke step M" 或
+#      "verified by task-<X.Y> §6 AC M (file:line)"（D3）。
+#      phase closeout PR 必须在 PR body 含 Phase §6 ↔ Task §6 AC mapping 表（D1）+
+#      D2 lint 输出（D4 自治约束）— 详 §4 Gate 5 phase-closeout 段。
+#      历史 spec（Phase 1-9）不溯改（D5）。
+
 # 4.5. PREFLIGHT — Ready Gate（不通过禁止进 RED）
 #      复用 §0 已 source 的 preflight.sh（与 /s2v-implement 步 2 同一 Ready Gate —
 #      含 Status 多词解析 / <TBD-by-user> / §6 AC 非空 / §7 SCEN-TEST 非空 全套检查；
@@ -667,6 +678,16 @@ if [ "$SPEC_STATUS" = "Waived" ] || [ "$WAIVED_ROW_COUNT" -gt 0 ]; then
 
   echo "✅ Waiver（$ctx）— $(echo $REGISTERED_IDS | wc -w | tr -d ' ') 个 block 全部五项齐全"
 fi
+
+# Gate 4.5：ADR-014 cross-validation gate（仅 phase closeout PR 强制；自 Phase 10 起；
+#           详 docs/decisions/adr-014-cross-phase-exit-criteria-validation.md）
+#   D1：PR body 必须含 "Phase §6 ↔ Task §6 AC mapping" 表（每行 4 字段：phase AC 字面 /
+#       拥有 task or 验证方式 / task §6 AC 字面 / Evidence 链接）
+#   D2：跑 spec_drift_lint --touched 或 --strict，输出粘贴到 PR body
+#       bash scripts/spec_drift_lint.sh --touched origin/master   # 0 violation 必须
+#   D3：phase spec §6 每条 AC 显式 "verified by ..." owner（D3 句式见 ADR-014 §D3）
+#   D4：D1 / D2 输出缺 → 视为 §2A 未满足，不得自决合 PR；降级用户审或转 §8 STOP
+#   D5：Phase 1-9 历史不适用本 gate；amendment PR 仅 D2（lint 触及行）适用、不要求 D1
 
 # Gate 5：切回 main + merge PR（--no-ff 保留 PR 边界）
 git checkout main
