@@ -1,89 +1,117 @@
+// task-9.5 §6 AC1-AC5 release tests.
+//
+// History: v0.1 task-8.3 introduced AC1/AC2/AC4/AC5 tests that fed fake
+// stub-evidence StepResult literals into ValidateSmokeEvidence /
+// ValidateV01Closure / ValidatePhaseSmoke — passing the release-smoke gate
+// without ever executing the CLI. Phase 9 task-9.5 (ADR-013 §Decision #4)
+// removes that fake-evidence surface:
+//
+//   - AC1 (TestTask83_AC1) rewritten to REAL `go build` + `cargo build`
+//     binaries before BuildTarball / ValidateTarball.
+//   - AC2 (TestTask83_AC2 "ReleaseSmokeEvidenceRequiresOrderedPassingSteps")
+//     DELETED — validator-self-test with stub evidence; superseded by the new
+//     end-to-end `TestPhase9ReleaseSmoke_EndToEnd` in
+//     release_smoke_e2e_test.go which exercises the validator against real
+//     CLI evidence.
+//   - AC3 (TestTask83_AC3 benchmark validator gate) RETAINED — unit-level
+//     synthetic benchmark threshold check; real 100k benchmark out of scope
+//     (task-9.5 §3 OOS — nightly task).
+//   - AC4 (TestTask83_AC4 "V01ClosureRequiresSevenTechnicalAreas") DELETED —
+//     same fake-evidence pattern as AC2; superseded by real e2e closure
+//     coverage emerging from the end-to-end suite.
+//   - AC5 (TestTask83_AC5 PhaseSmokeReport aggregator) DELETED — its
+//     structural aggregation behaviour is now validated indirectly by
+//     TestPhase9ReleaseSmoke_EndToEnd which builds a PhaseSmokeReport from
+//     real evidence + calls ValidatePhaseSmoke. Removing it eliminates the
+//     last stub-evidence literal in this package.
+
 package release
 
 import (
 	"archive/tar"
 	"compress/gzip"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
-// TEST-8.3.1 / SCEN-8.3.1 / AC1
+// TEST-9.5.1 / SCEN-9.5.1 / AC1 — REAL `go build` + `cargo build` + real
+// binary tarball + ValidateTarball pass + executable-bit assertion. Replaces
+// task-8.3 AC1's fake `name+"\n"` binary content (task-9.5 §3 + ADR-013
+// §Decision #4 fake-evidence取代).
 func TestTask83_AC1_TarballContainsRequiredAssets(t *testing.T) {
-	root := t.TempDir()
-	for _, name := range append(RequiredTarballEntries(), "extra/release-metadata.txt") {
-		writeFile(t, filepath.Join(root, name), name+"\n")
+	if testing.Short() {
+		t.Skip("AC1: -short skips real go build + cargo build (~30-60s cold cache)")
 	}
-	tarball := filepath.Join(root, "contextforge-linux-amd64.tar.gz")
+	root := findRepoRoot(t)
+	staging := t.TempDir()
+
+	// Build real binaries into staging dir (mirrors release pipeline behaviour).
+	goExe := filepath.Join(staging, exeName("contextforge"))
+	if out, err := runIn(root, "go", "build", "-o", goExe, "./cmd/contextforge"); err != nil {
+		t.Fatalf("AC1: go build: %v\n%s", err, out)
+	}
+	if out, err := runIn(root, "cargo", "build", "-p", "contextforge-core"); err != nil {
+		t.Fatalf("AC1: cargo build: %v\n%s", err, out)
+	}
+	coreSrc := filepath.Join(root, "target", "debug", exeName("contextforge-core"))
+	coreDst := filepath.Join(staging, exeName("contextforge-core"))
+	if err := copyFile(coreSrc, coreDst); err != nil {
+		t.Fatalf("AC1: copy cargo binary: %v", err)
+	}
+
+	// Sidecar required assets (real content from repo).
+	for src, dst := range map[string]string{
+		filepath.Join(root, "contextforge.example.toml"): filepath.Join(staging, "contextforge.example.toml"),
+		filepath.Join(root, "README.md"):                 filepath.Join(staging, "README.md"),
+		filepath.Join(root, "LICENSE"):                   filepath.Join(staging, "LICENSE"),
+	} {
+		if err := copyFile(src, dst); err != nil {
+			t.Fatalf("AC1: copy %s: %v", src, err)
+		}
+	}
+
+	tarball := filepath.Join(staging, "contextforge-linux-amd64-test.tar.gz")
 	if err := BuildTarball(tarball, []Asset{
-		{Name: "contextforge", Path: filepath.Join(root, "contextforge"), Mode: 0o755},
-		{Name: "contextforge-core", Path: filepath.Join(root, "contextforge-core"), Mode: 0o755},
-		{Name: "contextforge.example.toml", Path: filepath.Join(root, "contextforge.example.toml"), Mode: 0o644},
-		{Name: "README.md", Path: filepath.Join(root, "README.md"), Mode: 0o644},
-		{Name: "LICENSE", Path: filepath.Join(root, "LICENSE"), Mode: 0o644},
-		{Name: "extra/release-metadata.txt", Path: filepath.Join(root, "extra/release-metadata.txt"), Mode: 0o644},
+		{Name: "contextforge", Path: goExe, Mode: 0o755},
+		{Name: "contextforge-core", Path: coreDst, Mode: 0o755},
+		{Name: "contextforge.example.toml", Path: filepath.Join(staging, "contextforge.example.toml"), Mode: 0o644},
+		{Name: "README.md", Path: filepath.Join(staging, "README.md"), Mode: 0o644},
+		{Name: "LICENSE", Path: filepath.Join(staging, "LICENSE"), Mode: 0o644},
 	}); err != nil {
-		t.Fatalf("BuildTarball: %v", err)
+		t.Fatalf("AC1: BuildTarball: %v", err)
 	}
 
 	report, err := ValidateTarball(tarball)
 	if err != nil {
-		t.Fatalf("ValidateTarball: %v", err)
-	}
-	if report.Name != "contextforge-linux-amd64.tar.gz" {
-		t.Fatalf("report name=%q", report.Name)
+		t.Fatalf("AC1: ValidateTarball real binary tarball: %v", err)
 	}
 	if len(report.Entries) < len(RequiredTarballEntries()) {
-		t.Fatalf("entries=%v, want required entries", report.Entries)
+		t.Fatalf("AC1: entries=%v, want required entries %v", report.Entries, RequiredTarballEntries())
+	}
+	if report.Modes["contextforge"]&0o111 == 0 {
+		t.Fatalf("AC1: contextforge mode=%o missing executable bit", report.Modes["contextforge"])
+	}
+	if report.Modes["contextforge-core"]&0o111 == 0 {
+		t.Fatalf("AC1: contextforge-core mode=%o missing executable bit", report.Modes["contextforge-core"])
 	}
 
+	// Defensive: ValidateTarball must still reject a tarball with the
+	// contextforge binary lacking the executable bit (preserve task-8.3
+	// validator behaviour without re-introducing fake-binary stubs).
 	bad := filepath.Join(t.TempDir(), "contextforge-linux-amd64.tar.gz")
-	writeTarball(t, bad, map[string]int64{
-		"contextforge":              0o644,
-		"contextforge-core":         0o755,
-		"contextforge.example.toml": 0o644,
-		"README.md":                 0o644,
-		"LICENSE":                   0o644,
-	})
+	writeNonexecutableTarball(t, bad)
 	if _, err := ValidateTarball(bad); err == nil {
-		t.Fatal("ValidateTarball should reject non-executable contextforge")
+		t.Fatal("AC1: ValidateTarball should reject non-executable contextforge")
 	}
 }
 
-func writeFile(t *testing.T, path string, body string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatalf("write %s: %v", path, err)
-	}
-}
-
-// TEST-8.3.2 / SCEN-8.3.2 / AC2
-func TestTask83_AC2_ReleaseSmokeEvidenceRequiresOrderedPassingSteps(t *testing.T) {
-	var evidence []StepResult
-	for _, step := range RequiredSteps() {
-		evidence = append(evidence, StepResult{Name: step, Status: StepPassed, Evidence: step + " ok"})
-	}
-	if err := ValidateSmokeEvidence(evidence); err != nil {
-		t.Fatalf("ValidateSmokeEvidence valid sequence: %v", err)
-	}
-
-	missingExport := append([]StepResult(nil), evidence...)
-	missingExport = append(missingExport[:6], missingExport[7:]...)
-	if err := ValidateSmokeEvidence(missingExport); err == nil {
-		t.Fatal("ValidateSmokeEvidence should reject missing export step")
-	}
-
-	failed := append([]StepResult(nil), evidence...)
-	failed[3].Status = StepFailed
-	if err := ValidateSmokeEvidence(failed); err == nil {
-		t.Fatal("ValidateSmokeEvidence should reject failed index step")
-	}
-}
-
-// TEST-8.3.3 / SCEN-8.3.3 / AC3
+// TEST-9.5.x / SCEN-9.5.5 / AC5 (spec §6 AC5) — benchmark validator gate
+// retained as unit-level synthetic check; real 100k benchmark stays out of
+// scope (task-9.5 §3 OOS, nightly).
 func TestTask83_AC3_BenchmarkRequires100kChunksAndSub500msP95(t *testing.T) {
 	ok := BenchmarkReport{
 		ChunkCount:    100000,
@@ -108,58 +136,53 @@ func TestTask83_AC3_BenchmarkRequires100kChunksAndSub500msP95(t *testing.T) {
 	}
 }
 
-// TEST-8.3.4 / SCEN-8.3.4 / AC4
-func TestTask83_AC4_V01ClosureRequiresSevenTechnicalAreas(t *testing.T) {
-	evidence := []StepResult{
-		{Name: StepImport, Status: StepPassed, Evidence: "import source"},
-		{Name: StepIndex, Status: StepPassed, Evidence: "index source"},
-		{Name: StepSearch, Status: StepPassed, Evidence: "CLI/API search"},
-		{Name: StepMCP, Status: StepPassed, Evidence: "MCP tools/list"},
-		{Name: StepExplain, Status: StepPassed, Evidence: "explainable retrieval fields"},
-		{Name: StepEval, Status: StepPassed, Evidence: "eval run"},
-		{Name: StepReliability, Status: StepPassed, Evidence: "resume/resource guard"},
-	}
-	if err := ValidateV01Closure(evidence); err != nil {
-		t.Fatalf("ValidateV01Closure valid evidence: %v", err)
-	}
+// ----------------------------------------------------------------------------
+// Helpers shared with release_smoke_e2e_test.go (same package).
+// ----------------------------------------------------------------------------
 
-	evidence[4].Status = StepFailed
-	if err := ValidateV01Closure(evidence); err == nil {
-		t.Fatal("ValidateV01Closure should reject failed explainability evidence")
+func findRepoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("repo root with go.mod not found from cwd")
+		}
+		dir = parent
 	}
 }
 
-// TEST-8.3.5 / SCEN-8.3.5 / AC5
-func TestTask83_AC5_PhaseSmokeReportCombinesTarballSmokeAndBenchmark(t *testing.T) {
-	report := PhaseSmokeReport{
-		Tarball: TarballReport{Entries: RequiredTarballEntries()},
-		Smoke: []StepResult{
-			{Name: StepUnpack, Status: StepPassed, Evidence: "untar ok"},
-			{Name: StepInit, Status: StepPassed, Evidence: "init ok"},
-			{Name: StepImport, Status: StepPassed, Evidence: "import ok"},
-			{Name: StepIndex, Status: StepPassed, Evidence: "index ok"},
-			{Name: StepSearch, Status: StepPassed, Evidence: "search ok"},
-			{Name: StepMCP, Status: StepPassed, Evidence: "mcp ok"},
-			{Name: StepExport, Status: StepPassed, Evidence: "export ok"},
-			{Name: StepEval, Status: StepPassed, Evidence: "eval ok"},
-		},
-		Closure: []StepResult{
-			{Name: StepImport, Status: StepPassed, Evidence: "import source"},
-			{Name: StepIndex, Status: StepPassed, Evidence: "index source"},
-			{Name: StepSearch, Status: StepPassed, Evidence: "CLI/API search"},
-			{Name: StepMCP, Status: StepPassed, Evidence: "MCP tools/list"},
-			{Name: StepExplain, Status: StepPassed, Evidence: "explainable retrieval"},
-			{Name: StepEval, Status: StepPassed, Evidence: "eval run"},
-			{Name: StepReliability, Status: StepPassed, Evidence: "resume/resource"},
-		},
-		Benchmark: BenchmarkReport{ChunkCount: 100000, BM25P95MS: 250, MetadataP95MS: 70, FilterP95MS: 120},
+func exeName(base string) string {
+	if runtime.GOOS == "windows" {
+		return base + ".exe"
 	}
-	if err := ValidatePhaseSmoke(report); err != nil {
-		t.Fatalf("ValidatePhaseSmoke: %v", err)
-	}
+	return base
 }
 
-func writeTarball(t *testing.T, path string, entries map[string]int64) {
+func runIn(dir, name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", src, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o755)
+}
+
+func writeNonexecutableTarball(t *testing.T, path string) {
 	t.Helper()
 	f, err := os.Create(path)
 	if err != nil {
@@ -170,6 +193,13 @@ func writeTarball(t *testing.T, path string, entries map[string]int64) {
 	defer gz.Close()
 	tw := tar.NewWriter(gz)
 	defer tw.Close()
+	entries := map[string]int64{
+		"contextforge":              0o644, // missing executable bit on purpose
+		"contextforge-core":         0o755,
+		"contextforge.example.toml": 0o644,
+		"README.md":                 0o644,
+		"LICENSE":                   0o644,
+	}
 	for name, mode := range entries {
 		body := []byte(name + "\n")
 		if err := tw.WriteHeader(&tar.Header{
