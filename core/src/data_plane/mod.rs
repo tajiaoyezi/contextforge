@@ -29,15 +29,25 @@ use std::sync::Arc;
 
 /// Shared stores injected into all 4 tonic service implementations.
 ///
-/// task-11.1 only needs `workspace_store` + `job_store` (search/events
-///占位 [SPEC-OWNER:task-11.4]). task-11.4 will expand this struct to carry
-/// `retriever` + `event_bus`.
+/// task-11.1 only needed `workspace_store` + `job_store`. task-11.3 added
+/// `job_runner` + `data_dir` to spawn real `IndexSession`-backed JobRunner
+/// from `JobService.Enqueue` (task-11.3 §6 AC1/AC2). task-11.4 will expand
+/// this struct to carry `retriever` + `event_bus`.
 pub struct DataPlaneStores {
     pub workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
     pub job_store: Arc<crate::jobs::SqliteJobStore>,
+    /// task-11.3: real JobRunner backed by `IndexSessionBackend`. When None
+    /// (e.g. task-11.1 tests), `JobService.Enqueue` only writes status=queued
+    /// without spawning a worker.
+    pub job_runner: Option<Arc<crate::jobs::JobRunner<crate::jobs::IndexSessionBackend>>>,
+    /// task-11.3: data directory passed to `IndexSession::open(data_dir, ws_id)`.
+    /// Empty path means no spawning (task-11.1 default).
+    pub data_dir: std::path::PathBuf,
 }
 
 impl DataPlaneStores {
+    /// task-11.1 constructor: no JobRunner spawning. Used by data_plane unit
+    /// tests + integration tests that only exercise the gRPC wire.
     pub fn new(
         workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
         job_store: Arc<crate::jobs::SqliteJobStore>,
@@ -45,6 +55,24 @@ impl DataPlaneStores {
         Arc::new(Self {
             workspace_store,
             job_store,
+            job_runner: None,
+            data_dir: std::path::PathBuf::new(),
+        })
+    }
+
+    /// task-11.3 constructor: full production wiring with `IndexSession`-backed
+    /// `JobRunner`. Used by `serve_full` in `server.rs`.
+    pub fn with_runner(
+        workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
+        job_store: Arc<crate::jobs::SqliteJobStore>,
+        job_runner: Arc<crate::jobs::JobRunner<crate::jobs::IndexSessionBackend>>,
+        data_dir: std::path::PathBuf,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            workspace_store,
+            job_store,
+            job_runner: Some(job_runner),
+            data_dir,
         })
     }
 }

@@ -474,7 +474,7 @@ pub async fn serve_full(
     data_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::data_plane::{register_services, DataPlaneStores};
-    use crate::jobs::SqliteJobStore;
+    use crate::jobs::{orphan_reaper, IndexSessionBackend, JobRunner, JobStore, SqliteJobStore};
     use crate::workspace::SqliteWorkspaceStore;
     use std::sync::Arc;
 
@@ -485,7 +485,28 @@ pub async fn serve_full(
             // not silently start without business plane.
             let ws_store = Arc::new(SqliteWorkspaceStore::open(data_dir)?);
             let job_store = Arc::new(SqliteJobStore::open(data_dir)?);
-            let stores = DataPlaneStores::new(ws_store, job_store);
+
+            // task-11.3 §6 AC4: reap orphan jobs left over from previous boot
+            // BEFORE binding the gRPC listener so no fresh Enqueue can see
+            // a stale running row.
+            let reaped = orphan_reaper(&job_store)?;
+            if reaped > 0 {
+                eprintln!("INFO orphan reaper: marked {} stale job(s) terminal at startup", reaped);
+            }
+
+            // task-11.3 §6 AC1/AC2: wire the real JobRunner backed by
+            // IndexSessionBackend so JobService.Enqueue truly triggers the
+            // Tantivy/SQLite index pipeline.
+            let indexer = IndexSessionBackend::new();
+            let job_store_dyn: Arc<dyn JobStore> = job_store.clone();
+            let runner = Arc::new(JobRunner::new(job_store_dyn, indexer));
+
+            let stores = DataPlaneStores::with_runner(
+                ws_store,
+                job_store,
+                runner,
+                data_dir.to_path_buf(),
+            );
 
             let mut builder = tonic::transport::Server::builder();
             let router = builder.add_service(ContextServiceServer::new(svc));
