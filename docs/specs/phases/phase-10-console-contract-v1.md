@@ -1,6 +1,6 @@
 # Phase 10 · console-contract-v1
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.3.0 minor release 收口 phase — 实现 ContextForge ↔ ContextForge-Console (后文 "Console") Contract v1 兼容层，落地 9 个 REST endpoint + Workspace/IndexJob 资源模型 + cross-repo conformance test + docker compose 集成 smoke。本 phase 最后一个 task 完工/合并前必须执行 §6 端到端 smoke（`s2v_preflight_phase` C1）。
 >
@@ -55,13 +55,13 @@
 
 **阶段级验收标准（任务 10.1-10.6 全 Done，实测验证；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] AC1：`internal/contractv1/` 含 17 Contract v1 类型 Go 镜像 + `ContractVersion = "v1"` + FieldAvailability helper + types_test.go JSON roundtrip 全过 — **verified by task-10.1 §6 AC1-5**
-- [ ] AC2：`core/src/workspace/` + `core/migrations/0010_workspaces.sql` 实现 workspace 资源 CRUD + workspace_id ↔ collection_id 1:1 映射 + `cargo test workspace` 全过 — **verified by task-10.2 §6 AC1-5**
-- [ ] AC3：`core/src/jobs/` + `core/migrations/0011_index_jobs.sql` 实现 IndexJob 状态机 (queued/running/succeeded/failed/cancelled) + heartbeat + 异步 lifecycle + `cargo test jobs_lifecycle` 全过 — **verified by task-10.3 §6 AC1-5**
-- [ ] AC4：`internal/consoleapi/` 9 endpoint REST handler 全实现 + 路径 / shape / 错误码严格对齐 Console HTTPAdapter 期望 + `docs/consoleapi/openapi.yaml` 落 + `go test ./internal/consoleapi/... -run TestRESTEndpoints_E2E` 真启 daemon + 真 HTTP 调用全过 — **verified by task-10.4 §6 AC1-5**
-- [ ] AC5：`test/conformance/console_contractv1_test.go` 反向取 Console fakehttpserver oracle 跑过 ContextForge REST 端到端 — **verified by task-10.5 §6 AC1-5**
-- [ ] AC6：`scripts/console_smoke.sh` 启动 docker compose (Console v1.0 + ContextForge daemon + Postgres + Redis) + curl Console UI `/api/workspaces` 真返回 ContextForge workspace 列表（非 Mock）+ `CONSOLE_SMOKE_EXIT=0` — **verified by task-10.6 §6 AC1-5 + phase-smoke step 1 (cmd: `bash scripts/console_smoke.sh`)**
-- [ ] AC7：ADR-014 cross-validation gate 全套通过：D2 lint (`bash scripts/spec_drift_lint.sh --touched origin/master` 0 violation) + D3 phase §6 每条 AC 含 verified by + D1 closeout PR body 含 mapping 表 — **verified by phase-smoke step 2 (cmd: `bash scripts/spec_drift_lint.sh --touched origin/master`)**
+- [x] AC1：`internal/contractv1/` 含 17 Contract v1 类型 Go 镜像 + `ContractVersion = "v1"` + FieldAvailability helper + types_test.go JSON roundtrip 全过 — **verified by task-10.1 §6 AC1-5**
+- [x] AC2：`core/src/workspace/` + `core/migrations/0010_workspaces.sql` 实现 workspace 资源 CRUD + workspace_id ↔ collection_id 1:1 映射 + `cargo test workspace` 全过 — **verified by task-10.2 §6 AC1-5**
+- [x] AC3：`core/src/jobs/` + `core/migrations/0011_index_jobs.sql` 实现 IndexJob 状态机 (queued/running/succeeded/failed/cancelled) + heartbeat + 异步 lifecycle + `cargo test jobs_lifecycle` 全过 — **verified by task-10.3 §6 AC1-5**
+- [x] AC4：`internal/consoleapi/` 9 endpoint REST handler 全实现 + 路径 / shape / 错误码严格对齐 Console HTTPAdapter 期望 + `docs/consoleapi/openapi.yaml` 落 + `go test ./internal/consoleapi/... -run TestRESTEndpoints_E2E` 真启 daemon + 真 HTTP 调用全过 — **verified by task-10.4 §6 AC1-5**
+- [x] AC5：`test/conformance/console_contractv1_test.go` 反向取 Console fakehttpserver oracle 跑过 ContextForge REST 端到端 — **verified by task-10.5 §6 AC1-5**
+- [x] AC6：`scripts/console_smoke.sh` 启动 docker compose (Console v1.0 + ContextForge daemon + Postgres + Redis) + curl Console UI `/api/workspaces` 真返回 ContextForge workspace 列表（非 Mock）+ `CONSOLE_SMOKE_EXIT=0` — **verified by task-10.6 §6 AC1-5 + phase-smoke step 1 (cmd: `bash scripts/console_smoke.sh`)**
+- [x] AC7：ADR-014 cross-validation gate 全套通过：D2 lint (`bash scripts/spec_drift_lint.sh --touched origin/master` 0 violation) + D3 phase §6 每条 AC 含 verified by + D1 closeout PR body 含 mapping 表 — **verified by phase-smoke step 2 (cmd: `bash scripts/spec_drift_lint.sh --touched origin/master`)**
 
 **端到端 smoke**：
 
