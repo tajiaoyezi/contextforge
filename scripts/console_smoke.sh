@@ -134,9 +134,14 @@ echo "$health_body" | grep -q '"contract_version":"v1"' \
 WS_NAME="cf-real-smoke"
 
 echo "  [2/9] POST /v1/workspaces"
+# task-11.3 SqliteWorkspaceStore validates root_path via Rust Path::is_absolute,
+# which on Windows requires native form (C:\...) not Git-Bash form (/h/...).
+# Use cygpath when available to translate; otherwise pass through.
 WS_ROOT="$ROOT/test/fixtures/index-job-real"
 if [ "$MODE" != "real" ]; then
   WS_ROOT="/tmp/cf-smoke-fixture"
+elif command -v cygpath >/dev/null 2>&1; then
+  WS_ROOT="$(cygpath -w "$WS_ROOT" | sed 's|\\|/|g')"
 fi
 ws_body=$(curl -sf -X POST "$BASE/v1/workspaces" \
   -H 'Content-Type: application/json' \
