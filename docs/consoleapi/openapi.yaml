@@ -1,0 +1,322 @@
+openapi: 3.0.3
+info:
+  title: ContextForge Console Contract v1 REST API
+  version: v0.3.0
+  description: |
+    9 REST endpoints implementing ContextForge-Console (Console v1.0)
+    HTTPAdapter Contract v1 expectations. See ADR-015 §D4 and
+    docs/specs/tasks/task-10.4-rest-endpoints.md for the single source of
+    truth on path / shape / error-code mapping.
+
+    Authentication: Default trusted-network (no `Authorization` required).
+    When env `CONTEXTFORGE_CONSOLEAPI_AUTH_TOKEN` is set on daemon startup,
+    all requests must carry `Authorization: Bearer <token>` or get 401.
+
+    Error mapping (Console HTTPAdapter sentinel convention):
+      404 Not Found       → Console ErrNotFound
+      409 Conflict        → Console ErrConflict (e.g., re-cancel terminal job)
+      401 Unauthorized    → bearer token invalid
+      400 Bad Request     → malformed JSON / missing required field
+      5xx                 → Console ErrCoreUnavailable
+
+servers:
+  - url: http://127.0.0.1:48181
+    description: ContextForge daemon default (v0.3 local-first)
+
+paths:
+  /v1/health:
+    get:
+      summary: Core health + contract version
+      responses:
+        '200':
+          description: healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreHealth'
+
+  /v1/workspaces:
+    post:
+      summary: Create workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceCreate'
+      responses:
+        '200':
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      summary: List workspaces
+      responses:
+        '200':
+          description: list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Workspace' }
+
+  /v1/workspaces/{id}:
+    get:
+      summary: Get workspace by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/index-jobs:
+    post:
+      summary: Enqueue index job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id]
+              properties:
+                workspace_id: { type: string }
+                trigger_source: { type: string }
+      responses:
+        '200':
+          description: queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IndexJob' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/index-jobs/{id}:
+    get:
+      summary: Get index job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IndexJob' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/index-jobs/{id}/cancel:
+    post:
+      summary: Cancel index job (co-operative)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: cancelled
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: terminal — cannot cancel
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+
+  /v1/search:
+    post:
+      summary: Execute search (returns nested {result, trace})
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchRequest' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [result, trace]
+                properties:
+                  result: { $ref: '#/components/schemas/SearchResult' }
+                  trace: { $ref: '#/components/schemas/RetrievalTrace' }
+
+  /v1/observability/events:
+    get:
+      summary: Recent observability events (long-poll — NOT SSE v0.3)
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ObservabilityEvent' }
+
+components:
+  responses:
+    NotFound:
+      description: resource not found (Console ErrNotFound)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    BadRequest:
+      description: malformed request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+    FieldAvailability:
+      type: object
+      properties:
+        object: { type: string }
+        missing_must_have_fields:
+          type: array
+          items: { type: string }
+    CoreHealth:
+      type: object
+      required: [status, contract_version, missing_must_have_fields]
+      properties:
+        status: { type: string }
+        contract_version: { type: string, example: v1 }
+        last_connected_at: { type: string, format: date-time, nullable: true }
+        error_reason: { type: string, nullable: true }
+        missing_must_have_fields:
+          type: array
+          items: { $ref: '#/components/schemas/FieldAvailability' }
+    WorkspaceCreate:
+      type: object
+      required: [name, root_path]
+      properties:
+        name: { type: string }
+        root_path: { type: string }
+        allowlist:
+          type: array
+          items: { type: string }
+        denylist:
+          type: array
+          items: { type: string }
+    Workspace:
+      type: object
+      properties:
+        workspace_id: { type: string }
+        name: { type: string }
+        root_path: { type: string }
+        status: { type: string }
+        config_snapshot: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        field_availability: { $ref: '#/components/schemas/FieldAvailability' }
+    IndexJob:
+      type: object
+      properties:
+        job_id: { type: string }
+        workspace_id: { type: string }
+        trigger_source: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        stage: { type: string }
+        processed_files: { type: integer }
+        total_files: { type: integer }
+        failed_files: { type: integer }
+        skipped_files: { type: integer }
+        error_message: { type: string, nullable: true }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        last_heartbeat_at: { type: string, format: date-time, nullable: true }
+        field_availability: { $ref: '#/components/schemas/FieldAvailability' }
+    SearchRequest:
+      type: object
+      required: [query, workspace_id]
+      properties:
+        query: { type: string }
+        workspace_id: { type: string }
+        agent_scope: { type: string }
+        retrieval_method: { type: string }
+        top_k: { type: integer }
+        config_snapshot: { type: object, additionalProperties: true }
+        field_availability: { $ref: '#/components/schemas/FieldAvailability' }
+    SearchResult:
+      type: object
+      properties:
+        result_id: { type: string }
+        query_id: { type: string }
+        workspace_id: { type: string }
+        source_file_path: { type: string }
+        source_file_type: { type: string }
+        chunk_id: { type: string }
+        chunk_text_preview: { type: string }
+        line_start: { type: integer }
+        line_end: { type: integer }
+        score: { type: number }
+        rank_before_rerank: { type: integer }
+        rank_after_rerank: { type: integer, nullable: true }
+        retrieval_method: { type: string }
+        reason: { type: string }
+        citation:
+          type: object
+          properties:
+            citation_id: { type: string }
+            source_file_path: { type: string }
+            chunk_id: { type: string }
+            line_start: { type: integer }
+            line_end: { type: integer }
+            confidence: { type: number }
+            field_availability: { $ref: '#/components/schemas/FieldAvailability' }
+        field_availability: { $ref: '#/components/schemas/FieldAvailability' }
+    RetrievalTrace:
+      type: object
+      properties:
+        trace_id: { type: string }
+        query: { type: string }
+        expanded_query: { type: string, nullable: true }
+        candidate_generation_steps:
+          type: array
+          items: { type: string }
+        lexical_candidates_count: { type: integer }
+        vector_candidates_count: { type: integer }
+        rerank_steps:
+          type: array
+          items: { type: string }
+        scope_filter_result: { type: string }
+        final_context_count: { type: integer }
+        field_availability: { $ref: '#/components/schemas/FieldAvailability' }
+    ObservabilityEvent:
+      type: object
+      properties:
+        event_id: { type: string }
+        event_type: { type: string }
+        severity: { type: string }
+        source: { type: string }
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        trace_id: { type: string, nullable: true }
+        job_id: { type: string, nullable: true }
+        field_availability: { $ref: '#/components/schemas/FieldAvailability' }
