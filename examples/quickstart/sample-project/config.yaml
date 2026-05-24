@@ -1,0 +1,3 @@
+aws_key: AKIAIOSFODNN7EXAMPLE
+endpoint: https://api.example.invalid
+note: synthetic credentials for the quickstart fixture; secret redaction rewrites the line above before indexing.

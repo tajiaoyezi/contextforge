@@ -26,6 +26,8 @@ vendor/
 #   仓库根锚定二进制名（前导 / 防止误吞 cmd/contextforge/ 同名源码目录 — init.md 步 11 警告）
 /contextforge
 /contextforge-core
+/contextforge.exe
+/contextforge-core.exe
 *.test
 *.out
 # 注意：go.sum 必须入库（依赖完整性），不忽略
