@@ -471,6 +471,17 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 - ADR-015 状态推进 Proposed → Accepted；adapter §Phase 索引 Phase 10 → Done；§Open Questions O13 标记 resolved by ADR-015；v0.3.0 RELEASE_NOTES + evidence + artifacts 落盘。
 - ADR-014 cross-validation gate（D1 mapping 表 + D2 lint 0 violation + D3 phase §6 每条 AC verified by 显式 + D4 主 agent 自治补丁）首次完整激活并跑通。
 
+**Phase 11 console-real-data-plane**（v0.4 收口；把 Phase 10 task-10.4 §10 Trade-off #1 + #2 一次性 resolve；详见 ADR-016）
+
+- `core/proto/console_data_plane.proto` 含 4 service × 14 RPC + 11 message 类型（`WorkspaceService` / `JobService` / `SearchService` / `EventsService`），字段命名 snake_case 与 Go `internal/contractv1/contractv1.go` JSON tag 1:1；包声明 `contextforge.console_data_plane.v1`，与 Phase 9 `proto/contextforge/v1/service.proto` (Index gRPC) 分离演进。
+- `core/src/data_plane/` Rust module（`mod.rs` + `workspace.rs` + `job.rs` + `search.rs` + `events.rs`）含 4 个 tonic service trait 实现；复用 task-10.2 `SqliteWorkspaceStore` + task-10.3 `SqliteJobStore` + `JobRunner` 框架；daemon `serve` 子命令启动时把 4 service `add_service` 到现有 `:48180` tonic Server（与 Phase 9 cli-data-plane gRPC 共存）。
+- `internal/consoleapi/grpcclient/` Go 包 + `Deps` 接口 gRPC-backed 4 wrapper 实现；`internal/consoleapi/handlers.go` 重构为 thin protocol translator（不引入字段映射代码 + 不引入业务逻辑）；`internal/consoleapi/memstore.go` 降级为 env-gated fallback (`CONSOLE_API_FALLBACK_INMEM=1`)；console-api-serve 新增 `--grpc-addr` 默认 `127.0.0.1:48180` + `--fallback-inmem` flag。
+- `JobService.Enqueue` 真触发 `JobRunner.spawn_blocking(IndexSession::index_path_with_progress)` + heartbeat 每 100 files 或 5s 持久化 + co-operative cancel via `CancelToken Arc<AtomicBool>` + `JobOutcome` 写回 succeeded/failed/cancelled + error_message；orphan reaper 在 daemon `serve` 启动早期标 running → failed。
+- `SearchService.Query` 真接 existing retriever (Tantivy + SQLite chunks) + `RetrievalTrace.retrieved_chunks` 真填 (score + source_file + content snippet ≤200 字 UTF-8 boundary safe)；`EventsService.Subscribe` 真接 tokio broadcast channel-backed `EventBus` (容量 1000，Lagged log warning + continue)；Go `/v1/observability/events` 改 long-poll wrap (30s timeout / 100 evt batch)。
+- `scripts/console_smoke.sh` v2 REAL mode 默认 + `CONSOLE_REAL_SMOKE_EXIT=0` final marker；local-only mode 保留为 `LOCAL_ONLY=1` env-gated；`scripts/release_smoke.sh` 第 5 段更新为 REAL 模式 + `PHASE_RELEASE_SMOKE_EXIT=0`。
+- ADR-016 状态推进 Proposed → Accepted；adapter §Phase 索引 Phase 11 → Done；§Open Questions O14 标记 resolved by ADR-016 (business plane wiring) + endpoint expansion `[SPEC-DEFER:console-endpoint-expansion]`；v0.4.0 RELEASE_NOTES + evidence + artifacts 落盘。
+- ADR-014 cross-validation gate（D1 mapping 表 + D2 lint 0 violation + D3 phase §6 每条 AC verified by 显式 + D4 主 agent 自治补丁）第二次完整激活验证制度稳定性。
+
 ---
 
 ## Decisions Log｜决策日志
@@ -590,6 +601,7 @@ v0.1 recall eval 使用 golden questions 数据集进行评测。
 - [ ] **O11 中英文与代码符号检索策略**：Tantivy tokenizer、CJK 处理、代码符号字段、路径 boost、exact match 如何实现和评测？
 - [x] **O12 Phase 1-8 spec drift 击鼓传花机制如何在治理层提前发现**（ADR-013 §Follow-ups 新增）：v0.1 CLI 数据通路 spec drift 跨 Phase 1 / 2 / 6 / 8 击鼓传花（每 phase 把 CLI wire 推给下一 phase，到 task-8.3 §3 OOS 终点声明"历史 gap"但 AC2 仍勾选通过）。Phase 9 实施完成后产 governance retrospective：是否需要 ADR-014 引入"Phase 顶层 Exit Criteria 与 task 收口 AC 必须 cross-validation"机制？主 agent 自治在 spec-drift 检测层面的能力边界（ADR-012 把 §2A / merge / Waive 交给主 agent；spec drift 检测需跨 phase / 跨 task 视角，单 task 视角的主 agent 容易漏）。**Resolved by ADR-014** (cross-phase-exit-criteria-validation，Status=Accepted 2026-05-24)：D1 closeout mapping 表 + D2 `scripts/spec_drift_lint.sh` + D3 phase §6 verified by 显式 + D4 主 agent 自治补丁 + D5 历史不溯改；Phase 10 首次完整激活。
 - [ ] **O13 ContextForge ↔ ContextForge-Console Contract v1 集成机制**（Phase 10 启动前提出）：Console v1.0 已 ship 但 HTTPAdapter 期望 ContextForge 端实现 9-19 REST endpoint + Workspace/IndexJob 资源模型，v0.2 ContextForge 端尚不提供；Console / ContextForge 双仓库 cross-repo 字段对齐如何 verifiable？v0.3 Phase 10 console-contract-v1 收口；详见 ADR-015。
+- [ ] **O14 Console Real Data Plane gRPC bridge 演进路径**（Phase 11 启动前提出）：v0.3 Phase 10 task-10.4 §10 Trade-off #1 + #2 显式记录 Console business plane 仍 in-memory MemStore 模拟 + JobRunner 不真索引；v0.4 Phase 11 通过 ADR-016 cross-process Rust ↔ Go gRPC bridge 把 Workspace / IndexJob / Search / Events 业务面真接通（4 个新 gRPC service + JobRunner 真触发 IndexSession + retriever 真返回 indexed 分块 + EventBus 真接 progress）。v0.4.x Memory / Eval / source-chunks / search trace / workspace PATCH 等 endpoint 仍 `[SPEC-DEFER:console-endpoint-expansion]`；多实例 daemon leader election `[SPEC-DEFER:task-future.multi-daemon-leader-election]`。**Partially resolved by ADR-016** (cross-process-rust-go-via-grpc-bridge，Status=Proposed → Accepted at Phase 11 closeout)：D1 Rust 持 SoT + D2 4 gRPC service + D3 Go thin proxy + D4 MemStore env-gated fallback + D5 schema 单 owner = Rust + D6 沿用 ADR-014 cross-validation gate (第二次激活)。Endpoint expansion 留 v0.4.x。
 
 ---
 

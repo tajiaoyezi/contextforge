@@ -243,6 +243,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Done | 3 | `../ContextForge-wt-eval-and-reliability` |
 | 9 | `cli-pipeline` | `docs/specs/phases/phase-9-cli-pipeline.md` | Done | 6 | `../ContextForge-wt-cli-pipeline` |
 | 10 | `console-contract-v1` | `docs/specs/phases/phase-10-console-contract-v1.md` | Done | 6 | `../ContextForge-wt-console-contract-v1` |
+| 11 | `console-real-data-plane` | `docs/specs/phases/phase-11-console-real-data-plane.md` | Ready | 4 | `../ContextForge-wt-console-real-data-plane` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -290,6 +291,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 10.4 | internal/consoleapi | docs/specs/tasks/task-10.4-rest-endpoints.md | Done | Phase10 #4（dep 10.1,10.2,10.3）| `../ContextForge-wt-console-contract-v1` |
 | 10.5 | test/conformance | docs/specs/tasks/task-10.5-conformance-test.md | Done | Phase10 #5（dep 10.4）| `../ContextForge-wt-console-contract-v1` |
 | 10.6 | scripts/console_smoke | docs/specs/tasks/task-10.6-console-integration-smoke.md | Done | Phase10 #6（dep 10.5，收口）| `../ContextForge-wt-console-contract-v1` |
+| 11.1 | core/proto + core/src/data_plane | docs/specs/tasks/task-11.1-rust-data-plane-grpc-services.md | Ready | Phase11 #1 | `../ContextForge-wt-console-real-data-plane` |
+| 11.2 | internal/consoleapi/grpcclient | docs/specs/tasks/task-11.2-go-rest-to-grpc-proxy.md | Ready | Phase11 #2（dep 11.1）| `../ContextForge-wt-console-real-data-plane` |
+| 11.3 | core/src/data_plane/job + IndexSession wiring | docs/specs/tasks/task-11.3-indexjob-real-runner-wiring.md | Ready | Phase11 #3（dep 11.1,11.2）| `../ContextForge-wt-console-real-data-plane` |
+| 11.4 | core/src/data_plane/search + events | docs/specs/tasks/task-11.4-search-real-retriever-and-events.md | Ready | Phase11 #4（dep 11.1,11.2,11.3，收口）| `../ContextForge-wt-console-real-data-plane` |
 
 ## ADR 索引
 
@@ -314,6 +319,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 013 | cli-data-plane-grpc-bridge | Accepted | docs/decisions/adr-013-cli-data-plane-grpc-bridge.md |
 | 014 | cross-phase-exit-criteria-validation | Accepted | docs/decisions/adr-014-cross-phase-exit-criteria-validation.md |
 | 015 | console-contract-v1-compatibility | Accepted | docs/decisions/adr-015-console-contract-v1-compatibility.md |
+| 016 | cross-process-rust-go-via-grpc-bridge | Proposed | docs/decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md |
 
 ## BDD Feature 索引
 
@@ -340,6 +346,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 8.3 | test/features/release.feature |
 | 9.1 / 9.2 / 9.3 / 9.4 / 9.5 / 9.6 | test/features/cli-pipeline.feature |
 | 10.1 / 10.2 / 10.3 / 10.4 / 10.5 / 10.6 | test/features/console-contract-v1.feature |
+| 11.1 / 11.2 / 11.3 / 11.4 | test/features/console-real-data-plane.feature |
 
 ---
 
