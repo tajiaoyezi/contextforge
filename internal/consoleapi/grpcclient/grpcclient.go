@@ -35,7 +35,7 @@ import (
 	pb "github.com/tajiaoyezi/contextforge/proto/contextforge/console_data_plane/v1"
 )
 
-// Client bundles 5 gRPC client wrappers + the underlying conn so Close()
+// Client bundles 6 gRPC client wrappers + the underlying conn so Close()
 // releases the channel cleanly.
 type Client struct {
 	conn      *grpc.ClientConn
@@ -44,6 +44,7 @@ type Client struct {
 	search    consoleapi.SearchClient
 	events    consoleapi.EventsClient
 	memory    consoleapi.MemoryClient
+	eval      consoleapi.EvalClient
 }
 
 // New dials the Rust data plane gRPC server (default 127.0.0.1:50551) and
@@ -71,6 +72,7 @@ func New(ctx context.Context, addr string, opts ...grpc.DialOption) (*Client, er
 		search:    &searchClient{c: pb.NewSearchServiceClient(conn)},
 		events:    &eventsClient{c: pb.NewEventsServiceClient(conn)},
 		memory:    &memoryClient{c: pb.NewMemoryServiceClient(conn)},
+		eval:      &evalClient{c: pb.NewEvalServiceClient(conn)},
 	}, nil
 }
 
@@ -96,6 +98,9 @@ func (c *Client) Events() consoleapi.EventsClient { return c.events }
 
 // Memory returns the consoleapi.MemoryClient wrapper.
 func (c *Client) Memory() consoleapi.MemoryClient { return c.memory }
+
+// Eval returns the consoleapi.EvalClient wrapper.
+func (c *Client) Eval() consoleapi.EvalClient { return c.eval }
 
 // Ping issues a lightweight RPC to verify the data plane is reachable.
 // Used by console-api-serve startup health-check.
@@ -523,6 +528,104 @@ func protoToMemoryItem(p *pb.MemoryItem) contractv1.MemoryItem {
 		Status:         p.Status,
 		Availability:   contractv1.FieldAvailability{Object: "MemoryItem"},
 	}
+}
+
+// =====================================================================
+// Eval wrapper (task-14.2 / ADR-017 D1 Wave 4)
+// =====================================================================
+
+type evalClient struct{ c pb.EvalServiceClient }
+
+func (e *evalClient) Create(req contractv1.EvalRunCreate) (contractv1.EvalRun, error) {
+	cfg, _ := json.Marshal(req.ConfigSnapshot)
+	// Generate unique id Go-side (matches task-14.1 contract: caller-provided id).
+	id := fmt.Sprintf("eval-%d", time.Now().UnixNano())
+	resp, err := e.c.Create(context.Background(), &pb.CreateEvalRunRequest{
+		EvalRunId:          id,
+		WorkspaceId:        req.WorkspaceID,
+		ConfigSnapshotJson: string(cfg),
+		DatasetRef:         req.DatasetRef,
+	})
+	if err != nil {
+		return contractv1.EvalRun{}, mapGrpcErr(err)
+	}
+	return protoToEvalRun(resp), nil
+}
+
+func (e *evalClient) Get(id string) (*contractv1.EvalRun, error) {
+	resp, err := e.c.Get(context.Background(), &pb.GetEvalRunRequest{EvalRunId: id})
+	if err != nil {
+		mapped := mapGrpcErr(err)
+		if errors.Is(mapped, consoleapi.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, mapped
+	}
+	run := protoToEvalRun(resp)
+	return &run, nil
+}
+
+func (e *evalClient) UpdateProgress(id, status string, metrics map[string]float64,
+	caseResults []contractv1.CaseResult, errorMessage string) error {
+	metricsJSON := "{}"
+	if metrics != nil {
+		if b, err := json.Marshal(metrics); err == nil {
+			metricsJSON = string(b)
+		}
+	}
+	cases := make([]*pb.CaseResult, 0, len(caseResults))
+	for _, c := range caseResults {
+		cases = append(cases, &pb.CaseResult{
+			CaseId:         c.CaseID,
+			Query:          c.Query,
+			ExpectedChunks: c.ExpectedChunks,
+			ActualChunks:   c.ActualChunks,
+			Score:          c.Score,
+			Passed:         c.Passed,
+		})
+	}
+	_, err := e.c.UpdateProgress(context.Background(), &pb.UpdateEvalRunProgressRequest{
+		EvalRunId:    id,
+		Status:       status,
+		MetricsJson:  metricsJSON,
+		CaseResults:  cases,
+		ErrorMessage: errorMessage,
+	})
+	return mapGrpcErr(err)
+}
+
+func protoToEvalRun(p *pb.EvalRun) contractv1.EvalRun {
+	metrics := map[string]float64{}
+	if p.MetricsJson != "" {
+		_ = json.Unmarshal([]byte(p.MetricsJson), &metrics)
+	}
+	cases := make([]contractv1.CaseResult, 0, len(p.CaseResults))
+	for _, c := range p.CaseResults {
+		cases = append(cases, contractv1.CaseResult{
+			CaseID:         c.CaseId,
+			Query:          c.Query,
+			ExpectedChunks: c.ExpectedChunks,
+			ActualChunks:   c.ActualChunks,
+			Score:          c.Score,
+			Passed:         c.Passed,
+		})
+	}
+	out := contractv1.EvalRun{
+		EvalRunID:      p.EvalRunId,
+		WorkspaceID:    p.WorkspaceId,
+		Status:         p.Status,
+		ConfigSnapshot: json.RawMessage(p.ConfigSnapshotJson),
+		StartedAt:      time.Unix(p.StartedAtUnix, 0).UTC(),
+		Metrics:        metrics,
+		CaseResults:    cases,
+		SchemaVersion:  p.SchemaVersion,
+		Availability:   contractv1.FieldAvailability{Object: "EvalRun"},
+	}
+	if p.FinishedAtUnix != nil {
+		t := time.Unix(*p.FinishedAtUnix, 0).UTC()
+		out.FinishedAt = &t
+	}
+	return out
 }
 
 func protoToObservabilityEvent(p *pb.ObservabilityEvent) contractv1.ObservabilityEvent {

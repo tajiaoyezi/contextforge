@@ -37,6 +37,10 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST /v1/memory/{id}/pin", handleMemoryPin(deps))
 	mux.HandleFunc("POST /v1/memory/{id}/deprecate", confirmMiddleware(handleMemoryDeprecate(deps)))
 	mux.HandleFunc("POST /v1/memory/{id}/soft-delete", confirmMiddleware(handleMemorySoftDelete(deps)))
+	// task-14.2 (ADR-017 D1 Wave 4): eval 2 endpoints (POST is non-destructive
+	// — trigger async run, return 200 with running; GET reads state).
+	mux.HandleFunc("POST /v1/eval-runs", handleCreateEvalRun(deps))
+	mux.HandleFunc("GET /v1/eval-runs/{id}", handleGetEvalRun(deps))
 	return bearerAuthMiddleware(mux, deps.AuthToken)
 }
 

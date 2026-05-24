@@ -73,3 +73,16 @@ func (degradedMemory) Get(_ string) (*contractv1.MemoryItem, error) {
 func (degradedMemory) Pin(_ string, _ bool) error    { return consoleapi.ErrDataPlaneUnavailable }
 func (degradedMemory) Deprecate(_ string) error      { return consoleapi.ErrDataPlaneUnavailable }
 func (degradedMemory) SoftDelete(_ string) error     { return consoleapi.ErrDataPlaneUnavailable }
+
+type degradedEval struct{}
+
+func (degradedEval) Create(_ contractv1.EvalRunCreate) (contractv1.EvalRun, error) {
+	return contractv1.EvalRun{}, consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedEval) Get(_ string) (*contractv1.EvalRun, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedEval) UpdateProgress(_, _ string, _ map[string]float64,
+	_ []contractv1.CaseResult, _ string) error {
+	return consoleapi.ErrDataPlaneUnavailable
+}
