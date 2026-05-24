@@ -107,6 +107,7 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 		store := consoleapi.NewMemStore()
 		memMem := consoleapi.NewMemMemoryStore()
 		memMem.SeedFixtures()
+		memEval := consoleapi.NewMemEvalStore()
 		fmt.Fprintln(stderr, "WARN console-api: using in-memory fallback store (CONSOLE_API_FALLBACK_INMEM=1; data plane bypassed; ADR-016 §D4)")
 		return consoleapi.Deps{
 			Workspace: consoleapi.WorkspaceAdapter{S: store},
@@ -114,6 +115,7 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 			Search:    store,
 			Events:    store,
 			Memory:    memMem,
+			Eval:      memEval,
 		}, "inmem-fallback", nil
 	}
 
@@ -138,6 +140,7 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 		Search:    cli.Search(),
 		Events:    cli.Events(),
 		Memory:    cli.Memory(),
+		Eval:      cli.Eval(),
 	}, "grpc", func() { _ = cli.Close() }
 }
 
@@ -150,5 +153,6 @@ func degradedDeps() consoleapi.Deps {
 		Search:    degradedSearch{},
 		Events:    degradedEvents{},
 		Memory:    degradedMemory{},
+		Eval:      degradedEval{},
 	}
 }

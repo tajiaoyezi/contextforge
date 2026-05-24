@@ -91,6 +91,16 @@ type MemoryClient interface {
 	SoftDelete(memoryID string) error
 }
 
+// EvalClient backs POST /v1/eval-runs + GET /v1/eval-runs/{id} (task-14.2 / ADR-017 D1 Wave 4).
+// UpdateProgress is the runEvalAsync goroutine callback — not exposed in
+// Console contract v1 22-endpoint surface.
+type EvalClient interface {
+	Create(req contractv1.EvalRunCreate) (contractv1.EvalRun, error)
+	Get(evalRunID string) (*contractv1.EvalRun, error) // nil if not found
+	UpdateProgress(evalRunID, status string, metrics map[string]float64,
+		caseResults []contractv1.CaseResult, errorMessage string) error
+}
+
 // Deps bundles all four backends + the bearer auth token for NewRouter.
 // AuthToken == "" means "trusted-network" (no Authorization header required —
 // aligns with Console CONSOLE_API_CORE_AUTH_MODE=trusted-network default).
@@ -104,6 +114,7 @@ type Deps struct {
 	Search      SearchClient
 	Events      EventsClient
 	Memory      MemoryClient
+	Eval        EvalClient
 	AuthToken   string
 	BackendKind string
 }

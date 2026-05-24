@@ -454,6 +454,98 @@ func (s *MemMemoryStore) SoftDelete(id string) error {
 	return nil
 }
 
+// =====================================================================
+// task-14.2 (ADR-017 D1 Wave 4) — MemEvalStore fallback impl.
+// In-memory only; status auto-advances to "succeeded" after 2s with mock
+// metrics (deps demo / fallback degraded-but-functional per ADR-016 §D4).
+// =====================================================================
+
+type MemEvalStore struct {
+	mu   sync.Mutex
+	runs map[string]contractv1.EvalRun
+	seq  uint64
+}
+
+func NewMemEvalStore() *MemEvalStore {
+	return &MemEvalStore{runs: map[string]contractv1.EvalRun{}}
+}
+
+func (s *MemEvalStore) Create(req contractv1.EvalRunCreate) (contractv1.EvalRun, error) {
+	s.mu.Lock()
+	s.seq++
+	id := fmt.Sprintf("eval-mem-%d", s.seq)
+	now := time.Now().UTC()
+	cfg, _ := json.Marshal(req.ConfigSnapshot)
+	run := contractv1.EvalRun{
+		EvalRunID:      id,
+		WorkspaceID:    req.WorkspaceID,
+		Status:         "running",
+		ConfigSnapshot: cfg,
+		StartedAt:      now,
+		FinishedAt:     nil,
+		Metrics:        map[string]float64{},
+		CaseResults:    []contractv1.CaseResult{},
+		SchemaVersion:  "v1",
+		Availability:   contractv1.FieldAvailability{Object: "EvalRun"},
+	}
+	s.runs[id] = run
+	s.mu.Unlock()
+	// Auto-advance to succeeded after 2s with mock metrics.
+	go func() {
+		time.Sleep(2 * time.Second)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if existing, ok := s.runs[id]; ok && existing.Status == "running" {
+			done := time.Now().UTC()
+			existing.Status = "succeeded"
+			existing.FinishedAt = &done
+			existing.Metrics = map[string]float64{
+				"recall@5":    0.7,
+				"recall@10":   0.85,
+				"precision@5": 0.6,
+			}
+			existing.CaseResults = []contractv1.CaseResult{{
+				CaseID: "mem-c-1", Query: "demo", ExpectedChunks: []string{"chk-1"},
+				ActualChunks: []string{"chk-1"}, Score: 1.0, Passed: true,
+			}}
+			s.runs[id] = existing
+		}
+	}()
+	return run, nil
+}
+
+func (s *MemEvalStore) Get(id string) (*contractv1.EvalRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if run, ok := s.runs[id]; ok {
+		return &run, nil
+	}
+	return nil, nil
+}
+
+func (s *MemEvalStore) UpdateProgress(id, status string, metrics map[string]float64,
+	caseResults []contractv1.CaseResult, errorMessage string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, ok := s.runs[id]
+	if !ok {
+		return fmt.Errorf("%w: eval %s", ErrNotFound, id)
+	}
+	run.Status = status
+	if metrics != nil {
+		run.Metrics = metrics
+	}
+	if caseResults != nil {
+		run.CaseResults = caseResults
+	}
+	if status == "succeeded" || status == "failed" || status == "cancelled" {
+		done := time.Now().UTC()
+		run.FinishedAt = &done
+	}
+	s.runs[id] = run
+	return nil
+}
+
 // workspaceIDFromName derives a deterministic kebab-case-ish id from name.
 // Trade-off: v0.3 simple slug; v0.4 may move to UUID + persistence.
 func workspaceIDFromName(name string, salt int) string {

@@ -413,6 +413,60 @@ func handleMemorySoftDelete(deps Deps) http.HandlerFunc {
 	}
 }
 
+// =====================================================================
+// task-14.2 (ADR-017 D1 Wave 4) — 2 eval REST handlers.
+// =====================================================================
+
+// handleCreateEvalRun — POST /v1/eval-runs.
+// Body: contractv1.EvalRunCreate. Returns 200 + EvalRun status="running";
+// spawns runEvalAsync goroutine that drives recall harness + reverse-updates
+// store via EvalService.UpdateProgress when terminal.
+func handleCreateEvalRun(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Eval == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		var body contractv1.EvalRunCreate
+		if !readJSONBody(w, r, &body) {
+			return
+		}
+		run, err := deps.Eval.Create(body)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		// Spawn async runner; the goroutine survives the request.
+		go runEvalAsync(deps, run.EvalRunID, body)
+		writeJSON(w, http.StatusOK, run)
+	}
+}
+
+// handleGetEvalRun — GET /v1/eval-runs/{id}.
+func handleGetEvalRun(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Eval == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		run, err := deps.Eval.Get(id)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		if run == nil {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "eval run not found: "+id)
+			return
+		}
+		writeJSON(w, http.StatusOK, *run)
+	}
+}
+
 // handleEvents — GET /v1/observability/events (task-11.4 long-poll wrap).
 //
 // Query params:

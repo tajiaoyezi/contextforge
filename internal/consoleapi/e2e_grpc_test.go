@@ -138,6 +138,7 @@ func buildRouterWithGrpc(t *testing.T, grpcAddr string) (http.Handler, *grpcclie
 		Search:      cli.Search(),
 		Events:      cli.Events(),
 		Memory:      cli.Memory(),
+		Eval:        cli.Eval(),
 		BackendKind: "grpc",
 	}
 	return consoleapi.NewRouter(deps), cli
@@ -320,6 +321,36 @@ func TestRESTEndpoints_E2E_GrpcBacked(t *testing.T) {
 	}
 	if len(body) != 0 {
 		t.Errorf("204 must have empty body; got %q", body)
+	}
+
+	// Step 9e: task-14.2 (ADR-017 D1 Wave 4) — eval endpoint smoke.
+	// POST returns 200 + EvalRun status="running" + spawn runEvalAsync;
+	// GET unknown returns 404; GET valid id may still be running or terminal
+	// depending on goroutine timing — we just verify it's not 404 and that
+	// the JSON envelope includes EvalRun fields.
+	evalBody := fmt.Sprintf(`{"workspace_id":"%s","config_snapshot":{},"dataset_ref":""}`, wsID)
+	code, body = doJSON(t, srv, "POST", "/v1/eval-runs", evalBody)
+	if code != 200 {
+		t.Fatalf("POST eval-run: expected 200; got code=%d body=%s", code, body)
+	}
+	var evalEnv map[string]any
+	_ = json.Unmarshal(body, &evalEnv)
+	evalID, _ := evalEnv["eval_run_id"].(string)
+	if evalID == "" {
+		t.Fatalf("POST eval-run: empty eval_run_id; body=%s", body)
+	}
+	if evalEnv["status"] != "running" {
+		t.Errorf("POST eval-run: expected status=running initially; got %v", evalEnv["status"])
+	}
+	// Get unknown → 404
+	code, body = doJSON(t, srv, "GET", "/v1/eval-runs/eval-does-not-exist", "")
+	if code != 404 {
+		t.Fatalf("GET eval-run unknown: expected 404; got code=%d body=%s", code, body)
+	}
+	// Get valid (may be running or terminal)
+	code, body = doJSON(t, srv, "GET", "/v1/eval-runs/"+evalID, "")
+	if code != 200 {
+		t.Fatalf("GET eval-run by id: expected 200; got code=%d body=%s", code, body)
 	}
 
 	// Step 9d: task-13.2 (ADR-017 D1 Wave 3) — memory endpoint smoke.
