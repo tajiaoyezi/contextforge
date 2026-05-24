@@ -242,7 +242,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 7 | `mcp-adapter` | `docs/specs/phases/phase-7-mcp-adapter.md` | Done | 1 | `../ContextForge-wt-mcp-adapter` |
 | 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Done | 3 | `../ContextForge-wt-eval-and-reliability` |
 | 9 | `cli-pipeline` | `docs/specs/phases/phase-9-cli-pipeline.md` | Done | 6 | `../ContextForge-wt-cli-pipeline` |
-| 10 | `console-contract-v1` | `docs/specs/phases/phase-10-console-contract-v1.md` | Ready | 6 | `../ContextForge-wt-console-contract-v1` |
+| 10 | `console-contract-v1` | `docs/specs/phases/phase-10-console-contract-v1.md` | Done | 6 | `../ContextForge-wt-console-contract-v1` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -284,12 +284,12 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 9.4 | cli/import | docs/specs/tasks/task-9.4-go-cli-import.md | Draft | Phase9 #4（dep 9.2，可 ∥ 9.3）| `../ContextForge-wt-cli-pipeline` |
 | 9.5 | release | docs/specs/tasks/task-9.5-release-smoke-real.md | Draft | Phase9 #5（dep 9.3,9.4）| `../ContextForge-wt-cli-pipeline` |
 | 9.6 | release/readme | docs/specs/tasks/task-9.6-readme-quickstart-verified.md | Draft | Phase9 #6（dep 9.5，收口）| `../ContextForge-wt-cli-pipeline` |
-| 10.1 | contractv1 | docs/specs/tasks/task-10.1-contractv1-types.md | Ready | Phase10 #1 | `../ContextForge-wt-console-contract-v1` |
-| 10.2 | core/workspace | docs/specs/tasks/task-10.2-workspace-resource.md | Ready | Phase10 #2（dep 10.1）| `../ContextForge-wt-console-contract-v1` |
-| 10.3 | core/jobs | docs/specs/tasks/task-10.3-indexjob-resource.md | Ready | Phase10 #3（dep 10.2，可 ∥ 10.2 部分阶段）| `../ContextForge-wt-console-contract-v1` |
-| 10.4 | internal/consoleapi | docs/specs/tasks/task-10.4-rest-endpoints.md | Ready | Phase10 #4（dep 10.1,10.2,10.3）| `../ContextForge-wt-console-contract-v1` |
-| 10.5 | test/conformance | docs/specs/tasks/task-10.5-conformance-test.md | Ready | Phase10 #5（dep 10.4）| `../ContextForge-wt-console-contract-v1` |
-| 10.6 | scripts/console_smoke | docs/specs/tasks/task-10.6-console-integration-smoke.md | Ready | Phase10 #6（dep 10.5，收口）| `../ContextForge-wt-console-contract-v1` |
+| 10.1 | contractv1 | docs/specs/tasks/task-10.1-contractv1-types.md | Done | Phase10 #1 | `../ContextForge-wt-console-contract-v1` |
+| 10.2 | core/workspace | docs/specs/tasks/task-10.2-workspace-resource.md | Done | Phase10 #2（dep 10.1）| `../ContextForge-wt-console-contract-v1` |
+| 10.3 | core/jobs | docs/specs/tasks/task-10.3-indexjob-resource.md | Done | Phase10 #3（dep 10.2，可 ∥ 10.2 部分阶段）| `../ContextForge-wt-console-contract-v1` |
+| 10.4 | internal/consoleapi | docs/specs/tasks/task-10.4-rest-endpoints.md | Done | Phase10 #4（dep 10.1,10.2,10.3）| `../ContextForge-wt-console-contract-v1` |
+| 10.5 | test/conformance | docs/specs/tasks/task-10.5-conformance-test.md | Done | Phase10 #5（dep 10.4）| `../ContextForge-wt-console-contract-v1` |
+| 10.6 | scripts/console_smoke | docs/specs/tasks/task-10.6-console-integration-smoke.md | Done | Phase10 #6（dep 10.5，收口）| `../ContextForge-wt-console-contract-v1` |
 
 ## ADR 索引
 
@@ -313,7 +313,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 012 | main-agent-governance-autonomy | Accepted | docs/decisions/adr-012-main-agent-governance-autonomy.md |
 | 013 | cli-data-plane-grpc-bridge | Accepted | docs/decisions/adr-013-cli-data-plane-grpc-bridge.md |
 | 014 | cross-phase-exit-criteria-validation | Accepted | docs/decisions/adr-014-cross-phase-exit-criteria-validation.md |
-| 015 | console-contract-v1-compatibility | Proposed | docs/decisions/adr-015-console-contract-v1-compatibility.md |
+| 015 | console-contract-v1-compatibility | Accepted | docs/decisions/adr-015-console-contract-v1-compatibility.md |
 
 ## BDD Feature 索引
 

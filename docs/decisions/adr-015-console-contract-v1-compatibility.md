@@ -1,6 +1,6 @@
 # ADR `015`: `console-contract-v1-compatibility`
 
-**Status**: Proposed
+**Status**: Accepted
 **Category**: Integration / 跨仓库契约
 **Date**: 2026-05-24
 **Decided By**: tajiaoyezi objective + main agent execution
