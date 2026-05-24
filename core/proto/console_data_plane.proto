@@ -1,0 +1,223 @@
+// ContextForge Console Data Plane gRPC contract (ADR-016 D2).
+//
+// 1:1 镜像 internal/contractv1/contractv1.go must-have 字段 (snake_case
+// JSON tag → snake_case proto field). 与 proto/contextforge/v1/service.proto
+// (Phase 9 cli-data-plane Index gRPC) 文件隔离，避免与 Phase 9 already freeze
+// Index gRPC 字段冲突 + 让 Console business plane 独立演进。
+//
+// Refs: ADR-016 §D2 / phase-11-console-real-data-plane.md §6 AC1 /
+// task-11.1-rust-data-plane-grpc-services.md §6 AC1
+//
+// Field naming convention: snake_case (matches Go contractv1 JSON tag);
+// Unix epoch i64 for timestamps (Go side converts to *time.Time on egress);
+// optional keyword for nullable fields (proto3 synthetic oneof).
+//
+// Service port: reuses ADR-013 cli-data-plane gRPC :48180 (single Server::builder
+// chain in contextforge-core daemon serve entry — both Phase 9 IndexService
+// and Phase 11 Console* services coexist).
+
+syntax = "proto3";
+
+package contextforge.console_data_plane.v1;
+
+// =====================================================================
+// Workspace resource (mirrors contractv1.Workspace + WorkspaceCreate)
+// =====================================================================
+
+message Workspace {
+  string workspace_id = 1;
+  string name = 2;
+  string root_path = 3;
+  string status = 4;             // "ready" | "indexing" | "deleted"
+  string config_snapshot = 5;    // JSON-serialized opaque blob (RawMessage 等价)
+  repeated string allowlist = 6;
+  repeated string denylist = 7;
+  int64 created_at_unix = 8;
+  int64 updated_at_unix = 9;
+}
+
+message CreateWorkspaceRequest {
+  string workspace_id = 1;       // Rust 侧需要显式 (Go contractv1 不传则由 handler 生成)
+  string name = 2;
+  string root_path = 3;
+  repeated string allowlist = 4;
+  repeated string denylist = 5;
+}
+
+message GetWorkspaceRequest {
+  string workspace_id = 1;
+}
+
+message ListWorkspacesRequest {
+  // 预留 future filter (e.g. status filter [SPEC-DEFER:console-endpoint-expansion])
+}
+
+message ListWorkspacesResponse {
+  repeated Workspace items = 1;
+}
+
+message DeleteWorkspaceRequest {
+  string workspace_id = 1;
+}
+
+message DeleteWorkspaceResponse {
+  bool ok = 1;
+}
+
+service WorkspaceService {
+  rpc Create(CreateWorkspaceRequest) returns (Workspace);
+  rpc Get(GetWorkspaceRequest) returns (Workspace);
+  rpc List(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc Delete(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
+}
+
+// =====================================================================
+// IndexJob resource (mirrors contractv1.IndexJob)
+// =====================================================================
+
+message IndexJob {
+  string job_id = 1;
+  string workspace_id = 2;
+  string trigger_source = 3;
+  string status = 4;             // "queued"|"running"|"succeeded"|"failed"|"cancelled"
+  string stage = 5;
+  int64 processed_files = 6;
+  int64 total_files = 7;
+  int64 failed_files = 8;
+  int64 skipped_files = 9;
+  optional string error_message = 10;
+  optional int64 started_at_unix = 11;
+  optional int64 finished_at_unix = 12;
+  optional int64 last_heartbeat_at_unix = 13;
+}
+
+message EnqueueJobRequest {
+  string workspace_id = 1;
+  string trigger_source = 2;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  bool ok = 1;
+}
+
+message StreamJobsRequest {
+  optional string workspace_id = 1;
+}
+
+service JobService {
+  rpc Enqueue(EnqueueJobRequest) returns (IndexJob);
+  rpc Get(GetJobRequest) returns (IndexJob);
+  rpc Cancel(CancelJobRequest) returns (CancelJobResponse);
+  rpc Stream(StreamJobsRequest) returns (stream IndexJob);
+}
+
+// =====================================================================
+// Search (mirrors contractv1.SearchRequest + SearchResult + RetrievalTrace)
+// =====================================================================
+
+message SearchRequest {
+  string query = 1;
+  string workspace_id = 2;
+  string agent_scope = 3;
+  string retrieval_method = 4;
+  int64 top_k = 5;
+  string config_snapshot = 6;    // JSON-serialized opaque blob
+}
+
+message SourceChunk {
+  string chunk_id = 1;
+  string workspace_id = 2;
+  string source_file_path = 3;
+  int64 line_start = 4;
+  int64 line_end = 5;
+  string chunk_text_preview = 6;
+  int64 chunk_offset_start = 7;
+  int64 chunk_offset_end = 8;
+  string redaction_status = 9;
+}
+
+message Citation {
+  string citation_id = 1;
+  string source_file_path = 2;
+  string chunk_id = 3;
+  int64 line_start = 4;
+  int64 line_end = 5;
+  double confidence = 6;
+}
+
+message SearchResultItem {
+  string result_id = 1;
+  string query_id = 2;
+  string workspace_id = 3;
+  string source_file_path = 4;
+  string source_file_type = 5;
+  string chunk_id = 6;
+  string chunk_text_preview = 7;
+  int64 line_start = 8;
+  int64 line_end = 9;
+  double score = 10;
+  int64 rank_before_rerank = 11;
+  optional int64 rank_after_rerank = 12;
+  string retrieval_method = 13;
+  string reason = 14;
+  Citation citation = 15;
+}
+
+message RetrievalTrace {
+  string trace_id = 1;
+  string query = 2;
+  optional string expanded_query = 3;
+  repeated string candidate_generation_steps = 4;
+  int64 lexical_candidates_count = 5;
+  int64 vector_candidates_count = 6;
+  repeated string rerank_steps = 7;
+  string scope_filter_result = 8;
+  int64 final_context_count = 9;
+  repeated SourceChunk retrieved_chunks = 10;  // task-11.4 真填
+}
+
+message SearchResponse {
+  // Console HTTPAdapter v1.0 嵌套约定: {result, trace}
+  repeated SearchResultItem results = 1;
+  RetrievalTrace trace = 2;
+}
+
+service SearchService {
+  rpc Query(SearchRequest) returns (SearchResponse);
+}
+
+// =====================================================================
+// Events (mirrors contractv1.ObservabilityEvent)
+// =====================================================================
+
+message ObservabilityEvent {
+  string event_id = 1;
+  string event_type = 2;        // "indexing.progress" | "indexing.cancelled" | "indexing.error" | "core.keepalive"
+  string severity = 3;          // "info" | "warn" | "error"
+  string source = 4;            // "contextforge-core" | "console-api"
+  string message = 5;
+  int64 ts_unix = 6;
+  optional string trace_id = 7;
+  optional string job_id = 8;
+  // Optional structured payload (JSON-serialized):
+  //   indexing.progress → {processed_files, total_files}
+  //   indexing.error → {error_message}
+  string payload_json = 9;
+}
+
+message SubscribeEventsRequest {
+  optional string job_id = 1;   // optional filter
+  optional string workspace_id = 2;
+}
+
+service EventsService {
+  rpc Subscribe(SubscribeEventsRequest) returns (stream ObservabilityEvent);
+}

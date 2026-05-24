@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let protoc = protoc_bin_vendored::protoc_bin_path()?;
     std::env::set_var("PROTOC", &protoc);
 
-    let protos = [
+    let protos_v1 = [
         "../proto/contextforge/v1/context.proto",
         "../proto/contextforge/v1/search.proto",
         "../proto/contextforge/v1/service.proto",
@@ -18,9 +18,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .build_client(true)
         .build_server(true)
-        .compile_protos(&protos, &["../proto"])?;
+        .compile_protos(&protos_v1, &["../proto"])?;
 
-    for p in protos {
+    // task-11.1 (ADR-016 §D2): Console data plane gRPC services
+    // 4 service × 14 RPC, snake_case 与 Go contractv1 JSON tag 1:1.
+    let protos_console = ["proto/console_data_plane.proto"];
+
+    tonic_build::configure()
+        .build_client(true)
+        .build_server(true)
+        .compile_protos(&protos_console, &["proto"])?;
+
+    for p in protos_v1.iter().chain(protos_console.iter()) {
         println!("cargo:rerun-if-changed={p}");
     }
     Ok(())

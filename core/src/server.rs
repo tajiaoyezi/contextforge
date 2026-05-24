@@ -457,6 +457,50 @@ pub async fn serve_with_service(
     }
 }
 
+/// task-11.1 §6 AC5 (ADR-016 §D2): bind `addr` and serve the full Console
+/// data plane gRPC contract — Phase 9 `ContextServiceServer` + Phase 11 4
+/// new `console_data_plane.v1` services (WorkspaceService / JobService /
+/// SearchService / EventsService) on the **same** tonic `Server::builder`
+/// chain so they share one port + auth boundary (ADR-013 cli-data-plane
+/// pattern extended).
+///
+/// `data_dir` is used to construct `SqliteWorkspaceStore` (task-10.2) +
+/// `SqliteJobStore` (task-10.3) — both share `<data_dir>/workspaces.db`.
+/// If either store fails to open, the error is propagated up before any
+/// listen-bind happens.
+pub async fn serve_full(
+    addr: ListenAddr,
+    svc: CoreService,
+    data_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::data_plane::{register_services, DataPlaneStores};
+    use crate::jobs::SqliteJobStore;
+    use crate::workspace::SqliteWorkspaceStore;
+    use std::sync::Arc;
+
+    match addr {
+        ListenAddr::Tcp(sock) => {
+            // task-11.1: open data plane stores up-front. Fail loud if SQLite
+            // can't open (corrupt schema / permission denied) — daemon should
+            // not silently start without business plane.
+            let ws_store = Arc::new(SqliteWorkspaceStore::open(data_dir)?);
+            let job_store = Arc::new(SqliteJobStore::open(data_dir)?);
+            let stores = DataPlaneStores::new(ws_store, job_store);
+
+            let mut builder = tonic::transport::Server::builder();
+            let router = builder.add_service(ContextServiceServer::new(svc));
+            let router = register_services(router, stores);
+            router.serve(sock).await?;
+            Ok(())
+        }
+        ListenAddr::Unix(path) => Err(Box::new(AddrError(format!(
+            "unix socket serving ({}) is deferred to task-1.4 daemon wiring; \
+             task-1.3 serves loopback TCP",
+            path.display()
+        )))),
+    }
+}
+
 // ============================================================================
 // task-6.1 RED tests — CoreService::search wire 单元 (TEST-6.1.1 Rust 端).
 // 用 in-memory tempdir Retriever 验真实拿到 12 字段（不走 tonic transport；
