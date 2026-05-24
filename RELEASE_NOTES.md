@@ -1,5 +1,101 @@
 # ContextForge Release Notes
 
+## v0.6.0 (2026-05-24)
+
+### 摘要
+
+ContextForge v0.6.0 完成 **Phase 13 memory-rest-surface** 收口：ADR-017 D1
+Wave 3 共 5 个 memory REST endpoint 落地，把 Console HTTPAdapter conformance
+从 13/22 提升到 18/22（82% coverage）。新增 SQLite 表 + `MemoryService` 5 gRPC
+RPC + 4 个 AuditOperation 变体 + Go REST 5 handler。ADR-014 cross-validation
+gate **第四次完整激活** 跨 4 phase 验证制度稳定性。
+
+### 主要改进
+
+- **task-13.1 Rust SoT** (PR #84):
+  - `core/migrations/0013_memory_items.sql` (10 columns + 3 indexes + status CHECK constraint)
+  - `core/src/memory/store.rs` `SqliteMemoryStore` (5 methods + 9 unit tests)
+  - `proto/contextforge/console_data_plane/v1/console_data_plane.proto` add-only
+    `MemoryItem` + 5 request/response messages + `MemoryService` 5 RPC
+  - `core/src/data_plane/memory.rs` `MemoryServer` impl (5 RPC + 5 unit tests)
+  - `core/src/memoryops/audit.rs` `AuditOperation` 加 4 variants
+    (MemoryPin / MemoryUnpin / MemoryDeprecate / MemorySoftDelete)
+  - Pin / Deprecate / SoftDelete 各 emit 一条 audit event
+  - `core/src/data_plane/mod.rs` `DataPlaneStores` 加 Option<memory> + Option<audit>;
+    新 `with_memory()` + `full()` 构造函数; `register_services` 加 5th MemoryServiceServer
+  - `core/src/server.rs` `serve_full` 实例化 SqliteMemoryStore + AuditSink 真接到 daemon
+  - 3 integration tests via tonic client + MemoryServiceClient
+- **task-13.2 Go REST** (PR #85):
+  - `internal/consoleapi/types.go` `MemoryClient` interface + `MemoryListFilter` + `Deps.Memory`
+  - `internal/consoleapi/router.go` 5 new routes; deprecate + soft-delete
+    confirmMiddleware-gated (ADR-017 D2 OR-semantics)
+  - `internal/consoleapi/handlers.go` 5 new handlers (Pin/Deprecate/SoftDelete
+    each return 204 No Content); `deps.Memory == nil → 503` graceful degrade
+  - `internal/consoleapi/memstore.go` `MemMemoryStore` + `SeedFixtures()` (5 hard-coded)
+    for `CONSOLE_API_FALLBACK_INMEM=1` mode
+  - `internal/consoleapi/grpcclient/grpcclient.go` `memoryClient` 5 wrappers +
+    `protoToMemoryItem` helper; `Client.Memory()` accessor
+  - `internal/cli/console_api_serve.go` `buildDeps` wires Memory in both modes;
+    `degradedDeps()` adds `degradedMemory{}`
+  - 7 new router_test + e2e_grpc Step 9d (real Rust daemon 404/412 invariants)
+- **scripts/console_smoke.sh v4** (PR #85):
+  - Header v3 → v4; subtitle "Phase 13 memory-rest-surface"
+  - 13 → 18 endpoint flow; renumber [1/18]..[18/18]
+  - 新 Step 13/18: sqlite3 seed (gracefully skips if sqlite3 unavailable)
+  - 新 Step 14-18/18: memory list / get / pin 204 / deprecate 412+204 / soft-delete 412+204
+  - REAL mode: `CONSOLE_REAL_SMOKE_EXIT=0` 18/18 PASS
+- **test/fixtures/memory-seed/seed.sql** (新增): 5 rows + agent_scope 分布
+- **治理 / spec 同步** (PR #86):
+  - Phase 13 spec / adapter §Phase 13 / task-13.{1,2} 全 `Status: Done`
+  - ADR-017 Status: Proposed (full Accepted 推到 Phase 14 closeout 一次性)
+  - ADR-014 D1 mapping 表 / D2 lint 0 violation
+
+### Trade-offs / Conscious limitations
+
+- **is_pinned 列设计**：选 `is_pinned bool` 列 + `status` 三态独立；pin state
+  存在 Rust SqliteMemoryStore 但**不在 contractv1.MemoryItem 暴露** (ADR-015 D5
+  字段锁定)；Console UI 显示 Pin 按钮但 pinned visual indicator 需通过
+  future contractv1 amendment 或 inferred via 单独 Get-by-id 调用
+- **importer 写入 memory_items 路径** `[SPEC-DEFER:phase-15.import-to-memory-items]`
+  留 v0.6.x；v0.6.0 ship 后 Console UI 看 0 条 memory items（fresh install）→
+  Console UI 端 graceful degrade
+- **memory hard delete** 不实施（Console PRD 显式只支持 soft-delete）
+- **POST /unpin separate endpoint** 不实施（Console v1.0 contract 只有 `/pin`；
+  `Pin(id, false)` API 端已支持 unpin 语义；如 Console 需要 separate route →
+  cross-repo amendment `[SPEC-DEFER:console-memory-unpin]`)
+
+### Migration notes (v0.5.0 → v0.6.0)
+
+- **daemon 重启后 memory_items 表自动创建**（schema migration 0013_memory_items.sql
+  在 SqliteMemoryStore.open 内 execute_batch IF NOT EXISTS）；v0.5 用户重启
+  daemon 后 `<data_dir>/memory.db` 自动 ready
+- **新 5 endpoint**（Memory CRUD + Pin/Deprecate/SoftDelete）— 无 v0.5 baseline;
+  client 按 OpenAPI/contractv1 v1 spec 调用
+- **destructive endpoints** (deprecate + soft-delete) 需要 X-Confirm: yes header
+  或 ?confirm=true query；Console BFF 自动注入；ops curl 用户须显式加
+- contractv1.go 字段集合不变 (ADR-015 D5)
+- 新 proto RPC + message add-only (ADR-013 D2)
+
+### Tests (Phase 13 全程)
+
+- **Rust**: 84 lib tests (含 14 new memory: 9 store + 5 server) + 3 memory_integration
+  + 既有 phase 1-12 测试不退化 = 17 test groups all PASS
+- **Go**: 43 packages PASS (含 7 new memory router_test + e2e_grpc Step 9d
+  real Rust daemon + grpcclient_test 不退化)
+- **conformance**: v0.4/v0.5 既有 endpoints 不退化
+- **smoke**: `bash scripts/console_smoke.sh` REAL mode 18/18 PASS
+
+### Verification commands
+
+```bash
+cargo test -p contextforge-core   # expect all PASS (17 test groups)
+go test ./...                     # expect 43 packages PASS
+bash scripts/console_smoke.sh     # expects CONSOLE_REAL_SMOKE_EXIT=0
+RELEASE_SMOKE_CONSOLE=1 bash scripts/release_smoke.sh   # PHASE_RELEASE_SMOKE_EXIT=0
+```
+
+---
+
 ## v0.5.0 (2026-05-24)
 
 ### 摘要
