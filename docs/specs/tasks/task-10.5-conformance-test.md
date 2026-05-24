@@ -1,6 +1,6 @@
 # Task `10.5`: `conformance-test — test/conformance/console_contractv1_test.go 反向跑 Console fakehttpserver oracle`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -123,21 +123,21 @@ func (c *contextForgeHTTPClient) GetEvents(ctx context.Context) ([]contractv1.Ob
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`test/conformance/console_contractv1_test.go` 含 TestConsoleContractV1Conformance + 9 endpoint flow + env-based skip 机制 — **verified by manual cat + grep 9 endpoint paths**
-- [ ] AC2：env `CONSOLE_REPO=$path` 设时 test PASS 端到端 — **verified by integration-test step `CONSOLE_REPO=H:/devlopment/code/ContextForge-Console go test ./test/conformance/... -run TestConsoleContractV1Conformance -v -timeout 180s`**
-- [ ] AC3：env 未设时 test SKIP (exit 0) 不 fail — **verified by unit-test step `go test ./test/conformance/... -run TestConsoleContractV1Conformance -v`**（无 env）
-- [ ] AC4：所有返回 contractv1 类型的 FieldAvailability.Complete() == true（v0.3 must-have 字段全部填充） — **verified by integration-test step (AC2 内嵌断言)**
-- [ ] AC5：错误码 mapping 验证：404 → ErrNotFound / 409 → ErrConflict（v0.3 不验 5xx，daemon 真错很罕见）— **verified by integration-test step (AC2 内嵌 case)**
+- [x] AC1：`test/conformance/console_contractv1_test.go` 含 TestConsoleContractV1Conformance + 9 endpoint flow + env-based skip 机制 — **verified by manual cat + grep 9 endpoint paths**
+- [x] AC2：env `CONSOLE_REPO=$path` 设时 test PASS 端到端 — **verified by integration-test step `CONSOLE_REPO=H:/devlopment/code/ContextForge-Console go test ./test/conformance/... -run TestConsoleContractV1Conformance -v -timeout 180s`**
+- [x] AC3：env 未设时 test SKIP (exit 0) 不 fail — **verified by unit-test step `go test ./test/conformance/... -run TestConsoleContractV1Conformance -v`**（无 env）
+- [x] AC4：所有返回 contractv1 类型的 FieldAvailability.Complete() == true（v0.3 must-have 字段全部填充） — **verified by integration-test step (AC2 内嵌断言)**
+- [x] AC5：错误码 mapping 验证：404 → ErrNotFound / 409 → ErrConflict（v0.3 不验 5xx，daemon 真错很罕见）— **verified by integration-test step (AC2 内嵌 case)**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | test file + flow | test/conformance/console_contractv1_test.go | Not Started |
-| AC2 | env 设 → PASS | test/conformance/console_contractv1_test.go (CONSOLE_REPO 路径) | Not Started |
-| AC3 | env 未设 → SKIP | test/conformance/console_contractv1_test.go | Not Started |
-| AC4 | FieldAvailability complete | test/conformance/console_contractv1_test.go assert | Not Started |
-| AC5 | 错误码 mapping | test/conformance/console_contractv1_test.go assert | Not Started |
+| AC1 | test file + flow | test/conformance/console_contractv1_test.go | Done |
+| AC2 | env 设 → PASS | test/conformance/console_contractv1_test.go (CONSOLE_REPO 路径) | Done |
+| AC3 | env 未设 → SKIP | test/conformance/console_contractv1_test.go | Done |
+| AC4 | FieldAvailability complete | test/conformance/console_contractv1_test.go assert | Done |
+| AC5 | 错误码 mapping | test/conformance/console_contractv1_test.go assert | Done |
 
 ## 8. Risks
 
@@ -163,16 +163,28 @@ func (c *contextForgeHTTPClient) GetEvents(ctx context.Context) ([]contractv1.Ob
 
 <!-- 完工时按 standard.md §8.3 6 项 schema 回填 -->
 
-- **完成日期**：<TBD-after-impl>
-- **改动文件**：<TBD-after-impl>
-- **commit 列表**：<TBD-after-impl>
+- **完成日期**：2026-05-24
+- **改动文件**：
+  - `test/conformance/console_contractv1_test.go` (新增 — TestConsoleContractV1Conformance + 内嵌 minimalConsoleHTTPClient mimicking Console HTTPAdapter)
+  - `test/conformance/README.md` (新增 — 跑法 / 设计 / AC 覆盖 / OOS)
+  - `docs/specs/tasks/task-10.5-conformance-test.md` (本 spec §6 / §7 / §10 / Status 推进)
+
+  **Trade-off #1 (v0.3 in-process REST server, 非 spawned daemon)**：spec §3 设计 spawn 真 daemon。task-10.4 §10 trade-off #1 决策用 in-memory MemStore (cross-process SQLite 共享 [SPEC-DEFER:task-future.cross-process-sqlite-sharing])，所以 spawn daemon 没有意义 (Rust 集成不通)。本 task 复用 task-10.4 的 startServerE2E 模式 — net.Listen("127.0.0.1:0") + in-process net/http server，跑 Console-style 9 endpoint flow。Wire shape conformance 完全验证；cross-process consistency 留 v0.4。
+  **Trade-off #2 (内嵌 minimalConsoleHTTPClient 而非 import Console adapter)**：spec §5.2 选择内嵌简化版避免新 cross-repo Go module dep。Console 仓库未发布 Go module proxies；v0.4 可评估 go.mod replace pull Console adapter 包。
+- **commit 列表**：
+  - feat(conformance): task-10.5 — Console Contract v1 conformance test + CONSOLE_REPO env-based skip + 9 endpoint Console-style flow + FieldAvailability.Complete() assertions
+  - docs(spec): task-10.5 §6 / §7 / §10 / Status → Done
 - **§9 Verification 结果**：
-  - install: <TBD-after-impl>
-  - lint: <TBD-after-impl>
-  - typecheck: <TBD-after-impl>
-  - unit-test: <TBD-after-impl>
-  - integration: <TBD-after-impl>
-  - build: <TBD-after-impl>
-  - manual: <TBD-after-impl>
-- **剩余风险 / 未做项**：<TBD-after-impl>
-- **下游 task 影响**：task-10.6 docker compose smoke 是本 task PASS 后的下一步
+  - install: ✅ (`go mod download`)
+  - lint: ✅ (`gofmt -l test/conformance/` empty)
+  - typecheck: ✅ (`go vet ./...` exit 0)
+  - unit-test: PASS — env CONSOLE_REPO 未设 → SKIP (AC3); 设 → PASS (AC1/AC2/AC4/AC5)
+  - integration: 复用 unit; full flow 含 9 endpoint + sentinel error mapping + FieldAvailability.Complete()
+  - build: ✅ (`go build ./...`)
+  - manual: ✅ 跑过 `CONSOLE_REPO=H:/devlopment/code/ContextForge-Console go test ./test/conformance/... -v` PASS
+- **剩余风险 / 未做项**：
+  - Should-have / optional 字段 conformance [SPEC-DEFER:task-future.conformance-should-have]
+  - Live Console HTTPAdapter import [SPEC-DEFER:task-future.conformance-vendored-adapter]
+  - Cross-process SQLite consistency (depends on task-future.cross-process-sqlite-sharing)
+  - CI runner CONSOLE_REPO env 默认未设 → CI 默认 SKIP；本地 dev 跑全套
+- **下游 task 影响**：task-10.6 docker compose smoke 是本 task PASS 后启动 Console UI 真验证的下一步
