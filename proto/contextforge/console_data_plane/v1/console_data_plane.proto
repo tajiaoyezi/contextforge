@@ -238,6 +238,67 @@ service SearchService {
 }
 
 // =====================================================================
+// Memory (task-13.1 / ADR-017 D1 Wave 3; mirrors contractv1.MemoryItem)
+// 9 fields 1:1 + orthogonal is_pinned column on the store side (not exposed
+// in contractv1.MemoryItem per ADR-015 D5 字段锁定; pin state visible only
+// via the dedicated Pin RPC outcome / future contractv1 amendment).
+// =====================================================================
+
+message MemoryItem {
+  string memory_id = 1;
+  string agent_scope = 2;
+  string content_preview = 3;
+  string source_type = 4;
+  string source_ref = 5;
+  int64 created_at_unix = 6;
+  int64 updated_at_unix = 7;
+  int64 hit_count = 8;
+  string status = 9;  // "active" | "deprecated" | "soft_deleted"
+}
+
+message ListMemoryRequest {
+  string agent_id = 1;
+  string scope = 2;
+  string namespace = 3;
+  bool include_soft_deleted = 4;
+}
+
+message ListMemoryResponse {
+  repeated MemoryItem items = 1;
+}
+
+message GetMemoryRequest {
+  string memory_id = 1;
+}
+
+message PinMemoryRequest {
+  string memory_id = 1;
+  bool pin = 2;
+}
+
+message PinMemoryResponse {}
+
+message DeprecateMemoryRequest {
+  string memory_id = 1;
+}
+
+message DeprecateMemoryResponse {}
+
+message SoftDeleteMemoryRequest {
+  string memory_id = 1;
+}
+
+message SoftDeleteMemoryResponse {}
+
+service MemoryService {
+  rpc List(ListMemoryRequest) returns (ListMemoryResponse);
+  rpc Get(GetMemoryRequest) returns (MemoryItem);
+  rpc Pin(PinMemoryRequest) returns (PinMemoryResponse);
+  rpc Deprecate(DeprecateMemoryRequest) returns (DeprecateMemoryResponse);
+  rpc SoftDelete(SoftDeleteMemoryRequest) returns (SoftDeleteMemoryResponse);
+}
+
+// =====================================================================
 // Events (mirrors contractv1.ObservabilityEvent)
 // =====================================================================
 
