@@ -137,6 +137,7 @@ func buildRouterWithGrpc(t *testing.T, grpcAddr string) (http.Handler, *grpcclie
 		Job:         cli.Job(),
 		Search:      cli.Search(),
 		Events:      cli.Events(),
+		Memory:      cli.Memory(),
 		BackendKind: "grpc",
 	}
 	return consoleapi.NewRouter(deps), cli
@@ -319,6 +320,23 @@ func TestRESTEndpoints_E2E_GrpcBacked(t *testing.T) {
 	}
 	if len(body) != 0 {
 		t.Errorf("204 must have empty body; got %q", body)
+	}
+
+	// Step 9d: task-13.2 (ADR-017 D1 Wave 3) — memory endpoint smoke.
+	// Empty store: GET /v1/memory → []; GET /v1/memory/missing → 404;
+	// pin/deprecate/soft-delete on missing id → 404 (or 412 without confirm).
+	code, body = doJSON(t, srv, "GET", "/v1/memory", "")
+	if code != 200 {
+		t.Fatalf("GET memory empty: expected 200; got code=%d body=%s", code, body)
+	}
+	code, body = doJSON(t, srv, "GET", "/v1/memory/does-not-exist", "")
+	if code != 404 {
+		t.Fatalf("GET memory missing: expected 404; got code=%d body=%s", code, body)
+	}
+	// Deprecate without confirm → 412 (confirmMiddleware fires before handler)
+	code, body = doJSON(t, srv, "POST", "/v1/memory/x/deprecate", "")
+	if code != 412 {
+		t.Fatalf("POST deprecate no confirm: expected 412; got code=%d body=%s", code, body)
 	}
 
 	// Step 9b: task-12.2 (ADR-017 D1 Wave 2) — GET /v1/source-chunks/{id} for an

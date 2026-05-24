@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 12 console-contract-completion smoke (v3).
+# scripts/console_smoke.sh — Phase 13 memory-rest-surface smoke (v4).
 #
-# v0.5 REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
+# v0.6 REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
-# console-api-serve dials the Rust daemon over gRPC, so the 13 REST endpoints
-# (v0.4 9 + task-12.1 3 + task-12.2 1 + task-12.3 1) go through the real
-# cross-process bridge (ADR-016 D2 / ADR-017 D1 Wave 1+2).
+# console-api-serve dials the Rust daemon over gRPC, so the 18 REST endpoints
+# (v0.4 9 + task-12.1 3 + task-12.2 1 + task-12.3 1 + task-13.2 5 memory)
+# go through the real cross-process bridge
+# (ADR-016 D2 / ADR-017 D1 Wave 1+2+3).
 #
 # Modes (selected by env):
 #
@@ -122,10 +123,10 @@ for i in $(seq 1 30); do
   fi
 done
 
-# ----------- 13 endpoint flow (v0.5: 9 base + task-12.1 3 + task-12.2 1 + task-12.3 1) -----------
-echo "[flow] 13 endpoint flow"
+# ----------- 18 endpoint flow (v0.6: 9 base + task-12.1 3 + task-12.2 1 + task-12.3 1 + task-13.2 5 memory) -----------
+echo "[flow] 18 endpoint flow"
 
-echo "  [1/13] GET /v1/health (must contain contract_version=v1)"
+echo "  [1/18] GET /v1/health (must contain contract_version=v1)"
 health_body=$(curl -sf "$BASE/v1/health")
 echo "$health_body" | grep -q '"contract_version":"v1"' \
   || { echo "FAIL: /v1/health body missing contract_version=v1: $health_body" >&2; exit 1; }
@@ -134,7 +135,7 @@ echo "$health_body" | grep -q '"contract_version":"v1"' \
 # we still need to feed the proto Create with a workspace_id. Use a stable name.
 WS_NAME="cf-real-smoke"
 
-echo "  [2/13] POST /v1/workspaces"
+echo "  [2/18] POST /v1/workspaces"
 # task-11.3 SqliteWorkspaceStore validates root_path via Rust Path::is_absolute,
 # which on Windows requires native form (C:\...) not Git-Bash form (/h/...).
 # Use cygpath when available to translate; otherwise pass through.
@@ -151,21 +152,21 @@ WS_ID=$(echo "$ws_body" | sed -n 's/.*"workspace_id":"\([^"]*\)".*/\1/p')
 [ -z "$WS_ID" ] && { echo "FAIL: workspace_id not parsed: $ws_body" >&2; exit 1; }
 echo "    → workspace_id=$WS_ID"
 
-echo "  [3/13] GET /v1/workspaces (list)"
+echo "  [3/18] GET /v1/workspaces (list)"
 list_body=$(curl -sf "$BASE/v1/workspaces")
 echo "$list_body" | grep -q "\"workspace_id\":\"${WS_ID}\"" \
   || { echo "FAIL: list does not contain $WS_ID: $list_body" >&2; exit 1; }
 
-echo "  [4/13] GET /v1/workspaces/$WS_ID"
+echo "  [4/18] GET /v1/workspaces/$WS_ID"
 single_body=$(curl -sf "$BASE/v1/workspaces/${WS_ID}")
 echo "$single_body" | grep -q "\"name\":\"${WS_NAME}\"" \
   || { echo "FAIL: single get missing name: $single_body" >&2; exit 1; }
 
-echo "  [5/13] GET /v1/workspaces/non-existent-id (must return 404)"
+echo "  [5/18] GET /v1/workspaces/non-existent-id (must return 404)"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/v1/workspaces/non-existent-id")
 [ "$code" = "404" ] || { echo "FAIL: expected 404; got $code" >&2; exit 1; }
 
-echo "  [6/13] POST /v1/index-jobs (enqueue against fixture repo)"
+echo "  [6/18] POST /v1/index-jobs (enqueue against fixture repo)"
 job_body=$(curl -sf -X POST "$BASE/v1/index-jobs" \
   -H 'Content-Type: application/json' \
   -d "{\"workspace_id\":\"${WS_ID}\",\"trigger_source\":\"smoke\"}")
@@ -173,7 +174,7 @@ JOB_ID=$(echo "$job_body" | sed -n 's/.*"job_id":"\([^"]*\)".*/\1/p')
 [ -z "$JOB_ID" ] && { echo "FAIL: job_id not parsed: $job_body" >&2; exit 1; }
 echo "    → job_id=$JOB_ID"
 
-echo "  [7/13] poll /v1/index-jobs/<id> until status terminal (≤30s)"
+echo "  [7/18] poll /v1/index-jobs/<id> until status terminal (≤30s)"
 if [ "$MODE" = "real" ]; then
   for i in $(seq 1 30); do
     job_body=$(curl -sf "$BASE/v1/index-jobs/${JOB_ID}")
@@ -200,7 +201,7 @@ else
   [ "$cancel_code" = "200" ] || [ "$cancel_code" = "409" ] || { echo "FAIL: cancel expected 200/409; got $cancel_code" >&2; exit 1; }
 fi
 
-echo "  [8/13] POST /v1/search (real mode → ≥1 chunk; inmem → empty trace ok)"
+echo "  [8/18] POST /v1/search (real mode → ≥1 chunk; inmem → empty trace ok)"
 search_body=$(curl -sf -X POST "$BASE/v1/search" \
   -H 'Content-Type: application/json' \
   -d "{\"query\":\"contextforge\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}")
@@ -217,7 +218,7 @@ fi
 QUERY_ID=$(echo "$search_body" | sed -nE 's/.*"query_id":"([^"]+)".*/\1/p' | head -1)
 CHUNK_ID=$(echo "$search_body" | sed -nE 's/.*"chunk_id":"([^"]+)".*/\1/p' | head -1)
 
-echo "  [9/13] task-12.1 PATCH /v1/workspaces/<id>/config (X-Confirm required → 412 then 200)"
+echo "  [9/18] task-12.1 PATCH /v1/workspaces/<id>/config (X-Confirm required → 412 then 200)"
 if [ "$MODE" = "real" ]; then
   # No X-Confirm → 412
   code412=$(curl -sf -o /dev/null -w '%{http_code}' -X PATCH "$BASE/v1/workspaces/${WS_ID}/config" \
@@ -233,7 +234,7 @@ if [ "$MODE" = "real" ]; then
     || { echo "FAIL: PATCH config with X-Confirm did not return 2xx" >&2; exit 1; }
 fi
 
-echo "  [10/13] task-12.1 GET /v1/index-jobs?status=active (missing status → 400)"
+echo "  [10/18] task-12.1 GET /v1/index-jobs?status=active (missing status → 400)"
 if [ "$MODE" = "real" ]; then
   active_body=$(curl -sf "$BASE/v1/index-jobs?status=active") \
     || { echo "FAIL: GET active jobs" >&2; exit 1; }
@@ -243,7 +244,7 @@ if [ "$MODE" = "real" ]; then
     || { echo "FAIL: GET index-jobs without status expected 400; got $code400" >&2; exit 1; }
 fi
 
-echo "  [11/13] task-12.2 GET /v1/source-chunks/<id> (or 404 if no chunk extracted)"
+echo "  [11/18] task-12.2 GET /v1/source-chunks/<id> (or 404 if no chunk extracted)"
 if [ "$MODE" = "real" ] && [ -n "$CHUNK_ID" ]; then
   curl -sf "$BASE/v1/source-chunks/$CHUNK_ID" >/dev/null \
     && echo "  ok: chunk $CHUNK_ID found" \
@@ -255,7 +256,7 @@ elif [ "$MODE" = "real" ]; then
     || { echo "FAIL: GET source-chunks unknown expected 404; got $code404" >&2; exit 1; }
 fi
 
-echo "  [12/13] task-12.3 GET /v1/search/<query_id>/trace (or 404 on unknown)"
+echo "  [12/18] task-12.3 GET /v1/search/<query_id>/trace (or 404 on unknown)"
 if [ "$MODE" = "real" ] && [ -n "$QUERY_ID" ]; then
   trace_body=$(curl -sf "$BASE/v1/search/$QUERY_ID/trace") \
     && echo "$trace_body" | grep -q '"trace_id"' \
@@ -268,7 +269,62 @@ if [ "$MODE" = "real" ]; then
     || { echo "FAIL: GET trace unknown expected 404; got $code404" >&2; exit 1; }
 fi
 
-echo "  [13/13] GET /v1/observability/events"
+echo "  [13/18] task-13.2 memory: seed 5 fixture items via sqlite3 CLI (or skip if missing)"
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "$DATA_DIR/memory.db" < "$ROOT/test/fixtures/memory-seed/seed.sql" 2>&1 || echo "  NOTE: seed skipped"
+  echo "    → seeded 5 fixture memory items"
+else
+  echo "  NOTE: sqlite3 unavailable; skipping seed (memory tests use empty store)"
+fi
+
+echo "  [14/18] task-13.2 GET /v1/memory"
+if [ "$MODE" = "real" ]; then
+  mem_body=$(curl -sf "$BASE/v1/memory") || { echo "FAIL: GET memory" >&2; exit 1; }
+  echo "    → memory body length=$(echo "$mem_body" | wc -c)"
+fi
+
+echo "  [15/18] task-13.2 GET /v1/memory/<id>"
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  code200=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/memory/mem-seed-1" || true)
+  [ "$code200" = "200" ] \
+    || { echo "FAIL: GET memory mem-seed-1 expected 200; got $code200" >&2; exit 1; }
+fi
+code404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/memory/does-not-exist" || true)
+[ "$code404" = "404" ] \
+  || { echo "FAIL: GET memory unknown expected 404; got $code404" >&2; exit 1; }
+
+echo "  [16/18] task-13.2 POST /v1/memory/<id>/pin → 204 (non-destructive)"
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  code204=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/pin" || true)
+  [ "$code204" = "204" ] \
+    || { echo "FAIL: POST pin expected 204; got $code204" >&2; exit 1; }
+fi
+
+echo "  [17/18] task-13.2 POST /v1/memory/<id>/deprecate → 412 then 204 (X-Confirm gated)"
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  code412=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-2/deprecate" || true)
+  [ "$code412" = "412" ] \
+    || { echo "FAIL: deprecate no X-Confirm expected 412; got $code412" >&2; exit 1; }
+  code204=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-2/deprecate" -H 'X-Confirm: yes' || true)
+  [ "$code204" = "204" ] \
+    || { echo "FAIL: deprecate with X-Confirm expected 204; got $code204" >&2; exit 1; }
+fi
+
+echo "  [18/18] task-13.2 POST /v1/memory/<id>/soft-delete → 412 then 204 + excluded from default list"
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  code412=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-3/soft-delete" || true)
+  [ "$code412" = "412" ] \
+    || { echo "FAIL: soft-delete no X-Confirm expected 412; got $code412" >&2; exit 1; }
+  curl -sf -o /dev/null -X POST "$BASE/v1/memory/mem-seed-3/soft-delete?confirm=true" \
+    || { echo "FAIL: soft-delete confirm=true" >&2; exit 1; }
+  # default list should exclude mem-seed-3
+  mem_after=$(curl -sf "$BASE/v1/memory")
+  echo "$mem_after" | grep -q '"memory_id":"mem-seed-3"' \
+    && { echo "FAIL: soft-deleted item still in default list" >&2; exit 1; } \
+    || echo "    → mem-seed-3 excluded from default list ✅"
+fi
+
+echo "  [end] GET /v1/observability/events"
 events_body=$(curl -sf "$BASE/v1/observability/events?wait=2s")
 # REAL mode: at least 1 indexing.progress event from the index job; LOCAL_ONLY:
 # any event (or empty array — long-poll returned empty within timeout).

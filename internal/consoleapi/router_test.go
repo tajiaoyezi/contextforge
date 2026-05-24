@@ -361,6 +361,163 @@ func TestGetSearchTrace_503_WhenFallback(t *testing.T) {
 	}
 }
 
+// =====================================================================
+// task-13.2 (ADR-017 D1 Wave 3) — 5 memory REST endpoints.
+// =====================================================================
+
+func newTestRouterWithMemFixtures(t *testing.T) http.Handler {
+	t.Helper()
+	store := NewMemStore()
+	memMem := NewMemMemoryStore()
+	memMem.SeedFixtures()
+	deps := Deps{
+		Workspace: WorkspaceAdapter{S: store},
+		Job:       JobAdapter{S: store},
+		Search:    store,
+		Events:    store,
+		Memory:    memMem,
+		AuthToken: "",
+	}
+	return NewRouter(deps)
+}
+
+func TestListMemory_ReturnsFixtures(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("GET", "/v1/memory", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var items []contractv1.MemoryItem
+	if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// SeedFixtures inserts 5 items, 1 is "deprecated"; default list excludes soft_deleted only → 5
+	if len(items) != 5 {
+		t.Fatalf("expected 5 items; got %d", len(items))
+	}
+}
+
+func TestListMemory_FilterByScope(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("GET", "/v1/memory?scope=agent-default:session", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d", w.Code)
+	}
+	var items []contractv1.MemoryItem
+	_ = json.Unmarshal(w.Body.Bytes(), &items)
+	if len(items) != 1 || items[0].MemoryID != "mem-fixture-1" {
+		t.Errorf("expected mem-fixture-1; got %+v", items)
+	}
+}
+
+func TestGetMemory_404_when_missing(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("GET", "/v1/memory/missing-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404; got %d", w.Code)
+	}
+}
+
+func TestMemoryPin_204_no_body(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/pin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204; got %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("204 must have empty body; got %q", w.Body.String())
+	}
+}
+
+func TestMemoryDeprecate_412_when_missing_confirm(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/deprecate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("expected 412; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestMemoryDeprecate_204_with_header(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/deprecate", nil)
+	req.Header.Set("X-Confirm", "yes")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestMemoryDeprecate_204_with_query(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/deprecate?confirm=true", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestMemorySoftDelete_412_then_204_then_excluded(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+
+	// Without X-Confirm → 412
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/soft-delete", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("expected 412 without X-Confirm; got %d", w.Code)
+	}
+
+	// With X-Confirm: yes → 204
+	req = httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/soft-delete", nil)
+	req.Header.Set("X-Confirm", "yes")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 with X-Confirm; got %d body=%s", w.Code, w.Body.String())
+	}
+
+	// Default list excludes the soft-deleted item
+	req = httptest.NewRequest("GET", "/v1/memory", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var items []contractv1.MemoryItem
+	_ = json.Unmarshal(w.Body.Bytes(), &items)
+	for _, item := range items {
+		if item.MemoryID == "mem-fixture-1" {
+			t.Errorf("soft-deleted item still in default list: %+v", item)
+		}
+	}
+
+	// include_soft_deleted=true returns it
+	req = httptest.NewRequest("GET", "/v1/memory?include_soft_deleted=true", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	items = nil
+	_ = json.Unmarshal(w.Body.Bytes(), &items)
+	found := false
+	for _, item := range items {
+		if item.MemoryID == "mem-fixture-1" && item.Status == "soft_deleted" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("include_soft_deleted=true should return the soft-deleted item")
+	}
+}
+
 // TestHandleHealth_ContractVersion — must-have field check (AC1).
 func TestHandleHealth_ContractVersion(t *testing.T) {
 	router, _ := newTestRouter(t, "")

@@ -30,6 +30,13 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /v1/source-chunks/{id}", handleGetSourceChunk(deps))
 	mux.HandleFunc("GET /v1/search/{query_id}/trace", handleGetSearchTrace(deps))
 	mux.HandleFunc("GET /v1/observability/events", handleEvents(deps))
+	// task-13.2 (ADR-017 D1 Wave 3): 5 memory endpoints; deprecate + soft-delete
+	// gated by confirmMiddleware (destructive ops).
+	mux.HandleFunc("GET /v1/memory", handleListMemory(deps))
+	mux.HandleFunc("GET /v1/memory/{id}", handleGetMemory(deps))
+	mux.HandleFunc("POST /v1/memory/{id}/pin", handleMemoryPin(deps))
+	mux.HandleFunc("POST /v1/memory/{id}/deprecate", confirmMiddleware(handleMemoryDeprecate(deps)))
+	mux.HandleFunc("POST /v1/memory/{id}/soft-delete", confirmMiddleware(handleMemorySoftDelete(deps)))
 	return bearerAuthMiddleware(mux, deps.AuthToken)
 }
 
