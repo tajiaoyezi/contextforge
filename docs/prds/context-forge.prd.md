@@ -381,6 +381,7 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 | 6 | cli-api-export | `contextforge search` / REST `/v1/search` / `contextforge export` 可用；导出 canonical JSONL / Markdown bundle / agent draft，迁移字段保真 ≥ 80% | `cli`(search/export) + `daemon`(REST API) + `exporter` | 4, 5 | 否 |
 | 7 | mcp-adapter | Agent 经 MCP 获取一致、可追溯上下文（context_search/context_read/context_explain/context_collections） | `mcp-adapter`（Go） | 6 | 否 |
 | 8 | eval-and-reliability | `contextforge eval run` 输出 Top-5/Top-10 命中率、延迟、错误召回报告；v0.1 七项技术闭环在 Linux/WSL2 端到端跑通；完成长任务/中断恢复/资源占用/secret redaction/export 的可靠性硬化；产出可安装的 Linux x86_64 release 包并通过 smoke test | `eval`（Go+Rust）+ 全链路集成测试 | 6, 7 | 否 |
+| 9 | cli-pipeline | （v0.2 收口）补齐 v0.1 CLI 数据通路 spec drift：proto add-only `rpc Index` stream + Rust `CoreService::index` wire + Go CLI `index` / `import` 真实接通 + task-8.3 假证据测试取代为真集成 + README quick start 可复现；详见 ADR-013 | proto/contextforge/v1/*.proto + core/src/server.rs + internal/cli/index.go·import.go + internal/daemon/index.go + internal/release/release_test.go + scripts/{release_smoke,quickstart_smoke}.sh + examples/quickstart/ + docs/releases/v0.2.0-*.md | 8 | 否 |
 
 **Phase Exit Criteria｜阶段验收标准**：
 
@@ -447,6 +448,16 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 - 10 万 chunk 内 BM25 / metadata / filter 检索 P95 < 500ms。
 - secret redaction / export / audit log 回归测试通过。
 - 大仓库长任务中断后可恢复或安全重建。
+
+**Phase 9 cli-pipeline**（v0.2 收口；v0.1 spec drift 补齐，详见 ADR-013）
+
+- `proto/contextforge/v1/service.proto` 含 `rpc Index(IndexRequest) returns (stream IndexProgress);`（schema_version 仍 `0.1`，add-only 演进）。
+- `contextforge import hermes|openclaw|agent-rules <path> --collection X` 真实写出 canonical record 文件到 `<data_dir>/imports/<source>/`（D1 两步式：import 离线产物 → index 灌入）。
+- `contextforge index --source <path> --data-dir <root> --collection X` 真实调 Rust gRPC `CoreService::index` 索引（取代 v0.1 manifest 存根）；进度按文件粒度上报；`--resume` + reliability manifest 保留。
+- `contextforge search` / `eval run` 在已索引 collection 上真实返回结果（不再 `collection not found`）。
+- `scripts/release_smoke.sh` 含 phase 9 CLI 端到端段；`internal/release/release_test.go` 删除 fake-evidence 测试（v0.1 task-8.3 假 AC2/AC4），改为真集成。
+- `scripts/quickstart_smoke.sh` 一键跑 README quick start 七步；`examples/quickstart/` 提供可复制粘贴 fixture。
+- ADR-013 状态推进 Proposed → Accepted；adapter §Phase 索引 Phase 9 → Done；v0.2.0 RELEASE_NOTES + evidence + artifacts 落盘。
 
 ---
 
@@ -565,6 +576,7 @@ v0.1 recall eval 使用 golden questions 数据集进行评测。
 - [ ] **O9 canonical record 最小 schema**：`SourceRecord` / `ContextRecord` / `Chunk` / `RetrievalResult` 的边界、字段、版本号和兼容策略如何最终冻结？
 - [ ] **O10 本地 API / MCP 安全边界**：daemon 监听地址、token、client allowlist、audit log 内容、远程 provider opt-in 数据外发提示如何设计？
 - [ ] **O11 中英文与代码符号检索策略**：Tantivy tokenizer、CJK 处理、代码符号字段、路径 boost、exact match 如何实现和评测？
+- [ ] **O12 Phase 1-8 spec drift 击鼓传花机制如何在治理层提前发现**（ADR-013 §Follow-ups 新增）：v0.1 CLI 数据通路 spec drift 跨 Phase 1 / 2 / 6 / 8 击鼓传花（每 phase 把 CLI wire 推给下一 phase，到 task-8.3 §3 OOS 终点声明"历史 gap"但 AC2 仍勾选通过）。Phase 9 实施完成后产 governance retrospective：是否需要 ADR-014 引入"Phase 顶层 Exit Criteria 与 task 收口 AC 必须 cross-validation"机制？主 agent 自治在 spec-drift 检测层面的能力边界（ADR-012 把 §2A / merge / Waive 交给主 agent；spec drift 检测需跨 phase / 跨 task 视角，单 task 视角的主 agent 容易漏）。
 
 ---
 

@@ -233,6 +233,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Done | 3 | `../ContextForge-wt-cli-api-export` |
 | 7 | `mcp-adapter` | `docs/specs/phases/phase-7-mcp-adapter.md` | Done | 1 | `../ContextForge-wt-mcp-adapter` |
 | 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Done | 3 | `../ContextForge-wt-eval-and-reliability` |
+| 9 | `cli-pipeline` | `docs/specs/phases/phase-9-cli-pipeline.md` | Draft | 6 | `../ContextForge-wt-cli-pipeline` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -268,6 +269,12 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Done | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
 | 8.2 | reliability | docs/specs/tasks/task-8.2-reliability.md | Done | Phase8 #2 | `../ContextForge-wt-eval-and-reliability` |
 | 8.3 | release | docs/specs/tasks/task-8.3-release-smoke.md | Done | Phase8 #3（dep 8.1,8.2）| `../ContextForge-wt-eval-and-reliability` |
+| 9.1 | proto | docs/specs/tasks/task-9.1-proto-index-rpc.md | Draft | Phase9 #1 | `../ContextForge-wt-cli-pipeline` |
+| 9.2 | core/server | docs/specs/tasks/task-9.2-rust-grpc-index.md | Draft | Phase9 #2（dep 9.1）| `../ContextForge-wt-cli-pipeline` |
+| 9.3 | cli/index | docs/specs/tasks/task-9.3-go-cli-index.md | Draft | Phase9 #3（dep 9.2）| `../ContextForge-wt-cli-pipeline` |
+| 9.4 | cli/import | docs/specs/tasks/task-9.4-go-cli-import.md | Draft | Phase9 #4（dep 9.2，可 ∥ 9.3）| `../ContextForge-wt-cli-pipeline` |
+| 9.5 | release | docs/specs/tasks/task-9.5-release-smoke-real.md | Draft | Phase9 #5（dep 9.3,9.4）| `../ContextForge-wt-cli-pipeline` |
+| 9.6 | release/readme | docs/specs/tasks/task-9.6-readme-quickstart-verified.md | Draft | Phase9 #6（dep 9.5，收口）| `../ContextForge-wt-cli-pipeline` |
 
 ## ADR 索引
 
@@ -289,6 +296,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 010 | audit-cross-language-unification | Proposed | docs/decisions/adr-010-audit-cross-language-unification.md |
 | 011 | single-driver-with-subagents | Proposed | docs/decisions/adr-011-single-driver-with-subagents.md |
 | 012 | main-agent-governance-autonomy | Accepted | docs/decisions/adr-012-main-agent-governance-autonomy.md |
+| 013 | cli-data-plane-grpc-bridge | Proposed | docs/decisions/adr-013-cli-data-plane-grpc-bridge.md |
 
 ## BDD Feature 索引
 
@@ -313,6 +321,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 8.1 | test/features/eval.feature |
 | 8.2 | test/features/reliability.feature |
 | 8.3 | test/features/release.feature |
+| 9.1 / 9.2 / 9.3 / 9.4 / 9.5 / 9.6 | test/features/cli-pipeline.feature |
 
 ---
 
