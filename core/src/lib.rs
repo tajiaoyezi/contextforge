@@ -22,3 +22,6 @@ pub mod memoryops;
 pub mod parser;
 pub mod retriever;
 pub mod scanner;
+
+// task-10.2 (Phase 10): Console Contract v1 Workspace resource + SQLite 持久化.
+pub mod workspace;

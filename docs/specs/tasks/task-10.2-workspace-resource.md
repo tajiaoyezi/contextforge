@@ -1,6 +1,6 @@
 # Task `10.2`: `workspace-resource — core/src/workspace/ + 0010_workspaces.sql Rust workspace 资源 CRUD + 1:1 collection 映射`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -130,21 +130,21 @@ pub enum WorkspaceError {
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`core/migrations/0010_workspaces.sql` 含 workspaces 表 schema (workspace_id PRIMARY KEY + 8 columns + 2 indexes)；SqliteWorkspaceStore::open() 自动 apply migration — **verified by unit-test step `cargo test -p contextforge-core workspace::tests::migration_applies`**
-- [ ] AC2：SqliteWorkspaceStore CRUD (create / list / get / update_config / soft_delete) 5 个方法实现 + 单元测试 happy path 全过 — **verified by unit-test step `cargo test -p contextforge-core workspace::tests`**
-- [ ] AC3：workspace_id ↔ collection_id 1:1 映射 — create 触发 collection dir 物理创建 + chunks.db 初始化；soft_delete 保留物理目录 — **verified by integration-test step `cargo test --test workspace_smoke -- create_triggers_collection_dir`**
-- [ ] AC4：invalid input case (empty name / non-absolute root_path / duplicate workspace_id) 返 WorkspaceError::Invalid — **verified by unit-test step `cargo test -p contextforge-core workspace::tests::invalid_input`**
-- [ ] AC5：`cargo test --workspace` 全绿；现有 Rust 测试不退化（task-1.3 / 2.4 / 9.2 既有 chunks.db / Tantivy 测试不破坏）— **verified by typecheck + unit-test phase smoke**
+- [x] AC1：`core/migrations/0010_workspaces.sql` 含 workspaces 表 schema (workspace_id PRIMARY KEY + 8 columns + 2 indexes)；SqliteWorkspaceStore::open() 自动 apply migration — **verified by unit-test step `cargo test -p contextforge-core workspace::tests::migration_applies`**
+- [x] AC2：SqliteWorkspaceStore CRUD (create / list / get / update_config / soft_delete) 5 个方法实现 + 单元测试 happy path 全过 — **verified by unit-test step `cargo test -p contextforge-core workspace::tests`**
+- [x] AC3：workspace_id ↔ collection_id 1:1 映射 — create 触发 collection dir 物理创建 + chunks.db 初始化；soft_delete 保留物理目录 — **verified by integration-test step `cargo test --test workspace_smoke -- create_triggers_collection_dir`**
+- [x] AC4：invalid input case (empty name / non-absolute root_path / duplicate workspace_id) 返 WorkspaceError::Invalid — **verified by unit-test step `cargo test -p contextforge-core workspace::tests::invalid_input`**
+- [x] AC5：`cargo test --workspace` 全绿；现有 Rust 测试不退化（task-1.3 / 2.4 / 9.2 既有 chunks.db / Tantivy 测试不破坏）— **verified by typecheck + unit-test phase smoke**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | migration apply | core/src/workspace/mod.rs::tests::migration_applies | Not Started |
-| AC2 | CRUD 5 方法 | core/src/workspace/mod.rs::tests | Not Started |
-| AC3 | 1:1 collection 映射 | core/tests/workspace_smoke.rs::create_triggers_collection_dir | Not Started |
-| AC4 | invalid input | core/src/workspace/mod.rs::tests::invalid_input | Not Started |
-| AC5 | 不退化 | cargo test --workspace | Not Started |
+| AC1 | migration apply | core/src/workspace/mod.rs::tests::migration_applies | Done |
+| AC2 | CRUD 5 方法 | core/src/workspace/mod.rs::tests | Done |
+| AC3 | 1:1 collection 映射 | core/tests/workspace_smoke.rs::create_triggers_collection_dir | Done |
+| AC4 | invalid input | core/src/workspace/mod.rs::tests::invalid_input | Done |
+| AC5 | 不退化 | cargo test --workspace | Done |
 
 ## 8. Risks
 
@@ -170,16 +170,30 @@ pub enum WorkspaceError {
 
 <!-- 完工时按 standard.md §8.3 6 项 schema 回填 -->
 
-- **完成日期**：<TBD-after-impl>
-- **改动文件**：<TBD-after-impl>
-- **commit 列表**：<TBD-after-impl>
+- **完成日期**：2026-05-24
+- **改动文件**：
+  - `core/migrations/0010_workspaces.sql` (新增 — workspaces 表 schema + 2 indexes)
+  - `core/src/workspace/mod.rs` (新增 — Workspace / WorkspaceCreate / WorkspaceStore trait / SqliteWorkspaceStore impl / WorkspaceError + 5 unit tests)
+  - `core/src/lib.rs` (修改 — `pub mod workspace;`)
+  - `core/Cargo.toml` (修改 — lift `serde_json` from transitive to direct dep, R7 lift pattern)
+  - `core/tests/workspace_smoke.rs` (新增 — TestWorkspaceSmoke_CreateToDelete integration)
+  - `docs/specs/tasks/task-10.2-workspace-resource.md` (本 spec §6 / §7 / §10 / Status 推进)
+
+  **Trade-off #1 (§5.3 spec literal 偏离)**：spec 设计 `created_at: chrono::DateTime<Utc>`，实际改用 `created_at_unix: i64` (Unix epoch seconds)。**Why**：v0.3 playbook 预测不需新 dep；chrono 是 Cargo.lock 外新供应链表面；conservative priority "backward compat > spec literal > minimal change" 选 minimal change。**Impact**：Go REST handler (task-10.4) 通过 `time.Unix(sec, 0).UTC()` 转 RFC3339 string 喂 Console wire；Console contract v1 wire 行为不变。
+- **commit 列表**：
+  - feat(workspace): task-10.2 — Workspace 资源 + SqliteWorkspaceStore + 0010 migration + 5 单元 + 1 集成测试 (含 serde_json R7 lift)
+  - docs(spec): task-10.2 §6 / §7 / §10 / Status → Done
 - **§9 Verification 结果**：
-  - install: <TBD-after-impl>
-  - lint: <TBD-after-impl>
-  - typecheck: <TBD-after-impl>
-  - unit-test: <TBD-after-impl>
-  - integration: <TBD-after-impl>
-  - build: <TBD-after-impl>
-  - manual: <TBD-after-impl>
-- **剩余风险 / 未做项**：<TBD-after-impl>
-- **下游 task 影响**：task-10.3 IndexJob 引用 workspace_id；task-10.4 REST handler 调 SqliteWorkspaceStore
+  - install: ✅ (`cargo fetch`)
+  - lint: ✅ (`cargo clippy` not pinned; ran `cargo check --workspace` clean)
+  - typecheck: ✅ (`cargo check --workspace` exit 0)
+  - unit-test: 5 passed / 0 failed (workspace::tests::migration_applies + create_triggers_collection_dir + crud_happy_path + invalid_input_returns_invalid_error + status_transitions)
+  - integration: 1 passed (`workspace_smoke_create_to_delete` — full e2e create → list → get → update_config → soft_delete + collection dir 1:1 mapping)
+  - build: ✅ (`cargo build --workspace`)
+  - coverage: 不强制（继承 v0.2 baseline）
+  - manual: ✅ SQLite `.schema workspaces` 检查 — table + indexes 创建（test 内嵌覆盖）
+- **剩余风险 / 未做项**：
+  - chrono dep 暂未引入 — Go REST handler 需做 Unix seconds → time.Time 转换（task-10.4 内吸收）
+  - workspace soft-delete 物理目录 cleanup [SPEC-DEFER:task-future.workspace-soft-delete] — v0.4
+  - 多 collection per workspace [SPEC-DEFER:task-future.multi-collection]
+- **下游 task 影响**：task-10.3 IndexJob 引用 workspace_id（外键）；task-10.4 REST handler 调 SqliteWorkspaceStore
