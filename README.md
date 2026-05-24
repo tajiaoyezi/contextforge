@@ -7,6 +7,31 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.6.0
+
+- **Phase 13 memory-rest-surface** (ADR-017 Wave 3) — Console Contract v1
+  endpoint coverage 13 → 18 (the 5 memory endpoints). 22-endpoint conformance
+  bumps 64% → 82%.
+- **task-13.1 Rust SoT**: SQLite `memory_items` table (migration 0013) + 自研
+  `SqliteMemoryStore` (10 columns; status CHECK constraint; 3 indexes) +
+  `MemoryService` 5 gRPC RPCs (List / Get / Pin / Deprecate / SoftDelete) +
+  Pin/Deprecate/SoftDelete each emit `AuditOperation::Memory*` events via
+  shared `AuditSink` (4 new enum variants).
+- **task-13.2 Go REST**: 5 routes (`GET /v1/memory[?agent_id=&scope=&namespace=&include_soft_deleted=]`
+  + `GET /v1/memory/{id}` + `POST /v1/memory/{id}/pin` non-destructive 204 +
+  `POST /v1/memory/{id}/deprecate` + `POST /v1/memory/{id}/soft-delete` —
+  the last two confirmMiddleware-gated, returning 412 PRECONDITION_FAILED
+  without X-Confirm/?confirm=true). `MemMemoryStore.SeedFixtures()` provides
+  5 in-memory items for `CONSOLE_API_FALLBACK_INMEM=1` demo.
+- **`console_smoke.sh` v4**: 13 → 18 endpoint REAL flow; new Steps 13-18 cover
+  memory seed (sqlite3 CLI) + list + get + pin 204 + deprecate 412/204 +
+  soft-delete 412/204 with default-list exclusion. Final marker
+  `CONSOLE_REAL_SMOKE_EXIT=0`.
+- ADR-014 cross-validation gate **fourth activation** pass — 制度稳定性
+  跨 4 phase 验证.
+- ADR-017 Status still **Proposed** (full Accepted promotion deferred to
+  Phase 14 closeout).
+
 ## What's new in v0.5.0
 
 - **Phase 12 console-contract-completion** (ADR-017 Wave 1+2) — Console Contract
