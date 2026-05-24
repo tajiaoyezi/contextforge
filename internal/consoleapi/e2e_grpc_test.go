@@ -321,6 +321,15 @@ func TestRESTEndpoints_E2E_GrpcBacked(t *testing.T) {
 		t.Errorf("204 must have empty body; got %q", body)
 	}
 
+	// Step 9b: task-12.2 (ADR-017 D1 Wave 2) — GET /v1/source-chunks/{id} for an
+	// unknown chunk_id returns 404 NOT_FOUND from SearchService.GetSourceChunk.
+	// (An index-then-fetch flow is task-11.4 scope; here we only exercise the
+	// REST wire + 404 sentinel for the new endpoint.)
+	code, body = doJSON(t, srv, "GET", "/v1/source-chunks/chk_does_not_exist_0", "")
+	if code != 404 {
+		t.Fatalf("GET source-chunks unknown: expected 404; got code=%d body=%s", code, body)
+	}
+
 	// Step 10: POST /v1/search (empty result per task-11.1 [SPEC-OWNER:task-11.4])
 	searchBody := fmt.Sprintf(`{"query":"x","workspace_id":"%s","top_k":5}`, wsID)
 	code, body = doJSON(t, srv, "POST", "/v1/search", searchBody)

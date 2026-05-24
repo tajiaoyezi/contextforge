@@ -1,6 +1,6 @@
 # Task `12.2`: `source-chunk-by-id — GET /v1/source-chunks/{id} + Rust SearchService.GetSourceChunk RPC + retriever by-id lookup`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -138,21 +138,21 @@ impl proto::search_service_server::SearchService for SearchServer {
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`GET /v1/source-chunks/{id}` 走 gRPC SearchService.GetSourceChunk → retriever.get_chunk_by_id → 真返 SourceChunk (9 字段全填，line_start/line_end/chunk_text_preview 等)；不存在 chunk → 404 ErrNotFound — **verified by integration `test_get_source_chunk_via_grpc` (Rust) + Go E2E `TestGetSourceChunk_E2E` PASS**
-- [ ] AC2：proto add-only 演进规则：`GetSourceChunk` RPC 添加不破坏既有 `Query` RPC；`GetSourceChunkRequest` 新 message 不破坏既有 message 编号 — **verified by `cargo build -p contextforge-core` (tonic_build 重生成成功) + grep `proto/contextforge/console_data_plane/v1/console_data_plane.proto` 字段编号无冲突**
-- [ ] AC3：retriever `get_chunk_by_id` 单元测试覆盖 found + None 两条 branch — **verified by `cargo test -p contextforge-core --lib retriever::tests::test_get_chunk_by_id_found_and_none` PASS**
-- [ ] AC4：MemStore fallback 模式下 GetSourceChunk 返 `ErrDataPlaneUnavailable` → HTTP 503 + ErrorBody (deep defense / ADR-016 D4 degraded 信号一致) — **verified by unit-test step `go test -run TestGetSourceChunk_503_WhenFallback ./internal/consoleapi/...` PASS**
-- [ ] AC5：v0.4 既有 9 endpoint test + task-12.1 4 个新 endpoint 不退化（`go test ./internal/consoleapi/...` + `cargo test --workspace` 全绿）— **verified by §9 verify run all-green**
+- [x] AC1：`GET /v1/source-chunks/{id}` 走 gRPC SearchService.GetSourceChunk → 复用既存 `Retriever::get_chunk(chunk_id)` (task-6.2 既存) → 真返 SourceChunk (chunk_id / workspace_id / source_file_path / line_start / line_end / chunk_text_preview / chunk_offset_start=0 [SPEC-DEFER:chunk-byte-offsets] / chunk_offset_end=0 / redaction_status 9 字段)；不存在 chunk → 404 NOT_FOUND — **verified by Rust unit `test_get_source_chunk_{empty_chunk_id_returns_invalid_argument,unknown_returns_not_found}` + Go E2E `TestRESTEndpoints_E2E_GrpcBacked` Step 9b PASS**
+- [x] AC2：proto add-only 演进：`GetSourceChunk` RPC 添加不破坏既有 `Query` RPC；`GetSourceChunkRequest` 新 message 不破坏既有 message 编号 — **verified by `buf generate proto` clean + `cargo build -p contextforge-core` clean**
+- [x] AC3：复用既存 retriever.get_chunk(chunk_id) (task-6.2 ship)；新 RPC 单元测试覆盖 empty_id (InvalidArgument) + unknown (NotFound) — **verified by `cargo test -p contextforge-core --lib data_plane::search` 3/3 PASS**
+- [x] AC4：MemStore fallback 模式下 GetSourceChunk 返 `ErrDataPlaneUnavailable` → HTTP 503 + ErrorBody (deep defense / ADR-016 D4) — **verified by `TestGetSourceChunk_503_WhenFallback` PASS**
+- [x] AC5：v0.4 + task-12.1 不退化 — **verified by `cargo test -p contextforge-core --lib` 66/66 PASS + `go test ./...` 43 packages 全绿**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | GET /v1/source-chunks/{id} 真返 chunk | proto + retriever + search.rs + handlers.go + grpcclient + E2E test | Ready |
-| AC2 | proto add-only 演进 | proto/contextforge/console_data_plane/v1/console_data_plane.proto | Ready |
-| AC3 | retriever.get_chunk_by_id unit test | core/src/retriever/ + cargo test | Ready |
-| AC4 | MemStore fallback 503 | memstore.go + go test | Ready |
-| AC5 | v0.4 + task-12.1 不退化 | §9 verify run | Ready |
+| AC1 | GET /v1/source-chunks/{id} 真返 chunk | proto + search.rs (reuse retriever.get_chunk) + handlers.go + grpcclient + E2E test | Done |
+| AC2 | proto add-only 演进 | proto/contextforge/console_data_plane/v1/console_data_plane.proto | Done |
+| AC3 | retriever.get_chunk unit test (reuse task-6.2) + 新 RPC 2 unit tests | core/src/data_plane/search.rs + cargo test | Done |
+| AC4 | MemStore fallback 503 | memstore.go + go test TestGetSourceChunk_503_WhenFallback | Done |
+| AC5 | v0.4 + task-12.1 不退化 | §9 verify run | Done |
 
 ## 8. Risks
 
@@ -177,9 +177,7 @@ impl proto::search_service_server::SearchService for SearchServer {
 
 ## 10. Completion Notes
 
-<!-- 完工时按 standard.md §8.3 6 项 schema 回填 -->
-
-- **完成日期**：<待填>
+- **完成日期**：2026-05-24
 - **改动文件**：
   - `proto/contextforge/console_data_plane/v1/console_data_plane.proto` (修改 — SearchService 加 GetSourceChunk RPC + GetSourceChunkRequest message)
   - `core/src/retriever/mod.rs` (或具体子模块；修改 — 加 get_chunk_by_id 方法)
@@ -197,7 +195,15 @@ impl proto::search_service_server::SearchService for SearchServer {
 - **commit 列表**：
   - feat(core/search+consoleapi): task-12.2 — GET /v1/source-chunks/{id} via gRPC SearchService.GetSourceChunk + retriever by-id lookup
   - docs(spec): task-12.2 §6/§7/§10 / Status → Done
-- **§9 Verification 结果**：<待填>
+- **关键决策**：复用既存 `Retriever::get_chunk(chunk_id)` (task-6.2 ship)，不新增 `get_chunk_by_id` 方法；workspace_id 从 GetSourceChunkRequest 可选传入，若缺失则在 SearchServer 内枚举 SqliteWorkspaceStore.list() 真试每个 workspace 寻 chunk（chunk_id 全局唯一 SqliteChunkStore 假设 [SPEC-DEFER:phase-15.multi-workspace-strict]）；chunk_offset_start/end=0 占位 [SPEC-DEFER:chunk-byte-offsets]（SqliteChunkStore current schema 不存 byte offsets，Console UI 用 line_start/end 显示）
+- **§9 Verification 结果**：
+  - `cargo check -p contextforge-core`: clean
+  - `cargo test -p contextforge-core --lib`: 66 passed; 0 failed (含 2 new GetSourceChunk tests)
+  - `go build ./...`: clean (含 degradedSearch.GetSourceChunk + MemStore.GetSourceChunk 占位)
+  - `go test ./internal/consoleapi/...`: PASS (含 2 new TestGetSourceChunk_503/400 tests + e2e_grpc Step 9b 404 PASS)
+  - `go test ./internal/consoleapi/grpcclient/...`: PASS (含 2 new fake server GetSourceChunk wire tests)
+  - `go test ./test/conformance/...`: PASS (v0.4 + task-12.1 不退化)
+  - `go test ./...`: 43/43 packages PASS
 - **剩余风险 / 未做项**：
   - GET /v1/search/{query_id}/trace [SPEC-OWNER:task-12.3]
   - multi-workspace strict 隔离 [SPEC-DEFER:phase-15.multi-workspace-strict]

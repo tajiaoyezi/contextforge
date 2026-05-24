@@ -56,9 +56,12 @@ type JobClient interface {
 	ListActive() ([]contractv1.IndexJob, error)
 }
 
-// SearchClient backs POST /v1/search.
+// SearchClient backs POST /v1/search + GET /v1/source-chunks/{id} (task-12.2).
 type SearchClient interface {
 	Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error)
+	// task-12.2 (ADR-017 D1 Wave 2): chunk-by-id lookup. Returns ErrNotFound
+	// when the chunk does not exist.
+	GetSourceChunk(chunkID string) (contractv1.SourceChunk, error)
 }
 
 // EventsClient backs GET /v1/observability/events.
