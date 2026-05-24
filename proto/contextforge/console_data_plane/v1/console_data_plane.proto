@@ -299,6 +299,60 @@ service MemoryService {
 }
 
 // =====================================================================
+// Eval (task-14.1 / ADR-017 D1 Wave 4; mirrors contractv1.EvalRun + EvalRunCreate + CaseResult)
+// =====================================================================
+
+message CaseResult {
+  string case_id = 1;
+  string query = 2;
+  repeated string expected_chunks = 3;
+  repeated string actual_chunks = 4;
+  double score = 5;
+  bool passed = 6;
+}
+
+message EvalRun {
+  string eval_run_id = 1;
+  string workspace_id = 2;
+  string status = 3;  // "running" | "succeeded" | "failed" | "cancelled"
+  string config_snapshot_json = 4;
+  int64 started_at_unix = 5;
+  optional int64 finished_at_unix = 6;
+  string metrics_json = 7;  // serde_json::Map<String, f64>
+  repeated CaseResult case_results = 8;
+  string schema_version = 9;  // "v1"
+  optional string dataset_ref = 10;
+  optional string error_message = 11;
+}
+
+message CreateEvalRunRequest {
+  string eval_run_id = 1;  // caller-provided (Go side generates uuid-like id)
+  string workspace_id = 2;
+  string config_snapshot_json = 3;
+  string dataset_ref = 4;
+}
+
+message GetEvalRunRequest {
+  string eval_run_id = 1;
+}
+
+message UpdateEvalRunProgressRequest {
+  string eval_run_id = 1;
+  string status = 2;
+  string metrics_json = 3;
+  repeated CaseResult case_results = 4;
+  string error_message = 5;
+}
+
+message UpdateEvalRunProgressResponse {}
+
+service EvalService {
+  rpc Create(CreateEvalRunRequest) returns (EvalRun);
+  rpc Get(GetEvalRunRequest) returns (EvalRun);
+  rpc UpdateProgress(UpdateEvalRunProgressRequest) returns (UpdateEvalRunProgressResponse);
+}
+
+// =====================================================================
 // Events (mirrors contractv1.ObservabilityEvent)
 // =====================================================================
 

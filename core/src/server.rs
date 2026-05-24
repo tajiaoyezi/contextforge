@@ -514,6 +514,12 @@ pub async fn serve_full(
             let audit_sink = std::sync::Arc::new(std::sync::Mutex::new(
                 crate::memoryops::audit::AuditSink::open(data_dir, "memory")?,
             ));
+            // task-14.1 (ADR-017 D1 Wave 4): SqliteEvalStore opens
+            // `<data_dir>/eval.db` and is wired into DataPlaneStores so
+            // EvalService 3 RPC are backed by a real store.
+            let eval_store = std::sync::Arc::new(
+                crate::eval::SqliteEvalStore::open(data_dir)?,
+            );
             let stores = DataPlaneStores::full(
                 ws_store,
                 job_store,
@@ -522,6 +528,7 @@ pub async fn serve_full(
                 event_bus,
                 Some(memory_store),
                 Some(audit_sink),
+                Some(eval_store),
             );
 
             let mut builder = tonic::transport::Server::builder();

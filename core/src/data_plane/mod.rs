@@ -16,12 +16,14 @@
 //! Field naming (ADR-016 §D3 thin proxy): proto snake_case → prost-generated
 //! Rust struct snake_case → matches Go contractv1 JSON tag 1:1.
 
+pub mod eval;
 pub mod events;
 pub mod job;
 pub mod memory;
 pub mod search;
 pub mod workspace;
 
+use crate::pb_console::eval_service_server::EvalServiceServer;
 use crate::pb_console::events_service_server::EventsServiceServer;
 use crate::pb_console::job_service_server::JobServiceServer;
 use crate::pb_console::memory_service_server::MemoryServiceServer;
@@ -58,6 +60,8 @@ pub struct DataPlaneStores {
     /// pin/deprecate/soft-delete audit events. `None` falls back to silent
     /// no-op (state ops still succeed; audit is observability).
     pub audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
+    /// task-14.1: shared `SqliteEvalStore` backing `EvalService` 3 RPC.
+    pub eval: Option<Arc<crate::eval::SqliteEvalStore>>,
 }
 
 impl DataPlaneStores {
@@ -76,6 +80,25 @@ impl DataPlaneStores {
             event_bus: None,
             memory: None,
             audit: None,
+            eval: None,
+        })
+    }
+
+    /// task-14.1 constructor: stores + eval store. Used by EvalServer tests.
+    pub fn with_eval(
+        workspace_store: Arc<crate::workspace::SqliteWorkspaceStore>,
+        job_store: Arc<crate::jobs::SqliteJobStore>,
+        eval: Arc<crate::eval::SqliteEvalStore>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            workspace_store,
+            job_store,
+            job_runner: None,
+            data_dir: std::path::PathBuf::new(),
+            event_bus: None,
+            memory: None,
+            audit: None,
+            eval: Some(eval),
         })
     }
 
@@ -96,6 +119,7 @@ impl DataPlaneStores {
             event_bus: None,
             memory: Some(memory),
             audit: Some(audit),
+            eval: None,
         })
     }
 
@@ -108,7 +132,9 @@ impl DataPlaneStores {
         data_dir: std::path::PathBuf,
         event_bus: Arc<events::EventBus>,
     ) -> Arc<Self> {
-        Self::full(workspace_store, job_store, job_runner, data_dir, event_bus, None, None)
+        Self::full(
+            workspace_store, job_store, job_runner, data_dir, event_bus, None, None, None,
+        )
     }
 
     /// task-13.1 full production wiring constructor — Phase 11 4 stores +
@@ -123,6 +149,7 @@ impl DataPlaneStores {
         event_bus: Arc<events::EventBus>,
         memory: Option<Arc<crate::memory::SqliteMemoryStore>>,
         audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
+        eval: Option<Arc<crate::eval::SqliteEvalStore>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             workspace_store,
@@ -132,6 +159,7 @@ impl DataPlaneStores {
             event_bus: Some(event_bus),
             memory,
             audit,
+            eval,
         })
     }
 
@@ -152,6 +180,7 @@ impl DataPlaneStores {
             event_bus: None,
             memory: None,
             audit: None,
+            eval: None,
         })
     }
 }
@@ -179,9 +208,10 @@ pub fn register_services(
         .add_service(MemoryServiceServer::new(memory::MemoryServer::new(
             stores.clone(),
         )))
+        .add_service(EvalServiceServer::new(eval::EvalServer::new(stores.clone())))
 }
 
-/// Add 5 services to a fresh `Server::builder()` (no other services).
+/// Add 6 services to a fresh `Server::builder()` (no other services).
 /// Useful for tests where only the Console data plane is needed.
 pub fn server_with_services(
     stores: Arc<DataPlaneStores>,
@@ -198,7 +228,10 @@ pub fn server_with_services(
         .add_service(EventsServiceServer::new(events::EventsServer::new(
             stores.clone(),
         )))
-        .add_service(MemoryServiceServer::new(memory::MemoryServer::new(stores)))
+        .add_service(MemoryServiceServer::new(memory::MemoryServer::new(
+            stores.clone(),
+        )))
+        .add_service(EvalServiceServer::new(eval::EvalServer::new(stores)))
 }
 
 #[cfg(test)]
