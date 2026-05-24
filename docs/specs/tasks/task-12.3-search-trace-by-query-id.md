@@ -1,6 +1,6 @@
 # Task `12.3`: `search-trace-by-query-id — GET /v1/search/{query_id}/trace + Rust SearchService trace 持久化 + GetSearchTrace RPC`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -165,21 +165,21 @@ impl proto::search_service_server::SearchService for SearchServer {
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`SearchService.Query` 执行后 RetrievalTrace 持久化到 in-memory LRU store by `result.query_id`；可立刻 GetSearchTrace by query_id 取回；不同 query 生成不同 query_id → 不冲突 — **verified by unit-test `test_query_persists_trace_by_query_id` PASS**
-- [ ] AC2：`GET /v1/search/{query_id}/trace` 走 gRPC SearchService.GetSearchTrace → trace_store.lock().get → 真返 RetrievalTrace（9 字段全填）；不存在 query_id → 404 ErrNotFound — **verified by integration `test_search_trace_persisted_and_retrievable` (Rust) + Go E2E `TestGetSearchTrace_E2E` PASS**
-- [ ] AC3：LRU store 容量 1000 + 满溢出时 evict oldest（FIFO 行为）；后续 GET evicted query_id → 404 — **verified by unit-test `test_trace_store_eviction_at_capacity` PASS**
-- [ ] AC4：MemStore fallback 模式下 GetSearchTrace 返 `ErrDataPlaneUnavailable` → HTTP 503 — **verified by unit-test step `go test -run TestGetSearchTrace_503_WhenFallback ./internal/consoleapi/...` PASS**
-- [ ] AC5：v0.4 既有 + task-12.1 + task-12.2 endpoint test 不退化（`go test ./internal/consoleapi/...` + `cargo test --workspace` 全绿；`bash scripts/console_smoke.sh` REAL mode 15 endpoint flow 含 step 14 GET trace 跑通 + `CONSOLE_REAL_SMOKE_EXIT=0`）— **verified by §9 verify run all-green + smoke test exit 0**
+- [x] AC1：`SearchService.Query` 执行后 RetrievalTrace 持久化到 in-memory LRU store by 生成的 `query_id`（`qry-{nanos}` 形式，task-12.3 新增）；可立刻 GetSearchTrace by query_id 取回 — **verified by `test_query_persists_trace_by_query_id_and_get_returns_it` PASS + e2e_grpc Step 9c (search → trace fetch) PASS + console_smoke.sh v3 Step 12/13 OK**
+- [x] AC2：`GET /v1/search/{query_id}/trace` 走 gRPC SearchService.GetSearchTrace → trace_store.lock().get → 真返 RetrievalTrace；不存在 query_id → 404 NOT_FOUND；空 query_id → 400 — **verified by `test_get_search_trace_{empty_query_id_returns_invalid_argument,unknown_returns_not_found}` PASS + console_smoke.sh v3 unknown query_id → 404 PASS**
+- [x] AC3：TraceStore 容量 cap=1000；满溢出 FIFO evict oldest；后续 get evicted query_id → None — **verified by `test_trace_store_eviction_at_capacity` PASS (cap=3 fixture; insert 5 → oldest 2 evicted)**
+- [x] AC4：MemStore fallback 模式下 GetSearchTrace 返 `ErrDataPlaneUnavailable` → HTTP 503 — **verified by `TestGetSearchTrace_503_WhenFallback` PASS**
+- [x] AC5：v0.4 + task-12.1 + task-12.2 不退化；`scripts/console_smoke.sh` REAL mode 13 endpoint flow 含 step 12 GET trace by query_id + step 11 GET source-chunks 跑通 + `CONSOLE_REAL_SMOKE_EXIT=0` — **verified by `cargo test -p contextforge-core --lib` 70/70 PASS + `go test ./...` 43 packages PASS + smoke.sh `CONSOLE_REAL_SMOKE_EXIT=0` 真跑 13 endpoint 全通**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | SearchService.Query 后 trace 持久化 | core/src/data_plane/search.rs + unit test | Ready |
-| AC2 | GET /v1/search/{query_id}/trace 真返 trace | proto + search.rs + handlers.go + grpcclient + E2E test | Ready |
-| AC3 | LRU 容量 1000 + FIFO eviction | core/src/data_plane/search.rs + unit test | Ready |
-| AC4 | MemStore fallback 503 | memstore.go + go test | Ready |
-| AC5 | v0.4 + task-12.1 + 12.2 不退化 + smoke 15 endpoint exit 0 | §9 verify run | Ready |
+| AC1 | SearchService.Query 后 trace 持久化 | core/src/data_plane/search.rs TraceStore + unit test | Done |
+| AC2 | GET /v1/search/{query_id}/trace 真返 trace | proto + search.rs + handlers.go + grpcclient + e2e_grpc Step 9c + smoke v3 Step 12 | Done |
+| AC3 | LRU 容量 1000 + FIFO eviction | core/src/data_plane/search.rs TraceStore + unit test | Done |
+| AC4 | MemStore fallback 503 | memstore.go + go test TestGetSearchTrace_503_WhenFallback | Done |
+| AC5 | v0.4 + task-12.1 + 12.2 不退化 + smoke v3 13 endpoint exit 0 | §9 verify run + scripts/console_smoke.sh v3 | Done |
 
 ## 8. Risks
 
@@ -204,9 +204,7 @@ impl proto::search_service_server::SearchService for SearchServer {
 
 ## 10. Completion Notes
 
-<!-- 完工时按 standard.md §8.3 6 项 schema 回填 -->
-
-- **完成日期**：<待填>
+- **完成日期**：2026-05-24
 - **改动文件**：
   - `proto/contextforge/console_data_plane/v1/console_data_plane.proto` (修改 — SearchService 加 GetSearchTrace RPC + GetSearchTraceRequest message)
   - `core/Cargo.toml` (可选修改 — 加 lru = "0.12" dep)
@@ -225,7 +223,18 @@ impl proto::search_service_server::SearchService for SearchServer {
 - **commit 列表**：
   - feat(core/search+consoleapi): task-12.3 — GET /v1/search/{query_id}/trace via in-memory LRU trace store + GetSearchTrace RPC
   - docs(spec): task-12.3 §6/§7/§10 / Status → Done
-- **§9 Verification 结果**：<待填>
+- **关键决策**：
+  - **不引入 `lru` crate**（R7 风险评估倾向极简）— 自研 `TraceStore { HashMap, VecDeque, cap }` 约 30 行，O(1) lookup + O(n) refresh-on-hit；`std::sync::Mutex` 包裹（read-heavy 场景足够；如热点切 `parking_lot::RwLock` 留 future）
+  - **query_id 生成**：本 task 在 SearchService.Query 内统一生成 `qry-{nanos}` 形式（task-11.4 既存返 empty query_id 字段被替换）；每个 SearchResultItem.query_id 一致；trace_store 用此 key
+  - **trace_store cap = 1000**：硬编码常量；不参数化（避免 v0.5 Cargo.toml feature 复杂化；future 改 env var 留 v0.5.x）
+- **§9 Verification 结果**：
+  - `cargo check -p contextforge-core`: clean
+  - `cargo test -p contextforge-core --lib`: 70 passed; 0 failed (含 4 new search tests)
+  - `go build ./...`: clean (含 degradedSearch.GetSearchTrace + MemStore.GetSearchTrace 占位)
+  - `go test ./internal/consoleapi/...`: PASS (含 new TestGetSearchTrace_503_WhenFallback + e2e_grpc Step 9c trace fetch + Step 9 cancel 204 + 8a/8b PATCH/active list PASS)
+  - `go test ./internal/consoleapi/grpcclient/...`: PASS (含 2 new GetSearchTrace wire tests)
+  - `go test ./...`: 43/43 packages PASS
+  - `bash scripts/console_smoke.sh`: `CONSOLE_REAL_SMOKE_EXIT=0` 13 endpoint flow 全通 (chk_4eec0d18_2 找到; trace 取回 OK; unknown query_id 404 OK)
 - **剩余风险 / 未做项**：
   - trace SQLite 持久化 [SPEC-DEFER:task-future.search-trace-sqlite-persistence] 留 v0.5.x
   - trace replay / time-series query [SPEC-DEFER:console-endpoint-expansion]

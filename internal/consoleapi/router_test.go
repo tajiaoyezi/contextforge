@@ -344,6 +344,23 @@ func TestGetSourceChunk_400_WhenMissingID(t *testing.T) {
 	}
 }
 
+// =====================================================================
+// task-12.3 (ADR-017 D1 Wave 2) — GET /v1/search/{query_id}/trace fallback wiring.
+// =====================================================================
+
+func TestGetSearchTrace_503_WhenFallback(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/search/qry-fake/trace", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503; got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"code":"SERVICE_UNAVAILABLE"`) {
+		t.Errorf("expected SERVICE_UNAVAILABLE; got %s", w.Body.String())
+	}
+}
+
 // TestHandleHealth_ContractVersion — must-have field check (AC1).
 func TestHandleHealth_ContractVersion(t *testing.T) {
 	router, _ := newTestRouter(t, "")

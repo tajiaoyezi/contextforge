@@ -224,9 +224,17 @@ message GetSourceChunkRequest {
   string workspace_id = 2;  // optional in v1
 }
 
+// task-12.3 (ADR-017 D1 Wave 2): GET /v1/search/{query_id}/trace persists each
+// SearchService.Query trace in an in-memory LRU (cap 1000) keyed by query_id;
+// daemon restart loses the cache [SPEC-DEFER:task-future.search-trace-sqlite-persistence] 留 v0.5.x.
+message GetSearchTraceRequest {
+  string query_id = 1;
+}
+
 service SearchService {
   rpc Query(SearchRequest) returns (SearchResponse);
   rpc GetSourceChunk(GetSourceChunkRequest) returns (SourceChunk);
+  rpc GetSearchTrace(GetSearchTraceRequest) returns (RetrievalTrace);
 }
 
 // =====================================================================

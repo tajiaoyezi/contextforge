@@ -256,6 +256,17 @@ func (s *searchClient) GetSourceChunk(chunkID string) (contractv1.SourceChunk, e
 	return protoToSourceChunk(resp), nil
 }
 
+// GetSearchTrace wraps SearchService.GetSearchTrace (task-12.3 / ADR-017 D1 Wave 2).
+func (s *searchClient) GetSearchTrace(queryID string) (contractv1.RetrievalTrace, error) {
+	resp, err := s.c.GetSearchTrace(context.Background(), &pb.GetSearchTraceRequest{
+		QueryId: queryID,
+	})
+	if err != nil {
+		return contractv1.RetrievalTrace{}, mapGrpcErr(err)
+	}
+	return protoToRetrievalTrace(resp), nil
+}
+
 func (s *searchClient) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	resp, err := s.c.Query(context.Background(), &pb.SearchRequest{
 		Query:           req.Query,

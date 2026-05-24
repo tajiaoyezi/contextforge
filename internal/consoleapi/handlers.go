@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
@@ -258,6 +259,25 @@ func handleGetSourceChunk(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, chunk)
+	}
+}
+
+// handleGetSearchTrace — GET /v1/search/{query_id}/trace (task-12.3 / ADR-017 D1 Wave 2).
+// Returns 200 + RetrievalTrace on hit; 404 when query_id unknown (or evicted
+// from the in-memory LRU); 503 in fallback mode. Non-destructive.
+func handleGetSearchTrace(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		queryID := strings.TrimSpace(r.PathValue("query_id"))
+		if queryID == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing query_id")
+			return
+		}
+		trace, err := deps.Search.GetSearchTrace(queryID)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, trace)
 	}
 }
 

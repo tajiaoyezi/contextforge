@@ -493,6 +493,60 @@ func TestGrpcClient_GetSourceChunk_MapsFields(t *testing.T) {
 	}
 }
 
+func TestGrpcClient_GetSearchTrace_MapsFields(t *testing.T) {
+	fake := &fakeSearchTraceServer{}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterSearchServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	trace, err := cli.Search().GetSearchTrace("qry-abc")
+	if err != nil {
+		t.Fatalf("GetSearchTrace: %v", err)
+	}
+	if trace.TraceID == "" || trace.Query != "hello" {
+		t.Errorf("field drift: %+v", trace)
+	}
+}
+
+func TestGrpcClient_GetSearchTrace_Maps_NotFound(t *testing.T) {
+	fake := &fakeSearchTraceServer{traceErr: status.Error(codes.NotFound, "missing")}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterSearchServiceServer(s, fake)
+	})
+	defer stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, _ := New(ctx, addr)
+	defer func() { _ = cli.Close() }()
+	_, err := cli.Search().GetSearchTrace("qry-missing")
+	if !errors.Is(err, consoleapi.ErrNotFound) {
+		t.Errorf("expected ErrNotFound; got %v", err)
+	}
+}
+
+type fakeSearchTraceServer struct {
+	pb.UnimplementedSearchServiceServer
+	traceErr error
+}
+
+func (f *fakeSearchTraceServer) GetSearchTrace(_ context.Context, req *pb.GetSearchTraceRequest) (*pb.RetrievalTrace, error) {
+	if f.traceErr != nil {
+		return nil, f.traceErr
+	}
+	return &pb.RetrievalTrace{
+		TraceId:                "trace-xyz",
+		Query:                  "hello",
+		CandidateGenerationSteps: []string{"bm25"},
+		LexicalCandidatesCount: 0,
+		ScopeFilterResult:      "no-op",
+		FinalContextCount:      0,
+	}, nil
+}
+
 func TestGrpcClient_GetSourceChunk_Maps_NotFound(t *testing.T) {
 	fake := &fakeSearchServer{chunkErr: status.Error(codes.NotFound, "missing")}
 	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {

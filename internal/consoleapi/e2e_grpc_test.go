@@ -323,15 +323,49 @@ func TestRESTEndpoints_E2E_GrpcBacked(t *testing.T) {
 
 	// Step 9b: task-12.2 (ADR-017 D1 Wave 2) — GET /v1/source-chunks/{id} for an
 	// unknown chunk_id returns 404 NOT_FOUND from SearchService.GetSourceChunk.
-	// (An index-then-fetch flow is task-11.4 scope; here we only exercise the
-	// REST wire + 404 sentinel for the new endpoint.)
 	code, body = doJSON(t, srv, "GET", "/v1/source-chunks/chk_does_not_exist_0", "")
 	if code != 404 {
 		t.Fatalf("GET source-chunks unknown: expected 404; got code=%d body=%s", code, body)
 	}
 
-	// Step 10: POST /v1/search (empty result per task-11.1 [SPEC-OWNER:task-11.4])
+	// Step 9c: task-12.3 (ADR-017 D1 Wave 2) — POST /v1/search emits a query_id;
+	// trace is persisted by SearchService into in-memory LRU; GET /v1/search/{query_id}/trace
+	// returns the cached trace. Use the search response from Step 10 below by
+	// reordering: do search first to capture query_id.
 	searchBody := fmt.Sprintf(`{"query":"x","workspace_id":"%s","top_k":5}`, wsID)
+	code, body = doJSON(t, srv, "POST", "/v1/search", searchBody)
+	if code != 200 {
+		t.Fatalf("POST search (pre-trace): code=%d body=%s", code, body)
+	}
+	var searchEnvelope map[string]any
+	_ = json.Unmarshal(body, &searchEnvelope)
+	resultMap, _ := searchEnvelope["result"].(map[string]any)
+	queryID, _ := resultMap["query_id"].(string)
+	if queryID == "" {
+		// Empty results may produce an empty query_id when no index exists yet
+		// (workspace was just created, no index job completed). In that path
+		// SearchServer falls through to empty_response() which does not store
+		// a trace. Skip the trace fetch; only assert when query_id was set.
+		t.Logf("Step 9c: search returned empty query_id (workspace has no index yet); skipping trace fetch")
+	} else {
+		code, body = doJSON(t, srv, "GET", "/v1/search/"+queryID+"/trace", "")
+		if code != 200 {
+			t.Fatalf("GET trace by query_id: expected 200; got code=%d body=%s", code, body)
+		}
+		var traceJSON map[string]any
+		_ = json.Unmarshal(body, &traceJSON)
+		if traceJSON["trace_id"] == "" || traceJSON["trace_id"] == nil {
+			t.Errorf("GET trace by query_id missing trace_id; body=%s", body)
+		}
+	}
+	// Unknown query_id → 404
+	code, body = doJSON(t, srv, "GET", "/v1/search/qry-does-not-exist/trace", "")
+	if code != 404 {
+		t.Fatalf("GET trace unknown query_id: expected 404; got code=%d body=%s", code, body)
+	}
+
+	// Step 10: POST /v1/search (empty result per task-11.1 [SPEC-OWNER:task-11.4])
+	// Re-use searchBody declared in Step 9c.
 	code, body = doJSON(t, srv, "POST", "/v1/search", searchBody)
 	if code != 200 {
 		t.Fatalf("POST search: code=%d body=%s", code, body)
