@@ -51,7 +51,7 @@ ContextForge v0.2 内部用 `collection_id` 作为 namespace；Console Contract 
 - **多 collection per workspace** [SPEC-DEFER:task-future.multi-collection]：v0.3 1:1 映射；多 collection 留 v0.4 (ADR-015 §Rollback 1)
 - **Workspace-level RBAC / multi-user** [SPEC-DEFER:task-future.workspace-rbac]：v0.3 single-user local-first；RBAC 留 v0.4+
 - **gRPC RPC for Workspace CRUD** [SPEC-DEFER:task-future.workspace-grpc]：v0.3 REST 直接调 SqliteWorkspaceStore；gRPC 留 v0.4 (Phase 9 add-only freeze 维持)
-- **REST handler 实现**（task-10.4）：本 task 仅 Rust struct + Store + migration；HTTP 由 Go 侧 task-10.4 实现
+- **REST handler 实现** [SPEC-OWNER:task-10.4]：本 task 仅 Rust struct + Store + migration；HTTP 由 Go 侧 task-10.4 实现
 - **Workspace 配置热重载 / 立即触发 reindex** [SPEC-DEFER:task-future.workspace-hot-reload]：v0.3 update_config 仅更新 SQLite；触发 reindex 由 task-10.3 IndexJob 显式提交
 - **现有 v0.2 collection-based CLI 命令改造** [SPEC-DEFER:task-future.cli-workspace-rename]：v0.3 `contextforge import --collection X` 仍工作（X 即 workspace_id）；CLI 引入 `--workspace` flag 留 v0.4
 

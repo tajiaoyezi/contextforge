@@ -14,7 +14,7 @@
 
 闭环 Console v1.0 已 ship 但无真 Core 可对接的 cross-repo gap (PRD §Open Questions O13)。直接支撑：
 - Console UI demo 调真 ContextForge（不仅 Mock Adapter）— Console PRD §Implementation Phases Phase 7 integration 验收前提
-- ContextForge 对外 REST 面从 v0.2 单 endpoint (`/v1/search` stub, task-6.2) 扩到 9，覆盖 Console Mock→HTTP 迁移 happy path
+- ContextForge 对外 REST 面从 v0.2 单 endpoint (`/v1/search` 仅 search 子集，由 task-6.2 实现) 扩到 9，覆盖 Console HTTPAdapter 调真 ContextForge 的最小集 happy path
 - Workspace / IndexJob 资源模型为 ContextForge v0.4+ 多 collection / 多 worker / RBAC 演进留扩展点
 - 跨仓库 Contract v1 字段对齐 verifiable（conformance test + D2 lint）— 降低 cross-repo drift 风险
 

@@ -39,8 +39,8 @@ ContextForge v0.2 内部业务类型分散在 `internal/` 各包；Console v1.0 
 - **Console 端 contractv1.go 任何修改** [SPEC-OWNER:console-team]：cross-repo 只读镜像，Console 字段变更由 Console 端 PR 驱动；本 task 任何时刻 Console 镜像与 ContextForge 镜像不一致 → ADR-014 D4 + playbook §自决规则 #8 转 §8 STOP
 - **should-have / optional 字段镜像** [SPEC-DEFER:task-future.contractv1-should-have]：Phase 10 仅 must-have；should-have / optional 字段在 v0.4+ 增量
 - **v0.2 现有 internal/ 类型重构** [SPEC-DEFER:task-future.contractv1-internal-refactor]：v0.2 现有业务类型保持原样；task-10.4 REST handler 内部做 contractv1.X ↔ 现有业务类型转换
-- **REST handler 实现**（task-10.4）：本 task 仅提供 types；不写任何 handler
-- **Workspace / IndexJob 资源 CRUD**（task-10.2 / 10.3）：本 task 仅 type 镜像，CRUD 行为在 Rust 侧
+- **REST handler 实现** [SPEC-OWNER:task-10.4]：本 task 仅提供 types；不写任何 handler
+- **Workspace / IndexJob 资源 CRUD** [SPEC-OWNER:task-10.2]/[SPEC-OWNER:task-10.3]：本 task 仅 type 镜像，CRUD 行为在 Rust 侧
 - **conformance test**（task-10.5）：本 task types_test.go 仅验证 Go 镜像自身 marshal/unmarshal；与 Console fakehttpserver 对齐的 conformance test 在 task-10.5
 
 ## 4. Users / Actors
