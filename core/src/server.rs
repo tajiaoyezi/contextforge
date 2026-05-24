@@ -11,13 +11,15 @@
 //!   `retriever.search/explain` → `SearchResponse` pipeline.
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use crate::chunker::Provenance as RetrieverProvenance;
+use crate::chunker::{ChunkPolicy, Provenance as ChunkerProvenance, Provenance as RetrieverProvenance};
+use crate::indexer::{IndexProgressSnapshot, IndexSession};
 use crate::pb::context_service_server::{ContextService, ContextServiceServer};
 use crate::pb::{
     HealthRequest, HealthResponse, IndexProgress, IndexRequest, Provenance as PbProvenance,
@@ -27,6 +29,7 @@ use crate::retriever::{
     is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
     SearchOptions, SearchResult,
 };
+use crate::scanner::{default_denylist, ScanOptions};
 
 /// Built-in safe default listen address (loopback only, never `0.0.0.0`).
 pub const DEFAULT_LISTEN: &str = "127.0.0.1:50551";
@@ -70,28 +73,145 @@ impl std::fmt::Display for AddrError {
 }
 impl std::error::Error for AddrError {}
 
-/// task-9.1 §3 OOS: stream 占位类型 — `Index` 真实现由 task-9.2 替换为
-/// `ReceiverStream`-based stream（spec task-9.2 §5.3）。task-9.1 用
-/// `Pin<Box<dyn Stream + Send>>` 兼容 trait associated-type 约束而不引入新
-/// dep（R7 严格通道：tokio-stream 留 task-9.2 §5.2 NEEDS-DEP）。
-pub type IndexProgressStream =
-    std::pin::Pin<Box<dyn tonic::codegen::tokio_stream::Stream<Item = Result<IndexProgress, Status>> + Send + 'static>>;
+/// task-9.2 §5.3：Index server-stream associated type — mpsc 包装。
+pub type IndexProgressStream = ReceiverStream<Result<IndexProgress, Status>>;
+
+/// task-9.2 §5.3：mpsc channel 容量（per-file progress emit；32 是 tonic stream
+/// 推荐默认 — buffer slow-consumer 一小段同时不过度内存占用）。
+const INDEX_PROGRESS_CHANNEL_CAPACITY: usize = 32;
 
 #[tonic::async_trait]
 impl ContextService for CoreService {
     type IndexStream = IndexProgressStream;
 
-    /// task-9.1 §3 OOS 占位：Rust `CoreService::index` 业务实现由 task-9.2 替换
-    /// (`IndexSession::index_path_with_progress` + per-file IndexProgress emit)。
-    /// 本 task 仅完成 proto 契约 + codegen 骨架，保证 trait 完整以编译；CLI
-    /// 实测调用会返 `Status::Unimplemented` 直到 task-9.2 落地。
+    /// task-9.2 §5.3：Index 真实现。SCAN_PATH 模式：
+    ///   1. 校验 source_path 非空 + 路径存在 → 否则 `InvalidArgument` 流建立前抛出
+    ///   2. fallback data_dir (空 → self.data_dir) + collection_id (空 → "default")
+    ///   3. 创建 mpsc(32) channel
+    ///   4. spawn_blocking 跑同步 `IndexSession::index_path_with_progress`，回调内
+    ///      `tx.blocking_send` 喂 `IndexProgress` 进 stream
+    ///   5. 完成 / 错误：发最后一条 `done=true` (error 字段空 / 含 indexer err str)
+    ///   6. return `Response(ReceiverStream(rx))`
+    /// 错误映射：校验阶段 → `Status::invalid_argument`；indexer 内部错误 → in-band
+    /// 经 final IndexProgress.error 字段传递（不中断 stream — client 看 done=true
+    /// && error != "" 即知失败）
     async fn index(
         &self,
-        _request: Request<IndexRequest>,
+        request: Request<IndexRequest>,
     ) -> Result<Response<Self::IndexStream>, Status> {
-        Err(Status::unimplemented(
-            "contextforge-core::Index 占位 — task-9.2 (rust-grpc-index) 接入 IndexSession",
-        ))
+        let req = request.into_inner();
+
+        let source_path = req.source_path.trim().to_string();
+        if source_path.is_empty() {
+            return Err(Status::invalid_argument("source_path is required"));
+        }
+        if !Path::new(&source_path).exists() {
+            return Err(Status::invalid_argument(format!(
+                "source_path does not exist: {}",
+                source_path
+            )));
+        }
+
+        let data_dir: PathBuf = if req.data_dir.trim().is_empty() {
+            self.data_dir.clone()
+        } else {
+            PathBuf::from(req.data_dir.trim())
+        };
+        if data_dir.as_os_str().is_empty() {
+            return Err(Status::invalid_argument(
+                "data_dir must be provided when CoreService has no default",
+            ));
+        }
+        let collection_id: String = if req.collection_id.trim().is_empty() {
+            "default".to_string()
+        } else {
+            req.collection_id.trim().to_string()
+        };
+
+        let (tx, rx) =
+            tokio::sync::mpsc::channel::<Result<IndexProgress, Status>>(INDEX_PROGRESS_CHANNEL_CAPACITY);
+
+        let src = PathBuf::from(&source_path);
+        let tx_indexer = tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut session = match IndexSession::open(&data_dir, &collection_id) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = tx_indexer.blocking_send(Ok(IndexProgress {
+                        files_processed: 0,
+                        files_skipped_denied: 0,
+                        files_skipped_redaction: 0,
+                        chunks_written: 0,
+                        current_file: String::new(),
+                        done: true,
+                        error: format!("open IndexSession: {}", e),
+                    }));
+                    return;
+                }
+            };
+
+            let scan_opts = ScanOptions {
+                denylist: default_denylist(),
+                allowlist: Vec::new(),
+                allow_denylist_override: false,
+                dry_run: false,
+                max_file_bytes: 10 * 1024 * 1024,
+            };
+            let policy = ChunkPolicy::default();
+            let provenance: Vec<ChunkerProvenance> = Vec::new();
+
+            let result = session.index_path_with_progress(
+                &src,
+                &scan_opts,
+                &policy,
+                provenance,
+                |snap: &IndexProgressSnapshot<'_>| {
+                    let progress = IndexProgress {
+                        files_processed: snap.files_processed as i64,
+                        files_skipped_denied: snap.files_skipped_denied as i64,
+                        files_skipped_redaction: snap.files_skipped_redaction as i64,
+                        chunks_written: snap.chunks_written as i64,
+                        current_file: snap
+                            .current_file
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        done: false,
+                        error: String::new(),
+                    };
+                    // best-effort: if client dropped, indexer continues to finish
+                    // current file (mpsc send failure is logged via final message).
+                    let _ = tx_indexer.blocking_send(Ok(progress));
+                },
+            );
+
+            // Final message: emit done=true with error if any. Always attempt
+            // to commit Tantivy writer before reporting done (mirrors task-2.4
+            // contract — indexer is only durable after commit).
+            let (final_stats, error_str) = match result {
+                Ok(stats) => match session.commit() {
+                    Ok(()) => (stats, String::new()),
+                    Err(e) => (stats, format!("commit: {}", e)),
+                },
+                Err(e) => (
+                    crate::indexer::IndexStats::default(),
+                    format!("index_path: {}", e),
+                ),
+            };
+
+            let _ = tx_indexer.blocking_send(Ok(IndexProgress {
+                files_processed: final_stats.files_indexed as i64,
+                files_skipped_denied: final_stats.files_skipped_denied as i64,
+                files_skipped_redaction: final_stats.files_skipped_redaction as i64,
+                chunks_written: final_stats.chunks_written as i64,
+                current_file: String::new(),
+                done: true,
+                error: error_str,
+            }));
+            drop(tx_indexer);
+        });
+
+        drop(tx);
+        Ok(Response::new(ReceiverStream::new(rx)))
     }
 
     async fn health(

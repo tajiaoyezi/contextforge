@@ -20,7 +20,12 @@ tonic = "0.12"
 # task-1.3 §2A R7 decision: tokio + serde promoted to DIRECT deps (AC1/AC3-
 # mandated for the tonic gRPC server; both already in Cargo.lock transitively
 # via tonic 0.12 — no new supply-chain surface; folded into this task, §10-disclosed).
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+# task-9.2 §5.2 NEEDS-DEP lift: tokio-stream 已作为 tonic 0.12 transitive 在
+# Cargo.lock (0.1.18) — 按 task-1.3 §2A R7 lift pattern（无新供应链表面）显式
+# 化为 direct dep，让 CoreService::index 用 ReceiverStream 包 mpsc 喂 tonic
+# server stream。
+tokio-stream = "0.1"
 serde = { version = "1", features = ["derive"] }
 # task-2.2 (parser) R7 NEEDS-DEP — main-agent chore PR `chore/dep-parser-crates`.
 # 源: NEEDS-DEP-task-2.2.md（feat/task-2.2-parser）。版本由 `cargo add` 自 crates.io
