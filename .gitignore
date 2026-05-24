@@ -39,3 +39,7 @@ vendor/
 # sessions/ 仅本地：历史归档（archive/，2026-05-23 前 team 多终端遗留）+ 偶发本地协作临时产物，不入库。
 # 单驱动变体（ADR-011）下新流程不再产出 sessions/ 内容，但 archive/ 保留供历史复盘。
 _dispatch/sessions/
+
+# docs/playbooks/ 是个人 /goal 操作 playbook，文件 header 自标 "不入 git"
+# 仅本地保留供操作参考；勿用 git add -A 误扫入
+docs/playbooks/

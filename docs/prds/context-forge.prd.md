@@ -382,6 +382,7 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 | 7 | mcp-adapter | Agent 经 MCP 获取一致、可追溯上下文（context_search/context_read/context_explain/context_collections） | `mcp-adapter`（Go） | 6 | 否 |
 | 8 | eval-and-reliability | `contextforge eval run` 输出 Top-5/Top-10 命中率、延迟、错误召回报告；v0.1 七项技术闭环在 Linux/WSL2 端到端跑通；完成长任务/中断恢复/资源占用/secret redaction/export 的可靠性硬化；产出可安装的 Linux x86_64 release 包并通过 smoke test | `eval`（Go+Rust）+ 全链路集成测试 | 6, 7 | 否 |
 | 9 | cli-pipeline | （v0.2 收口）补齐 v0.1 CLI 数据通路 spec drift：proto add-only `rpc Index` stream + Rust `CoreService::index` wire + Go CLI `index` / `import` 真实接通 + task-8.3 假证据测试取代为真集成 + README quick start 可复现；详见 ADR-013 | proto/contextforge/v1/*.proto + core/src/server.rs + internal/cli/index.go·import.go + internal/daemon/index.go + internal/release/release_test.go + scripts/{release_smoke,quickstart_smoke}.sh + examples/quickstart/ + docs/releases/v0.2.0-*.md | 8 | 否 |
+| 10 | console-contract-v1 | （v0.3 收口）实现 ContextForge ↔ ContextForge-Console v1.0 Contract v1 兼容层：internal/contractv1/ Go 镜像 + core/src/{workspace,jobs}/ Rust 资源模型 + SQLite migration 0010/0011 + internal/consoleapi/ 9 REST endpoint + OpenAPI + cross-repo conformance test + docker compose 端到端联调；详见 ADR-015 | internal/contractv1/ + core/src/workspace/ + core/src/jobs/ + core/migrations/0010_workspaces.sql + 0011_index_jobs.sql + internal/consoleapi/ + docs/consoleapi/openapi.yaml + test/conformance/console_contractv1_test.go + scripts/console_smoke.sh + deploy/console-stack.yml + Dockerfile + docs/releases/v0.3.0-*.md | 9 | 否 |
 
 **Phase Exit Criteria｜阶段验收标准**：
 
@@ -458,6 +459,17 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 - `scripts/release_smoke.sh` 含 phase 9 CLI 端到端段；`internal/release/release_test.go` 删除 fake-evidence 测试（v0.1 task-8.3 假 AC2/AC4），改为真集成。
 - `scripts/quickstart_smoke.sh` 一键跑 README quick start 七步；`examples/quickstart/` 提供可复制粘贴 fixture。
 - ADR-013 状态推进 Proposed → Accepted；adapter §Phase 索引 Phase 9 → Done；v0.2.0 RELEASE_NOTES + evidence + artifacts 落盘。
+
+**Phase 10 console-contract-v1**（v0.3 收口；ContextForge ↔ ContextForge-Console v1.0 集成；详见 ADR-015）
+
+- `internal/contractv1/` 含 17 Contract v1 类型 Go 镜像（1:1 对齐 Console `console-api/internal/coreadapter/contractv1/contractv1.go`）+ `ContractVersion = "v1"` 常量 + FieldAvailability helper。
+- `core/src/workspace/` + `core/migrations/0010_workspaces.sql` 实现 Workspace 资源 CRUD + workspace_id ↔ collection_id 1:1 映射。
+- `core/src/jobs/` + `core/migrations/0011_index_jobs.sql` 实现 IndexJob 异步 lifecycle（queued/running/succeeded/failed/cancelled）+ heartbeat + co-operative cancel。
+- `internal/consoleapi/` 含 9 REST endpoint：`GET /v1/health` + `POST/GET/GET /v1/workspaces*` + `POST/GET/POST /v1/index-jobs*[/cancel]` + `POST /v1/search`（嵌套响应 `{result, trace}`）+ `GET /v1/observability/events` long-poll；路径/shape/错误码严格对齐 Console HTTPAdapter 期望；`docs/consoleapi/openapi.yaml` 落 OpenAPI 3.0。
+- `test/conformance/console_contractv1_test.go` 反向取 Console fakehttpserver oracle 跑过端到端（env `$CONSOLE_REPO` 设时跑全套，未设 SKIP）。
+- `scripts/console_smoke.sh` + `deploy/console-stack.yml` + `Dockerfile` 启动 docker compose stack（Console v1.0 + ContextForge daemon + Postgres + Redis）+ curl Console UI 真返回 workspace 列表（非 Mock）+ `CONSOLE_SMOKE_EXIT=0`。
+- ADR-015 状态推进 Proposed → Accepted；adapter §Phase 索引 Phase 10 → Done；§Open Questions O13 标记 resolved by ADR-015；v0.3.0 RELEASE_NOTES + evidence + artifacts 落盘。
+- ADR-014 cross-validation gate（D1 mapping 表 + D2 lint 0 violation + D3 phase §6 每条 AC verified by 显式 + D4 主 agent 自治补丁）首次完整激活并跑通。
 
 ---
 
@@ -576,7 +588,8 @@ v0.1 recall eval 使用 golden questions 数据集进行评测。
 - [ ] **O9 canonical record 最小 schema**：`SourceRecord` / `ContextRecord` / `Chunk` / `RetrievalResult` 的边界、字段、版本号和兼容策略如何最终冻结？
 - [ ] **O10 本地 API / MCP 安全边界**：daemon 监听地址、token、client allowlist、audit log 内容、远程 provider opt-in 数据外发提示如何设计？
 - [ ] **O11 中英文与代码符号检索策略**：Tantivy tokenizer、CJK 处理、代码符号字段、路径 boost、exact match 如何实现和评测？
-- [ ] **O12 Phase 1-8 spec drift 击鼓传花机制如何在治理层提前发现**（ADR-013 §Follow-ups 新增）：v0.1 CLI 数据通路 spec drift 跨 Phase 1 / 2 / 6 / 8 击鼓传花（每 phase 把 CLI wire 推给下一 phase，到 task-8.3 §3 OOS 终点声明"历史 gap"但 AC2 仍勾选通过）。Phase 9 实施完成后产 governance retrospective：是否需要 ADR-014 引入"Phase 顶层 Exit Criteria 与 task 收口 AC 必须 cross-validation"机制？主 agent 自治在 spec-drift 检测层面的能力边界（ADR-012 把 §2A / merge / Waive 交给主 agent；spec drift 检测需跨 phase / 跨 task 视角，单 task 视角的主 agent 容易漏）。
+- [x] **O12 Phase 1-8 spec drift 击鼓传花机制如何在治理层提前发现**（ADR-013 §Follow-ups 新增）：v0.1 CLI 数据通路 spec drift 跨 Phase 1 / 2 / 6 / 8 击鼓传花（每 phase 把 CLI wire 推给下一 phase，到 task-8.3 §3 OOS 终点声明"历史 gap"但 AC2 仍勾选通过）。Phase 9 实施完成后产 governance retrospective：是否需要 ADR-014 引入"Phase 顶层 Exit Criteria 与 task 收口 AC 必须 cross-validation"机制？主 agent 自治在 spec-drift 检测层面的能力边界（ADR-012 把 §2A / merge / Waive 交给主 agent；spec drift 检测需跨 phase / 跨 task 视角，单 task 视角的主 agent 容易漏）。**Resolved by ADR-014** (cross-phase-exit-criteria-validation，Status=Accepted 2026-05-24)：D1 closeout mapping 表 + D2 `scripts/spec_drift_lint.sh` + D3 phase §6 verified by 显式 + D4 主 agent 自治补丁 + D5 历史不溯改；Phase 10 首次完整激活。
+- [ ] **O13 ContextForge ↔ ContextForge-Console Contract v1 集成机制**（Phase 10 启动前提出）：Console v1.0 已 ship 但 HTTPAdapter 期望 ContextForge 端实现 9-19 REST endpoint + Workspace/IndexJob 资源模型，v0.2 ContextForge 端尚不提供；Console / ContextForge 双仓库 cross-repo 字段对齐如何 verifiable？v0.3 Phase 10 console-contract-v1 收口；详见 ADR-015。
 
 ---
 
