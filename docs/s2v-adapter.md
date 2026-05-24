@@ -233,7 +233,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 6 | `cli-api-export` | `docs/specs/phases/phase-6-cli-api-export.md` | Done | 3 | `../ContextForge-wt-cli-api-export` |
 | 7 | `mcp-adapter` | `docs/specs/phases/phase-7-mcp-adapter.md` | Done | 1 | `../ContextForge-wt-mcp-adapter` |
 | 8 | `eval-and-reliability` | `docs/specs/phases/phase-8-eval-and-reliability.md` | Done | 3 | `../ContextForge-wt-eval-and-reliability` |
-| 9 | `cli-pipeline` | `docs/specs/phases/phase-9-cli-pipeline.md` | Draft | 6 | `../ContextForge-wt-cli-pipeline` |
+| 9 | `cli-pipeline` | `docs/specs/phases/phase-9-cli-pipeline.md` | Done | 6 | `../ContextForge-wt-cli-pipeline` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -296,7 +296,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 010 | audit-cross-language-unification | Proposed | docs/decisions/adr-010-audit-cross-language-unification.md |
 | 011 | single-driver-with-subagents | Proposed | docs/decisions/adr-011-single-driver-with-subagents.md |
 | 012 | main-agent-governance-autonomy | Accepted | docs/decisions/adr-012-main-agent-governance-autonomy.md |
-| 013 | cli-data-plane-grpc-bridge | Proposed | docs/decisions/adr-013-cli-data-plane-grpc-bridge.md |
+| 013 | cli-data-plane-grpc-bridge | Accepted | docs/decisions/adr-013-cli-data-plane-grpc-bridge.md |
 
 ## BDD Feature 索引
 

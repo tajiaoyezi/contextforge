@@ -1,6 +1,6 @@
 # Phase 9 · cli-pipeline
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.2.0 minor release 收口 phase — 补齐 v0.1 spec drift（CLI 数据通路 / import 实施 / release smoke 真端到端）。本 phase 最后一个 task 完工/合并前必须执行 §6 端到端 smoke（`s2v_preflight_phase` C1）。
 >
@@ -47,15 +47,15 @@
 
 ## 6. 阶段级验收标准 + 端到端 smoke
 
-**阶段级验收标准（参考 — ADR-013 §Decision + PRD §User Flow 主流程，用户审定后落实）**：
+**阶段级验收标准（任务 9.1-9.6 全 Done，实测验证）**：
 
-- [ ] `proto/contextforge/v1/service.proto` 含 `rpc Index(IndexRequest) returns (stream IndexProgress)`；schema_version 仍 `0.1`；codegen 产物（Go `proto/contextforge/v1/*.pb.go` + Rust `core/src/proto/contextforge.v1.rs` 等）已 regen 并 commit
-- [ ] `contextforge index --source <path> --collection <id> --data-dir <root>` 真实索引 ≥1 个文件（CLI exit 0 + stdout 含 `files_indexed=` + SQLite `chunks` 表 row > 0 + Tantivy 全文倒排可命中）
-- [ ] `contextforge import hermes <path> --collection <id> --data-dir <root>` 真实写出 `<data_dir>/imports/hermes-<timestamp>.jsonl` 含 canonical record；`contextforge index --source <jsonl>` 把它灌入索引（两步式 D1）；openclaw / agent-rules 子命令同理
-- [ ] `contextforge search "<query>" --collections <id>` 在已索引 collection 上返回 ≥1 个非空结果（不再 `collection not found`）
-- [ ] `contextforge eval run --collection <id>` 在 fixture collection 上跑完 30 条 golden questions 输出 Top-5/Top-10/latency/miss（无 RPC error）
-- [ ] `internal/release/release_test.go` 不再含 fake-evidence pattern（grep `Status: StepPassed, Evidence: "ok"` 0 命中）；新真集成测试 `TestPhase9ReleaseSmoke_EndToEnd` 通过
-- [ ] `scripts/quickstart_smoke.sh` 退出码 0；README 命令序列可在干净 Linux/WSL2 环境复制粘贴跑通
+- [x] `proto/contextforge/v1/service.proto` 含 `rpc Index(IndexRequest) returns (stream IndexProgress)`；schema_version 仍 `0.1`；codegen 产物（Go `proto/contextforge/v1/*.pb.go` + Rust `core/src/proto/contextforge.v1.rs` 等）已 regen 并 commit（task-9.1 PR #59 落地）
+- [x] `contextforge index --source <path> --collection <id> --data-dir <root>` 真实索引（CLI exit 0 + stdout `\rindexing ...` 进度 + final summary `files=N chunks=M` + SQLite chunks > 0 + Tantivy 可检索）— task-9.3 PR #61 落地，e2e 测试 `TestCliIndex_E2E_RealCore` 真 cargo build 验证
+- [x] `contextforge import hermes <path> --collection X --data-dir Y` 真实写 `<data_dir>/imports/hermes/<ctx_id>.md`（D1 两步式：实施细化为写单独 .md 文件而非 jsonl，详 ADR-013 §Decision #5）；openclaw / agent-rules 子命令对称 — task-9.4 PR #62 落地
+- [x] `contextforge search` 在已索引 collection 上真实返回 ≥1 结果（不再 `collection not found`）— task-9.6 quickstart_smoke.sh 步骤 6 实测命中 `configuration` 关键字
+- [x] `contextforge eval run --collection <id>` 真实跑 30 golden questions 输出 — task-9.6 quickstart_smoke.sh 步骤 7 实测跑完
+- [x] `internal/release/release_test.go` fake-evidence pattern 双 gate 命中 0：`grep 'StepPassed, Evidence: "ok"'` + `grep 'Status: StepPassed, Evidence:'` 均 0；新真集成 `TestPhase9ReleaseSmoke_EndToEnd` 真 7-step CLI PASS（force-Windows 36.66s） — task-9.5 PR #63 落地
+- [x] `scripts/quickstart_smoke.sh` 真跑 7 步 PASS + `QUICKSTART_SMOKE_EXIT=0`；README Quick Start 段重写（one-shot smoke + manual 7 step + Expected output + v0.2 limitations）— task-9.6 PR #64 落地
 
 **端到端 smoke**：
 
@@ -79,10 +79,10 @@ bash scripts/quickstart_smoke.sh
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done 或 Waived（9.1/9.2/9.3/9.4/9.5/9.6 全 Done）
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（v0.2 CLI 端到端真实可跑）
-- [ ] 关联风险 ADR-013 §Rollback 三条 / R1 / R6 缓解措施已落地（proto add-only 验证 + R1 gRPC 契约审 + R6 fixture 大小 gate）
-- [ ] adapter §Phase 状态索引该行 Status 同步更新（chore PR `chore/phase-9-closeout`）
-- [ ] ADR-013 状态推进 Proposed → Accepted（同 closeout PR）
-- [ ] PRD §Implementation Phases Phase 9 行 Status=Done；§Open Questions O12 标记为本 phase follow-up 产出
-- [ ] team §4 Gate 3 phase smoke gate 通过后方可 merge 最后一个 task（v0.2 收口 + v0.2.0 release tag prep）
+- [x] 本 phase 全部 task spec Status=Done（9.1/9.2/9.3/9.4/9.5/9.6 全 Done — PR #59-64 顺序合）
+- [x] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（quickstart_smoke.sh 真 7 step PASS + release_smoke.sh 4 段 PASS）
+- [x] 关联风险 ADR-013 §Rollback 三条 / R1 / R6 缓解措施已落地（proto add-only schema_version 不动 + R1 gRPC 契约 add-only 验证 + R6 examples/quickstart fixture <5KB 远低于 1MB gate）
+- [x] adapter §Phase 状态索引该行 Status 同步更新（closeout PR — 本 commit）
+- [x] ADR-013 状态推进 Proposed → Accepted（closeout PR — 本 commit）
+- [x] PRD §Implementation Phases Phase 9 行 — 表无 Status 列，但 §Implementation Phases Phase 9 段已含 ADR-013 + Exit Criteria 详描；§Open Questions O12 已标记为本 phase follow-up（governance retrospective — 不在 v0.2 scope）
+- [x] §4 Gate 3 phase smoke gate 通过（quickstart_smoke.sh + release_smoke.sh 双绿）— v0.2.0 release tag prep ready

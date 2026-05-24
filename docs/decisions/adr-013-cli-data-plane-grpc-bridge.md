@@ -1,6 +1,6 @@
 # ADR `013`: `cli-data-plane-grpc-bridge`
 
-**Status**: Proposed
+**Status**: Accepted
 **Category**: 协议接口 / 架构
 **Date**: 2026-05-24
 **Decided By**: tajiaoyezi objective + main agent execution
