@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+// FROZEN at schema_version "0.1" — see context.proto CONTRACT FREEZE RULE
+// (only add fields, never delete or renumber tags).
+// Phase 9 task-9.1: add-only extension for CLI data plane (ADR-013).
+package contextforge.v1;
+
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
+
+// IndexRequest — POST /v1/index request (Phase 9 task-9.1 / ADR-013).
+// SCAN_PATH mode (v0.2 only): server scans source_path filesystem,
+// applies denylist / secret redaction, writes Tantivy + SQLite.
+message IndexRequest {
+  string source_path = 1;     // absolute path; required
+  string data_dir = 2;        // collection data root (~/.contextforge/ or override)
+  string collection_id = 3;   // required; defaults to "default" if empty on server
+}
+
+// IndexProgress — streaming progress update.
+// Server sends >=1 message; final message has done=true.
+// On error: in-band via the error field on the final (done=true) message.
+message IndexProgress {
+  int64 files_processed = 1;
+  int64 files_skipped_denied = 2;
+  int64 files_skipped_redaction = 3;
+  int64 chunks_written = 4;
+  string current_file = 5;   // path being processed (last seen); empty on final
+  bool done = 6;
+  string error = 7;          // empty unless terminal error
+}

@@ -25,6 +25,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	ContextService_Search_FullMethodName = "/contextforge.v1.ContextService/Search"
 	ContextService_Health_FullMethodName = "/contextforge.v1.ContextService/Health"
+	ContextService_Index_FullMethodName  = "/contextforge.v1.ContextService/Index"
 )
 
 // ContextServiceClient is the client API for ContextService service.
@@ -33,6 +34,8 @@ const (
 type ContextServiceClient interface {
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
+	// Phase 9 task-9.1: server-streaming indexing RPC (ADR-013 §Decision #1).
+	Index(ctx context.Context, in *IndexRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IndexProgress], error)
 }
 
 type contextServiceClient struct {
@@ -63,12 +66,33 @@ func (c *contextServiceClient) Health(ctx context.Context, in *HealthRequest, op
 	return out, nil
 }
 
+func (c *contextServiceClient) Index(ctx context.Context, in *IndexRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IndexProgress], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ContextService_ServiceDesc.Streams[0], ContextService_Index_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[IndexRequest, IndexProgress]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ContextService_IndexClient = grpc.ServerStreamingClient[IndexProgress]
+
 // ContextServiceServer is the server API for ContextService service.
 // All implementations must embed UnimplementedContextServiceServer
 // for forward compatibility.
 type ContextServiceServer interface {
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
+	// Phase 9 task-9.1: server-streaming indexing RPC (ADR-013 §Decision #1).
+	Index(*IndexRequest, grpc.ServerStreamingServer[IndexProgress]) error
 	mustEmbedUnimplementedContextServiceServer()
 }
 
@@ -84,6 +108,9 @@ func (UnimplementedContextServiceServer) Search(context.Context, *SearchRequest)
 }
 func (UnimplementedContextServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Health not implemented")
+}
+func (UnimplementedContextServiceServer) Index(*IndexRequest, grpc.ServerStreamingServer[IndexProgress]) error {
+	return status.Errorf(codes.Unimplemented, "method Index not implemented")
 }
 func (UnimplementedContextServiceServer) mustEmbedUnimplementedContextServiceServer() {}
 func (UnimplementedContextServiceServer) testEmbeddedByValue()                        {}
@@ -142,6 +169,17 @@ func _ContextService_Health_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ContextService_Index_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(IndexRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ContextServiceServer).Index(m, &grpc.GenericServerStream[IndexRequest, IndexProgress]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ContextService_IndexServer = grpc.ServerStreamingServer[IndexProgress]
+
 // ContextService_ServiceDesc is the grpc.ServiceDesc for ContextService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -158,6 +196,12 @@ var ContextService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ContextService_Health_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Index",
+			Handler:       _ContextService_Index_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "contextforge/v1/service.proto",
 }

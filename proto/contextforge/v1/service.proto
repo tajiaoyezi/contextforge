@@ -6,6 +6,7 @@ syntax = "proto3";
 package contextforge.v1;
 
 import "contextforge/v1/search.proto";
+import "contextforge/v1/index.proto";
 
 option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/v1;contextforgev1";
 
@@ -20,4 +21,6 @@ message HealthResponse {
 service ContextService {
   rpc Search(SearchRequest) returns (SearchResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
+  // Phase 9 task-9.1: server-streaming indexing RPC (ADR-013 §Decision #1).
+  rpc Index(IndexRequest) returns (stream IndexProgress);
 }
