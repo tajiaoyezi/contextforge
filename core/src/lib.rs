@@ -42,3 +42,6 @@ pub mod data_plane;
 
 // task-13.1 (Phase 13, ADR-017 D1 Wave 3): Memory persistence + state-ops.
 pub mod memory;
+
+// task-14.1 (Phase 14, ADR-017 D1 Wave 4): Eval persistence + orchestration.
+pub mod eval;

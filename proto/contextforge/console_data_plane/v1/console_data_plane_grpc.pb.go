@@ -981,6 +981,184 @@ var MemoryService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	EvalService_Create_FullMethodName         = "/contextforge.console_data_plane.v1.EvalService/Create"
+	EvalService_Get_FullMethodName            = "/contextforge.console_data_plane.v1.EvalService/Get"
+	EvalService_UpdateProgress_FullMethodName = "/contextforge.console_data_plane.v1.EvalService/UpdateProgress"
+)
+
+// EvalServiceClient is the client API for EvalService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type EvalServiceClient interface {
+	Create(ctx context.Context, in *CreateEvalRunRequest, opts ...grpc.CallOption) (*EvalRun, error)
+	Get(ctx context.Context, in *GetEvalRunRequest, opts ...grpc.CallOption) (*EvalRun, error)
+	UpdateProgress(ctx context.Context, in *UpdateEvalRunProgressRequest, opts ...grpc.CallOption) (*UpdateEvalRunProgressResponse, error)
+}
+
+type evalServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewEvalServiceClient(cc grpc.ClientConnInterface) EvalServiceClient {
+	return &evalServiceClient{cc}
+}
+
+func (c *evalServiceClient) Create(ctx context.Context, in *CreateEvalRunRequest, opts ...grpc.CallOption) (*EvalRun, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalRun)
+	err := c.cc.Invoke(ctx, EvalService_Create_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evalServiceClient) Get(ctx context.Context, in *GetEvalRunRequest, opts ...grpc.CallOption) (*EvalRun, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalRun)
+	err := c.cc.Invoke(ctx, EvalService_Get_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evalServiceClient) UpdateProgress(ctx context.Context, in *UpdateEvalRunProgressRequest, opts ...grpc.CallOption) (*UpdateEvalRunProgressResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateEvalRunProgressResponse)
+	err := c.cc.Invoke(ctx, EvalService_UpdateProgress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// EvalServiceServer is the server API for EvalService service.
+// All implementations must embed UnimplementedEvalServiceServer
+// for forward compatibility.
+type EvalServiceServer interface {
+	Create(context.Context, *CreateEvalRunRequest) (*EvalRun, error)
+	Get(context.Context, *GetEvalRunRequest) (*EvalRun, error)
+	UpdateProgress(context.Context, *UpdateEvalRunProgressRequest) (*UpdateEvalRunProgressResponse, error)
+	mustEmbedUnimplementedEvalServiceServer()
+}
+
+// UnimplementedEvalServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedEvalServiceServer struct{}
+
+func (UnimplementedEvalServiceServer) Create(context.Context, *CreateEvalRunRequest) (*EvalRun, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedEvalServiceServer) Get(context.Context, *GetEvalRunRequest) (*EvalRun, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
+}
+func (UnimplementedEvalServiceServer) UpdateProgress(context.Context, *UpdateEvalRunProgressRequest) (*UpdateEvalRunProgressResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateProgress not implemented")
+}
+func (UnimplementedEvalServiceServer) mustEmbedUnimplementedEvalServiceServer() {}
+func (UnimplementedEvalServiceServer) testEmbeddedByValue()                     {}
+
+// UnsafeEvalServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to EvalServiceServer will
+// result in compilation errors.
+type UnsafeEvalServiceServer interface {
+	mustEmbedUnimplementedEvalServiceServer()
+}
+
+func RegisterEvalServiceServer(s grpc.ServiceRegistrar, srv EvalServiceServer) {
+	// If the following call pancis, it indicates UnimplementedEvalServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&EvalService_ServiceDesc, srv)
+}
+
+func _EvalService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateEvalRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvalServiceServer).Create(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvalService_Create_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvalServiceServer).Create(ctx, req.(*CreateEvalRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvalService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEvalRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvalServiceServer).Get(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvalService_Get_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvalServiceServer).Get(ctx, req.(*GetEvalRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvalService_UpdateProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateEvalRunProgressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvalServiceServer).UpdateProgress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvalService_UpdateProgress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvalServiceServer).UpdateProgress(ctx, req.(*UpdateEvalRunProgressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// EvalService_ServiceDesc is the grpc.ServiceDesc for EvalService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var EvalService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "contextforge.console_data_plane.v1.EvalService",
+	HandlerType: (*EvalServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Create",
+			Handler:    _EvalService_Create_Handler,
+		},
+		{
+			MethodName: "Get",
+			Handler:    _EvalService_Get_Handler,
+		},
+		{
+			MethodName: "UpdateProgress",
+			Handler:    _EvalService_UpdateProgress_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "contextforge/console_data_plane/v1/console_data_plane.proto",
+}
+
+const (
 	EventsService_Subscribe_FullMethodName = "/contextforge.console_data_plane.v1.EventsService/Subscribe"
 )
 
