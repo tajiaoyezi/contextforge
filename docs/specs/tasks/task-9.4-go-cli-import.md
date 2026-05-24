@@ -1,8 +1,8 @@
 # Task `9.4`: `go-cli-import — contextforge import hermes/openclaw/agent-rules 三子命令实现`
 
-> Status=Ready；主 agent §2A 自审通过（ADR-012 + goal §自决规则 6）。本 task 可与 task-9.3 并行（不同文件）。
+> Status=Done；主 agent §2A 自审 + §6 AC 5/5 + §9 verify 全绿（ADR-012 + goal §自决规则 6）。
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -183,11 +183,11 @@ func writeRecordsAsMarkdown(outputDir string, records []*contextforgev1.ContextR
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1** (PRD §User Flow 主流程步 2 / §Implementation Phases Phase 3 Exit Criteria): `contextforge import hermes <path> --collection X --data-dir Y` 把 `internal/importer/hermes.Importer.Import` 产出的 ContextRecord 写为 `<data_dir>/imports/hermes/<ctx_id>.md` 文件（含 YAML frontmatter + body）；CLI exit 0 + stdout 含 `imported N records to <output_dir>` + `next: contextforge index --source <output_dir> --collection X`
-- [ ] **AC2** (同 AC1 / openclaw): `contextforge import openclaw <path>` 行为对称（产 openclaw provider 的 .md 文件）
-- [ ] **AC3** (同 AC1 / agent-rules): `contextforge import agent-rules <path>` 行为对称（产 agent_rule source_type 的 .md 文件）
-- [ ] **AC4** (本 task 新增 / CLI usability): 未知 importer 名 → exit 2 + stderr 含明确 usage + 列出三个合法 importer 名；位置 args 不足 → 同 exit 2 + usage
-- [ ] **AC5** (本 task 新增 / `--dry-run`): `--dry-run` flag 不写文件 + stdout 仍打 summary 含 next-step 提示（用户审 dry-run 输出后决定是否真跑）
+- [x] **AC1** (PRD §User Flow 主流程步 2 / §Implementation Phases Phase 3 Exit Criteria): `contextforge import hermes <path> --collection X --data-dir Y` 把 `internal/importer/hermes.Importer.Import` 产出的 ContextRecord 写为 `<data_dir>/imports/hermes/<ctx_id>.md` 文件（含 YAML frontmatter + body）；CLI exit 0 + stdout 含 `imported N records to <output_dir>` + `next: contextforge index --source <output_dir> --collection X`
+- [x] **AC2** (同 AC1 / openclaw): `contextforge import openclaw <path>` 行为对称（产 openclaw provider 的 .md 文件）
+- [x] **AC3** (同 AC1 / agent-rules): `contextforge import agent-rules <path>` 行为对称（产 agent_rule source_type 的 .md 文件）
+- [x] **AC4** (本 task 新增 / CLI usability): 未知 importer 名 → exit 2 + stderr 含明确 usage + 列出三个合法 importer 名；位置 args 不足 → 同 exit 2 + usage
+- [x] **AC5** (本 task 新增 / `--dry-run`): `--dry-run` flag 不写文件 + stdout 仍打 summary 含 next-step 提示 + `(--dry-run: no files were written)` 标识
 
 ## 7. SDD / BDD / TDD Traceability
 
@@ -216,4 +216,39 @@ func writeRecordsAsMarkdown(outputDir string, records []*contextforgev1.ContextR
 
 ## 10. Completion Notes
 
-> 待 task 完成后回填。
+### 实施摘要
+
+- `internal/cli/import.go`（新）：`runImport` + `parseImportOpts` + `selectImporter` + `importRecords`（hermes 目录展开适配）+ `recordToMarkdown` (YAML frontmatter + body) + `writeRecordsAsMarkdown`
+- `internal/cli/cli.go`：dispatch case `"import"` 改为 `return runImport(rest, ...)` 取代 v0.1 `"not implemented"`
+- `internal/cli/import_test.go`（新）：7 测试覆盖 AC1-AC5 + missing-path-arg + dispatch-wired
+- `internal/cli/cli_test.go`：更新 task-1.4 旧 "not implemented" 测试 — 现在 import 已 wire，断言改为"无 'not implemented' 字串 + 仍 non-zero usage exit"
+- `test/fixtures/import-cli/{hermes,openclaw,agent-rules}/`（新 5 fixture 文件）
+
+### §2A verify
+
+主 agent §2A 检查 importer 包实际 export（spec §5.3 + §8 风险次要求）：
+- `internal/importer/hermes.New() → importer.Importer` ✓
+- `internal/importer/openclaw.NewImporter(agentName string) → importer.Importer` ✓（需 agentName 参数；CLI 用 "openclaw" 默认）
+- `internal/importer/agentrules.NewAgentRulesImporter() → importer.Importer` ✓
+
+### 6 项 trade-off 记录
+
+1. **stdlib `flag` 不支持 mixed positional/flag 顺序**：原 spec 隐含 `import hermes <path> --collection X`，但 stdlib `flag.Parse` 在第一个非 flag arg 后停止。修复：parseImportOpts 内手动分离 positional（第一个非 `-` 开头的 arg）+ 剩余喂给 `fs.Parse`。这等价于支持 `import hermes <path> --flag X` 和 `import hermes --flag X <path>` 双顺序，无需引 cobra/pflag（R7 严格 — spec §5.2 明确）
+2. **unknown importer 检测在 stat 之前**：原 spec 流程图 stat→selectImporter；实测 `import bogus /tmp/foo` 因 stat 失败先返 exit 1 而非 unknown-importer exit 2。修：把 selectImporter 提前到 stat 前，让 AC4 unknown-importer 走 spec 期望的 exit 2 path
+3. **hermes 目录展开**：spec `<path>` 隐含单文件 或目录；实测 hermes.Importer.Import 只接受单文件 (MEMORY.md / USER.md)，但 task-9.6 quickstart fixture 是目录。修：runImport 内当 name=hermes 且 path 是目录时，filepath.WalkDir 找 MEMORY.md / USER.md 逐个 Import 合并。openclaw 自己 walk dir 不需修改；agent-rules 期望单文件按原样
+4. **YAML frontmatter 字符串拼接 vs yaml lib**：spec §3 §5.2 明确 R7 严格不引 yaml lib。所有字段都是 ASCII-safe（hex id / enum source_type / 路径 / ISO timestamp / 已知 enum 字符串），用 `fmt.Sprintf` 直接拼接。未来如字段含任意用户输入（如 record.Title 含 special char）需引 yaml lib（独立 chore PR）— §10 disclosed 风险
+5. **openclaw 默认 agentName="openclaw"**：openclaw.NewImporter(agentName) 要求 agentName 参数；CLI 没 --agent-name flag 故 hard-code "openclaw" 作 default。如未来需要按用户传 --agent-name 重命名 → 加 flag（小 follow-up，本 task §3 OOS）
+6. **task-1.4 cli_test.go 旧 "not implemented" 断言更新**：import 现已 wire，原断言 "stderr substring 'not implemented'" 必然 fail。改为正向断言"无 'not implemented' 字串 + non-zero usage exit"。注释里点明 v0.1 → v0.2 进度（v0.1: stub; v0.2 task-9.4: wired）
+
+### 验证证据
+
+```
+$ go test ./internal/cli -run "TestTask94|TestImportSubcommand" -v
+  7 测试全 PASS (AC1 Hermes / AC2 OpenClaw / AC3 AgentRules / AC4 unknown +
+  missing-path / AC5 dry-run / dispatch-wired)
+  exit: 0
+
+$ go vet ./... && go test ./...
+  17 包全 ok (含 task-1.4 cli_test 更新后不回归)
+  exit: 0
+```

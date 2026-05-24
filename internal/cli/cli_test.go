@@ -79,15 +79,19 @@ func TestTask14_AC4_SubcommandsRegisteredUnimplementedNoPanic(t *testing.T) {
 	// task-6.1 / task-6.2 / task-6.3: `search`, `serve`, `export` are now real
 	// subcommands and dispatch through runSearch / runServe / runExport. The
 	// task-7.1: `mcp` is now a real subcommand. task-8.1 makes `eval` real.
-	// task-8.2 makes `index` real. Only import remains a Phase 2+ placeholder.
+	// task-8.2 makes `index` real. task-9.4 (Phase 9) makes `import` real —
+	// every registered subcommand is now wired. The legacy `not implemented`
+	// branch in cli.go remains for forward-compat (any future subcommand name
+	// registered without dispatch wiring), but no current subcommand should
+	// surface it; assert empty-args returns a non-zero usage exit (no panic).
 	for _, sub := range []string{"import"} {
 		var stdout, stderr bytes.Buffer
 		code := mustNotPanic(t, func() int { return Execute([]string{sub}, &stdout, &stderr) })
 		if code == 0 {
-			t.Fatalf("Execute(%q) exit=0, want non-zero (not-implemented)", sub)
+			t.Fatalf("Execute(%q) exit=0, want non-zero (usage)", sub)
 		}
-		if !bytes.Contains(stderr.Bytes(), []byte("not implemented")) {
-			t.Fatalf("Execute(%q) stderr=%q, want substring %q", sub, stderr.String(), "not implemented")
+		if bytes.Contains(stderr.Bytes(), []byte("not implemented")) {
+			t.Fatalf("Execute(%q) should be wired (no 'not implemented'), stderr=%q", sub, stderr.String())
 		}
 	}
 
