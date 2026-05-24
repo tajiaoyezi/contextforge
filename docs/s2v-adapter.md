@@ -172,6 +172,14 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
   <!-- 重要：Tier 仅影响 git 协作层（branch / PR / worktree / merge gate），
        不影响 S2V 核心（SDD / BDD / TDD / §2.5 三段 commit / ADR / Verification / 追踪表 / 卡住协议）—— 所有 tier 必守 -->
   Overrides:
+    - **adr-014-cross-validation-gate**（2026-05-24，[ADR-014](decisions/adr-014-cross-phase-exit-criteria-validation.md) Accepted 后生效）：
+      Phase 10 起新 phase / task spec PR 适用 ADR-014 D1-D5 制度——
+      D1 closeout PR body 含 phase §6 ↔ task §6 AC mapping 表 + D2 lint 输出；
+      D2 跑 `bash scripts/spec_drift_lint.sh --touched origin/master`（PR 增量模式），
+      未标注 anti-pattern 命中须加 `[SPEC-DEFER:<name>]` 或 `[SPEC-OWNER:<task>]`；
+      D3 phase spec §6 每条 AC 必须显式 `verified by ...` owner；
+      D4 缺 D1/D2 输出 → 主 agent 不自决合，降级用户审或转 §8 STOP；
+      D5 Phase 1-9 历史不溯改。详 AGENTS.md §3.4.4 / §4 Gate 4.5。
     - **phase23-start-gate = contract-frozen**（2026-05-17，主 agent + 用户签字）：
       AGENTS §1 worktree 表字面写 Phase 2/3 启动门槛 = "等 Phase 1 merge"。
       本 override 将其**重释为"Phase 1 契约已冻结并 merged"**即可启动 Phase 2/3 ——
