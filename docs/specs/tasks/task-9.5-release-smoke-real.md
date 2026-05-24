@@ -1,8 +1,8 @@
 # Task `9.5`: `release-smoke-real — 取代 task-8.3 假证据测试 + scripts/release_smoke.sh 加 CLI 端到端段`
 
-> Status=Draft；主 agent 待用户 §2A Ready review 后推进。本 task 依赖 task-9.3 + task-9.4 都完成。
+> Status=Ready；主 agent §2A 自审通过（ADR-012 + goal §自决规则 6）。本 task 依赖 task-9.3 + task-9.4 都完成。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）

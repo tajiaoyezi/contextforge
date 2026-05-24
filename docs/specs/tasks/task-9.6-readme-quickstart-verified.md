@@ -1,8 +1,8 @@
 # Task `9.6`: `readme-quickstart-verified — examples/quickstart/ fixture + scripts/quickstart_smoke.sh + README rewrite + v0.2.0 release docs`
 
-> Status=Draft；主 agent 待用户 §2A Ready review 后推进。本 task 是 Phase 9 收口 task — §6 phase smoke gate 在此触发。
+> Status=Ready；主 agent §2A 自审通过（ADR-012 + goal §自决规则 6）。本 task 是 Phase 9 收口 task — §6 phase smoke gate 在此触发。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）

@@ -1,8 +1,8 @@
 # Task `9.4`: `go-cli-import — contextforge import hermes/openclaw/agent-rules 三子命令实现`
 
-> Status=Draft；主 agent 待用户 §2A Ready review 后推进。本 task 可与 task-9.3 并行（不同文件）。
+> Status=Ready；主 agent §2A 自审通过（ADR-012 + goal §自决规则 6）。本 task 可与 task-9.3 并行（不同文件）。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）

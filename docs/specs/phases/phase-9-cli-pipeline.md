@@ -1,6 +1,6 @@
 # Phase 9 · cli-pipeline
 
-**Status**: Draft
+**Status**: Ready
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.2.0 minor release 收口 phase — 补齐 v0.1 spec drift（CLI 数据通路 / import 实施 / release smoke 真端到端）。本 phase 最后一个 task 完工/合并前必须执行 §6 端到端 smoke（`s2v_preflight_phase` C1）。
 >

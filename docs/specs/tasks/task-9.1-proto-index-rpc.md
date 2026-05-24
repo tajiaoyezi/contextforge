@@ -1,8 +1,8 @@
 # Task `9.1`: `proto-index-rpc — service.proto add-only rpc Index stream + IndexRequest / IndexProgress messages`
 
-> Status=Draft；主 agent 待用户 §2A Ready review 后推进。本 task 是 Phase 9 cli-pipeline 首个 task — 解锁 9.2/9.3/9.4 实施依赖。
+> Status=Ready；主 agent §2A 自审通过（ADR-012 主 agent 自治 + 用户 goal §自决规则 6）。本 task 是 Phase 9 cli-pipeline 首个 task — 解锁 9.2/9.3/9.4 实施依赖。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）

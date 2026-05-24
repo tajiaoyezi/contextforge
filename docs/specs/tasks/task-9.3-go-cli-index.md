@@ -1,8 +1,8 @@
 # Task `9.3`: `go-cli-index — internal/cli/index.go 改写调真实 gRPC + 进度条 + 保留 resume manifest`
 
-> Status=Draft；主 agent 待用户 §2A Ready review 后推进。本 task 依赖 task-9.2 提供的 Rust gRPC Index handler。可与 task-9.4 并行（不同文件）。
+> Status=Ready；主 agent §2A 自审通过（ADR-012 + goal §自决规则 6）。本 task 依赖 task-9.2 提供的 Rust gRPC Index handler。可与 task-9.4 并行（不同文件）。
 
-**Status**: Draft
+**Status**: Ready
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
