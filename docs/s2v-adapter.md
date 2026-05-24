@@ -244,7 +244,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 9 | `cli-pipeline` | `docs/specs/phases/phase-9-cli-pipeline.md` | Done | 6 | `../ContextForge-wt-cli-pipeline` |
 | 10 | `console-contract-v1` | `docs/specs/phases/phase-10-console-contract-v1.md` | Done | 6 | `../ContextForge-wt-console-contract-v1` |
 | 11 | `console-real-data-plane` | `docs/specs/phases/phase-11-console-real-data-plane.md` | Done | 4 | `../ContextForge-wt-console-real-data-plane` |
-| 12 | `console-contract-completion` | `docs/specs/phases/phase-12-console-contract-completion.md` | Ready | 3 | `../ContextForge-wt-console-contract-completion` |
+| 12 | `console-contract-completion` | `docs/specs/phases/phase-12-console-contract-completion.md` | Done | 3 | `../ContextForge-wt-console-contract-completion` |
 | 13 | `memory-rest-surface` | `docs/specs/phases/phase-13-memory-rest-surface.md` | Ready | 2 | `../ContextForge-wt-memory-rest-surface` |
 | 14 | `eval-rest-surface` | `docs/specs/phases/phase-14-eval-rest-surface.md` | Ready | 2 | `../ContextForge-wt-eval-rest-surface` |
 
@@ -298,9 +298,9 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 11.2 | internal/consoleapi/grpcclient | docs/specs/tasks/task-11.2-go-rest-to-grpc-proxy.md | Done | Phase11 #2（dep 11.1）| `../ContextForge-wt-console-real-data-plane` |
 | 11.3 | core/src/data_plane/job + IndexSession wiring | docs/specs/tasks/task-11.3-indexjob-real-runner-wiring.md | Done | Phase11 #3（dep 11.1,11.2）| `../ContextForge-wt-console-real-data-plane` |
 | 11.4 | core/src/data_plane/search + events | docs/specs/tasks/task-11.4-search-real-retriever-and-events.md | Done | Phase11 #4（dep 11.1,11.2,11.3，收口）| `../ContextForge-wt-console-real-data-plane` |
-| 12.1 | internal/consoleapi (router + handlers + grpcclient + confirmMiddleware) | docs/specs/tasks/task-12.1-quick-win-rest-endpoints.md | Ready | Phase12 #1 | `../ContextForge-wt-console-contract-completion` |
-| 12.2 | core/src/retriever + core/src/data_plane/search.rs + Go REST | docs/specs/tasks/task-12.2-source-chunk-by-id.md | Ready | Phase12 #2（dep 12.1）| `../ContextForge-wt-console-contract-completion` |
-| 12.3 | core/src/data_plane/search.rs (trace persistence) + Go REST | docs/specs/tasks/task-12.3-search-trace-by-query-id.md | Ready | Phase12 #3（dep 12.1,12.2，收口）| `../ContextForge-wt-console-contract-completion` |
+| 12.1 | internal/consoleapi (router + handlers + grpcclient + confirmMiddleware) | docs/specs/tasks/task-12.1-quick-win-rest-endpoints.md | Done | Phase12 #1 | `../ContextForge-wt-console-contract-completion` |
+| 12.2 | core/src/retriever + core/src/data_plane/search.rs + Go REST | docs/specs/tasks/task-12.2-source-chunk-by-id.md | Done | Phase12 #2（dep 12.1）| `../ContextForge-wt-console-contract-completion` |
+| 12.3 | core/src/data_plane/search.rs (trace persistence) + Go REST | docs/specs/tasks/task-12.3-search-trace-by-query-id.md | Done | Phase12 #3（dep 12.1,12.2，收口）| `../ContextForge-wt-console-contract-completion` |
 | 13.1 | core/migrations + core/src/memory + core/src/data_plane/memory.rs + proto MemoryService | docs/specs/tasks/task-13.1-rust-memory-grpc-service.md | Ready | Phase13 #1 | `../ContextForge-wt-memory-rest-surface` |
 | 13.2 | internal/consoleapi (router + handlers + grpcclient) + memstore MemoryAdapter | docs/specs/tasks/task-13.2-go-memory-rest-handlers.md | Ready | Phase13 #2（dep 13.1，收口）| `../ContextForge-wt-memory-rest-surface` |
 | 14.1 | core/migrations + core/src/eval + core/src/data_plane/eval.rs + proto EvalService | docs/specs/tasks/task-14.1-rust-eval-grpc-service.md | Ready | Phase14 #1 | `../ContextForge-wt-eval-rest-surface` |
