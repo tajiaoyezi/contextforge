@@ -7,6 +7,33 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.5.0
+
+- **Phase 12 console-contract-completion** (ADR-017 Wave 1+2) — Console Contract
+  v1 endpoint coverage 9 → 13 (route inventory 9 → 14 including the new GET
+  `/v1/source-chunks/{id}` and GET `/v1/search/{query_id}/trace`). 22-endpoint
+  conformance bumps from 41% → 64%.
+- **task-12.1 quick-win Wave 1**: `PATCH /v1/workspaces/{id}/config` overwrites
+  allowlist + denylist via gRPC `WorkspaceService.UpdateConfig`; `GET /v1/index-jobs?status=active`
+  filters queued + running via `JobService.List`; `POST /v1/index-jobs/{id}/cancel`
+  switches **200 → 204 No Content** (ADR-017 D3); `confirmMiddleware` enforces
+  `X-Confirm: yes` header **OR** `?confirm=true` query for destructive ops →
+  412 Precondition Failed (ADR-017 D2 server-side bottom defense).
+- **task-12.2 source-chunk-by-id**: new `SearchService.GetSourceChunk` RPC +
+  Go REST handler reuse existing `Retriever::get_chunk` (task-6.2 SQL fast-path);
+  workspace_id optional with workspace enumeration fallback.
+- **task-12.3 search-trace-by-query-id**: new `SearchService.GetSearchTrace`
+  RPC + in-memory `TraceStore` (HashMap + VecDeque LRU cap 1000); every
+  `SearchService.Query` generates a unique `qry-{nanos}` query_id and persists
+  its `RetrievalTrace` for later GET by query_id (daemon restart wipes cache —
+  SQLite persistence `[SPEC-DEFER:task-future.search-trace-sqlite-persistence]`).
+- **`console_smoke.sh` v3**: 9 → 13 endpoint REAL flow; new Steps 9-12 cover
+  PATCH config 412→200, active filter + 400, source-chunks lookup, trace fetch.
+  Final marker `CONSOLE_REAL_SMOKE_EXIT=0`.
+- ADR-014 cross-validation gate **third activation** pass — 制度稳定性 verified.
+- ADR-017 Status remains **Proposed** (full Accepted promotion deferred to Phase
+  14 closeout where 6 D-clauses across v0.5/v0.6/v0.7 land together).
+
 ## What's new in v0.4.0
 
 - **Phase 11 console-real-data-plane** (ADR-016) — `console-api-serve` 默认行为
