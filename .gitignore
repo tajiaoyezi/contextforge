@@ -43,3 +43,6 @@ _dispatch/sessions/
 # docs/playbooks/ 是个人 /goal 操作 playbook，文件 header 自标 "不入 git"
 # 仅本地保留供操作参考；勿用 git add -A 误扫入
 docs/playbooks/
+
+# Claude Code local session state (cron / scheduled wakeups / etc.) — local only.
+.claude/

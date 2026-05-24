@@ -20,6 +20,8 @@ syntax = "proto3";
 
 package contextforge.console_data_plane.v1;
 
+option go_package = "github.com/tajiaoyezi/contextforge/proto/contextforge/console_data_plane/v1;consoledataplanev1";
+
 // =====================================================================
 // Workspace resource (mirrors contractv1.Workspace + WorkspaceCreate)
 // =====================================================================

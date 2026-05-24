@@ -48,7 +48,7 @@ Go `/v1/observability/events` long-poll wrap：handler 收 GET → 调 `EventsCl
   - 如 ctx canceled mid-poll → 返 已收 batch (可能 empty)；不返 4xx
 - **修改 `internal/consoleapi/types.go::EventsClient` 接口**：
   - 新增 `RecentLongPoll(ctx context.Context, limit int, timeout time.Duration) ([]contractv1.ObservabilityEvent, error)`
-  - 保留 v0.3 `Recent(limit int)` 方法不变（用于 fallback-inmem 模式无 ctx + 无 timeout）
+  - 保留 v0.3 `Recent(limit int)` 方法不变（用于 fallback-inmem 模式无 ctx + 无 timeout）[SPEC-OWNER:task-11.2]
 - **修改 `internal/consoleapi/grpcclient/grpcclient.go::eventsClient::RecentLongPoll`**：
   - 调 `EventsService.Subscribe` server stream + select loop：
     - 收到 evt → append batch + `if len(batch) >= limit { close stream; return batch, nil }`
