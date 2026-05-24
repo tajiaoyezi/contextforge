@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/release_smoke.sh — v0.1 (task-8.3) + v0.2 (task-9.5) + v0.3 (task-10.6) release smoke gate.
+# scripts/release_smoke.sh — v0.1 (task-8.3) + v0.2 (task-9.5) + v0.3 (task-10.6) + v0.4 (task-11.4) release smoke gate.
 #
 # Sections:
 #   1. Go release harness (BuildTarball / ValidateTarball / CheckBenchmark unit tests)
@@ -9,10 +9,13 @@
 #      go build + cargo build + 7-step CLI binary exercise. Renamed exit
 #      marker to PHASE_RELEASE_SMOKE_EXIT (drops v0.1-only PHASE8 prefix per
 #      task-9.5 §3).
-#   5. Phase 10 Console Contract v1 smoke (scripts/console_smoke.sh local mode)
-#      — gated on env RELEASE_SMOKE_CONSOLE=1 (default SKIP to avoid hard-
-#      requiring a working go build inside every CI matrix; task-10.6 §3
-#      release_smoke 第5段 design).
+#   5. Phase 11 Console Real Data Plane smoke (scripts/console_smoke.sh REAL
+#      mode default in v0.4 — spawns contextforge-core daemon + console-api-
+#      serve + cross-process gRPC bridge). v0.3 LOCAL_ONLY mode retained as
+#      env LOCAL_ONLY=1 fallback.
+#      Gated on env RELEASE_SMOKE_CONSOLE=1 (default SKIP to avoid hard-
+#      requiring full cargo build inside every CI matrix; CI fast path can
+#      run just sections 1-4).
 #
 # Each section's non-zero exit propagates (set -e). Final marker line is the
 # release tag gate.
@@ -35,12 +38,12 @@ cargo test --workspace phase_6_search_grpc_end_to_end_smoke
 echo "release_smoke[4/5]: phase 9 CLI end-to-end smoke (real binaries + 7-step CLI)"
 go test ./internal/release -run 'TestPhase9ReleaseSmoke_EndToEnd' -timeout 180s
 
-echo "release_smoke[5/5]: phase 10 Console Contract v1 smoke"
+echo "release_smoke[5/5]: phase 11 Console Real Data Plane smoke (REAL mode default; LOCAL_ONLY=1 for v0.3 inmem fallback)"
 if [ "${RELEASE_SMOKE_CONSOLE:-0}" = "1" ]; then
   bash scripts/console_smoke.sh
 else
-  echo "  SKIP (set RELEASE_SMOKE_CONSOLE=1 to enable — runs scripts/console_smoke.sh)"
+  echo "  SKIP (set RELEASE_SMOKE_CONSOLE=1 to enable — runs scripts/console_smoke.sh REAL mode)"
 fi
 
-echo "release_smoke: tarball_contract=ok smoke_evidence=ok benchmark_gate=ok grpc_search_smoke=ok phase9_cli_e2e=ok phase10_console_v1=${RELEASE_SMOKE_CONSOLE:+ok}"
+echo "release_smoke: tarball_contract=ok smoke_evidence=ok benchmark_gate=ok grpc_search_smoke=ok phase9_cli_e2e=ok phase11_console_real=${RELEASE_SMOKE_CONSOLE:+ok}"
 echo "PHASE_RELEASE_SMOKE_EXIT=0"

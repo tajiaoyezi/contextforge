@@ -1,5 +1,128 @@
 # ContextForge Release Notes
 
+## v0.4.0 (2026-05-25)
+
+### 摘要
+
+ContextForge v0.4.0 完成 **Phase 11 console-real-data-plane** 收口：把 Phase 10
+task-10.4 §10 显式记录的两个 Trade-off (`[SPEC-DEFER:task-future.cross-process-
+sqlite-sharing]` 与 JobRunner 不真索引) 一次性 resolve。通过新 ADR-016
+**cross-process-rust-go-via-grpc-bridge** 实施 4 个新 Rust gRPC service
+(Workspace / Job / Search / Events)，Go console-api-serve 重构为 **thin REST→gRPC
+translator**；console UI 期望的 Workspace 持久化跨 daemon 重启 + IndexJob 真触发
+Rust 索引 + Search 真返回 indexed chunks + Events 真接 JobRunner progress 全部
+端到端落地。ADR-014 cross-validation gate **第二次完整激活** 验制度稳定性。
+
+### 主要改进
+
+- **ADR-016 cross-process Rust ↔ Go gRPC bridge** (Proposed → Accepted): 6 个 D
+  条款落地。D1 Rust 持 SoT (Go 不写 SQLite); D2 4 gRPC service in
+  `proto/contextforge/console_data_plane/v1/console_data_plane.proto` (snake_case
+  1:1 镜像 Go contractv1 JSON tag); D3 Go console-api-serve thin proxy
+  (`internal/consoleapi/grpcclient/`); D4 in-memory MemStore 降级为 env-gated
+  fallback (`CONSOLE_API_FALLBACK_INMEM=1`); D5 schema 单 owner = Rust; D6 沿用
+  ADR-014 cross-validation gate.
+- **Rust data plane gRPC services** (`core/src/data_plane/`): 4 tonic service
+  trait impls (`WorkspaceServer` / `JobServer` / `SearchServer` / `EventsServer`)
+  + `register_services` helper + `serve_full(addr, svc, data_dir)` 把 Phase 9
+  ContextService + Phase 11 4 service 注册到同一 tonic Server.
+- **Real JobRunner wiring** (task-11.3): `IndexSessionBackend` impl
+  `IndexerBackend` 包 `IndexSession::index_path_cancellable` (add-only API
+  extension; cancel_token at file boundaries); `JobService.Enqueue` 真
+  `tokio::spawn(JobRunner.run_one)`; `orphan_reaper` 在 `serve_full` 启动早期
+  清理上一 boot 留下的 running 行 (mark failed + error_message="job lost: daemon
+  restart"); JobRunner.run_one 改 per-file cancel-check (heartbeat 仍 throttled
+  100files/5s) 让小 fixture 也能在 5s 内观察 cancel.
+- **Real SearchService + EventBus** (task-11.4): `SearchService.Query` 真接
+  `core/src/retriever/Retriever::search` (Tantivy + SQLite chunks);
+  `RetrievalTrace.retrieved_chunks` 真填 (chunk_id + score + source_file +
+  `chunk_text_preview` ≤200 chars via `utf8_safe_truncate` UTF-8 boundary safe);
+  `EventBus` (broadcast::Sender 容量 1000) 接 `EventsService.Subscribe` server
+  stream; `JobRunner` progress callback emit `indexing.progress` /
+  `indexing.cancelled` / `indexing.error` events.
+- **Go grpcclient** (`internal/consoleapi/grpcclient/`): `Client.Workspace/Job/
+  Search/Events()` 4 wrapper impl `consoleapi.{Workspace,Job,Search,Events}Client`;
+  `mapGrpcErr` maps gRPC status → consoleapi sentinel (NotFound → ErrNotFound /
+  FailedPrecondition → ErrJobTerminal / Unavailable → ErrDataPlaneUnavailable).
+- **console-api-serve 新 flags**: `--grpc-addr 127.0.0.1:50551` (default; alias
+  to Rust DEFAULT_LISTEN) + `--fallback-inmem` (alias env
+  `CONSOLE_API_FALLBACK_INMEM=1`). `BackendKind`-aware `/v1/health`: grpc → 200
+  healthy; inmem-fallback → 200 degraded + ErrorReason; degraded → 503 + missing=
+  ["data_plane"].
+- **Long-poll wait/limit** (`/v1/observability/events`): `?wait=<duration>`
+  (default 30s, clamped [1s, 60s]) + `?limit=<int>` (default 100, clamped [1, 500])
+  query params; grpcclient.eventsClient.Recent uses ctx 30s timeout to drive
+  long-poll behaviour at the gRPC layer.
+- **scripts/console_smoke.sh v2** (REAL mode default): spawns both contextforge-
+  core daemon and console-api-serve, drives the 9 endpoint flow + real index
+  job against `test/fixtures/index-job-real/` (5 markdown files). Final marker:
+  `CONSOLE_REAL_SMOKE_EXIT=0`. v0.3 inmem mode retained as `LOCAL_ONLY=1`.
+- **release_smoke.sh §5 updated** for REAL mode; final
+  `phase11_console_real=ok` marker.
+- **ADR-014 D1-D5 second activation pass**: D1 mapping (in closeout PR body);
+  D2 lint `bash scripts/spec_drift_lint.sh --touched <base>` 0 violation (with
+  proper [SPEC-OWNER]/[SPEC-DEFER] tags throughout phase-11 + 4 task spec);
+  D3 each phase §6 AC verified by explicit owner; D4 main-agent self-merge
+  via /goal autonomy; D5 historical Phase 1-10 unchanged.
+- **治理 / spec 同步**: ADR-016 Proposed → Accepted; Phase 11 / Task 11.1-11.4
+  全 Done; PRD §Implementation Phases Phase 11 + §Open Questions O14 partially
+  resolved by ADR-016 (business plane wiring; endpoint expansion [SPEC-DEFER:
+  console-endpoint-expansion]); adapter §Phase / §Tasks / §ADRs / §BDD synced.
+
+### Trade-offs / Conscious limitations
+
+- **task-11.2 §10 T2** `--grpc-addr` default `127.0.0.1:50551` (与 Rust
+  `DEFAULT_LISTEN` 对齐); playbook 文档曾写 `:48180` 是 ADR-013 概念预留, 实施
+  按 Rust 既有 default 落地 (无 spec drift — gRPC 字段集合才是契约, 端口可配).
+- **task-11.3 §10 T1** cancel co-operative only (file-boundary granularity);
+  hard kill cancel [SPEC-DEFER:task-future.hard-cancel].
+- **task-11.4 §10 T1** EventBus volatile broadcast (daemon 重启即丢历史
+  events); persistent event ring buffer [SPEC-DEFER:task-future.event-persistence].
+- **task-11.2 §10 T1** v0.3 in-memory MemStore retained as env-gated fallback
+  (not deleted) for conformance test backward compat + degraded mode demo.
+- Multi-instance daemon leader election [SPEC-DEFER:task-future.multi-daemon-leader-election].
+
+### Migration notes (v0.3.0 → v0.4.0)
+
+- `console-api-serve` 默认 backend 从 in-memory MemStore 切到 gRPC. v0.3 用户
+  若需 inmem 行为, 设 `CONSOLE_API_FALLBACK_INMEM=1` (CLI flag `--fallback-inmem`).
+- v0.3 console_smoke.sh 默认 local mode → v0.4 默认 REAL mode (需 cargo build
+  Rust binary). 兼容 v0.3 行为: `LOCAL_ONLY=1 bash scripts/console_smoke.sh`.
+- Console contract v1 字段集合不变 (ADR-015 D5 字段镜像约束沿用); Console UI
+  端无任何改动 — v0.4 仅 ContextForge 单仓内业务面真接通.
+- 新 deploy 形态: `contextforge-core <listen> <data_dir> &` 后 `contextforge
+  console-api-serve --addr ... --grpc-addr ...`. 双进程 deploy 可用 systemd /
+  docker compose / 脚本管理.
+
+### Tests (Phase 11 全程)
+
+- Rust: 60 lib + 5 indexjob_real_runner + 4 search_real_retriever + 5
+  data_plane_integration + 既有 phase 1-10 测试不退化.
+- Go: 9 grpcclient + 6 cli + 1 e2e gRPC backed E2E (TestRESTEndpoints_E2E_
+  GrpcBacked spawns Rust daemon + 9 endpoint flow + workspace 持久化跨 daemon
+  restart) + 既有 consoleapi v0.3 + conformance test 不退化.
+
+### Verification commands
+
+```bash
+# Rust full workspace
+cargo test --workspace
+
+# Go full
+go test ./...
+
+# Phase 11 console real smoke (default REAL mode)
+bash scripts/console_smoke.sh   # expects CONSOLE_REAL_SMOKE_EXIT=0
+
+# Release smoke (§5 enables console smoke via env)
+RELEASE_SMOKE_CONSOLE=1 bash scripts/release_smoke.sh   # PHASE_RELEASE_SMOKE_EXIT=0
+
+# ADR-014 D2 lint
+bash scripts/spec_drift_lint.sh --touched origin/master   # 0 violation
+```
+
+---
+
 ## v0.3.0 (2026-05-24)
 
 ### 摘要

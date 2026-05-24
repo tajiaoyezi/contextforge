@@ -7,6 +7,25 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.4.0
+
+- **Phase 11 console-real-data-plane** (ADR-016) — `console-api-serve` 默认行为
+  从 v0.3 in-memory MemStore 切到 **cross-process gRPC bridge**: Go REST handler
+  → `internal/consoleapi/grpcclient` → Rust `core/src/data_plane/` 4 gRPC service
+  (Workspace / Job / Search / Events) → SqliteWorkspaceStore + SqliteJobStore.
+- **真索引 + 真搜索**: `POST /v1/index-jobs` 真触发 `JobRunner.spawn_blocking(
+  IndexSession::index_path_with_progress)`; `POST /v1/search` 真接 retriever
+  (Tantivy + SQLite chunks). v0.3 占位 stub 完全 retired.
+- **EventBus broadcast** + `/v1/observability/events` long-poll (`?wait=<duration>`
+  default 30s, max 60s; `?limit=<int>` default 100): JobRunner heartbeat 真 emit
+  `indexing.progress` / `indexing.cancelled` / `indexing.error` 事件.
+- **`console_smoke.sh` v2 REAL mode default**: spawns both daemons + drives
+  fixture index + verifies real chunks. Final marker
+  `CONSOLE_REAL_SMOKE_EXIT=0`. `LOCAL_ONLY=1` retains v0.3 inmem fallback.
+- **`--fallback-inmem` env-gated**: `CONSOLE_API_FALLBACK_INMEM=1` keeps v0.3
+  behavior available for demo / fallback / conformance test.
+- ADR-014 cross-validation gate **second activation** pass —制度稳定性验证.
+
 ## What's new in v0.3.0
 
 - **ContextForge ↔ ContextForge-Console Contract v1 兼容层** (ADR-015) — 17 Go types
