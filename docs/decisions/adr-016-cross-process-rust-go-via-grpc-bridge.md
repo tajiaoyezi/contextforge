@@ -1,6 +1,6 @@
 # ADR `016`: `cross-process-rust-go-via-grpc-bridge`
 
-**Status**: Proposed
+**Status**: Accepted
 **Category**: 架构 / 跨进程协议接口
 **Date**: 2026-05-25
 **Decided By**: tajiaoyezi objective + main agent execution
@@ -159,6 +159,10 @@ v0.4 不引入新 governance ADR；Phase 11 §6 5 AC × 4 task mapping 表 + D2 
 6. **task-11.3 JobRunner ↔ IndexSession wiring 边界 case 不可解决**：保留 SQLite jobs schema + 把 JobRunner 真接 IndexSession 留 task-11.3.x amendment；in-memory fallback 模式下 v0.4 ship（playbook §不可逆动作清单 #1 评估）
 
 Rollback 通过新 ADR superseding 完成；Phase 11 已 ship 的 gRPC service 保持向后兼容（add-only 演进，与 task-1.1 proto 同款规则）。
+
+## History
+
+- 2026-05-25 Accepted via Phase 11 closeout PR (master HEAD after merge will be filled by SHA backfill PR; see docs/releases/v0.4.0-evidence.md). All 6 D-clauses landed: D1 (Rust SoT enforced via `internal/consoleapi/router.go` returning ErrDataPlaneUnavailable when grpc unavailable + no fallback; no Go-side SQLite writes); D2 (4 gRPC services in `proto/contextforge/console_data_plane/v1/console_data_plane.proto`, `core/src/data_plane/`); D3 (Go `internal/consoleapi/grpcclient` thin proxy, no business logic in handlers); D4 (env-gated `CONSOLE_API_FALLBACK_INMEM=1` MemStore retained); D5 (no new migrations — reused `core/migrations/0010_workspaces.sql` + `0011_index_jobs.sql`); D6 (ADR-014 D1-D5 second activation pass tracked in Phase 11 closeout PR body).
 
 ## Follow-ups
 
