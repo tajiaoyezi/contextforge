@@ -7,6 +7,31 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.7.0
+
+🎉 **Console 22-endpoint conformance 100% PASS** — ContextForge ships all 22
+Console contract v1 REST endpoints; Console UI HTTPAdapter v1.0 双方握手成功.
+
+- **Phase 14 eval-rest-surface** (ADR-017 Wave 4) — Console Contract v1
+  endpoint coverage 18 → 20 distinct routes (covering all 22 contract
+  endpoints, 2 shared via filter shape). 22-endpoint conformance now 100%.
+- **task-14.1 Rust SoT**: SQLite `eval_runs` table (migration 0014) +
+  `SqliteEvalStore` (5 methods, JSON-roundtrip metrics + case_results) +
+  `EvalService` 3 gRPC RPCs (Create / Get / UpdateProgress) — Create returns
+  `EvalRun{status:"running", started_at:now}`; UpdateProgress is the Go-side
+  runner callback channel that persists status terminal + metrics + case_results.
+- **task-14.2 Go REST**: 2 routes (`POST /v1/eval-runs` + `GET /v1/eval-runs/{id}`)
+  + `runEvalAsync` goroutine that drives a light-weight recall harness against
+  BuiltinGoldenQuestions and reverse-updates the Rust store via UpdateProgress
+  when terminal. `MemEvalStore` fallback (2s timer auto-advance to succeeded
+  with mock metrics).
+- **`console_smoke.sh` v5**: 18 → 20 endpoint REAL flow; new Steps 19/20 cover
+  POST eval-runs (200 + status=running) + poll GET until terminal + verify
+  metrics contains `recall@5`. Final marker `CONSOLE_REAL_SMOKE_EXIT=0`.
+- **ADR-017 Status: Proposed → Accepted** — 6 D-clauses spanning v0.5/v0.6/v0.7
+  3 phase one-shot promoted. ADR-014 cross-validation gate **5th activation**
+  pass — 制度稳定性跨 5 phase (v0.3-v0.7) 验证.
+
 ## What's new in v0.6.0
 
 - **Phase 13 memory-rest-surface** (ADR-017 Wave 3) — Console Contract v1
