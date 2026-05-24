@@ -61,3 +61,15 @@ type degradedEvents struct{}
 func (degradedEvents) Recent(_ int) ([]contractv1.ObservabilityEvent, error) {
 	return nil, consoleapi.ErrDataPlaneUnavailable
 }
+
+type degradedMemory struct{}
+
+func (degradedMemory) List(_ consoleapi.MemoryListFilter) ([]contractv1.MemoryItem, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedMemory) Get(_ string) (*contractv1.MemoryItem, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedMemory) Pin(_ string, _ bool) error    { return consoleapi.ErrDataPlaneUnavailable }
+func (degradedMemory) Deprecate(_ string) error      { return consoleapi.ErrDataPlaneUnavailable }
+func (degradedMemory) SoftDelete(_ string) error     { return consoleapi.ErrDataPlaneUnavailable }

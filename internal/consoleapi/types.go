@@ -72,6 +72,25 @@ type EventsClient interface {
 	Recent(limit int) ([]contractv1.ObservabilityEvent, error)
 }
 
+// MemoryListFilter — task-13.2 (ADR-017 D1 Wave 3) filter struct mirroring
+// the Rust ListMemoryRequest 4 fields. AgentID prefix matches agent_scope;
+// Namespace suffix matches agent_scope; Scope exact-matches agent_scope.
+type MemoryListFilter struct {
+	AgentID            string
+	Scope              string
+	Namespace          string
+	IncludeSoftDeleted bool
+}
+
+// MemoryClient backs the 5 /v1/memory[*] handlers (task-13.2 / ADR-017 D1 Wave 3).
+type MemoryClient interface {
+	List(filter MemoryListFilter) ([]contractv1.MemoryItem, error)
+	Get(memoryID string) (*contractv1.MemoryItem, error) // nil if not found
+	Pin(memoryID string, pin bool) error                  // pin=false = unpin
+	Deprecate(memoryID string) error
+	SoftDelete(memoryID string) error
+}
+
 // Deps bundles all four backends + the bearer auth token for NewRouter.
 // AuthToken == "" means "trusted-network" (no Authorization header required —
 // aligns with Console CONSOLE_API_CORE_AUTH_MODE=trusted-network default).
@@ -84,6 +103,7 @@ type Deps struct {
 	Job         JobClient
 	Search      SearchClient
 	Events      EventsClient
+	Memory      MemoryClient
 	AuthToken   string
 	BackendKind string
 }

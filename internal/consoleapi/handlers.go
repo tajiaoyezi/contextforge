@@ -298,6 +298,121 @@ func handleSearch(deps Deps) http.HandlerFunc {
 	}
 }
 
+// =====================================================================
+// task-13.2 (ADR-017 D1 Wave 3) — 5 memory REST handlers.
+// =====================================================================
+
+// handleListMemory — GET /v1/memory[?agent_id=&scope=&namespace=&include_soft_deleted=].
+func handleListMemory(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		q := r.URL.Query()
+		filter := MemoryListFilter{
+			AgentID:            q.Get("agent_id"),
+			Scope:              q.Get("scope"),
+			Namespace:          q.Get("namespace"),
+			IncludeSoftDeleted: q.Get("include_soft_deleted") == "true",
+		}
+		items, err := deps.Memory.List(filter)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		if items == nil {
+			items = []contractv1.MemoryItem{}
+		}
+		writeJSON(w, http.StatusOK, items)
+	}
+}
+
+// handleGetMemory — GET /v1/memory/{id}.
+func handleGetMemory(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		item, err := deps.Memory.Get(id)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		if item == nil {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "memory item not found: "+id)
+			return
+		}
+		writeJSON(w, http.StatusOK, *item)
+	}
+}
+
+// handleMemoryPin — POST /v1/memory/{id}/pin → 204 (non-destructive).
+func handleMemoryPin(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		if err := deps.Memory.Pin(id, true); err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleMemoryDeprecate — POST /v1/memory/{id}/deprecate → 204 (destructive; confirmMiddleware-gated).
+func handleMemoryDeprecate(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		if err := deps.Memory.Deprecate(id); err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleMemorySoftDelete — POST /v1/memory/{id}/soft-delete → 204 (destructive; confirmMiddleware-gated).
+func handleMemorySoftDelete(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		if err := deps.Memory.SoftDelete(id); err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // handleEvents — GET /v1/observability/events (task-11.4 long-poll wrap).
 //
 // Query params:

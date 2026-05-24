@@ -332,6 +332,128 @@ func (s *MemStore) Recent(limit int) ([]contractv1.ObservabilityEvent, error) {
 	return out, nil
 }
 
+// =====================================================================
+// task-13.2 (ADR-017 D1 Wave 3) — MemMemoryStore fallback impl.
+// =====================================================================
+
+// MemMemoryStore implements MemoryClient for the env-gated MemStore fallback
+// (CONSOLE_API_FALLBACK_INMEM=1). All 5 methods succeed in-memory (no audit
+// writes; data lost on restart) so Console UI demo / conformance test remain
+// functional when the Rust daemon is unreachable (ADR-016 §D4 degraded-but-
+// functional fallback semantics).
+type MemMemoryStore struct {
+	mu    sync.Mutex
+	items map[string]contractv1.MemoryItem
+}
+
+func NewMemMemoryStore() *MemMemoryStore {
+	return &MemMemoryStore{items: map[string]contractv1.MemoryItem{}}
+}
+
+// SeedFixtures populates 5 hard-coded memory items for fallback demo mode.
+// task-13.2 §3 in scope; trade-off accepted (smoke test + Console UI demo).
+func (s *MemMemoryStore) SeedFixtures() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	seeds := []contractv1.MemoryItem{
+		{MemoryID: "mem-fixture-1", AgentScope: "agent-default:session", ContentPreview: "first fixture item",
+			SourceType: "fixture", SourceRef: "memstore:1", CreatedAt: now, UpdatedAt: now,
+			HitCount: 0, Status: "active",
+			Availability: contractv1.FieldAvailability{Object: "MemoryItem"}},
+		{MemoryID: "mem-fixture-2", AgentScope: "agent-default:project", ContentPreview: "second fixture item",
+			SourceType: "fixture", SourceRef: "memstore:2", CreatedAt: now, UpdatedAt: now,
+			HitCount: 0, Status: "active",
+			Availability: contractv1.FieldAvailability{Object: "MemoryItem"}},
+		{MemoryID: "mem-fixture-3", AgentScope: "agent-default:global", ContentPreview: "third fixture item",
+			SourceType: "fixture", SourceRef: "memstore:3", CreatedAt: now, UpdatedAt: now,
+			HitCount: 0, Status: "active",
+			Availability: contractv1.FieldAvailability{Object: "MemoryItem"}},
+		{MemoryID: "mem-fixture-4", AgentScope: "agent-test:session", ContentPreview: "fourth fixture (deprecated)",
+			SourceType: "fixture", SourceRef: "memstore:4", CreatedAt: now, UpdatedAt: now,
+			HitCount: 0, Status: "deprecated",
+			Availability: contractv1.FieldAvailability{Object: "MemoryItem"}},
+		{MemoryID: "mem-fixture-5", AgentScope: "agent-test:project", ContentPreview: "fifth fixture",
+			SourceType: "fixture", SourceRef: "memstore:5", CreatedAt: now, UpdatedAt: now,
+			HitCount: 0, Status: "active",
+			Availability: contractv1.FieldAvailability{Object: "MemoryItem"}},
+	}
+	for _, item := range seeds {
+		s.items[item.MemoryID] = item
+	}
+}
+
+func (s *MemMemoryStore) List(filter MemoryListFilter) ([]contractv1.MemoryItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]contractv1.MemoryItem, 0, len(s.items))
+	for _, item := range s.items {
+		if !filter.IncludeSoftDeleted && item.Status == "soft_deleted" {
+			continue
+		}
+		if filter.Scope != "" && item.AgentScope != filter.Scope {
+			continue
+		}
+		if filter.AgentID != "" && !strings.HasPrefix(item.AgentScope, filter.AgentID) {
+			continue
+		}
+		if filter.Namespace != "" && !strings.HasSuffix(item.AgentScope, filter.Namespace) {
+			continue
+		}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].MemoryID < out[j].MemoryID })
+	return out, nil
+}
+
+func (s *MemMemoryStore) Get(id string) (*contractv1.MemoryItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if item, ok := s.items[id]; ok {
+		return &item, nil
+	}
+	return nil, nil
+}
+
+func (s *MemMemoryStore) Pin(id string, _ bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.items[id]
+	if !ok {
+		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
+	}
+	// pin state not exposed in contractv1.MemoryItem; bump UpdatedAt to signal change
+	item.UpdatedAt = time.Now().UTC()
+	s.items[id] = item
+	return nil
+}
+
+func (s *MemMemoryStore) Deprecate(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.items[id]
+	if !ok {
+		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
+	}
+	item.Status = "deprecated"
+	item.UpdatedAt = time.Now().UTC()
+	s.items[id] = item
+	return nil
+}
+
+func (s *MemMemoryStore) SoftDelete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.items[id]
+	if !ok {
+		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
+	}
+	item.Status = "soft_deleted"
+	item.UpdatedAt = time.Now().UTC()
+	s.items[id] = item
+	return nil
+}
+
 // workspaceIDFromName derives a deterministic kebab-case-ish id from name.
 // Trade-off: v0.3 simple slug; v0.4 may move to UUID + persistence.
 func workspaceIDFromName(name string, salt int) string {

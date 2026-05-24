@@ -35,7 +35,7 @@ import (
 	pb "github.com/tajiaoyezi/contextforge/proto/contextforge/console_data_plane/v1"
 )
 
-// Client bundles 4 gRPC client wrappers + the underlying conn so Close()
+// Client bundles 5 gRPC client wrappers + the underlying conn so Close()
 // releases the channel cleanly.
 type Client struct {
 	conn      *grpc.ClientConn
@@ -43,6 +43,7 @@ type Client struct {
 	job       consoleapi.JobClient
 	search    consoleapi.SearchClient
 	events    consoleapi.EventsClient
+	memory    consoleapi.MemoryClient
 }
 
 // New dials the Rust data plane gRPC server (default 127.0.0.1:50551) and
@@ -69,6 +70,7 @@ func New(ctx context.Context, addr string, opts ...grpc.DialOption) (*Client, er
 		job:       &jobClient{c: pb.NewJobServiceClient(conn)},
 		search:    &searchClient{c: pb.NewSearchServiceClient(conn)},
 		events:    &eventsClient{c: pb.NewEventsServiceClient(conn)},
+		memory:    &memoryClient{c: pb.NewMemoryServiceClient(conn)},
 	}, nil
 }
 
@@ -91,6 +93,9 @@ func (c *Client) Search() consoleapi.SearchClient { return c.search }
 
 // Events returns the consoleapi.EventsClient wrapper.
 func (c *Client) Events() consoleapi.EventsClient { return c.events }
+
+// Memory returns the consoleapi.MemoryClient wrapper.
+func (c *Client) Memory() consoleapi.MemoryClient { return c.memory }
 
 // Ping issues a lightweight RPC to verify the data plane is reachable.
 // Used by console-api-serve startup health-check.
@@ -452,6 +457,72 @@ func protoToRetrievalTrace(p *pb.RetrievalTrace) contractv1.RetrievalTrace {
 		out.RerankSteps = []string{}
 	}
 	return out
+}
+
+// =====================================================================
+// Memory wrapper (task-13.2 / ADR-017 D1 Wave 3)
+// =====================================================================
+
+type memoryClient struct{ c pb.MemoryServiceClient }
+
+func (m *memoryClient) List(filter consoleapi.MemoryListFilter) ([]contractv1.MemoryItem, error) {
+	resp, err := m.c.List(context.Background(), &pb.ListMemoryRequest{
+		AgentId:            filter.AgentID,
+		Scope:              filter.Scope,
+		Namespace:          filter.Namespace,
+		IncludeSoftDeleted: filter.IncludeSoftDeleted,
+	})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]contractv1.MemoryItem, 0, len(resp.Items))
+	for _, item := range resp.Items {
+		out = append(out, protoToMemoryItem(item))
+	}
+	return out, nil
+}
+
+func (m *memoryClient) Get(id string) (*contractv1.MemoryItem, error) {
+	resp, err := m.c.Get(context.Background(), &pb.GetMemoryRequest{MemoryId: id})
+	if err != nil {
+		mapped := mapGrpcErr(err)
+		if errors.Is(mapped, consoleapi.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, mapped
+	}
+	item := protoToMemoryItem(resp)
+	return &item, nil
+}
+
+func (m *memoryClient) Pin(id string, pin bool) error {
+	_, err := m.c.Pin(context.Background(), &pb.PinMemoryRequest{MemoryId: id, Pin: pin})
+	return mapGrpcErr(err)
+}
+
+func (m *memoryClient) Deprecate(id string) error {
+	_, err := m.c.Deprecate(context.Background(), &pb.DeprecateMemoryRequest{MemoryId: id})
+	return mapGrpcErr(err)
+}
+
+func (m *memoryClient) SoftDelete(id string) error {
+	_, err := m.c.SoftDelete(context.Background(), &pb.SoftDeleteMemoryRequest{MemoryId: id})
+	return mapGrpcErr(err)
+}
+
+func protoToMemoryItem(p *pb.MemoryItem) contractv1.MemoryItem {
+	return contractv1.MemoryItem{
+		MemoryID:       p.MemoryId,
+		AgentScope:     p.AgentScope,
+		ContentPreview: p.ContentPreview,
+		SourceType:     p.SourceType,
+		SourceRef:      p.SourceRef,
+		CreatedAt:      time.Unix(p.CreatedAtUnix, 0).UTC(),
+		UpdatedAt:      time.Unix(p.UpdatedAtUnix, 0).UTC(),
+		HitCount:       int(p.HitCount),
+		Status:         p.Status,
+		Availability:   contractv1.FieldAvailability{Object: "MemoryItem"},
+	}
 }
 
 func protoToObservabilityEvent(p *pb.ObservabilityEvent) contractv1.ObservabilityEvent {
