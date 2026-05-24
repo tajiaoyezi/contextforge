@@ -4,8 +4,21 @@ ContextForge is a local-first context indexing and retrieval tool for agent memo
 
 It ships as two binaries (ADR-001):
 
-- `contextforge`: Go control-plane CLI, REST/MCP adapter, export and eval entrypoint.
+- `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
+
+## What's new in v0.3.0
+
+- **ContextForge ↔ ContextForge-Console Contract v1 兼容层** (ADR-015) — 17 Go types
+  mirror Console `contractv1.go` + Rust workspace/jobs resource models +
+  9 REST endpoints under `/v1/*`.
+- New CLI subcommand: `contextforge console-api-serve --addr 127.0.0.1:48181`
+  exposes the 9 Console Contract v1 endpoints (in-memory store for v0.3; cross-
+  process Rust ↔ Go SQLite sharing is v0.4 follow-up).
+- New smoke: `bash scripts/console_smoke.sh` exercises the 9 endpoint flow end-to-end.
+- Docker compose stack: `deploy/console-stack.yml` + multi-stage `Dockerfile`.
+- ADR-014 cross-validation gate fully activated for Phase 10 (D1 mapping table +
+  D2 lint + D3 verified-by + D4/D5 in `scripts/spec_drift_lint.sh`).
 
 ## Quick Start
 
