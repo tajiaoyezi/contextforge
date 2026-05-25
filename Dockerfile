@@ -1,5 +1,5 @@
 # ContextForge daemon Docker image (task-10.6 / ADR-015 §D6).
-# Multi-stage build: rust:1.93 + golang:1.26 → debian:bookworm-slim runtime.
+# Multi-stage build: rust:1.93-slim-bookworm + golang:1.26-bookworm → debian:bookworm-slim runtime.
 # Bundles `contextforge` binary; default CMD runs Console Contract v1
 # REST surface (`console-api-serve`) on port 48181.
 #

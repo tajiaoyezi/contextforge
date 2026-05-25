@@ -2,8 +2,7 @@
 # 排除 build context 巨型目录：v0.7.0 docker build context 含 `target/`
 # 9.3 GB cargo cache 全 transfer，新版瘦身 ~50 MB。
 
-# Rust build artifacts
-target/
+# Rust build artifacts（`**/target/` 已覆盖根目录 target/）
 **/target/
 
 # Go build / module cache
