@@ -1,0 +1,46 @@
+# ContextForge .dockerignore (ship in v0.7.1)
+# 排除 build context 巨型目录：v0.7.0 docker build context 含 `target/`
+# 9.3 GB cargo cache 全 transfer，新版瘦身 ~50 MB。
+
+# Rust build artifacts（`**/target/` 已覆盖根目录 target/）
+**/target/
+
+# Go build / module cache
+**/*.test
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+
+# git internals
+.git/
+.gitignore
+
+# repo-local dispatch / docs / runtime data
+_dispatch/
+docs/
+test/
+examples/
+scripts/
+deploy/
+*.md
+LICENSE
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# IDE config
+*.iml
+
+# Local config + secrets
+.env
+.env.*
+*.local
+
+# Cache directories
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
