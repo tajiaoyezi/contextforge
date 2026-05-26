@@ -363,6 +363,83 @@ func TestGetSearchTrace_503_WhenFallback(t *testing.T) {
 }
 
 // =====================================================================
+// task-15.6 (Phase 15 P2 #7 / ADR-020) — GET /v1/health?detailed=true.
+// =====================================================================
+
+// TestHandleHealth_Default_StaysBinary — without ?detailed=true the response
+// shape is unchanged from v0.7 (no `components` field).
+func TestHandleHealth_Default_StaysBinary(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/health", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	// Components field omitted via JSON omitempty.
+	if strings.Contains(w.Body.String(), `"components"`) {
+		t.Errorf("default health response should not include components: %s", w.Body.String())
+	}
+}
+
+// TestHandleHealth_Detailed_True_NoHealthClient_Synthesizes — when Deps.Health
+// is nil (e.g. fallback mode), the handler synthesizes a 5-component response
+// so the Console UI CoreHealthCard always has a complete shape.
+func TestHandleHealth_Detailed_True_NoHealthClient_Synthesizes(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/health?detailed=true", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var got contractv1.CoreHealth
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal CoreHealth: %v body=%s", err, w.Body.String())
+	}
+	if len(got.Components) != 5 {
+		t.Fatalf("expected 5 components; got %d (%v)", len(got.Components), got.Components)
+	}
+	for _, name := range []string{"db", "index", "embed", "retriever", "eval"} {
+		if _, ok := got.Components[name]; !ok {
+			t.Errorf("missing component %q", name)
+		}
+	}
+}
+
+// TestHandleHealth_Detailed_True_InmemFallback_Degraded — when BackendKind is
+// "inmem-fallback", the detailed view reports the synthetic 5-component map
+// as degraded with the fallback reason.
+func TestHandleHealth_Detailed_True_InmemFallback_Degraded(t *testing.T) {
+	store := NewMemStore()
+	deps := Deps{
+		Workspace:   WorkspaceAdapter{S: store},
+		Job:         JobAdapter{S: store},
+		Search:      store,
+		Events:      store,
+		Memory:      NewMemMemoryStore(),
+		Eval:        NewMemEvalStore(),
+		BackendKind: "inmem-fallback",
+		AuthToken:   "",
+	}
+	router := NewRouter(deps)
+	req := httptest.NewRequest("GET", "/v1/health?detailed=true", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var got contractv1.CoreHealth
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Status != "degraded" {
+		t.Errorf("expected overall degraded; got %q", got.Status)
+	}
+	if len(got.Components) != 5 {
+		t.Errorf("expected 5 components; got %d", len(got.Components))
+	}
+}
+
+// =====================================================================
 // task-15.5 (Phase 15 P1 #5) — GET /v1/queries (query history) endpoint.
 // =====================================================================
 

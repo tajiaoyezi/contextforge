@@ -111,6 +111,13 @@ type EvalClient interface {
 	List(filter contractv1.ListEvalRunsFilter) ([]contractv1.EvalRun, error)
 }
 
+// HealthClient backs GET /v1/health?detailed=true (task-15.6 / Phase 15 P2 #7
+// / ADR-020). The basic binary /v1/health endpoint stays in handler-side
+// switch (BackendKind); only the detailed opt-in goes through this interface.
+type HealthClient interface {
+	GetDetailed() (contractv1.CoreHealth, error)
+}
+
 // Deps bundles all four backends + the bearer auth token for NewRouter.
 // AuthToken == "" means "trusted-network" (no Authorization header required —
 // aligns with Console CONSOLE_API_CORE_AUTH_MODE=trusted-network default).
@@ -125,6 +132,10 @@ type Deps struct {
 	Events      EventsClient
 	Memory      MemoryClient
 	Eval        EvalClient
+	// task-15.6 (Phase 15 P2 #7): optional HealthClient for ?detailed=true.
+	// May be nil — handleHealth falls back to a synthetic 5-component
+	// response if so (preserves v0.7 contract).
+	Health      HealthClient
 	AuthToken   string
 	BackendKind string
 }

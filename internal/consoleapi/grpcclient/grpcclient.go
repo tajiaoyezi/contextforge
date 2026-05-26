@@ -35,7 +35,7 @@ import (
 	pb "github.com/tajiaoyezi/contextforge/proto/contextforge/console_data_plane/v1"
 )
 
-// Client bundles 6 gRPC client wrappers + the underlying conn so Close()
+// Client bundles 7 gRPC client wrappers + the underlying conn so Close()
 // releases the channel cleanly.
 type Client struct {
 	conn      *grpc.ClientConn
@@ -45,6 +45,8 @@ type Client struct {
 	events    consoleapi.EventsClient
 	memory    consoleapi.MemoryClient
 	eval      consoleapi.EvalClient
+	// task-15.6 (Phase 15 P2 #7 / ADR-020): detailed health probes.
+	health consoleapi.HealthClient
 }
 
 // New dials the Rust data plane gRPC server (default 127.0.0.1:50551) and
@@ -73,6 +75,7 @@ func New(ctx context.Context, addr string, opts ...grpc.DialOption) (*Client, er
 		events:    &eventsClient{c: pb.NewEventsServiceClient(conn)},
 		memory:    &memoryClient{c: pb.NewMemoryServiceClient(conn)},
 		eval:      &evalClient{c: pb.NewEvalServiceClient(conn)},
+		health:    &healthClient{c: pb.NewHealthServiceClient(conn)},
 	}, nil
 }
 
@@ -101,6 +104,43 @@ func (c *Client) Memory() consoleapi.MemoryClient { return c.memory }
 
 // Eval returns the consoleapi.EvalClient wrapper.
 func (c *Client) Eval() consoleapi.EvalClient { return c.eval }
+
+// Health returns the consoleapi.HealthClient wrapper (task-15.6 / Phase 15 P2 #7).
+func (c *Client) Health() consoleapi.HealthClient { return c.health }
+
+// =====================================================================
+// Health wrapper (task-15.6 / Phase 15 P2 #7 / ADR-020).
+// =====================================================================
+
+type healthClient struct{ c pb.HealthServiceClient }
+
+func (h *healthClient) GetDetailed() (contractv1.CoreHealth, error) {
+	resp, err := h.c.GetDetailed(context.Background(), &pb.DetailedHealthRequest{})
+	if err != nil {
+		return contractv1.CoreHealth{}, mapGrpcErr(err)
+	}
+	comps := make(map[string]contractv1.ComponentHealth, len(resp.GetComponents()))
+	for _, c := range resp.GetComponents() {
+		latency := c.GetLatencyMs()
+		var reason *string
+		if r := c.GetErrorReason(); r != "" {
+			reason = &r
+		}
+		comps[c.GetName()] = contractv1.ComponentHealth{
+			Name:        c.GetName(),
+			Status:      c.GetStatus(),
+			LatencyMs:   &latency,
+			ErrorReason: reason,
+		}
+	}
+	total := resp.GetTotalLatencyMs()
+	return contractv1.CoreHealth{
+		Status:          resp.GetOverallStatus(),
+		ContractVersion: contractv1.ContractVersion,
+		Components:      comps,
+		TotalLatencyMs:  &total,
+	}, nil
+}
 
 // Ping issues a lightweight RPC to verify the data plane is reachable.
 // Used by console-api-serve startup health-check.

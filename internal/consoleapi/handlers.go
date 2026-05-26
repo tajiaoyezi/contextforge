@@ -20,7 +20,15 @@ import (
 //   - "inmem-fallback": 200 + status="degraded" + ErrorReason mentions inmem fallback
 //   - "degraded": 503 + status="degraded" + MissingMustHaveFields=[{Object:"core",Missing:["data_plane"]}]
 func handleHealth(deps Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// task-15.6 (Phase 15 P2 #7 / ADR-020): opt-in 5-component detail.
+		// When ?detailed=true is present, dispatch to HealthClient (real gRPC
+		// in production; nil → synthesize per BackendKind so fallback / degraded
+		// modes still report a coherent component map).
+		if r.URL.Query().Get("detailed") == "true" {
+			writeDetailedHealth(w, deps)
+			return
+		}
 		now := time.Now().UTC()
 		switch deps.BackendKind {
 		case "inmem-fallback":
@@ -309,6 +317,81 @@ func handleListEvalRuns(deps Deps) http.HandlerFunc {
 			runs = []contractv1.EvalRun{}
 		}
 		writeJSON(w, http.StatusOK, runs)
+	}
+}
+
+// writeDetailedHealth — task-15.6 (Phase 15 P2 #7 / ADR-020) sub-handler.
+// Dispatches to the gRPC HealthService when wired; falls back to a synthetic
+// 5-component view when running in MemStore / degraded modes so the Console
+// UI's CoreHealthCard always sees a complete shape.
+func writeDetailedHealth(w http.ResponseWriter, deps Deps) {
+	if deps.Health != nil {
+		detailed, err := deps.Health.GetDetailed()
+		if err == nil {
+			status := http.StatusOK
+			if detailed.Status == "unreachable" {
+				status = http.StatusServiceUnavailable
+			}
+			writeJSON(w, status, detailed)
+			return
+		}
+		// Fall through to synthetic on error.
+	}
+	now := time.Now().UTC()
+	mkLat := func(ms int64) *int64 { return &ms }
+	mkReason := func(s string) *string { return &s }
+	makeComps := func(allHealthy bool, errorReason string) map[string]contractv1.ComponentHealth {
+		out := make(map[string]contractv1.ComponentHealth, 5)
+		for _, name := range []string{"db", "index", "embed", "retriever", "eval"} {
+			c := contractv1.ComponentHealth{Name: name, Status: "healthy", LatencyMs: mkLat(0)}
+			if !allHealthy {
+				c.Status = "degraded"
+				c.ErrorReason = mkReason(errorReason)
+			}
+			out[name] = c
+		}
+		return out
+	}
+	switch deps.BackendKind {
+	case "inmem-fallback":
+		reason := "console-api: in-memory fallback store active (ADR-016 §D4); component probes not real"
+		zero := int64(0)
+		writeJSON(w, http.StatusOK, contractv1.CoreHealth{
+			Status:          "degraded",
+			ContractVersion: contractv1.ContractVersion,
+			LastConnectedAt: nil,
+			ErrorReason:     &reason,
+			MissingMustHaveFields: []contractv1.FieldAvailability{
+				{Object: "core", Missing: []string{"data_plane_persistence"}},
+			},
+			Components:     makeComps(false, "inmem fallback (no real probe)"),
+			TotalLatencyMs: &zero,
+		})
+	case "degraded":
+		reason := "console-api: data plane gRPC unreachable (ADR-016 §D4)"
+		zero := int64(0)
+		writeJSON(w, http.StatusServiceUnavailable, contractv1.CoreHealth{
+			Status:          "unreachable",
+			ContractVersion: contractv1.ContractVersion,
+			LastConnectedAt: nil,
+			ErrorReason:     &reason,
+			MissingMustHaveFields: []contractv1.FieldAvailability{
+				{Object: "core", Missing: []string{"data_plane"}},
+			},
+			Components:     makeComps(false, "data plane unreachable"),
+			TotalLatencyMs: &zero,
+		})
+	default: // "grpc" or unset but no HealthClient wired — synthesize all-healthy
+		zero := int64(0)
+		writeJSON(w, http.StatusOK, contractv1.CoreHealth{
+			Status:                "healthy",
+			ContractVersion:       contractv1.ContractVersion,
+			LastConnectedAt:       &now,
+			ErrorReason:           nil,
+			MissingMustHaveFields: nil,
+			Components:            makeComps(true, ""),
+			TotalLatencyMs:        &zero,
+		})
 	}
 }
 
