@@ -30,6 +30,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /v1/source-chunks/{id}", handleGetSourceChunk(deps))
 	mux.HandleFunc("GET /v1/search/{query_id}/trace", handleGetSearchTrace(deps))
 	mux.HandleFunc("GET /v1/observability/events", handleEvents(deps))
+	// task-15.3 (Phase 15 P1 #3): Dashboard "已索引块" stats endpoint.
+	// Non-destructive — no confirmMiddleware. Optional ?workspace_id= query.
+	mux.HandleFunc("GET /v1/stats/chunks", handleGetChunksStats(deps))
 	// task-13.2 (ADR-017 D1 Wave 3): 5 memory endpoints; deprecate + soft-delete
 	// gated by confirmMiddleware (destructive ops).
 	mux.HandleFunc("GET /v1/memory", handleListMemory(deps))

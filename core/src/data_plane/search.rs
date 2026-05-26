@@ -13,9 +13,9 @@ use tonic::{Request, Response, Status};
 
 use crate::pb_console::search_service_server::SearchService;
 use crate::pb_console::{
-    Citation as PbCitation, GetSearchTraceRequest, GetSourceChunkRequest,
-    RetrievalTrace as PbRetrievalTrace, SearchRequest as PbSearchRequest, SearchResponse,
-    SearchResultItem, SourceChunk as PbSourceChunk,
+    ChunksStats as PbChunksStats, Citation as PbCitation, GetChunksStatsRequest,
+    GetSearchTraceRequest, GetSourceChunkRequest, RetrievalTrace as PbRetrievalTrace,
+    SearchRequest as PbSearchRequest, SearchResponse, SearchResultItem, SourceChunk as PbSourceChunk,
 };
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
 use crate::workspace::WorkspaceStore;
@@ -303,6 +303,90 @@ impl SearchService for SearchServer {
             ))),
         }
     }
+
+    /// task-15.3 (Phase 15 P1 #3): cross-workspace chunks stats.
+    ///
+    /// - `total` aggregates `Retriever::num_docs()` (Tantivy live segment doc
+    ///   count) across every opened workspace collection
+    /// - `today_delta` aggregates `Retriever::count_indexed_since(today_start)`
+    ///   over the same set (chunks.indexed_at TEXT lexicographic compare)
+    ///
+    /// `req.workspace_id` is honored when set; empty value falls back to
+    /// iterating all registered workspaces (consistent with `get_source_chunk`
+    /// open-set probe behavior). Collections that fail to open are skipped
+    /// silently — health probing lives in task-15.6, not stats. [SPEC-OWNER:task-15.3]
+    async fn get_chunks_stats(
+        &self,
+        req: Request<GetChunksStatsRequest>,
+    ) -> Result<Response<PbChunksStats>, Status> {
+        let inner = req.into_inner();
+        if self.stores.data_dir.as_os_str().is_empty() {
+            // No data plane → return zero stats (UI renders "no data" rather
+            // than 503; aligns with fallback semantics).
+            return Ok(Response::new(PbChunksStats {
+                total: 0,
+                today_delta: 0,
+            }));
+        }
+        let candidates: Vec<String> = if !inner.workspace_id.is_empty() {
+            vec![inner.workspace_id]
+        } else {
+            self.stores
+                .workspace_store
+                .list()
+                .map_err(|e| Status::internal(format!("workspace list: {e}")))?
+                .into_iter()
+                .map(|w| w.workspace_id)
+                .collect()
+        };
+        let today_iso = today_start_iso();
+        let mut total: i64 = 0;
+        let mut today_delta: i64 = 0;
+        for ws_id in candidates {
+            let retriever = match Retriever::open(&self.stores.data_dir, &ws_id) {
+                Ok(r) => r,
+                Err(_) => continue, // skip unopenable collections per [SPEC-OWNER:task-15.3]
+            };
+            total = total.saturating_add(retriever.num_docs() as i64);
+            today_delta =
+                today_delta.saturating_add(retriever.count_indexed_since(&today_iso));
+        }
+        Ok(Response::new(PbChunksStats { total, today_delta }))
+    }
+}
+
+/// task-15.3 helper: compute the start-of-today (UTC) as an ISO-ish string
+/// compatible with the indexer's `indexed_at_now_str` format ("YYYY-MM-DD
+/// HH:MM:SS"). Lexicographic compare against indexed_at column yields the
+/// correct ">= today" set without parsing.
+fn today_start_iso() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let day = now / 86_400 * 86_400;
+    seconds_to_iso(day)
+}
+
+fn seconds_to_iso(unix_secs: i64) -> String {
+    // Civil-date arithmetic (no chrono dep). Days since 1970-01-01.
+    let days = unix_secs.div_euclid(86_400);
+    let secs_of_day = unix_secs.rem_euclid(86_400);
+    let hour = (secs_of_day / 3600) as i64;
+    let minute = ((secs_of_day % 3600) / 60) as i64;
+    let second = (secs_of_day % 60) as i64;
+    // Convert days since epoch to civil date (Howard Hinnant algorithm).
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u32; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as i64;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as i64;
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02} {hour:02}:{minute:02}:{second:02}")
 }
 
 fn empty_response(query: &str) -> SearchResponse {
@@ -414,6 +498,59 @@ mod tests {
         let got = resp.into_inner();
         assert_eq!(got.trace_id, "trace-test");
         assert_eq!(got.query, "hello");
+    }
+
+    // task-15.3 (Phase 15 P1 #3): chunks stats RPC tests.
+    #[tokio::test]
+    async fn test_get_chunks_stats_empty_data_dir_returns_zero() {
+        // fresh_server uses DataPlaneStores::new which leaves data_dir empty;
+        // get_chunks_stats short-circuits to {0, 0} for the fallback path.
+        let server = fresh_server();
+        let resp = server
+            .get_chunks_stats(Request::new(GetChunksStatsRequest {
+                workspace_id: String::new(),
+            }))
+            .await
+            .expect("get_chunks_stats ok");
+        let stats = resp.into_inner();
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.today_delta, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_chunks_stats_with_workspace_id_filter_returns_zero_when_empty() {
+        // Workspace ID is honored but no collection has been indexed → 0/0.
+        let server = fresh_server();
+        let resp = server
+            .get_chunks_stats(Request::new(GetChunksStatsRequest {
+                workspace_id: "ws-test".into(),
+            }))
+            .await
+            .expect("get_chunks_stats ok");
+        let stats = resp.into_inner();
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.today_delta, 0);
+    }
+
+    #[test]
+    fn test_today_start_iso_format_is_lexicographic_sortable() {
+        // The string must be lexicographically ordered same as chronologically
+        // (year-month-day HH:MM:SS pad zeros) to ensure SQLite >= compare works.
+        let s = today_start_iso();
+        // Format check: "YYYY-MM-DD HH:MM:SS"
+        assert_eq!(s.len(), 19);
+        assert_eq!(&s[4..5], "-");
+        assert_eq!(&s[7..8], "-");
+        assert_eq!(&s[10..11], " ");
+        // today_start has HH:MM:SS = 00:00:00
+        assert!(s.ends_with(" 00:00:00"), "today_start should be midnight: {s}");
+    }
+
+    #[test]
+    fn test_seconds_to_iso_known_value() {
+        // 1700000000 = 2023-11-14 22:13:20 UTC
+        let s = seconds_to_iso(1_700_000_000);
+        assert_eq!(s, "2023-11-14 22:13:20");
     }
 
     #[tokio::test]

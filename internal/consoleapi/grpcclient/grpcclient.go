@@ -277,6 +277,20 @@ func (s *searchClient) GetSearchTrace(queryID string) (contractv1.RetrievalTrace
 	return protoToRetrievalTrace(resp), nil
 }
 
+// GetChunksStats wraps SearchService.GetChunksStats (task-15.3 / Phase 15 P1 #3).
+func (s *searchClient) GetChunksStats(workspaceID string) (contractv1.ChunksStats, error) {
+	resp, err := s.c.GetChunksStats(context.Background(), &pb.GetChunksStatsRequest{
+		WorkspaceId: workspaceID,
+	})
+	if err != nil {
+		return contractv1.ChunksStats{}, mapGrpcErr(err)
+	}
+	return contractv1.ChunksStats{
+		Total:      resp.GetTotal(),
+		TodayDelta: resp.GetTodayDelta(),
+	}, nil
+}
+
 func (s *searchClient) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	resp, err := s.c.Query(context.Background(), &pb.SearchRequest{
 		Query:           req.Query,

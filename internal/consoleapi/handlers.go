@@ -281,6 +281,22 @@ func handleGetSearchTrace(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleGetChunksStats — GET /v1/stats/chunks (task-15.3 / Phase 15 P1 #3).
+// Returns 200 + contractv1.ChunksStats; 503 in fallback when SearchBackend
+// is unwired (MemStore stub returns zero). Optional ?workspace_id= filters
+// to a single collection; default is cross-workspace aggregate.
+func handleGetChunksStats(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
+		stats, err := deps.Search.GetChunksStats(workspaceID)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, stats)
+	}
+}
+
 // handleSearch — POST /v1/search.
 // Body shape: contractv1.SearchRequest. Response: nested {"result":...,"trace":...}.
 func handleSearch(deps Deps) http.HandlerFunc {

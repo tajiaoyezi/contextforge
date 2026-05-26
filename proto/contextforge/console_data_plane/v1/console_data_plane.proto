@@ -231,10 +231,23 @@ message GetSearchTraceRequest {
   string query_id = 1;
 }
 
+// task-15.3 (Phase 15 P1 #3): Dashboard "已索引块" stats — total live docs +
+// today_delta (chunks indexed since today_start_unix). Optional workspace_id
+// for future per-workspace breakdown; v0.8 aggregates across workspaces.
+message GetChunksStatsRequest {
+  string workspace_id = 1;  // optional; empty = aggregate all workspaces
+}
+
+message ChunksStats {
+  int64 total = 1;
+  int64 today_delta = 2;
+}
+
 service SearchService {
   rpc Query(SearchRequest) returns (SearchResponse);
   rpc GetSourceChunk(GetSourceChunkRequest) returns (SourceChunk);
   rpc GetSearchTrace(GetSearchTraceRequest) returns (RetrievalTrace);
+  rpc GetChunksStats(GetChunksStatsRequest) returns (ChunksStats);  // task-15.3 add-only
 }
 
 // =====================================================================

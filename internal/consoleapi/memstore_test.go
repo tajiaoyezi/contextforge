@@ -93,6 +93,27 @@ func TestMemStore_CacheMiss_Returns503(t *testing.T) {
 	}
 }
 
+// TestMemStore_GetChunksStats_Stub — task-15.3 AC5: MemStore fallback returns
+// {total=0, today_delta=0} without error when SearchBackend is unwired.
+func TestMemStore_GetChunksStats_Stub(t *testing.T) {
+	s := NewMemStore()
+	stats, err := s.GetChunksStats("")
+	if err != nil {
+		t.Fatalf("expected nil err for fallback stub; got %v", err)
+	}
+	if stats.Total != 0 || stats.TodayDelta != 0 {
+		t.Errorf("expected {0,0}; got total=%d today_delta=%d", stats.Total, stats.TodayDelta)
+	}
+	// workspace_id should be a passive filter — same fallback shape.
+	stats2, err := s.GetChunksStats("ws-abc")
+	if err != nil {
+		t.Fatalf("expected nil err for filtered fallback; got %v", err)
+	}
+	if stats2 != stats {
+		t.Errorf("filtered fallback differs from default: %+v vs %+v", stats2, stats)
+	}
+}
+
 // TestMemStore_CacheEviction_FIFO — AC2: 257th Search evicts oldest entry.
 func TestMemStore_CacheEviction_FIFO(t *testing.T) {
 	s := NewMemStore()

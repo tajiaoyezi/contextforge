@@ -300,3 +300,15 @@ type CoreHealth struct {
 func (h CoreHealth) HasMissingMustHaveFields() bool {
 	return len(h.MissingMustHaveFields) > 0
 }
+
+// task-15.3 (Phase 15 P1 #3): Dashboard "已索引块" stats response from
+// GET /v1/stats/chunks. add-only — does not touch any other contract type.
+//
+// `Total` is the cross-workspace live-doc count (Tantivy `num_docs` excluding
+// tombstones); `TodayDelta` counts chunks indexed since UTC today_start
+// (lexicographic compare on chunks.indexed_at; v0.8 fallback returns 0 when
+// SQLite probe fails per [SPEC-OWNER:task-15.3]).
+type ChunksStats struct {
+	Total      int64 `json:"total"`
+	TodayDelta int64 `json:"today_delta"`
+}

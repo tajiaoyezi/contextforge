@@ -362,6 +362,46 @@ func TestGetSearchTrace_503_WhenFallback(t *testing.T) {
 }
 
 // =====================================================================
+// task-15.3 (Phase 15 P1 #3) — GET /v1/stats/chunks endpoint.
+// =====================================================================
+
+// TestHandleGetChunksStats_200_Fallback — MemStore (no SearchBackend) returns
+// {total=0, today_delta=0} so the Console UI Dashboard renders "no data"
+// rather than 503 — fallback behavior per task-15.3 [SPEC-OWNER:task-15.3].
+func TestHandleGetChunksStats_200_Fallback(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/stats/chunks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var stats contractv1.ChunksStats
+	if err := json.Unmarshal(w.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("unmarshal ChunksStats: %v body=%s", err, w.Body.String())
+	}
+	if stats.Total != 0 {
+		t.Errorf("expected fallback total=0; got %d", stats.Total)
+	}
+	if stats.TodayDelta != 0 {
+		t.Errorf("expected fallback today_delta=0; got %d", stats.TodayDelta)
+	}
+}
+
+// TestHandleGetChunksStats_WorkspaceIDQuery — verify the optional workspace_id
+// filter is read from query string (fallback shape is the same; the filter
+// passes through to the SearchBackend in non-fallback mode).
+func TestHandleGetChunksStats_WorkspaceIDQuery(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/stats/chunks?workspace_id=ws-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// =====================================================================
 // task-13.2 (ADR-017 D1 Wave 3) — 5 memory REST endpoints.
 // =====================================================================
 
