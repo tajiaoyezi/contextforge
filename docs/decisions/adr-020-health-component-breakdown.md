@@ -1,6 +1,6 @@
 # ADR `020`: `health-component-breakdown`
 
-**Status**: Proposed (2026-05-26；将于 Phase 15 closeout / v0.8.0 ship 时 promote 到 Accepted)
+**Status**: Accepted (2026-05-26, via Phase 15 closeout PR)
 **Category**: 协议接口 / 可观测性 / 健康检查
 **Date**: 2026-05-26
 **Decided By**: tajiaoyezi objective + main agent execution + ContextForge-Console PR #91/#93 backlog 反馈
