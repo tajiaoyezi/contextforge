@@ -159,7 +159,7 @@ proto add-only `SearchService.ListQueries` RPC + Rust `TraceStore.list(limit)` �
             out = append(out, contractv1.QueryRecord{
                 QueryID:     qid,
                 Query:       trace.Query,
-                TsUnix:      0,  // stub timestamp（fallback 不存 ts）
+                TsUnix:      0,  // stub timestamp（fallback 不存 ts） [SPEC-OWNER:task-15.5]
                 WorkspaceID: "",
             })
         }

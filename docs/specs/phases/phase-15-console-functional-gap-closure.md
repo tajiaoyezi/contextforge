@@ -2,7 +2,7 @@
 
 **Status**: Ready
 
-> Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.8.0 minor release + **ContextForge-Console PR #91/#93 backlog 11 项中 6 项 closure 收口 phase** — 关闭 P0 (2 项) + P1 (3 项) + P2 (1 项)，剩余 P2 #6（is_pinned 字段 ADR-015 D5 amendment）+ P3 (2 项) + P4 (2 项) 留 Phase 16 / v0.9.0：
+> Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.8.0 minor release + **ContextForge-Console PR #91/#93 backlog 11 项中 6 项 closure 收口 phase** — 关闭 P0 (2 项) + P1 (3 项) + P2 (1 项)，剩余 P2 #6（is_pinned 字段 ADR-015 D5 amendment）+ P3 (2 项) + P4 (2 项) 留 Phase 16 / v0.9.0：[SPEC-DEFER:phase-16+]
 >
 > - **P0 #1 — MemStore chunk/trace cache**：解决 `CONSOLE_API_FALLBACK_INMEM=1` 模式 `GET /v1/source-chunks/<id>` / `GET /v1/search/<query_id>/trace` 503 痛点（fallback 没缓存 search result 的 chunk-1 / query-1 占位项 [SPEC-OWNER:task-15.1]）
 > - **P0 #2 — memory→EventBus bridge**：解决 `GET /v1/observability/events` 永不返 `memory.*` event 痛点（[ADR-021](../../decisions/adr-021-memory-event-bus-bridge.md)）
@@ -19,14 +19,14 @@
 
 实现 ContextForge backend 端 6 项 Console functional gap 修复 + 2 个新 ADR (020/021) 落地 + v0.8.0 minor release：
 
-- **MemStore fallback 修复 (P0 #1)**：`internal/consoleapi/memstore.go` 加 `chunkCache map[string]contractv1.SourceChunk` + `traceCache map[string]contractv1.RetrievalTrace`；`MemStore.Search` 返 stub 后同步写入两个 cache；`GetSourceChunk` / `GetSearchTrace` 命中返 200 + cached
+- **MemStore fallback 修复 (P0 #1)**：`internal/consoleapi/memstore.go` 加 `chunkCache map[string]contractv1.SourceChunk` + `traceCache map[string]contractv1.RetrievalTrace`；`MemStore.Search` 返 stub 后同步写入两个 cache；`GetSourceChunk` / `GetSearchTrace` 命中返 200 + cached [SPEC-OWNER:task-15.1]
 - **memory→EventBus 桥接 (P0 #2)**：`core/src/data_plane/memory.rs::MemoryServer.emit_audit` 同步追加 `EventBus.send(memory.{pin,deprecate,soft_delete})`；不引入新 channel；ADR-021 D1-D4 落地
 - **chunks stats endpoint (P1 #3)**：proto `SearchService.GetChunksStats` add-only RPC + Rust impl（Tantivy `IndexReader.searcher().num_docs()` + SQLite `SELECT COUNT(*) FROM chunks WHERE indexed_at >= <today_start>`）+ Go REST `GET /v1/stats/chunks` + `contractv1.ChunksStats{total, today_delta}` 新 struct
 - **list eval-runs endpoint (P1 #4)**：proto `EvalService.ListEvalRuns` add-only RPC + Rust `SqliteEvalStore.list(filter)` 新方法（`ORDER BY started_at DESC LIMIT N`）+ Go REST `GET /v1/eval-runs?workspace_id=&status=&limit=` + filter
 - **query history endpoint (P1 #5)**：proto `SearchService.ListQueries` add-only RPC + Rust `TraceStore.list(limit)` 新方法（in-memory ring buffer 顺序读）+ Go REST `GET /v1/queries?limit=` + `contractv1.QueryRecord{query_id, query, ts_unix, workspace_id}` 新 struct
 - **5 链路 health detail (P2 #7)**：proto `ComponentHealth` message + `CoreHealth.components` map add-only + 新建 `core/src/health.rs` 5 探针实现（db / index / embed / retriever / eval）+ Go REST `GET /v1/health?detailed=true` + `contractv1.CoreHealth.Components` 字段 + ADR-020 D1-D5 落地
 
-**关键 scope 决策（§3）**：本 phase 实施 6 项 backend 端 fix + 2 个新 ADR (020 / 021) → v0.8.0 ship；不实施 P2 #6 `is_pinned` 字段 amendment（留 Phase 16 / v0.9.0，因 ADR-015 D5 BREAKING window）+ 不实施 P3/P4（ghcr.io image push / docker-compose.production.yml / TraceStore SQLite 持久化 / `?wait=` 真 long-poll）。
+**关键 scope 决策（§3）**：本 phase 实施 6 项 backend 端 fix + 2 个新 ADR (020 / 021) → v0.8.0 ship；不实施 P2 #6 `is_pinned` 字段 amendment（留 Phase 16 / v0.9.0，因 ADR-015 D5 BREAKING window）+ 不实施 P3/P4（ghcr.io image push / docker-compose.production.yml / TraceStore SQLite 持久化 / `?wait=` 真 long-poll）。 [SPEC-DEFER:phase-16+]
 
 来源：[ContextForge-Console PR #91/#93](https://github.com/contextforge-console/PR#91) backlog 11 项中 P0+P1+P2#7 共 6 项 / [ADR-020](../../decisions/adr-020-health-component-breakdown.md) D1-D5 / [ADR-021](../../decisions/adr-021-memory-event-bus-bridge.md) D1-D4 / [ADR-015](../../decisions/adr-015-console-contract-v1-compatibility.md) D1 add-only 约束。
 
@@ -34,7 +34,7 @@
 
 直接支撑 ContextForge PRD §Core Capabilities #1-5 的 UI 闭环 + Console UI v1.x ship 解锁：
 
-- **Console Dashboard 3 KPI 真接**：v0.8 ship 后 Console UI Dashboard 端可拉真 `chunks_total` / `query_history` / `eval_runs` 列表，从"骨架占位面板"变"实时 KPI 面板"
+- **Console Dashboard 3 KPI 真接**：v0.8 ship 后 Console UI Dashboard 端可拉真 `chunks_total` / `query_history` / `eval_runs` 列表，从"骨架占位面板"变"实时 KPI 面板" [SPEC-OWNER:task-15.3]
 - **Memory 操作历史自动有数据**：`memory.pin/deprecate/soft_delete` 实时桥接到 events stream → Console UI Memory 详情面板"操作历史"列表自动获取
 - **MemStore fallback 模式 conformance 100% PASS**：`CONSOLE_API_FALLBACK_INMEM=1` 模式 22-endpoint conformance 不再有 503 失败（chunk/trace cache 兜底）→ docker single-image 部署体验完整
 - **CoreHealthCard 5 链路细分**：用户能定位 ContextForge backend 哪条链路坏了（db / index / embed / retriever / eval），不再"整体 degraded 但不知道哪个组件"
@@ -88,7 +88,7 @@
   - `EvalClient` 加 `List` method — task-15.4
   - `HealthClient` 加 `GetDetailed` method（or 在既有 Ping 扩展）— task-15.6
 - `internal/consoleapi/types.go`（修改：接口扩展上述新 method 同步）
-- `internal/consoleapi/memstore.go`（修改：MemStore 实现 3 新 method stub + MemEvalStore.List + MemHealthAdapter）
+- `internal/consoleapi/memstore.go`（修改：MemStore 实现 3 新 method stub + MemEvalStore.List + MemHealthAdapter）[SPEC-OWNER:task-15.6]
 - `internal/cli/console_api_serve.go`（修改：`buildDeps` 不需大动 — 复用既有 wiring；仅新接口 method 默认实现）
 - `scripts/console_smoke.sh` v6（修改：22 step → 26 step；新加 health-detail / chunks-stats / list-eval-runs / list-queries 共 4 step）— task-15.6 收口
 - `docs/decisions/adr-020-health-component-breakdown.md`（已新增 — 本 phase E1 PR）
@@ -126,7 +126,7 @@
 
 - [ ] AC1：MemStore fallback 模式 (`CONSOLE_API_FALLBACK_INMEM=1`) — `POST /v1/search` 后 `GET /v1/source-chunks/<chunk_id>` / `GET /v1/search/<query_id>/trace` 返 200（不再 503）；chunkCache + traceCache 命中 — **verified by task-15.1 §6 AC1/AC2 + `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit` + `TestMemStore_TraceCacheHit` PASS**
 - [ ] AC2：memory pin/deprecate/soft_delete 状态变更后 `GET /v1/observability/events` 拉到 ≥1 `memory.pin` / `memory.deprecate` / `memory.soft_delete` 类型 event — **verified by task-15.2 §6 AC1/AC2 + `core/src/data_plane/memory.rs::tests::test_pin_emits_event_bus` + `console_smoke.sh` v6 Step 22 PASS**
-- [ ] AC3：`GET /v1/stats/chunks` 返 200 + `ChunksStats{total: int64, today_delta: int64}`；`total` ≥ 0；fallback 模式返 stub `{total: 0, today_delta: 0}` — **verified by task-15.3 §6 AC1 + `e2e_grpc_test.go::TestChunksStats_E2E` + smoke v6 Step 23 PASS**
+- [ ] AC3：`GET /v1/stats/chunks` 返 200 + `ChunksStats{total: int64, today_delta: int64}`；`total` ≥ 0；fallback 模式返 stub `{total: 0, today_delta: 0}` — **verified by task-15.3 §6 AC1 + `e2e_grpc_test.go::TestChunksStats_E2E` + smoke v6 Step 23 PASS** [SPEC-OWNER:task-15.3]
 - [ ] AC4：`GET /v1/eval-runs?workspace_id=&status=&limit=N` 返 200 + `[]EvalRun`；filter 三参生效（workspace / status / limit）；空集 → `[]`；ORDER BY `started_at DESC` — **verified by task-15.4 §6 AC1/AC2 + `core/tests/eval_integration.rs::test_list_filter` + smoke v6 Step 24 PASS**
 - [ ] AC5：`GET /v1/queries?limit=N` 返 200 + `[]QueryRecord`；limit default = 20；按 trace 时序 ORDER BY ts DESC；空集 → `[]` — **verified by task-15.5 §6 AC1 + `e2e_grpc_test.go::TestListQueries_E2E` + smoke v6 Step 25 PASS**
 - [ ] AC6：`GET /v1/health?detailed=true` 返 200 + `CoreHealth.Components{db,index,embed,retriever,eval}` 5 keys；各 `ComponentHealth.Status` ∈ {healthy, degraded, unreachable}；总耗时 ≤ 500ms — **verified by task-15.6 §6 AC1/AC2/AC3 + `core/src/health.rs::tests::test_5_probes_aggregate` + smoke v6 Step 26 PASS**

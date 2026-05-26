@@ -12,18 +12,18 @@
 ContextForge-Console PR #91/#93 backlog 列 P0 #1：
 
 > `CONSOLE_API_FALLBACK_INMEM=1` 模式下：
-> 1. `POST /v1/search` 返 200 + 一个 chunk-1 / query-1 / trace-1 占位项 (MemStore.Search stub at memstore.go:272-317)
+> 1. `POST /v1/search` 返 200 + 一个 chunk-1 / query-1 / trace-1 占位项 (MemStore.Search stub at memstore.go:272-317) [SPEC-OWNER:task-15.1]
 > 2. 用户接着 `GET /v1/source-chunks/chunk-1` → 返 503（MemStore.GetSourceChunk 返 ErrDataPlaneUnavailable at memstore.go:257-262）
 > 3. 用户接着 `GET /v1/search/query-1/trace` → 同样 503
 > 4. UI 流程被打断 — 用户看到 SearchResult 但点击 chunk 详情 / trace 详情时 fallback 整个崩盘
 
-**根因**：MemStore.Search 返了 stub，但 MemStore.GetSourceChunk / GetSearchTrace 没缓存 stub 数据 → 第二次请求时找不到。fallback 模式应该是"自洽 in-memory demo"，不是"半残骨架"。
+**根因**：MemStore.Search 返了 stub，但 MemStore.GetSourceChunk / GetSearchTrace 没缓存 stub 数据 → 第二次请求时找不到。fallback 模式应该是"自洽 in-memory demo"，不是"半残骨架"。 [SPEC-OWNER:task-15.1]
 
 **Fix 策略**：MemStore 加 `chunkCache map[string]contractv1.SourceChunk` + `traceCache map[string]contractv1.RetrievalTrace`；MemStore.Search 内同步写入两 map；GetSourceChunk / GetSearchTrace 查 map → 命中返 200 + cached 数据，未命中（cache miss）→ 沿用既有 ErrDataPlaneUnavailable / ErrNotFound。
 
 ## 2. Goal
 
-`internal/consoleapi/memstore.go` 修改 MemStore struct 加 `chunkCache` / `traceCache` 两个 map；`MemStore.Search` 返 stub 后同步把 stub 写入两 cache；`GetSourceChunk` / `GetSearchTrace` 内先查 cache，命中返 200，未命中沿用既有 ErrDataPlaneUnavailable。≥3 unit test PASS（hit / miss / eviction）；`go test ./internal/consoleapi/...` 不退化。
+`internal/consoleapi/memstore.go` 修改 MemStore struct 加 `chunkCache` / `traceCache` 两个 map；`MemStore.Search` 返 stub 后同步把 stub 写入两 cache；`GetSourceChunk` / `GetSearchTrace` 内先查 cache，命中返 200，未命中沿用既有 ErrDataPlaneUnavailable。≥3 unit test PASS（hit / miss / eviction）；`go test ./internal/consoleapi/...` 不退化。 [SPEC-OWNER:task-15.1]
 
 ## 3. Scope
 
@@ -38,7 +38,7 @@ ContextForge-Console PR #91/#93 backlog 列 P0 #1：
     cacheOrder    []string // FIFO eviction key order
     ```
   - `NewMemStore()` 内初始化两 map + cacheCapacity = 256
-  - `MemStore.Search` 内（既有 line 272-317）返 stub 前同步：
+  - `MemStore.Search` 内（既有 line 272-317）返 stub 前同步：[SPEC-OWNER:task-15.1]
     ```go
     s.mu.Lock()
     s.cacheChunkUnlocked(res.ChunkID, /* SourceChunk built from res */)
@@ -62,7 +62,7 @@ ContextForge-Console PR #91/#93 backlog 列 P0 #1：
     }
     ```
   - `GetSearchTrace` (既有 line 265-270) 改同款 cache 优先模式 — 注意：MemStore.Search 写入 trace 时 key 用 trace.TraceID（"trace-1"），但 GetSearchTrace 调用方传的是 query_id（"query-1"）；需双 key 索引或者 stub 时让 trace_id == query_id [SPEC-OWNER:task-15.1]
-    - 实施选择：stub Search 时 set `trace.TraceID = res.QueryID` 让两 key 对齐；或保留两 key（traceByQueryID + traceByTraceID） — task 实施时选简单方案
+    - 实施选择：stub Search 时 set `trace.TraceID = res.QueryID` 让两 key 对齐；或保留两 key（traceByQueryID + traceByTraceID） — task 实施时选简单方案 [SPEC-OWNER:task-15.1]
 
 - **新增 SourceChunk 构造 helper** `buildSourceChunkFromResult(res contractv1.SearchResult) contractv1.SourceChunk`：
   - 把 SearchResult 字段 (ChunkID / SourceFilePath / SourceFileType / ChunkTextPreview / LineStart / LineEnd / WorkspaceID) 映射到 SourceChunk
@@ -134,7 +134,7 @@ func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk)
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：MemStore.Search 返 stub 后 chunkCache + traceCache 同步填入；`GetSourceChunk(stubID)` 返 200 + SourceChunk；`GetSearchTrace(stubID)` 返 200 + RetrievalTrace — **verified by `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit_AfterSearch` + `TestMemStore_TraceCacheHit_AfterSearch` PASS**
+- [ ] AC1：MemStore.Search 返 stub 后 chunkCache + traceCache 同步填入；`GetSourceChunk(stubID)` 返 200 + SourceChunk；`GetSearchTrace(stubID)` 返 200 + RetrievalTrace — **verified by `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit_AfterSearch` + `TestMemStore_TraceCacheHit_AfterSearch` PASS** [SPEC-OWNER:task-15.1]
 - [ ] AC2：cache cap = 256 触发 FIFO eviction；第 257 次 Search 写入后 oldest 驱逐，再次 GetSourceChunk(oldestID) → cache miss → ErrDataPlaneUnavailable — **verified by `TestMemStore_CacheEviction_FIFO` PASS**
 - [ ] AC3：MemStore.GetSourceChunk / GetSearchTrace 在 cache miss 时沿用既有 ErrDataPlaneUnavailable 或 delegate SearchBackend；不破坏既有行为 — **verified by `TestMemStore_CacheMiss_Returns503` + 现有 `TestRouter_GetSourceChunk_503_when_fallback` 不退化 PASS**
 - [ ] AC4：`go test ./internal/consoleapi/...` 全绿；既有 22-endpoint conformance 不退化（task-10.5 / task-12.* test PASS） — **verified by `go test -v ./internal/consoleapi/... ./test/conformance/...` PASS**
@@ -153,7 +153,7 @@ func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk)
 ## 8. Risks
 
 - **并发竞态**：MemStore.Search + GetSourceChunk 同时调用 — mu.Lock 已覆盖；测试时启 goroutine 并发跑验证
-- **stub query_id vs trace_id 不对齐**：既有 stub `res.QueryID = "query-1"`, `trace.TraceID = "trace-1"` — 命中需对齐策略；task 实施时选 `trace.TraceID = res.QueryID` 让 GET /v1/search/{query_id}/trace 用 query_id 直接查 traceCache
+- **stub query_id vs trace_id 不对齐**：既有 stub `res.QueryID = "query-1"`, `trace.TraceID = "trace-1"` — 命中需对齐策略；task 实施时选 `trace.TraceID = res.QueryID` 让 GET /v1/search/{query_id}/trace 用 query_id 直接查 traceCache [SPEC-OWNER:task-15.1]
 - **cache cap 256 太小**：fallback demo 场景充分；如真用户量大可参数化 [SPEC-DEFER:phase-future.cache-cap-configurable]
 - **SourceChunk vs SearchResult 字段差异**：SearchResult 含 ChunkTextPreview（preview，可能截断），SourceChunk 期望全文 chunk_text — fallback 用 preview 兜底；真接 retriever 是另一路径
 

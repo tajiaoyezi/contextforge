@@ -252,7 +252,7 @@ proto add-only `EvalService.ListEvalRuns` RPC + Rust `SqliteEvalStore.list(filte
 - **大量 eval_runs SQLite 性能**：v0.8 hard-cap limit=200；scan 全表 ORDER BY started_at DESC + LIMIT 在无索引时退化 → 缓解 task 实施时考虑加 `CREATE INDEX IF NOT EXISTS idx_eval_runs_started_at ON eval_runs(started_at_unix DESC)` migration（如必要；可在 task-15.4 实施时 add-only migration）
 - **proto 字段编号冲突**：新 message tags 从 1 开始；与既有 EvalRun (1-11) / CreateEvalRunRequest 不冲突（不同 message）
 - **filter 注入风险**：query param + parameterized SQL；不拼接 raw string；安全
-- **MemEvalStore 既有 mock 2s timer**：list 不受影响（独立 method）
+- **MemEvalStore 既有 mock 2s timer**：list 不受影响（独立 method） [SPEC-OWNER:task-15.4]
 
 ## 9. Verification Plan
 

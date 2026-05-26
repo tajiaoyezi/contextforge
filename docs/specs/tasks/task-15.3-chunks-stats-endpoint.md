@@ -11,7 +11,7 @@
 
 ContextForge-Console PR #91/#93 backlog 列 P1 #3：
 
-> Console UI Dashboard "已索引块"指标 panel 期望 `GET /v1/stats/chunks` → `{total: int64, today_delta: int64}` — 当前 Dashboard 显示 `?`/`--` 占位项（无 backend endpoint）。
+> Console UI Dashboard "已索引块"指标 panel 期望 `GET /v1/stats/chunks` → `{total: int64, today_delta: int64}` — 当前 Dashboard 显示 `?`/`--` 占位项（无 backend endpoint）。 [SPEC-OWNER:task-15.3]
 
 **实施策略**：
 
@@ -25,7 +25,7 @@ ContextForge-Console PR #91/#93 backlog 列 P1 #3：
 
 ## 2. Goal
 
-proto add-only `SearchService.GetChunksStats` RPC + Rust impl 真返 Tantivy num_docs / SQLite COUNT + Go REST `GET /v1/stats/chunks` 返 200 + `ChunksStats{total, today_delta}`；MemStore fallback 返 stub `{total: 0, today_delta: 0}`；cargo + go test 不退化；≥3 unit + ≥1 integration test PASS；smoke v6 Step 23 PASS。
+proto add-only `SearchService.GetChunksStats` RPC + Rust impl 真返 Tantivy num_docs / SQLite COUNT + Go REST `GET /v1/stats/chunks` 返 200 + `ChunksStats{total, today_delta}`；MemStore fallback 返 stub `{total: 0, today_delta: 0}`；cargo + go test 不退化；≥3 unit + ≥1 integration test PASS；smoke v6 Step 23 PASS。 [SPEC-OWNER:task-15.3]
 
 ## 3. Scope
 
@@ -114,7 +114,7 @@ proto add-only `SearchService.GetChunksStats` RPC + Rust impl 真返 Tantivy num
     ```
 
 - **修改 `internal/consoleapi/memstore.go`**：
-  - `MemStore.GetChunksStats` 返 stub：
+  - `MemStore.GetChunksStats` 返 stub：[SPEC-OWNER:task-15.3]
     ```go
     func (s *MemStore) GetChunksStats() (contractv1.ChunksStats, error) {
         if s.SearchBackend != nil {
@@ -179,7 +179,7 @@ grep -rn "CREATE TABLE.*chunks\|indexed_at" core/migrations/
 - [ ] AC2：Rust `SearchServer.get_chunks_stats` 返 `total` = Tantivy `num_docs()` int64 + `today_delta` = SQLite COUNT (或 0 if `chunks.indexed_at` 不存在) — **verified by `cargo test -p contextforge-core --lib data_plane::search::tests::test_get_chunks_stats_*` PASS**
 - [ ] AC3：Go REST `GET /v1/stats/chunks` 返 200 + JSON `{"total":N,"today_delta":M}` — **verified by `internal/consoleapi/handlers_test.go::TestHandleGetChunksStats_200` PASS**
 - [ ] AC4：grpcclient `SearchClient.GetChunksStats()` 调 gRPC + 解析返回 — **verified by `grpcclient_test.go::TestSearchClient_GetChunksStats_Maps_Proto` PASS**
-- [ ] AC5：MemStore fallback `GetChunksStats()` 返 stub `{0, 0}`；conformance / fallback 模式不破坏 — **verified by `memstore_test.go::TestMemStore_GetChunksStats_Stub` PASS**
+- [ ] AC5：MemStore fallback `GetChunksStats()` 返 stub `{0, 0}`；conformance / fallback 模式不破坏 — **verified by `memstore_test.go::TestMemStore_GetChunksStats_Stub` PASS** [SPEC-OWNER:task-15.3]
 - [ ] AC6：集成 `TestChunksStats_E2E_GrpcBacked` 真接 Rust daemon + Go console-api-serve PASS — **verified by `go test -v -run TestChunksStats_E2E ./internal/consoleapi/...` PASS**
 
 ## 7. 追踪表
@@ -190,7 +190,7 @@ grep -rn "CREATE TABLE.*chunks\|indexed_at" core/migrations/
 | AC2 | Rust impl Tantivy + SQLite | search.rs + tests | Ready |
 | AC3 | Go REST 200 | handlers.go + test | Ready |
 | AC4 | grpcclient method | grpcclient.go + test | Ready |
-| AC5 | MemStore stub | memstore.go + test | Ready |
+| AC5 | MemStore stub [SPEC-OWNER:task-15.3] | memstore.go + test | Ready |
 | AC6 | E2E integration | e2e_grpc_test.go | Ready |
 
 ## 8. Risks
@@ -227,7 +227,7 @@ grep -rn "CREATE TABLE.*chunks\|indexed_at" core/migrations/
   - `internal/consoleapi/grpcclient/grpcclient.go` (修改 — GetChunksStats wrapper)
   - `internal/consoleapi/router.go` (修改 — /v1/stats/chunks 路由)
   - `internal/consoleapi/handlers.go` (修改 — handleGetChunksStats)
-  - `internal/consoleapi/memstore.go` (修改 — MemStore.GetChunksStats stub)
+  - `internal/consoleapi/memstore.go` (修改 — MemStore.GetChunksStats stub) [SPEC-OWNER:task-15.3]
   - `internal/consoleapi/handlers_test.go` (修改 — TestHandleGetChunksStats_200)
   - `internal/consoleapi/grpcclient/grpcclient_test.go` (修改 — TestSearchClient_GetChunksStats_*)
   - `internal/consoleapi/memstore_test.go` (修改 — TestMemStore_GetChunksStats_Stub)

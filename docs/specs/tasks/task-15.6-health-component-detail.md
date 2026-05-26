@@ -155,7 +155,7 @@ ContextForge-Console PR #91/#93 backlog 列 P2 #7：
     ```
 
 - **修改 `internal/consoleapi/memstore.go`**：
-  - `MemStore.GetDetailedHealth()` 返 stub 5 components 全 healthy（fallback 模式不跑真探针）
+  - `MemStore.GetDetailedHealth()` 返 stub 5 components 全 healthy（fallback 模式不跑真探针）[SPEC-OWNER:task-15.6]
 
 - **修改 `scripts/console_smoke.sh` v6**（22 step v5 → 26 step v6 — 累加 task-15.3/15.4/15.5/15.6 共 4 新 step）：
   - Step 23: GET /v1/stats/chunks → 验证 total / today_delta 字段（task-15.3）
@@ -223,7 +223,7 @@ ContextForge-Console PR #91/#93 backlog 列 P2 #7：
 - [ ] AC2：Rust `core/src/health.rs::HealthChecker.check_all` 跑 5 探针 + aggregate；空 data_dir → 5 components 全 degraded；正常 data_dir → 全 healthy — **verified by `core/src/health.rs::tests::test_probe_db_*` + `test_probe_index_*` + `test_aggregate_status_5_components` 3 测试 PASS**
 - [ ] AC3：Go REST `GET /v1/health?detailed=true` 返 200 + JSON 含 `components: {db, index, embed, retriever, eval}` 5 keys；不带 query 沿用既有 binary — **verified by `handlers_test.go::TestHandleHealth_Detailed_True_Returns_Components` + `TestHandleHealth_Default_Returns_Binary` PASS**
 - [ ] AC4：grpcclient `HealthClient.GetDetailed()` 调 gRPC + 解析返回 `CoreHealth.Components` — **verified by `grpcclient_test.go::TestHealthClient_GetDetailed_Maps_Proto` PASS**
-- [ ] AC5：MemStore fallback `GetDetailedHealth()` 返 stub 5 components 全 healthy；conformance 不破坏 — **verified by `memstore_test.go::TestMemStore_GetDetailedHealth_Stub` PASS**
+- [ ] AC5：MemStore fallback `GetDetailedHealth()` 返 stub 5 components 全 healthy；conformance 不破坏 — **verified by `memstore_test.go::TestMemStore_GetDetailedHealth_Stub` PASS** [SPEC-OWNER:task-15.6]
 - [ ] AC6：5 探针总耗时 ≤ 500ms（P95 测量）— **verified by `tests::test_check_all_under_500ms` PASS**
 - [ ] AC7：smoke v6 26-step flow `CONSOLE_REAL_SMOKE_EXIT=0`；Step 23/24/25/26 全 PASS；既有 22 step 不退化 — **verified by `bash scripts/console_smoke.sh` 实测 stdout 含 `CONSOLE_REAL_SMOKE_EXIT=0`**
 - [ ] AC8：ADR-014 D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` 0 violation — **verified by lint stdout**
@@ -236,7 +236,7 @@ ContextForge-Console PR #91/#93 backlog 列 P2 #7：
 | AC2 | 5 探针 + aggregate | health.rs + tests | Ready |
 | AC3 | Go REST ?detailed=true | handlers.go + test | Ready |
 | AC4 | grpcclient mapping | grpcclient.go + test | Ready |
-| AC5 | MemStore stub | memstore.go + test | Ready |
+| AC5 | MemStore stub [SPEC-OWNER:task-15.6] | memstore.go + test | Ready |
 | AC6 | 总耗时 ≤ 500ms | health.rs + perf test | Ready |
 | AC7 | smoke v6 26 step | console_smoke.sh | Ready |
 | AC8 | D2 lint 0 violation | spec_drift_lint | Ready |
@@ -248,7 +248,7 @@ ContextForge-Console PR #91/#93 backlog 列 P2 #7：
 - **HealthService 新建 gRPC service**：proto + tonic-build 编译；既有 service 不冲突（新 service definition）
 - **`?detailed=true` 高频 poll 压力**：Console UI 端节流建议 ≥30s；ADR-020 §Trade-offs 已记录
 - **CoreHealth.Components forward-compat**：旧 Console v0.7 client 解析 v0.8 JSON 含 `components` → 忽略未知字段（contract v1 forward-compat）；不破坏
-- **MemMemoryStore fallback 不实际探 5 链路**：stub 全 healthy；fallback 模式整体 degraded 已通过 `Status="degraded"` 表达；细分仅 mock
+- **MemMemoryStore fallback 不实际探 5 链路**：stub 全 healthy；fallback 模式整体 degraded 已通过 `Status="degraded"` 表达；细分仅 mock [SPEC-OWNER:task-15.6]
 - **ADR-014 D1 mapping 表**：Phase 15 closeout PR (E8) 中准备；本 task 不直接生成；本 task 完成是 E8 前置
 
 ## 9. Verification Plan
@@ -278,7 +278,7 @@ ContextForge-Console PR #91/#93 backlog 列 P2 #7：
   - `internal/consoleapi/types.go` (修改 — HealthClient.GetDetailed)
   - `internal/consoleapi/grpcclient/grpcclient.go` (修改 — GetDetailed wrapper)
   - `internal/consoleapi/handlers.go` (修改 — handleHealth ?detailed=true 分支)
-  - `internal/consoleapi/memstore.go` (修改 — MemStore.GetDetailedHealth stub)
+  - `internal/consoleapi/memstore.go` (修改 — MemStore.GetDetailedHealth stub) [SPEC-OWNER:task-15.6]
   - `internal/consoleapi/handlers_test.go` (修改 — TestHandleHealth_Detailed_*)
   - `internal/consoleapi/grpcclient/grpcclient_test.go` (修改 — TestHealthClient_GetDetailed_*)
   - `internal/consoleapi/memstore_test.go` (修改 — TestMemStore_GetDetailedHealth_Stub)
