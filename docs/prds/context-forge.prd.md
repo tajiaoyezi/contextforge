@@ -506,6 +506,17 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 - **ADR-017 状态推进 Proposed → Accepted**（Phase 14 closeout PR；6 D-clauses 完整覆盖 v0.5/v0.6/v0.7 3 phase 一次推进）；adapter §Phase 索引 Phase 14 → Done；§Open Questions O15/O16/O17 全 fully resolved；v0.7.0 RELEASE_NOTES + evidence + artifacts 落盘 + cross-repo follow-up 通知 Console 团队切到 production HTTPAdapter mode。
 - ADR-014 cross-validation gate 第五次完整激活验证制度稳定性。
 
+**Phase 15 console-functional-gap-closure**（v0.8 收口；ContextForge-Console PR #91/#93 backlog 11 项中 P0+P1+P2#7 共 6 项 closure；详见 [ADR-020](../decisions/adr-020-health-component-breakdown.md) + [ADR-021](../decisions/adr-021-memory-event-bus-bridge.md)）
+
+- task-15.1（P0 #1）：`internal/consoleapi/memstore.go` 加 `chunkCache` + `traceCache` map（FIFO eviction cap=256）；`MemStore.Search` 返 stub 后同步写入两 map；`GetSourceChunk` / `GetSearchTrace` 命中返 200 + cached；解决 `CONSOLE_API_FALLBACK_INMEM=1` 模式下 GET source-chunks / search trace 503 痛点。
+- task-15.2（P0 #2）：[ADR-021](../decisions/adr-021-memory-event-bus-bridge.md) D1-D4 落地 — `core/src/data_plane/memory.rs::MemoryServer.emit_audit` 同步追加 `EventBus.send(memory.{pin,deprecate,soft_delete})`；不引入新 channel；3 新 event_type 字符串（proto field 类型不变）；GET /v1/observability/events 实测拉到 memory.* event 解决 Console UI "操作历史"列表空。
+- task-15.3（P1 #3）：proto add-only `SearchService.GetChunksStats` RPC + Rust impl (Tantivy `num_docs()` + SQLite COUNT WHERE indexed_at >= today_start) + Go REST `GET /v1/stats/chunks` + `contractv1.ChunksStats{total, today_delta}` add-only 字段；Dashboard "已索引块"指标真接。
+- task-15.4（P1 #4）：proto add-only `EvalService.ListEvalRuns` RPC + Rust `SqliteEvalStore.list(filter)` 新方法 (ORDER BY started_at DESC LIMIT clamp 1..=200 default 50) + Go REST `GET /v1/eval-runs?workspace_id=&status=&limit=N` + filter；Eval 面板"最近评测"列表真接。
+- task-15.5（P1 #5）：proto add-only `SearchService.ListQueries` RPC + Rust `TraceStore.list(limit)` 新方法 (按 insertion order DESC clamp 1..=100 default 20) + Go REST `GET /v1/queries?limit=N` + `contractv1.QueryRecord{query_id, query, ts_unix, workspace_id}` 新 struct；Dashboard "最近查询"列表真接。
+- task-15.6（P2 #7）：[ADR-020](../decisions/adr-020-health-component-breakdown.md) D1-D5 落地 — proto add-only `ComponentHealth` message + 新建 `core/src/health.rs` 5 探针 (db/index/embed/retriever/eval 各 ≤ 40ms / 总 ≤ 500ms) + Go REST `GET /v1/health?detailed=true` opt-in + `contractv1.CoreHealth.Components map[string]ComponentHealth` add-only 字段；CoreHealthCard 5 链路细分。
+- **ADR-020 / ADR-021 状态推进 Proposed → Accepted**（Phase 15 closeout PR；本 phase 一次推进两 ADR）；adapter §Phase 索引 Phase 15 → Done；剩余 P2 #6 (`is_pinned` ADR-015 D5 amendment) + P3 (2 项) + P4 (2 项) 留 Phase 16 / v0.9.0；v0.8.0 RELEASE_NOTES + evidence + artifacts 落盘 + cross-repo follow-up 通知 Console 团队启动 UI standby PR (Dashboard 3 KPI + CoreHealthCard 5 链路 + Memory 操作历史)。
+- ADR-014 cross-validation gate 第六次完整激活验证制度稳定性。
+
 ---
 
 ## Decisions Log｜决策日志

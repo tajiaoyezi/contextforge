@@ -247,6 +247,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 12 | `console-contract-completion` | `docs/specs/phases/phase-12-console-contract-completion.md` | Done | 3 | `../ContextForge-wt-console-contract-completion` |
 | 13 | `memory-rest-surface` | `docs/specs/phases/phase-13-memory-rest-surface.md` | Done | 2 | `../ContextForge-wt-memory-rest-surface` |
 | 14 | `eval-rest-surface` | `docs/specs/phases/phase-14-eval-rest-surface.md` | Done | 2 | `../ContextForge-wt-eval-rest-surface` |
+| 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Ready | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -305,6 +306,12 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 13.2 | internal/consoleapi (router + handlers + grpcclient) + memstore MemoryAdapter | docs/specs/tasks/task-13.2-go-memory-rest-handlers.md | Done | Phase13 #2（dep 13.1，收口）| `../ContextForge-wt-memory-rest-surface` |
 | 14.1 | core/migrations + core/src/eval + core/src/data_plane/eval.rs + proto EvalService | docs/specs/tasks/task-14.1-rust-eval-grpc-service.md | Done | Phase14 #1 | `../ContextForge-wt-eval-rest-surface` |
 | 14.2 | internal/consoleapi (router + handlers + grpcclient) + memstore EvalAdapter + eval_runner.go | docs/specs/tasks/task-14.2-go-eval-rest-handlers.md | Done | Phase14 #2（dep 14.1，收口）| `../ContextForge-wt-eval-rest-surface` |
+| 15.1 | internal/consoleapi/memstore.go (chunkCache + traceCache) | docs/specs/tasks/task-15.1-memstore-chunk-trace-cache.md | Ready | Phase15 #1 | `../ContextForge-wt-console-functional-gap-closure` |
+| 15.2 | core/src/data_plane/memory.rs (emit EventBus) | docs/specs/tasks/task-15.2-memory-event-bus-bridge.md | Ready | Phase15 #2 | `../ContextForge-wt-console-functional-gap-closure` |
+| 15.3 | proto + core/src/data_plane/search.rs + Go REST GET /v1/stats/chunks | docs/specs/tasks/task-15.3-chunks-stats-endpoint.md | Ready | Phase15 #3（dep 15.2 后实施 — 复用 EventBus 已稳定）| `../ContextForge-wt-console-functional-gap-closure` |
+| 15.4 | proto + core/src/eval/store.rs + Go REST GET /v1/eval-runs | docs/specs/tasks/task-15.4-list-eval-runs-endpoint.md | Ready | Phase15 #4（dep 15.3 完成 — 串行 proto 修改）| `../ContextForge-wt-console-functional-gap-closure` |
+| 15.5 | proto + core/src/data_plane/search.rs (TraceStore.list) + Go REST GET /v1/queries | docs/specs/tasks/task-15.5-query-history-endpoint.md | Ready | Phase15 #5（dep 15.4 完成 — 串行 proto）| `../ContextForge-wt-console-functional-gap-closure` |
+| 15.6 | proto + core/src/health.rs + Go REST GET /v1/health?detailed=true | docs/specs/tasks/task-15.6-health-component-detail.md | Ready | Phase15 #6（dep 15.5，收口含 smoke v6 + ADR-014 D2 lint + closeout）| `../ContextForge-wt-console-functional-gap-closure` |
 
 ## ADR 索引
 
@@ -330,7 +337,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 014 | cross-phase-exit-criteria-validation | Accepted | docs/decisions/adr-014-cross-phase-exit-criteria-validation.md |
 | 015 | console-contract-v1-compatibility | Accepted | docs/decisions/adr-015-console-contract-v1-compatibility.md |
 | 016 | cross-process-rust-go-via-grpc-bridge | Accepted | docs/decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md |
-| 017 | console-contract-completion-22-endpoint | Proposed | docs/decisions/adr-017-console-contract-completion-22-endpoint.md |
+| 017 | console-contract-completion-22-endpoint | Accepted | docs/decisions/adr-017-console-contract-completion-22-endpoint.md |
+| 018 | fallback-inmem-default-reversal | Accepted | docs/decisions/adr-018-fallback-inmem-default-reversal.md |
+| 020 | health-component-breakdown | Proposed | docs/decisions/adr-020-health-component-breakdown.md |
+| 021 | memory-event-bus-bridge | Proposed | docs/decisions/adr-021-memory-event-bus-bridge.md |
 
 ## BDD Feature 索引
 
@@ -359,6 +369,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 10.1 / 10.2 / 10.3 / 10.4 / 10.5 / 10.6 | test/features/console-contract-v1.feature |
 | 11.1 / 11.2 / 11.3 / 11.4 | test/features/console-real-data-plane.feature |
 | 12.1 / 12.2 / 12.3 / 13.1 / 13.2 / 14.1 / 14.2 | test/features/console-contract-completion.feature |
+| 15.1 / 15.2 / 15.3 / 15.4 / 15.5 / 15.6 | test/features/phase-15-console-functional-gap-closure.feature |
 
 ---
 
