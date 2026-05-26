@@ -199,9 +199,13 @@ if [ "$MODE" = "real" ]; then
   [ "$status" = "succeeded" ] || echo "  NOTE: REAL job status=$status (test fixture index)"
 else
   # LOCAL_ONLY / docker: in-memory MemStore can still drive cancel.
+  # task-12.1 (ADR-017 D3) ships cancel as 204 No Content; 409 only when the
+  # job is already terminal. v0.7 release-smoke gate ran REAL mode where the
+  # 204/409 paths converge on poll-until-terminal so the v0.3 stale assertion
+  # (200/409) was never exercised; task-15.6 v6 smoke regression caught it.
   curl -sf "$BASE/v1/index-jobs/${JOB_ID}" >/dev/null
   cancel_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/index-jobs/${JOB_ID}/cancel")
-  [ "$cancel_code" = "200" ] || [ "$cancel_code" = "409" ] || { echo "FAIL: cancel expected 200/409; got $cancel_code" >&2; exit 1; }
+  [ "$cancel_code" = "204" ] || [ "$cancel_code" = "409" ] || { echo "FAIL: cancel expected 204/409; got $cancel_code" >&2; exit 1; }
 fi
 
 echo "  [8/20] POST /v1/search (real mode → ≥1 chunk; inmem → empty trace ok)"

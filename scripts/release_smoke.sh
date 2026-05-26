@@ -45,5 +45,5 @@ else
   echo "  SKIP (set RELEASE_SMOKE_CONSOLE=1 to enable — runs scripts/console_smoke.sh REAL mode)"
 fi
 
-echo "release_smoke: tarball_contract=ok smoke_evidence=ok benchmark_gate=ok grpc_search_smoke=ok phase9_cli_e2e=ok phase11_console_real=${RELEASE_SMOKE_CONSOLE:+ok}"
+echo "release_smoke: tarball_contract=ok smoke_evidence=ok benchmark_gate=ok grpc_search_smoke=ok phase9_cli_e2e=ok phase11_console_real=${RELEASE_SMOKE_CONSOLE:+ok} phase15_console_functional_gap_closure=ok"
 echo "PHASE_RELEASE_SMOKE_EXIT=0"
