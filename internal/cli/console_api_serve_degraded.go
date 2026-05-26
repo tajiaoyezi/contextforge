@@ -55,6 +55,9 @@ func (degradedSearch) GetSourceChunk(_ string) (contractv1.SourceChunk, error) {
 func (degradedSearch) GetSearchTrace(_ string) (contractv1.RetrievalTrace, error) {
 	return contractv1.RetrievalTrace{}, consoleapi.ErrDataPlaneUnavailable
 }
+func (degradedSearch) GetChunksStats(_ string) (contractv1.ChunksStats, error) {
+	return contractv1.ChunksStats{}, consoleapi.ErrDataPlaneUnavailable
+}
 
 type degradedEvents struct{}
 

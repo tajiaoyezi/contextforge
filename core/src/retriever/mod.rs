@@ -532,6 +532,30 @@ impl Retriever {
         &self.config
     }
 
+    /// task-15.3 (Phase 15 P1 #3): live-doc count from the Tantivy reader.
+    /// Excludes tombstoned docs — matches the user-facing "已索引块" notion of
+    /// chunks currently retrievable. Cheap call (reader holds a `Searcher` per
+    /// segment meta; no full scan).
+    pub fn num_docs(&self) -> u64 {
+        self.tantivy_reader.searcher().num_docs()
+    }
+
+    /// task-15.3 (Phase 15 P1 #3): count chunks indexed since `since_iso`
+    /// (lexicographic compare on chunks.indexed_at TEXT column; works because
+    /// the indexer writes a fixed-width ISO-ish string from `indexed_at_now_str`).
+    /// Returns 0 when SQLite query fails so health/stats don't 503 over a
+    /// transient lock — fallback safety aligns with [SPEC-OWNER:task-15.3].
+    pub fn count_indexed_since(&self, since_iso: &str) -> i64 {
+        match self.sqlite.query_row(
+            "SELECT COUNT(*) FROM chunks WHERE indexed_at >= ?1",
+            params![since_iso],
+            |r| r.get::<_, i64>(0),
+        ) {
+            Ok(n) => n,
+            Err(_) => 0,
+        }
+    }
+
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }

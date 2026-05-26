@@ -57,7 +57,8 @@ type JobClient interface {
 }
 
 // SearchClient backs POST /v1/search + GET /v1/source-chunks/{id} (task-12.2)
-// + GET /v1/search/{query_id}/trace (task-12.3).
+// + GET /v1/search/{query_id}/trace (task-12.3) + GET /v1/stats/chunks
+// (task-15.3 Phase 15 P1 #3).
 type SearchClient interface {
 	Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error)
 	GetSourceChunk(chunkID string) (contractv1.SourceChunk, error)
@@ -65,6 +66,9 @@ type SearchClient interface {
 	// ErrNotFound when the query has not been executed (or was evicted from
 	// the in-memory LRU; daemon restart wipes the cache).
 	GetSearchTrace(queryID string) (contractv1.RetrievalTrace, error)
+	// task-15.3 (Phase 15 P1 #3): chunks stats for Dashboard "已索引块"
+	// indicator. workspaceID empty = cross-workspace aggregate.
+	GetChunksStats(workspaceID string) (contractv1.ChunksStats, error)
 }
 
 // EventsClient backs GET /v1/observability/events.

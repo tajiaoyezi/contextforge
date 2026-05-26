@@ -344,6 +344,16 @@ func (s *MemStore) GetSearchTrace(queryID string) (contractv1.RetrievalTrace, er
 	return contractv1.RetrievalTrace{}, ErrDataPlaneUnavailable
 }
 
+// GetChunksStats — task-15.3 fallback path. MemStore has no real index;
+// returns zero stats so Console UI renders "no data" rather than 503.
+// [SPEC-OWNER:task-15.3]
+func (s *MemStore) GetChunksStats(workspaceID string) (contractv1.ChunksStats, error) {
+	if s.SearchBackend != nil {
+		return s.SearchBackend.GetChunksStats(workspaceID)
+	}
+	return contractv1.ChunksStats{Total: 0, TodayDelta: 0}, nil
+}
+
 func (s *MemStore) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	if s.SearchBackend != nil {
 		return s.SearchBackend.Search(req)

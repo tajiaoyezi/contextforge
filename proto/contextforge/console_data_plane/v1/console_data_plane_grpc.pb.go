@@ -552,6 +552,7 @@ const (
 	SearchService_Query_FullMethodName          = "/contextforge.console_data_plane.v1.SearchService/Query"
 	SearchService_GetSourceChunk_FullMethodName = "/contextforge.console_data_plane.v1.SearchService/GetSourceChunk"
 	SearchService_GetSearchTrace_FullMethodName = "/contextforge.console_data_plane.v1.SearchService/GetSearchTrace"
+	SearchService_GetChunksStats_FullMethodName = "/contextforge.console_data_plane.v1.SearchService/GetChunksStats"
 )
 
 // SearchServiceClient is the client API for SearchService service.
@@ -561,6 +562,7 @@ type SearchServiceClient interface {
 	Query(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	GetSourceChunk(ctx context.Context, in *GetSourceChunkRequest, opts ...grpc.CallOption) (*SourceChunk, error)
 	GetSearchTrace(ctx context.Context, in *GetSearchTraceRequest, opts ...grpc.CallOption) (*RetrievalTrace, error)
+	GetChunksStats(ctx context.Context, in *GetChunksStatsRequest, opts ...grpc.CallOption) (*ChunksStats, error)
 }
 
 type searchServiceClient struct {
@@ -601,6 +603,16 @@ func (c *searchServiceClient) GetSearchTrace(ctx context.Context, in *GetSearchT
 	return out, nil
 }
 
+func (c *searchServiceClient) GetChunksStats(ctx context.Context, in *GetChunksStatsRequest, opts ...grpc.CallOption) (*ChunksStats, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ChunksStats)
+	err := c.cc.Invoke(ctx, SearchService_GetChunksStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SearchServiceServer is the server API for SearchService service.
 // All implementations must embed UnimplementedSearchServiceServer
 // for forward compatibility.
@@ -608,6 +620,7 @@ type SearchServiceServer interface {
 	Query(context.Context, *SearchRequest) (*SearchResponse, error)
 	GetSourceChunk(context.Context, *GetSourceChunkRequest) (*SourceChunk, error)
 	GetSearchTrace(context.Context, *GetSearchTraceRequest) (*RetrievalTrace, error)
+	GetChunksStats(context.Context, *GetChunksStatsRequest) (*ChunksStats, error)
 	mustEmbedUnimplementedSearchServiceServer()
 }
 
@@ -626,6 +639,9 @@ func (UnimplementedSearchServiceServer) GetSourceChunk(context.Context, *GetSour
 }
 func (UnimplementedSearchServiceServer) GetSearchTrace(context.Context, *GetSearchTraceRequest) (*RetrievalTrace, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSearchTrace not implemented")
+}
+func (UnimplementedSearchServiceServer) GetChunksStats(context.Context, *GetChunksStatsRequest) (*ChunksStats, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChunksStats not implemented")
 }
 func (UnimplementedSearchServiceServer) mustEmbedUnimplementedSearchServiceServer() {}
 func (UnimplementedSearchServiceServer) testEmbeddedByValue()                       {}
@@ -702,6 +718,24 @@ func _SearchService_GetSearchTrace_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SearchService_GetChunksStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChunksStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServiceServer).GetChunksStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SearchService_GetChunksStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServiceServer).GetChunksStats(ctx, req.(*GetChunksStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SearchService_ServiceDesc is the grpc.ServiceDesc for SearchService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -720,6 +754,10 @@ var SearchService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSearchTrace",
 			Handler:    _SearchService_GetSearchTrace_Handler,
+		},
+		{
+			MethodName: "GetChunksStats",
+			Handler:    _SearchService_GetChunksStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
