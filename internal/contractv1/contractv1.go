@@ -293,6 +293,23 @@ type CoreHealth struct {
 	// so the diagnostics page can show "Core did not provide required fields"
 	// (Console AC4 / R7 / PRD §Field Tiering).
 	MissingMustHaveFields []FieldAvailability `json:"missing_must_have_fields"`
+	// task-15.6 (Phase 15 P2 #7 / ADR-020): 5-link component breakdown.
+	// Only populated when the REST handler is invoked with ?detailed=true;
+	// omitted (omitempty) for the default binary health response so the
+	// existing v0.7 client contract is unchanged. Keys: db / index / embed /
+	// retriever / eval.
+	Components map[string]ComponentHealth `json:"components,omitempty"`
+	// Total wall-clock cost of the detailed probe sweep. Reported alongside
+	// `Components` when present.
+	TotalLatencyMs *int64 `json:"total_latency_ms,omitempty"`
+}
+
+// task-15.6 / ADR-020 D2: per-component health record.
+type ComponentHealth struct {
+	Name        string  `json:"name"`
+	Status      string  `json:"status"` // "healthy" / "degraded" / "unreachable"
+	LatencyMs   *int64  `json:"latency_ms,omitempty"`
+	ErrorReason *string `json:"error_reason,omitempty"`
 }
 
 // HasMissingMustHaveFields reports whether any Core-not-provided must-have

@@ -397,6 +397,29 @@ service EvalService {
   rpc List(ListEvalRunsRequest) returns (ListEvalRunsResponse);  // task-15.4 add-only
 }
 
+// task-15.6 (Phase 15 P2 #7 / ADR-020): 5-link health detail. opt-in via Go
+// REST ?detailed=true; each ComponentHealth carries a per-probe latency and
+// optional error_reason. ADR-020 D2 add-only schema; ADR-020 D4 aggregation
+// rule (any unreachable → 503; any degraded → 200 + degraded; else healthy).
+message ComponentHealth {
+  string name = 1;            // "db" | "index" | "embed" | "retriever" | "eval"
+  string status = 2;          // "healthy" | "degraded" | "unreachable"
+  int64 latency_ms = 3;       // milliseconds; 0 if probe did not measure
+  string error_reason = 4;    // empty when status=healthy
+}
+
+message DetailedHealthRequest {}
+
+message DetailedHealthResponse {
+  string overall_status = 1;          // aggregated; healthy | degraded | unreachable
+  repeated ComponentHealth components = 2;
+  int64 total_latency_ms = 3;
+}
+
+service HealthService {
+  rpc GetDetailed(DetailedHealthRequest) returns (DetailedHealthResponse);
+}
+
 // =====================================================================
 // Events (mirrors contractv1.ObservabilityEvent)
 // =====================================================================

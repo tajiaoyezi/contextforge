@@ -1273,6 +1273,108 @@ var EvalService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	HealthService_GetDetailed_FullMethodName = "/contextforge.console_data_plane.v1.HealthService/GetDetailed"
+)
+
+// HealthServiceClient is the client API for HealthService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type HealthServiceClient interface {
+	GetDetailed(ctx context.Context, in *DetailedHealthRequest, opts ...grpc.CallOption) (*DetailedHealthResponse, error)
+}
+
+type healthServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewHealthServiceClient(cc grpc.ClientConnInterface) HealthServiceClient {
+	return &healthServiceClient{cc}
+}
+
+func (c *healthServiceClient) GetDetailed(ctx context.Context, in *DetailedHealthRequest, opts ...grpc.CallOption) (*DetailedHealthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DetailedHealthResponse)
+	err := c.cc.Invoke(ctx, HealthService_GetDetailed_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// HealthServiceServer is the server API for HealthService service.
+// All implementations must embed UnimplementedHealthServiceServer
+// for forward compatibility.
+type HealthServiceServer interface {
+	GetDetailed(context.Context, *DetailedHealthRequest) (*DetailedHealthResponse, error)
+	mustEmbedUnimplementedHealthServiceServer()
+}
+
+// UnimplementedHealthServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedHealthServiceServer struct{}
+
+func (UnimplementedHealthServiceServer) GetDetailed(context.Context, *DetailedHealthRequest) (*DetailedHealthResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDetailed not implemented")
+}
+func (UnimplementedHealthServiceServer) mustEmbedUnimplementedHealthServiceServer() {}
+func (UnimplementedHealthServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeHealthServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to HealthServiceServer will
+// result in compilation errors.
+type UnsafeHealthServiceServer interface {
+	mustEmbedUnimplementedHealthServiceServer()
+}
+
+func RegisterHealthServiceServer(s grpc.ServiceRegistrar, srv HealthServiceServer) {
+	// If the following call pancis, it indicates UnimplementedHealthServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&HealthService_ServiceDesc, srv)
+}
+
+func _HealthService_GetDetailed_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DetailedHealthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HealthServiceServer).GetDetailed(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HealthService_GetDetailed_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HealthServiceServer).GetDetailed(ctx, req.(*DetailedHealthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// HealthService_ServiceDesc is the grpc.ServiceDesc for HealthService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var HealthService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "contextforge.console_data_plane.v1.HealthService",
+	HandlerType: (*HealthServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetDetailed",
+			Handler:    _HealthService_GetDetailed_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "contextforge/console_data_plane/v1/console_data_plane.proto",
+}
+
+const (
 	EventsService_Subscribe_FullMethodName = "/contextforge.console_data_plane.v1.EventsService/Subscribe"
 )
 

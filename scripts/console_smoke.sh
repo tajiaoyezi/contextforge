@@ -364,6 +364,66 @@ code404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/eval-runs/eval-does-
 [ "$code404" = "404" ] \
   || { echo "FAIL: GET eval-run unknown expected 404; got $code404" >&2; exit 1; }
 
+# =====================================================================
+# v6 (Phase 15) — 4 new steps for task-15.3/15.4/15.5/15.6 endpoints.
+# =====================================================================
+
+echo "  [21/24] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
+stats_body=$(curl -sf "$BASE/v1/stats/chunks") \
+  || { echo "FAIL: GET stats/chunks" >&2; exit 1; }
+echo "$stats_body" | grep -q '"total"' \
+  || { echo "FAIL: stats response missing total" >&2; exit 1; }
+echo "$stats_body" | grep -q '"today_delta"' \
+  || { echo "FAIL: stats response missing today_delta" >&2; exit 1; }
+echo "    → stats response shape ok"
+
+echo "  [22/24] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
+list_body=$(curl -sf "$BASE/v1/eval-runs?limit=10") \
+  || { echo "FAIL: GET eval-runs list" >&2; exit 1; }
+case "$list_body" in
+  \[*\])
+    echo "    → eval-runs list returned JSON array"
+    ;;
+  *)
+    echo "FAIL: eval-runs list response not a JSON array: $list_body" >&2
+    exit 1
+    ;;
+esac
+# Filter exercise: status=running on a brand-new MemEvalStore returns either
+# the in-flight run or [] depending on race; either shape is acceptable.
+filter_body=$(curl -sf "$BASE/v1/eval-runs?status=cancelled&limit=5") \
+  || { echo "FAIL: GET eval-runs?status=cancelled" >&2; exit 1; }
+case "$filter_body" in [*]) echo "    → status filter returns array" ;; esac
+
+echo "  [23/24] task-15.5 GET /v1/queries (history; default limit 20)"
+queries_body=$(curl -sf "$BASE/v1/queries") \
+  || { echo "FAIL: GET queries" >&2; exit 1; }
+case "$queries_body" in
+  \[*\])
+    echo "    → queries list returned JSON array"
+    ;;
+  *)
+    echo "FAIL: queries response not a JSON array: $queries_body" >&2
+    exit 1
+    ;;
+esac
+
+echo "  [24/24] task-15.6 GET /v1/health?detailed=true (5 components)"
+detail_body=$(curl -sf "$BASE/v1/health?detailed=true") \
+  || { echo "FAIL: GET health?detailed=true" >&2; exit 1; }
+for name in db index embed retriever eval; do
+  echo "$detail_body" | grep -q "\"name\":\"$name\"" \
+    || { echo "FAIL: health detail missing component $name: $detail_body" >&2; exit 1; }
+done
+echo "    → 5 components (db/index/embed/retriever/eval) present ✅"
+# Verify default GET /v1/health stays binary (no components field).
+default_body=$(curl -sf "$BASE/v1/health")
+if echo "$default_body" | grep -q '"components"'; then
+  echo "FAIL: default /v1/health unexpectedly includes components field" >&2
+  exit 1
+fi
+echo "    → default /v1/health stays binary ✅"
+
 echo "  [end] GET /v1/observability/events"
 events_body=$(curl -sf "$BASE/v1/observability/events?wait=2s")
 # REAL mode: at least 1 indexing.progress event from the index job; LOCAL_ONLY:

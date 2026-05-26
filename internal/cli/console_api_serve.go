@@ -142,6 +142,7 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 		Events:    cli.Events(),
 		Memory:    cli.Memory(),
 		Eval:      cli.Eval(),
+		Health:    cli.Health(), // task-15.6 (Phase 15 P2 #7)
 	}, "grpc", func() { _ = cli.Close() }
 }
 
