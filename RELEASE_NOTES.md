@@ -1,5 +1,106 @@
 # ContextForge Release Notes
 
+## v0.8.0 (2026-05-26) — Console functional gap closure (6/11 backlog)
+
+### 摘要
+
+v0.8.0 minor release：closes 6 of 11 items raised in the ContextForge-Console PR #91/#93 backlog (P0 + P1 + P2#7). New Dashboard backend endpoints (chunks stats / eval-runs list / queries history), 5-link health detail (db / index / embed / retriever / eval), MemStore fallback drill-down fix, and the long-standing memory.* → EventBus bridge (Phase 13 [SPEC-DEFER:phase-future.memory-event-bus-bridge] lifted). Two new ADRs (020 / 021) promoted to Accepted.
+
+### Backlog items closed (6/11)
+
+| Item | Backlog signal | Solution | PR |
+|---|---|---|---|
+| **P0 #1** | MemStore inmem-fallback 503 on drill-down | task-15.1 — chunkCache + traceCache (FIFO cap=256) | #99 |
+| **P0 #2** | `memory.*` event 桥接 缺失 | task-15.2 (ADR-021) — `emit_audit` 同步追加 `EventBus.send` | #100 |
+| **P1 #3** | Dashboard "已索引块" 缺 backend | task-15.3 — `GET /v1/stats/chunks` (Tantivy `num_docs` + SQLite COUNT today) | #101 |
+| **P1 #4** | Eval 列表 缺 endpoint | task-15.4 — `GET /v1/eval-runs?workspace_id=&status=&limit=N` (ORDER DESC) | #102 |
+| **P1 #5** | Dashboard "最近查询" 缺 backend | task-15.5 — `GET /v1/queries?limit=N` (TraceStore.list wrapper) | #103 |
+| **P2 #7** | CoreHealthCard 5 链路 缺 | task-15.6 (ADR-020) — `GET /v1/health?detailed=true` (5 probes opt-in) | #104 |
+
+Remaining (deferred to Phase 16 / v0.9.0):
+- P2 #6 `MemoryItem.is_pinned` (needs ADR-015 D5 amendment — BREAKING window required)
+- P3 #8 ghcr.io image push — CI/CD pipeline work
+- P3 #9 docker-compose.production.yml example
+- P4 #10 TraceStore SQLite persistence (currently in-memory ring buffer)
+- P4 #11 `?wait=` real long-poll (currently batch polling — v0.7.2 cleanup already documented this)
+
+### 新增 ADR
+
+- **ADR-020 health-component-breakdown** (Accepted 2026-05-26): D1-D5 spelling out the 5 probes (db SQLite ping / index Tantivy open / embed config check / retriever top_k=1 / eval store open), add-only ComponentHealth schema, opt-in `?detailed=true`, aggregation rule (any unreachable → 503; any degraded → 200 + degraded), Console cross-repo coord.
+- **ADR-021 memory-event-bus-bridge** (Accepted 2026-05-26): D1-D4 — `emit_audit_and_event` shared path (no new channel), 3 new event_type string values (`memory.pin` / `memory.deprecate` / `memory.soft_delete`; pin/unpin share via payload `op`), field contract (severity=info, source=contextforge-core, trace_id/job_id None), best-effort emit with SendError swallowed.
+
+### Schema additions (all add-only, ADR-015 D1)
+
+- proto `console_data_plane.proto`:
+  - `SearchService.GetChunksStats` + `GetChunksStatsRequest` + `ChunksStats{total, today_delta}`
+  - `SearchService.ListQueries` + `ListQueriesRequest` + `ListQueriesResponse` + `QueryRecord{query_id, query, ts_unix, workspace_id}`
+  - `EvalService.List` + `ListEvalRunsRequest` + `ListEvalRunsResponse`
+  - new `HealthService.GetDetailed` + `ComponentHealth` + `DetailedHealthRequest` + `DetailedHealthResponse`
+- `internal/contractv1`:
+  - `ChunksStats`, `QueryRecord`, `ListEvalRunsFilter`, `ComponentHealth` Go structs
+  - `CoreHealth.Components map[string]ComponentHealth` (omitempty) + `CoreHealth.TotalLatencyMs *int64` (omitempty)
+- 既有 `RetrievalTrace` / `EvalRun` / `MemoryItem` 消息**完全不动** (ADR-015 D1 字段冻结保留)
+
+### 关键设计取舍
+
+- **task-15.5 TraceRecord wrapper**: 保留 `RetrievalTrace` 不动 (ADR-015 D1 freeze)，workspace_id + ts_unix 仅作 Rust-side metadata 储存在 `TraceStore.put` 内部；新 `QueryRecord` message 是这俩元数据的真承载
+- **task-15.6 synthesize fallback for nil HealthClient**: handleHealth 在 fallback / degraded 模式下 synthesize 5-component 全 healthy / 全 degraded，让 Console UI CoreHealthCard 永远拿到完整 5 key shape
+- **task-15.3 today_delta lexicographic SQLite compare**: 复用既有 `chunks.indexed_at TEXT NOT NULL` 列；`seconds_to_iso` (Howard Hinnant 算法，无 chrono dep) 生成 `YYYY-MM-DD HH:MM:SS` 格式 — lexicographic >= 与时序一致
+- **task-15.2 memory.pin / memory.unpin 合并 event_type**: payload_json `op` 区分；event_type 命名空间紧凑
+
+### ADR-014 cross-validation gate 第六次激活
+
+- D1 closeout PR (#105) body 含 Phase §6 ↔ Task §6 mapping 表 (7 行)
+- D2 lint `--touched origin/master`: 0 unannotated hits in PR-changed lines (Python equivalent 实测；bash 在 Windows 太慢)
+- D3 phase-15 §6 每条 AC 含 verified-by owner 显式
+- D4 governance: 主 agent 自治 §2A Ready review + R6 merge decision (cross-repo 字段仅 add-only)
+- D5 历史不溯改: Phase 1-14 spec 内容未触
+
+### Tests (cumulative E2-E7)
+
+- `cargo test --workspace`: 121 lib + 17 integration test files 全 PASS (Phase 11-14 既有不退化)
+- `go test ./...`: 22 packages 全 PASS (含 `test/conformance` 22-endpoint Console contract conformance 不退化)
+- `bash -n scripts/console_smoke.sh`: syntax OK; v6 24-step (既有 20 + 4 new for chunks-stats / eval-runs / queries / health-detail)
+- Smoke daemon-level CONSOLE_REAL_SMOKE_EXIT=0 留 v0.8.0 ship 前 manual / CI 实测
+
+### Upgrade path (v0.7.x → v0.8.0)
+
+**Console UI / SDK 用户** (v0.7.x 客户端继续工作):
+- 旧 client 解析 v0.8 JSON 自动忽略未知字段 (`Components` / `TotalLatencyMs` / new endpoint shapes) → zero migration
+- Console UI 启动 standby PR 后切到 v1.x：Dashboard 3 KPI / CoreHealthCard 5 链路 / Memory 操作历史 自动有数据
+
+**ContextForge daemon 升级**:
+- 二进制升级 v0.7.2 → v0.8.0 不破坏既有部署 (无 BREAKING)
+- Docker users: `docker pull contextforge-daemon:v0.8.0` — fallback 默认行为不变 (ADR-018 v0.7.2 决定继承)
+
+**新 endpoints opt-in 试用**:
+```bash
+# Dashboard 已索引块
+curl http://localhost:48181/v1/stats/chunks
+
+# Eval 最近评测
+curl 'http://localhost:48181/v1/eval-runs?limit=10'
+
+# Dashboard 最近查询
+curl 'http://localhost:48181/v1/queries?limit=20'
+
+# CoreHealthCard 5 链路
+curl 'http://localhost:48181/v1/health?detailed=true' | jq .components
+```
+
+### Rollback path
+
+若 v0.8.0 ship 后发现非预期问题：
+1. `git revert <v0.8.0 merge SHA>` 回退到 v0.7.2 (master HEAD `c3e6698^` 前一版本 `5264fd6`)
+2. ship v0.8.0.1 patch + 标 ADR-020 / ADR-021 status Superseded 或 Reverted
+3. 不撤回 v0.7.2 ADR-018 / v0.7.0 ADR-017 (跨版本独立)
+
+Cross-repo follow-up: 通知 Console 团队 v0.8.0 ship → Console UI standby PR (Dashboard 3 KPI 真接 + CoreHealthCard 5 链路 + Memory 操作历史)。
+
+详 [docs/releases/v0.8.0-evidence.md](docs/releases/v0.8.0-evidence.md) + [v0.8.0-artifacts.md](docs/releases/v0.8.0-artifacts.md)。
+
+---
+
 ## v0.7.2 (2026-05-26) — fallback-inmem default reversal ⚠️ BREAKING
 
 ### 摘要

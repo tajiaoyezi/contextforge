@@ -7,6 +7,26 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.8.0
+
+🎯 **Console functional gap closure** — closes 6/11 backlog items raised by the Console team (Console PR #91/#93) covering P0 fallback / memory event bridge + P1 Dashboard backend endpoints + P2 5-link health detail. Console UI Dashboard 3 KPI cards and CoreHealthCard now have backend data; Memory 详情面板 "操作历史" 列表 auto-populates via the new memory.* event stream.
+
+- **Phase 15 console-functional-gap-closure** (ADR-020 / ADR-021) — 6 task PRs (#99-#104) + closeout PR (#105). Includes:
+  - **task-15.1** MemStore chunk/trace cache — `CONSOLE_API_FALLBACK_INMEM=1` mode no longer 503s on drill-down `GET /v1/source-chunks/<id>` / `GET /v1/search/<query_id>/trace` (cache the stub Search emits)
+  - **task-15.2 (ADR-021)** memory.* → EventBus bridge — `memory.pin` / `memory.deprecate` / `memory.soft_delete` events broadcast to `/v1/observability/events` stream
+  - **task-15.3** `GET /v1/stats/chunks` — `{total, today_delta}` for Dashboard "已索引块" KPI
+  - **task-15.4** `GET /v1/eval-runs` (list) — filter by `?workspace_id=&status=&limit=N`, ORDER BY started_at DESC
+  - **task-15.5** `GET /v1/queries` — query history from in-memory trace store, default limit 20
+  - **task-15.6 (ADR-020)** `GET /v1/health?detailed=true` — opt-in 5-component breakdown (db / index / embed / retriever / eval)
+- **ADR-015 D1 add-only**: All proto / Go schema changes purely additive — Console v0.7.x clients reading v0.8 responses silently ignore the new fields; existing 22-endpoint conformance test PASS (no regression).
+- **ADR-014 cross-validation gate 6th activation** — D1 mapping table + D2 lint 0 hits + D3 verified-by + D4/D5 governance — see PR #105 body.
+- **ADR-020 / ADR-021 Accepted** (2026-05-26, Phase 15 closeout PR #105).
+
+Remaining Console backlog (deferred to Phase 16 / v0.9.0):
+- P2 #6 `MemoryItem.is_pinned` (ADR-015 D5 amendment) · P3 #8 ghcr.io image push · P3 #9 docker-compose.production.yml example · P4 #10 TraceStore SQLite persist · P4 #11 `?wait=` real long-poll.
+
+详 `RELEASE_NOTES.md` v0.8.0 段 + [ADR-020](docs/decisions/adr-020-health-component-breakdown.md) + [ADR-021](docs/decisions/adr-021-memory-event-bus-bridge.md)。
+
 ## What's new in v0.7.2
 
 ⚠️ **BREAKING — fallback-inmem default reversal** (ADR-018):
