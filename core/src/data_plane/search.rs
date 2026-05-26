@@ -14,7 +14,8 @@ use tonic::{Request, Response, Status};
 use crate::pb_console::search_service_server::SearchService;
 use crate::pb_console::{
     ChunksStats as PbChunksStats, Citation as PbCitation, GetChunksStatsRequest,
-    GetSearchTraceRequest, GetSourceChunkRequest, RetrievalTrace as PbRetrievalTrace,
+    GetSearchTraceRequest, GetSourceChunkRequest, ListQueriesRequest, ListQueriesResponse,
+    QueryRecord as PbQueryRecord, RetrievalTrace as PbRetrievalTrace,
     SearchRequest as PbSearchRequest, SearchResponse, SearchResultItem, SourceChunk as PbSourceChunk,
 };
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
@@ -27,10 +28,21 @@ use super::DataPlaneStores;
 /// loses entries [SPEC-DEFER:task-future.search-trace-sqlite-persistence].
 const TRACE_STORE_CAP: usize = 1000;
 
+/// task-15.5 (Phase 15 P1 #5): wrapped trace record. PbRetrievalTrace itself
+/// lacks workspace_id / ts_unix per ADR-015 D1 field freeze; we keep those as
+/// out-of-band metadata in the trace store so QueryRecord can be built for
+/// ListQueries without amending the contract message.
+#[derive(Clone)]
+struct TraceRecord {
+    trace: PbRetrievalTrace,
+    workspace_id: String,
+    ts_unix: i64,
+}
+
 /// LRU-FIFO trace store: HashMap for O(1) lookup + VecDeque for insertion-order
 /// eviction. Newer inserts of an existing key refresh recency by re-pushing.
 struct TraceStore {
-    map: HashMap<String, PbRetrievalTrace>,
+    map: HashMap<String, TraceRecord>,
     order: VecDeque<String>,
     cap: usize,
 }
@@ -44,7 +56,13 @@ impl TraceStore {
         }
     }
 
-    fn put(&mut self, key: String, value: PbRetrievalTrace) {
+    fn put(
+        &mut self,
+        key: String,
+        trace: PbRetrievalTrace,
+        workspace_id: String,
+        ts_unix: i64,
+    ) {
         if self.map.contains_key(&key) {
             // Refresh recency: remove old position, push to back.
             if let Some(pos) = self.order.iter().position(|k| k == &key) {
@@ -57,11 +75,37 @@ impl TraceStore {
             }
         }
         self.order.push_back(key.clone());
-        self.map.insert(key, value);
+        self.map.insert(
+            key,
+            TraceRecord {
+                trace,
+                workspace_id,
+                ts_unix,
+            },
+        );
     }
 
     fn get(&self, key: &str) -> Option<PbRetrievalTrace> {
-        self.map.get(key).cloned()
+        self.map.get(key).map(|r| r.trace.clone())
+    }
+
+    /// task-15.5: list the most-recent N query records (DESC by insertion
+    /// order via VecDeque reverse iteration). `limit` is clamped 1..=100.
+    fn list(&self, limit: usize) -> Vec<PbQueryRecord> {
+        let lim = limit.clamp(1, 100);
+        self.order
+            .iter()
+            .rev()
+            .take(lim)
+            .filter_map(|key| {
+                self.map.get(key).map(|rec| PbQueryRecord {
+                    query_id: key.clone(),
+                    query: rec.trace.query.clone(),
+                    ts_unix: rec.ts_unix,
+                    workspace_id: rec.workspace_id.clone(),
+                })
+            })
+            .collect()
     }
 
     #[cfg(test)]
@@ -204,9 +248,15 @@ impl SearchService for SearchServer {
             retrieved_chunks: chunks,
         };
 
-        // task-12.3: persist trace by query_id for later GetSearchTrace lookup.
+        // task-12.3 / task-15.5: persist trace + metadata by query_id for later
+        // GetSearchTrace lookup and ListQueries history listing.
         if let Ok(mut store) = self.trace_store.lock() {
-            store.put(query_id, trace.clone());
+            store.put(
+                query_id.clone(),
+                trace.clone(),
+                req.workspace_id.clone(),
+                now_unix(),
+            );
         }
 
         Ok(Response::new(SearchResponse {
@@ -302,6 +352,28 @@ impl SearchService for SearchServer {
                 req.query_id
             ))),
         }
+    }
+
+    /// task-15.5 (Phase 15 P1 #5): query history list. Returns most-recent N
+    /// `QueryRecord` entries from the in-memory trace store. Limit default 20,
+    /// clamped 1..=100 server-side. Daemon restart wipes the store — same
+    /// trade-off as get_search_trace ([SPEC-DEFER:task-future.search-trace-sqlite-persistence]).
+    async fn list_queries(
+        &self,
+        req: Request<ListQueriesRequest>,
+    ) -> Result<Response<ListQueriesResponse>, Status> {
+        let inner = req.into_inner();
+        let limit = if inner.limit <= 0 {
+            20usize
+        } else {
+            inner.limit as usize
+        };
+        let store = self
+            .trace_store
+            .lock()
+            .map_err(|_| Status::internal("trace_store poisoned"))?;
+        let records = store.list(limit);
+        Ok(Response::new(ListQueriesResponse { records }))
     }
 
     /// task-15.3 (Phase 15 P1 #3): cross-workspace chunks stats.
@@ -414,6 +486,14 @@ fn trace_seq() -> u128 {
         .unwrap_or(0)
 }
 
+/// task-15.5: seconds-since-epoch helper for QueryRecord.ts_unix.
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -488,7 +568,12 @@ mod tests {
             .trace_store
             .lock()
             .unwrap()
-            .put("qry-test-1".into(), synthetic.clone());
+            .put(
+                "qry-test-1".into(),
+                synthetic.clone(),
+                "ws-test".into(),
+                1_700_000_000,
+            );
         let resp = server
             .get_search_trace(Request::new(GetSearchTraceRequest {
                 query_id: "qry-test-1".into(),
@@ -571,6 +656,8 @@ mod tests {
                     final_context_count: 0,
                     retrieved_chunks: vec![],
                 },
+                "ws-test".into(),
+                1_700_000_000 + i as i64,
             );
         }
         assert_eq!(store.len(), 3);
@@ -580,6 +667,76 @@ mod tests {
         assert!(store.get("qry-2").is_some());
         assert!(store.get("qry-3").is_some());
         assert!(store.get("qry-4").is_some());
+    }
+
+    // task-15.5 (Phase 15 P1 #5): TraceStore.list + SearchServer.list_queries tests.
+    #[test]
+    fn test_trace_store_list_returns_recent_first() {
+        let mut store = TraceStore::new(10);
+        for i in 0..5 {
+            store.put(
+                format!("qry-{i}"),
+                PbRetrievalTrace {
+                    trace_id: format!("trace-{i}"),
+                    query: format!("q{i}"),
+                    expanded_query: None,
+                    candidate_generation_steps: vec![],
+                    lexical_candidates_count: 0,
+                    vector_candidates_count: 0,
+                    rerank_steps: vec![],
+                    scope_filter_result: "".into(),
+                    final_context_count: 0,
+                    retrieved_chunks: vec![],
+                },
+                "ws".into(),
+                1_700_000_000 + i as i64,
+            );
+        }
+        let recs = store.list(3);
+        assert_eq!(recs.len(), 3);
+        // Most recent (qry-4) first.
+        assert_eq!(recs[0].query_id, "qry-4");
+        assert_eq!(recs[1].query_id, "qry-3");
+        assert_eq!(recs[2].query_id, "qry-2");
+        // ts_unix carries over.
+        assert_eq!(recs[0].ts_unix, 1_700_000_004);
+    }
+
+    #[test]
+    fn test_trace_store_list_clamps_limit() {
+        let mut store = TraceStore::new(10);
+        store.put(
+            "q1".into(),
+            PbRetrievalTrace {
+                trace_id: "t1".into(),
+                query: "hi".into(),
+                expanded_query: None,
+                candidate_generation_steps: vec![],
+                lexical_candidates_count: 0,
+                vector_candidates_count: 0,
+                rerank_steps: vec![],
+                scope_filter_result: "".into(),
+                final_context_count: 0,
+                retrieved_chunks: vec![],
+            },
+            "ws".into(),
+            1_700_000_000,
+        );
+        // 0 → clamp to at least 1; 500 → clamp to 100 (but store only has 1).
+        let one = store.list(0);
+        assert_eq!(one.len(), 1);
+        let big = store.list(500);
+        assert_eq!(big.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_queries_rpc_default_limit_returns_empty() {
+        let server = fresh_server();
+        let resp = server
+            .list_queries(Request::new(ListQueriesRequest { limit: 0 }))
+            .await
+            .expect("list_queries ok");
+        assert!(resp.into_inner().records.is_empty());
     }
 
     #[tokio::test]

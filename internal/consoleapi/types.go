@@ -69,6 +69,9 @@ type SearchClient interface {
 	// task-15.3 (Phase 15 P1 #3): chunks stats for Dashboard "已索引块"
 	// indicator. workspaceID empty = cross-workspace aggregate.
 	GetChunksStats(workspaceID string) (contractv1.ChunksStats, error)
+	// task-15.5 (Phase 15 P1 #5): query history for Dashboard "最近查询"
+	// panel. limit ≤ 0 → server default 20; max 100.
+	ListQueries(limit int) ([]contractv1.QueryRecord, error)
 }
 
 // EventsClient backs GET /v1/observability/events.

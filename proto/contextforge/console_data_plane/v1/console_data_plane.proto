@@ -243,11 +243,29 @@ message ChunksStats {
   int64 today_delta = 2;
 }
 
+// task-15.5 (Phase 15 P1 #5): Dashboard "最近查询" panel — query history list
+// drawn from the in-memory trace store (task-12.3). limit default 20, max 100.
+message ListQueriesRequest {
+  int32 limit = 1;  // 0 = default 20; clamped to [1, 100]
+}
+
+message QueryRecord {
+  string query_id = 1;
+  string query = 2;
+  int64 ts_unix = 3;
+  string workspace_id = 4;
+}
+
+message ListQueriesResponse {
+  repeated QueryRecord records = 1;
+}
+
 service SearchService {
   rpc Query(SearchRequest) returns (SearchResponse);
   rpc GetSourceChunk(GetSourceChunkRequest) returns (SourceChunk);
   rpc GetSearchTrace(GetSearchTraceRequest) returns (RetrievalTrace);
   rpc GetChunksStats(GetChunksStatsRequest) returns (ChunksStats);  // task-15.3 add-only
+  rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse);  // task-15.5 add-only
 }
 
 // =====================================================================

@@ -363,6 +363,61 @@ func TestGetSearchTrace_503_WhenFallback(t *testing.T) {
 }
 
 // =====================================================================
+// task-15.5 (Phase 15 P1 #5) — GET /v1/queries (query history) endpoint.
+// =====================================================================
+
+// TestHandleListQueries_DefaultLimit_EmptyMemStore — fresh MemStore has no
+// traceCache entries → []; default limit applies.
+func TestHandleListQueries_DefaultLimit_EmptyMemStore(t *testing.T) {
+	router, _ := newTestRouter(t, "")
+	req := httptest.NewRequest("GET", "/v1/queries", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var records []contractv1.QueryRecord
+	if err := json.Unmarshal(w.Body.Bytes(), &records); err != nil {
+		t.Fatalf("unmarshal QueryRecord: %v body=%s", err, w.Body.String())
+	}
+	if len(records) != 0 {
+		t.Errorf("expected empty list; got %d", len(records))
+	}
+}
+
+// TestHandleListQueries_AfterSearch_HasEntry — POST /v1/search populates
+// traceCache; GET /v1/queries surfaces the QueryRecord.
+func TestHandleListQueries_AfterSearch_HasEntry(t *testing.T) {
+	router, store := newTestRouter(t, "")
+	// First call Search to populate traceCache via MemStore stub path.
+	_, _, err := store.Search(contractv1.SearchRequest{
+		Query:           "find config",
+		WorkspaceID:     "ws-1",
+		RetrievalMethod: "bm25",
+	})
+	if err != nil {
+		t.Fatalf("seed Search: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/v1/queries?limit=5", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var records []contractv1.QueryRecord
+	_ = json.Unmarshal(w.Body.Bytes(), &records)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record; got %d", len(records))
+	}
+	if records[0].Query != "find config" {
+		t.Errorf("expected query='find config'; got %q", records[0].Query)
+	}
+	if records[0].QueryID == "" {
+		t.Errorf("expected non-empty query_id")
+	}
+}
+
+// =====================================================================
 // task-15.4 (Phase 15 P1 #4) — GET /v1/eval-runs (list) endpoint.
 // =====================================================================
 
