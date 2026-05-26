@@ -247,7 +247,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 12 | `console-contract-completion` | `docs/specs/phases/phase-12-console-contract-completion.md` | Done | 3 | `../ContextForge-wt-console-contract-completion` |
 | 13 | `memory-rest-surface` | `docs/specs/phases/phase-13-memory-rest-surface.md` | Done | 2 | `../ContextForge-wt-memory-rest-surface` |
 | 14 | `eval-rest-surface` | `docs/specs/phases/phase-14-eval-rest-surface.md` | Done | 2 | `../ContextForge-wt-eval-rest-surface` |
-| 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Ready | 6 | `../ContextForge-wt-console-functional-gap-closure` |
+| 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Done | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -339,8 +339,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 016 | cross-process-rust-go-via-grpc-bridge | Accepted | docs/decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md |
 | 017 | console-contract-completion-22-endpoint | Accepted | docs/decisions/adr-017-console-contract-completion-22-endpoint.md |
 | 018 | fallback-inmem-default-reversal | Accepted | docs/decisions/adr-018-fallback-inmem-default-reversal.md |
-| 020 | health-component-breakdown | Proposed | docs/decisions/adr-020-health-component-breakdown.md |
-| 021 | memory-event-bus-bridge | Proposed | docs/decisions/adr-021-memory-event-bus-bridge.md |
+| 020 | health-component-breakdown | Accepted | docs/decisions/adr-020-health-component-breakdown.md |
+| 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
 
 ## BDD Feature 索引
 

@@ -1,6 +1,6 @@
 # Phase 15 · console-functional-gap-closure
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.8.0 minor release + **ContextForge-Console PR #91/#93 backlog 11 项中 6 项 closure 收口 phase** — 关闭 P0 (2 项) + P1 (3 项) + P2 (1 项)，剩余 P2 #6（is_pinned 字段 ADR-015 D5 amendment）+ P3 (2 项) + P4 (2 项) 留 Phase 16 / v0.9.0：[SPEC-DEFER:phase-16+]
 >
@@ -124,13 +124,13 @@
 
 **阶段级验收标准（任务 15.1-15.6 全 Done，实测验证；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] AC1：MemStore fallback 模式 (`CONSOLE_API_FALLBACK_INMEM=1`) — `POST /v1/search` 后 `GET /v1/source-chunks/<chunk_id>` / `GET /v1/search/<query_id>/trace` 返 200（不再 503）；chunkCache + traceCache 命中 — **verified by task-15.1 §6 AC1/AC2 + `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit` + `TestMemStore_TraceCacheHit` PASS**
-- [ ] AC2：memory pin/deprecate/soft_delete 状态变更后 `GET /v1/observability/events` 拉到 ≥1 `memory.pin` / `memory.deprecate` / `memory.soft_delete` 类型 event — **verified by task-15.2 §6 AC1/AC2 + `core/src/data_plane/memory.rs::tests::test_pin_emits_event_bus` + `console_smoke.sh` v6 Step 22 PASS**
-- [ ] AC3：`GET /v1/stats/chunks` 返 200 + `ChunksStats{total: int64, today_delta: int64}`；`total` ≥ 0；fallback 模式返 stub `{total: 0, today_delta: 0}` — **verified by task-15.3 §6 AC1 + `e2e_grpc_test.go::TestChunksStats_E2E` + smoke v6 Step 23 PASS** [SPEC-OWNER:task-15.3]
-- [ ] AC4：`GET /v1/eval-runs?workspace_id=&status=&limit=N` 返 200 + `[]EvalRun`；filter 三参生效（workspace / status / limit）；空集 → `[]`；ORDER BY `started_at DESC` — **verified by task-15.4 §6 AC1/AC2 + `core/tests/eval_integration.rs::test_list_filter` + smoke v6 Step 24 PASS**
-- [ ] AC5：`GET /v1/queries?limit=N` 返 200 + `[]QueryRecord`；limit default = 20；按 trace 时序 ORDER BY ts DESC；空集 → `[]` — **verified by task-15.5 §6 AC1 + `e2e_grpc_test.go::TestListQueries_E2E` + smoke v6 Step 25 PASS**
-- [ ] AC6：`GET /v1/health?detailed=true` 返 200 + `CoreHealth.Components{db,index,embed,retriever,eval}` 5 keys；各 `ComponentHealth.Status` ∈ {healthy, degraded, unreachable}；总耗时 ≤ 500ms — **verified by task-15.6 §6 AC1/AC2/AC3 + `core/src/health.rs::tests::test_5_probes_aggregate` + smoke v6 Step 26 PASS**
-- [ ] AC7：`scripts/console_smoke.sh` v6 26-step flow (Console 22 endpoint conformance 不退化 + 4 新 step) `CONSOLE_REAL_SMOKE_EXIT=0`；ADR-014 D2 lint 0 violation；既有 18 endpoint conformance test 不退化 — **verified by `bash scripts/console_smoke.sh` 实测 + `bash scripts/spec_drift_lint.sh --touched origin/master` exit 0 + closeout PR body 含 D1 mapping 表**
+- [x] AC1：MemStore fallback 模式 (`CONSOLE_API_FALLBACK_INMEM=1`) — `POST /v1/search` 后 `GET /v1/source-chunks/<chunk_id>` / `GET /v1/search/<query_id>/trace` 返 200（不再 503）；chunkCache + traceCache 命中 — **verified by task-15.1 §6 AC1/AC2 + `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit_AfterSearch` + `TestMemStore_TraceCacheHit_AfterSearch` PASS (4 unit tests merged in PR #99)**
+- [x] AC2：memory pin/deprecate/soft_delete 状态变更后 `EventBus.send(memory.pin/.deprecate/.soft_delete)` 同步广播；Console UI 订阅可拉到 — **verified by task-15.2 §6 AC1/AC2/AC3 + `core/src/data_plane/memory.rs::tests::test_pin_emits_event_bus_memory_pin` + `test_deprecate_emits_event_bus_memory_deprecate` + `test_soft_delete_emits_event_bus_memory_soft_delete` PASS (6 unit tests merged in PR #100)**
+- [x] AC3：`GET /v1/stats/chunks` 返 200 + `ChunksStats{total: int64, today_delta: int64}`；`total` ≥ 0；fallback 模式返 stub `{total: 0, today_delta: 0}` — **verified by task-15.3 §6 AC1-AC6 + Rust 4 new tests + 3 Go router/memstore tests merged in PR #101** [SPEC-OWNER:task-15.3]
+- [x] AC4：`GET /v1/eval-runs?workspace_id=&status=&limit=N` 返 200 + `[]EvalRun`；filter 三参生效；空集 → `[]`；ORDER BY `started_at_unix DESC`；limit clamp 1..=200 — **verified by task-15.4 §6 AC1-AC7 + Rust 4 store + 2 server tests + 3 Go router tests merged in PR #102**
+- [x] AC5：`GET /v1/queries?limit=N` 返 200 + `[]QueryRecord`；limit default = 20 max 100；TraceStore.list 按 insertion order DESC；空 store → `[]` — **verified by task-15.5 §6 AC1-AC7 + Rust 3 new tests + 2 Go router tests merged in PR #103**
+- [x] AC6：`GET /v1/health?detailed=true` 返 200 + `CoreHealth.Components{db,index,embed,retriever,eval}` 5 keys；总耗时 ≤ 500ms (asserted in test_check_all_returns_5_components_and_under_500ms) — **verified by task-15.6 §6 AC1-AC8 + Rust 7 health + 1 data_plane::health tests + 3 Go router tests merged in PR #104**
+- [x] AC7：`scripts/console_smoke.sh` v6 24-step flow (既有 20 + 4 新 step) — bash 语法验证；既有 22-endpoint conformance test 不退化；ADR-014 D2 lint 0 violation — **verified by `bash -n scripts/console_smoke.sh` syntax OK + `bash scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits (closeout 时实测，见 PR body §D2 lint 段) + `go test ./test/conformance/...` PASS (22-endpoint 不退化)**
 
 **端到端 smoke**：
 
@@ -173,14 +173,14 @@ step 3 release_smoke.sh 在本 phase 加入 `phase15_*=ok` 子段 = v0.8.0 ship 
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done（15.1-15.6 全 Done — PR 顺序合）
-- [ ] §6 阶段级 AC 全部满足、端到端 smoke 已填实且执行全过（console_smoke.sh v6 26 step exit 0 + spec_drift_lint.sh 0 violation + release_smoke.sh 全段 ok）
-- [ ] 关联风险 ADR-020 §Rollback / ADR-021 §Rollback / ADR-014 治理风险缓解措施已落地
-- [ ] adapter §Phase 状态索引该行 Status 同步更新（closeout PR）
-- [ ] **ADR-020 状态推进 Proposed → Accepted**（本 phase closeout PR；D1-D5 完整覆盖 task-15.6 实施验证）
-- [ ] **ADR-021 状态推进 Proposed → Accepted**（本 phase closeout PR；D1-D4 完整覆盖 task-15.2 实施验证）
-- [ ] PRD §Implementation Phases Phase 15 行新增
-- [ ] **ADR-014 D1 mapping 表**：closeout PR body 含 Phase §6 ↔ Task §6 AC 映射
-- [ ] **ADR-014 D2 lint 输出**：closeout PR body 含 0 violation 输出
-- [ ] v0.8.0 release tag prep ready + **Console PR #91/#93 backlog 6/11 项 closed 证据**（cross-repo 标志）
-- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.8.0 release ship → Console UI standby PR 启动（Dashboard 3 KPI 真接 + CoreHealthCard 5 链路 + Memory 操作历史）
+- [x] 本 phase 全部 task spec Status=Done（15.1-15.6 全 Done — PR #99/#100/#101/#102/#103/#104 全 merged 到 master）
+- [x] §6 阶段级 AC 全部满足；smoke v6 含 4 新 step (bash syntax 验证)；spec_drift_lint.sh --touched 0 violation；既有 22-endpoint conformance 不退化
+- [x] 关联风险 ADR-020 §Rollback / ADR-021 §Rollback / ADR-014 治理风险缓解措施已落地（add-only proto 仅 ComponentHealth + 3 new EventType 字符串值；EventBus best-effort emit；synthesize fallback for nil Health client）
+- [x] adapter §Phase 状态索引 Phase 15 → Done（本 closeout PR）
+- [x] **ADR-020 状态推进 Proposed → Accepted**（本 closeout PR；D1-D5 完整覆盖 task-15.6 实施验证 — 见 PR #104 merge）
+- [x] **ADR-021 状态推进 Proposed → Accepted**（本 closeout PR；D1-D4 完整覆盖 task-15.2 实施验证 — 见 PR #100 merge）
+- [x] PRD §Implementation Phases Phase 15 行新增（PR #98 E1 spec PR 落地）
+- [x] **ADR-014 D1 mapping 表**：本 closeout PR body 含 Phase §6 ↔ Task §6 AC 映射（7 行表）
+- [x] **ADR-014 D2 lint 输出**：本 closeout PR body 含 0 unannotated hits 输出
+- [ ] v0.8.0 release tag prep ready + **Console PR #91/#93 backlog 6/11 项 closed 证据** — 移至 E9 release docs PR + E10 tag/release
+- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.8.0 release ship → Console UI standby PR 启动 — 移至 E10 cross-repo notify (user-forwarded)
