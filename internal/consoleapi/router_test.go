@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
 )
@@ -358,6 +359,110 @@ func TestGetSearchTrace_503_WhenFallback(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"code":"SERVICE_UNAVAILABLE"`) {
 		t.Errorf("expected SERVICE_UNAVAILABLE; got %s", w.Body.String())
+	}
+}
+
+// =====================================================================
+// task-15.4 (Phase 15 P1 #4) — GET /v1/eval-runs (list) endpoint.
+// =====================================================================
+
+// TestHandleListEvalRuns_DefaultLimit_EmptyMemStore — MemEvalStore newly
+// created returns []; ?limit defaults to 50 server-side; response is JSON [].
+func TestHandleListEvalRuns_DefaultLimit_EmptyMemStore(t *testing.T) {
+	memEval := NewMemEvalStore()
+	deps := Deps{
+		Workspace: WorkspaceAdapter{S: NewMemStore()},
+		Job:       JobAdapter{S: NewMemStore()},
+		Search:    NewMemStore(),
+		Events:    NewMemStore(),
+		Memory:    NewMemMemoryStore(),
+		Eval:      memEval,
+		AuthToken: "",
+	}
+	router := NewRouter(deps)
+	req := httptest.NewRequest("GET", "/v1/eval-runs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var runs []contractv1.EvalRun
+	if err := json.Unmarshal(w.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, w.Body.String())
+	}
+	if len(runs) != 0 {
+		t.Errorf("expected empty list; got %d entries", len(runs))
+	}
+}
+
+// TestHandleListEvalRuns_AfterCreate_OrderedDesc — POST 2 eval runs via
+// MemEvalStore, then GET /v1/eval-runs and verify the response is non-empty
+// and ordered most-recent-first.
+func TestHandleListEvalRuns_AfterCreate_OrderedDesc(t *testing.T) {
+	memEval := NewMemEvalStore()
+	// Create 2 eval runs with a slight delay so StartedAt differs.
+	_, err := memEval.Create(contractv1.EvalRunCreate{WorkspaceID: "ws-1", DatasetRef: "/tmp/ds"})
+	if err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	_, err = memEval.Create(contractv1.EvalRunCreate{WorkspaceID: "ws-1", DatasetRef: "/tmp/ds"})
+	if err != nil {
+		t.Fatalf("second Create: %v", err)
+	}
+	deps := Deps{
+		Workspace: WorkspaceAdapter{S: NewMemStore()},
+		Job:       JobAdapter{S: NewMemStore()},
+		Search:    NewMemStore(),
+		Events:    NewMemStore(),
+		Memory:    NewMemMemoryStore(),
+		Eval:      memEval,
+		AuthToken: "",
+	}
+	router := NewRouter(deps)
+	req := httptest.NewRequest("GET", "/v1/eval-runs?limit=5", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var runs []contractv1.EvalRun
+	if err := json.Unmarshal(w.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs; got %d", len(runs))
+	}
+	if !runs[0].StartedAt.After(runs[1].StartedAt) {
+		t.Errorf("expected newest first; got [0]=%v [1]=%v", runs[0].StartedAt, runs[1].StartedAt)
+	}
+}
+
+// TestHandleListEvalRuns_StatusFilter — verify the ?status query is honored
+// by MemEvalStore (running stays, succeeded run also exists after stub timer).
+func TestHandleListEvalRuns_StatusFilter(t *testing.T) {
+	memEval := NewMemEvalStore()
+	_, _ = memEval.Create(contractv1.EvalRunCreate{WorkspaceID: "ws-1"})
+	deps := Deps{
+		Workspace: WorkspaceAdapter{S: NewMemStore()},
+		Job:       JobAdapter{S: NewMemStore()},
+		Search:    NewMemStore(),
+		Events:    NewMemStore(),
+		Memory:    NewMemMemoryStore(),
+		Eval:      memEval,
+		AuthToken: "",
+	}
+	router := NewRouter(deps)
+	req := httptest.NewRequest("GET", "/v1/eval-runs?status=cancelled", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d body=%s", w.Code, w.Body.String())
+	}
+	var runs []contractv1.EvalRun
+	_ = json.Unmarshal(w.Body.Bytes(), &runs)
+	if len(runs) != 0 {
+		t.Errorf("expected empty list for status=cancelled; got %d", len(runs))
 	}
 }
 

@@ -16,11 +16,15 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use crate::eval::{CaseResult as RustCaseResult, EvalRun as RustEvalRun, EvalRunCreate, EvalStoreError};
+use crate::eval::{
+    CaseResult as RustCaseResult, EvalRun as RustEvalRun, EvalRunCreate, EvalStoreError,
+    ListEvalRunsFilter,
+};
 use crate::pb_console::eval_service_server::EvalService;
 use crate::pb_console::{
     CaseResult as PbCaseResult, CreateEvalRunRequest, EvalRun as PbEvalRun, GetEvalRunRequest,
-    UpdateEvalRunProgressRequest, UpdateEvalRunProgressResponse,
+    ListEvalRunsRequest, ListEvalRunsResponse, UpdateEvalRunProgressRequest,
+    UpdateEvalRunProgressResponse,
 };
 
 use super::DataPlaneStores;
@@ -171,6 +175,41 @@ impl EvalService for EvalServer {
         }
         Ok(Response::new(UpdateEvalRunProgressResponse {}))
     }
+
+    /// task-15.4 (Phase 15 P1 #4): list eval runs filtered by workspace_id /
+    /// status with ORDER BY started_at DESC. `limit=0` falls back to default 50;
+    /// values are clamped 1..=200 inside SqliteEvalStore::list.
+    async fn list(
+        &self,
+        req: Request<ListEvalRunsRequest>,
+    ) -> Result<Response<ListEvalRunsResponse>, Status> {
+        let req = req.into_inner();
+        let store = self
+            .stores
+            .eval
+            .as_ref()
+            .ok_or_else(|| Status::failed_precondition("eval store not configured"))?;
+        let workspace_id = if req.workspace_id.is_empty() {
+            None
+        } else {
+            Some(req.workspace_id)
+        };
+        let status = if req.status.is_empty() {
+            None
+        } else {
+            Some(req.status)
+        };
+        let limit = if req.limit <= 0 { 50 } else { req.limit as i64 };
+        let runs = store
+            .list(ListEvalRunsFilter {
+                workspace_id,
+                status,
+                limit,
+            })
+            .map_err(eval_err_to_status)?;
+        let pb_runs: Vec<PbEvalRun> = runs.into_iter().map(run_to_pb).collect();
+        Ok(Response::new(ListEvalRunsResponse { runs: pb_runs }))
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +275,50 @@ mod tests {
             .await
             .expect_err("expect not_found");
         assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    // task-15.4 (Phase 15 P1 #4): EvalServer.list RPC tests.
+    #[tokio::test]
+    async fn test_eval_server_list_returns_empty_when_no_rows() {
+        let (server, _) = fresh_server();
+        let resp = server
+            .list(Request::new(ListEvalRunsRequest {
+                workspace_id: "".into(),
+                status: "".into(),
+                limit: 10,
+            }))
+            .await
+            .expect("list ok");
+        assert!(resp.into_inner().runs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_eval_server_list_filters_by_workspace_id() {
+        let (server, _) = fresh_server();
+        for (id, ws) in &[("a1", "ws-a"), ("b1", "ws-b"), ("a2", "ws-a")] {
+            server
+                .create(Request::new(CreateEvalRunRequest {
+                    eval_run_id: format!("er-{id}"),
+                    workspace_id: (*ws).into(),
+                    config_snapshot_json: "{}".into(),
+                    dataset_ref: "".into(),
+                }))
+                .await
+                .unwrap();
+        }
+        let resp = server
+            .list(Request::new(ListEvalRunsRequest {
+                workspace_id: "ws-a".into(),
+                status: "".into(),
+                limit: 0, // exercise default
+            }))
+            .await
+            .expect("list ok");
+        let runs = resp.into_inner().runs;
+        assert_eq!(runs.len(), 2);
+        for r in &runs {
+            assert_eq!(r.workspace_id, "ws-a");
+        }
     }
 
     #[tokio::test]

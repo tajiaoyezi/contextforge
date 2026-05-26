@@ -10,4 +10,4 @@ pub mod runner;
 pub mod store;
 
 pub use runner::EvalRunner;
-pub use store::{CaseResult, EvalRun, EvalRunCreate, EvalStoreError, SqliteEvalStore};
+pub use store::{CaseResult, EvalRun, EvalRunCreate, EvalStoreError, ListEvalRunsFilter, SqliteEvalStore};

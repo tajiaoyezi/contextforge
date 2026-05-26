@@ -659,6 +659,37 @@ func (s *MemEvalStore) UpdateProgress(id, status string, metrics map[string]floa
 	return nil
 }
 
+// List returns eval runs ordered by started_at DESC, optionally filtered by
+// workspace_id / status. Limit ≤ 0 defaults to 50; > 200 clamped. task-15.4.
+func (s *MemEvalStore) List(filter contractv1.ListEvalRunsFilter) ([]contractv1.EvalRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]contractv1.EvalRun, 0, len(s.runs))
+	for _, run := range s.runs {
+		if filter.WorkspaceID != "" && run.WorkspaceID != filter.WorkspaceID {
+			continue
+		}
+		if filter.Status != "" && run.Status != filter.Status {
+			continue
+		}
+		out = append(out, run)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].StartedAt.After(out[j].StartedAt)
+	})
+	limit := int(filter.Limit)
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 // workspaceIDFromName derives a deterministic kebab-case-ish id from name.
 // Trade-off: v0.3 simple slug; v0.4 may move to UUID + persistence.
 func workspaceIDFromName(name string, salt int) string {

@@ -95,7 +95,8 @@ type MemoryClient interface {
 	SoftDelete(memoryID string) error
 }
 
-// EvalClient backs POST /v1/eval-runs + GET /v1/eval-runs/{id} (task-14.2 / ADR-017 D1 Wave 4).
+// EvalClient backs POST /v1/eval-runs + GET /v1/eval-runs/{id} (task-14.2 / ADR-017 D1 Wave 4)
+// + GET /v1/eval-runs (task-15.4 / Phase 15 P1 #4 list).
 // UpdateProgress is the runEvalAsync goroutine callback — not exposed in
 // Console contract v1 22-endpoint surface.
 type EvalClient interface {
@@ -103,6 +104,8 @@ type EvalClient interface {
 	Get(evalRunID string) (*contractv1.EvalRun, error) // nil if not found
 	UpdateProgress(evalRunID, status string, metrics map[string]float64,
 		caseResults []contractv1.CaseResult, errorMessage string) error
+	// task-15.4: list eval runs filtered + ORDER BY started_at DESC.
+	List(filter contractv1.ListEvalRunsFilter) ([]contractv1.EvalRun, error)
 }
 
 // Deps bundles all four backends + the bearer auth token for NewRouter.

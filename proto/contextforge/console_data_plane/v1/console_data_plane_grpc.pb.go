@@ -1022,6 +1022,7 @@ const (
 	EvalService_Create_FullMethodName         = "/contextforge.console_data_plane.v1.EvalService/Create"
 	EvalService_Get_FullMethodName            = "/contextforge.console_data_plane.v1.EvalService/Get"
 	EvalService_UpdateProgress_FullMethodName = "/contextforge.console_data_plane.v1.EvalService/UpdateProgress"
+	EvalService_List_FullMethodName           = "/contextforge.console_data_plane.v1.EvalService/List"
 )
 
 // EvalServiceClient is the client API for EvalService service.
@@ -1031,6 +1032,7 @@ type EvalServiceClient interface {
 	Create(ctx context.Context, in *CreateEvalRunRequest, opts ...grpc.CallOption) (*EvalRun, error)
 	Get(ctx context.Context, in *GetEvalRunRequest, opts ...grpc.CallOption) (*EvalRun, error)
 	UpdateProgress(ctx context.Context, in *UpdateEvalRunProgressRequest, opts ...grpc.CallOption) (*UpdateEvalRunProgressResponse, error)
+	List(ctx context.Context, in *ListEvalRunsRequest, opts ...grpc.CallOption) (*ListEvalRunsResponse, error)
 }
 
 type evalServiceClient struct {
@@ -1071,6 +1073,16 @@ func (c *evalServiceClient) UpdateProgress(ctx context.Context, in *UpdateEvalRu
 	return out, nil
 }
 
+func (c *evalServiceClient) List(ctx context.Context, in *ListEvalRunsRequest, opts ...grpc.CallOption) (*ListEvalRunsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListEvalRunsResponse)
+	err := c.cc.Invoke(ctx, EvalService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EvalServiceServer is the server API for EvalService service.
 // All implementations must embed UnimplementedEvalServiceServer
 // for forward compatibility.
@@ -1078,6 +1090,7 @@ type EvalServiceServer interface {
 	Create(context.Context, *CreateEvalRunRequest) (*EvalRun, error)
 	Get(context.Context, *GetEvalRunRequest) (*EvalRun, error)
 	UpdateProgress(context.Context, *UpdateEvalRunProgressRequest) (*UpdateEvalRunProgressResponse, error)
+	List(context.Context, *ListEvalRunsRequest) (*ListEvalRunsResponse, error)
 	mustEmbedUnimplementedEvalServiceServer()
 }
 
@@ -1096,6 +1109,9 @@ func (UnimplementedEvalServiceServer) Get(context.Context, *GetEvalRunRequest) (
 }
 func (UnimplementedEvalServiceServer) UpdateProgress(context.Context, *UpdateEvalRunProgressRequest) (*UpdateEvalRunProgressResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateProgress not implemented")
+}
+func (UnimplementedEvalServiceServer) List(context.Context, *ListEvalRunsRequest) (*ListEvalRunsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
 }
 func (UnimplementedEvalServiceServer) mustEmbedUnimplementedEvalServiceServer() {}
 func (UnimplementedEvalServiceServer) testEmbeddedByValue()                     {}
@@ -1172,6 +1188,24 @@ func _EvalService_UpdateProgress_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EvalService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListEvalRunsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvalServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvalService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvalServiceServer).List(ctx, req.(*ListEvalRunsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EvalService_ServiceDesc is the grpc.ServiceDesc for EvalService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1190,6 +1224,10 @@ var EvalService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateProgress",
 			Handler:    _EvalService_UpdateProgress_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _EvalService_List_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -221,6 +221,61 @@ impl SqliteEvalStore {
             .lock()
             .map_err(|e| EvalStoreError::Invalid(format!("lock: {e}")))
     }
+
+    /// task-15.4 (Phase 15 P1 #4): list eval runs ordered by started_at DESC,
+    /// optionally filtered by workspace_id / status. `limit` is clamped to
+    /// [1, 200] with a default of 50 (the caller's None/Some maps to default).
+    pub fn list(&self, filter: ListEvalRunsFilter) -> Result<Vec<EvalRun>, EvalStoreError> {
+        let limit = filter.limit.clamp(1, 200);
+        let mut sql = String::from(
+            "SELECT eval_run_id, workspace_id, status, config_snapshot_json, started_at_unix, \
+             finished_at_unix, metrics_json, case_results_json, schema_version, dataset_ref, error_message \
+             FROM eval_runs",
+        );
+        let mut clauses: Vec<&'static str> = Vec::new();
+        if filter.workspace_id.is_some() {
+            clauses.push("workspace_id = ?");
+        }
+        if filter.status.is_some() {
+            clauses.push("status = ?");
+        }
+        if !clauses.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&clauses.join(" AND "));
+        }
+        sql.push_str(" ORDER BY started_at_unix DESC LIMIT ?");
+
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(&sql)?;
+        // Bind params dynamically in order (ws, status, limit). rusqlite's
+        // ParamsFromIter accepts `&[&dyn ToSql]` of mixed types.
+        let ws_owned: Option<String> = filter.workspace_id.clone();
+        let st_owned: Option<String> = filter.status.clone();
+        let mut params_dyn: Vec<&dyn rusqlite::ToSql> = Vec::new();
+        if let Some(ws) = ws_owned.as_ref() {
+            params_dyn.push(ws);
+        }
+        if let Some(st) = st_owned.as_ref() {
+            params_dyn.push(st);
+        }
+        params_dyn.push(&limit);
+        let mut rows = stmt.query(rusqlite::params_from_iter(params_dyn))?;
+        let mut out: Vec<EvalRun> = Vec::new();
+        while let Some(row) = rows.next()? {
+            out.push(row_to_run(row)?);
+        }
+        Ok(out)
+    }
+}
+
+/// task-15.4 filter struct for `SqliteEvalStore::list`. None = no constraint
+/// on that column; non-None = exact match. `limit` clamped to [1, 200]; pass
+/// 50 for the default.
+#[derive(Debug, Clone)]
+pub struct ListEvalRunsFilter {
+    pub workspace_id: Option<String>,
+    pub status: Option<String>,
+    pub limit: i64,
 }
 
 fn row_to_run(row: &rusqlite::Row<'_>) -> Result<EvalRun, EvalStoreError> {
@@ -361,5 +416,112 @@ mod tests {
         let got = s.get("er-j").unwrap().unwrap();
         assert_eq!(got.metrics.get("int_like").copied(), Some(100.0));
         assert!((got.metrics.get("frac").copied().unwrap() - 0.3333333333333333).abs() < 1e-15);
+    }
+
+    // task-15.4 (Phase 15 P1 #4) — SqliteEvalStore.list tests.
+
+    fn create_with_workspace(s: &SqliteEvalStore, id: &str, ws: &str) {
+        s.create(EvalRunCreate {
+            eval_run_id: id.to_string(),
+            workspace_id: ws.to_string(),
+            config_snapshot_json: "{}".to_string(),
+            dataset_ref: None,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_list_returns_rows_ordered_by_started_at_desc() {
+        let s = fresh_store();
+        // 3 sequential creates → ascending started_at_unix; list returns DESC.
+        create_with_workspace(&s, "er-1", "ws-a");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        create_with_workspace(&s, "er-2", "ws-a");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        create_with_workspace(&s, "er-3", "ws-a");
+        let runs = s
+            .list(ListEvalRunsFilter {
+                workspace_id: None,
+                status: None,
+                limit: 10,
+            })
+            .unwrap();
+        assert_eq!(runs.len(), 3);
+        assert_eq!(runs[0].eval_run_id, "er-3");
+        assert_eq!(runs[1].eval_run_id, "er-2");
+        assert_eq!(runs[2].eval_run_id, "er-1");
+    }
+
+    #[test]
+    fn test_list_filter_workspace_id_narrows_results() {
+        let s = fresh_store();
+        create_with_workspace(&s, "er-a1", "ws-a");
+        create_with_workspace(&s, "er-b1", "ws-b");
+        create_with_workspace(&s, "er-a2", "ws-a");
+        let runs = s
+            .list(ListEvalRunsFilter {
+                workspace_id: Some("ws-a".into()),
+                status: None,
+                limit: 10,
+            })
+            .unwrap();
+        assert_eq!(runs.len(), 2);
+        for r in &runs {
+            assert_eq!(r.workspace_id, "ws-a");
+        }
+    }
+
+    #[test]
+    fn test_list_filter_status_narrows_results() {
+        let s = fresh_store();
+        create_with_workspace(&s, "er-x", "ws");
+        create_with_workspace(&s, "er-y", "ws");
+        // Mark er-x as succeeded; er-y stays running.
+        s.mark_finished("er-x", "succeeded", 1_700_000_000, None)
+            .unwrap();
+        let succeeded = s
+            .list(ListEvalRunsFilter {
+                workspace_id: None,
+                status: Some("succeeded".into()),
+                limit: 10,
+            })
+            .unwrap();
+        assert_eq!(succeeded.len(), 1);
+        assert_eq!(succeeded[0].eval_run_id, "er-x");
+        let running = s
+            .list(ListEvalRunsFilter {
+                workspace_id: None,
+                status: Some("running".into()),
+                limit: 10,
+            })
+            .unwrap();
+        assert_eq!(running.len(), 1);
+        assert_eq!(running[0].eval_run_id, "er-y");
+    }
+
+    #[test]
+    fn test_list_limit_clamped_to_200() {
+        let s = fresh_store();
+        for i in 0..3 {
+            create_with_workspace(&s, &format!("er-{i}"), "ws");
+        }
+        // Even though we pass 500, server should clamp to 200 (here total only 3).
+        let runs = s
+            .list(ListEvalRunsFilter {
+                workspace_id: None,
+                status: None,
+                limit: 500,
+            })
+            .unwrap();
+        assert_eq!(runs.len(), 3);
+        // Limit 0 / negative — clamp to 1 (returns most recent only).
+        let one = s
+            .list(ListEvalRunsFilter {
+                workspace_id: None,
+                status: None,
+                limit: 0,
+            })
+            .unwrap();
+        assert_eq!(one.len(), 1);
     }
 }
