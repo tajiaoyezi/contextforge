@@ -27,14 +27,73 @@ type MemStore struct {
 	// Optional injected Search backend (production wires to retriever / Rust
 	// CoreService::search). Tests provide a fake.
 	SearchBackend SearchClient
+	// task-15.1 (Phase 15 P0 #1): fallback search-result cache. MemStore.Search
+	// emits a stub SearchResult; without persisting it, subsequent
+	// GetSourceChunk / GetSearchTrace hit a 503 path that breaks Console UI
+	// drill-down flow under CONSOLE_API_FALLBACK_INMEM=1. The two caches
+	// preserve the most recent search outputs with FIFO eviction at
+	// cacheCapacity. Cache miss falls through to the v0.7 ErrDataPlaneUnavailable
+	// path (deep-defense unchanged).
+	chunkCache       map[string]contractv1.SourceChunk
+	chunkCacheOrder  []string
+	traceCache       map[string]contractv1.RetrievalTrace
+	traceCacheOrder  []string
+	cacheCapacity    int
 	// monotonic id seed for jobs.
 	jobSeq uint64
 }
 
+// memStoreCacheDefaultCapacity caps both chunk and trace caches in the
+// fallback MemStore. 256 is sufficient for single-user Console UI demo flow;
+// configurable cap deferred to [SPEC-DEFER:phase-future.cache-cap-configurable].
+const memStoreCacheDefaultCapacity = 256
+
 func NewMemStore() *MemStore {
 	return &MemStore{
-		workspaces: map[string]contractv1.Workspace{},
-		jobs:       map[string]contractv1.IndexJob{},
+		workspaces:    map[string]contractv1.Workspace{},
+		jobs:          map[string]contractv1.IndexJob{},
+		chunkCache:    map[string]contractv1.SourceChunk{},
+		traceCache:    map[string]contractv1.RetrievalTrace{},
+		cacheCapacity: memStoreCacheDefaultCapacity,
+	}
+}
+
+// cacheChunkUnlocked records sc under chunkID with FIFO eviction at
+// cacheCapacity. Caller must hold s.mu.
+func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk) {
+	if chunkID == "" {
+		return
+	}
+	if _, exists := s.chunkCache[chunkID]; exists {
+		s.chunkCache[chunkID] = sc
+		return
+	}
+	s.chunkCache[chunkID] = sc
+	s.chunkCacheOrder = append(s.chunkCacheOrder, chunkID)
+	if len(s.chunkCacheOrder) > s.cacheCapacity {
+		evict := s.chunkCacheOrder[0]
+		s.chunkCacheOrder = s.chunkCacheOrder[1:]
+		delete(s.chunkCache, evict)
+	}
+}
+
+// cacheTraceUnlocked records trace under traceKey (set to QueryID by the
+// MemStore.Search stub so GetSearchTrace can lookup by query_id). FIFO
+// eviction at cacheCapacity. Caller must hold s.mu.
+func (s *MemStore) cacheTraceUnlocked(traceKey string, t contractv1.RetrievalTrace) {
+	if traceKey == "" {
+		return
+	}
+	if _, exists := s.traceCache[traceKey]; exists {
+		s.traceCache[traceKey] = t
+		return
+	}
+	s.traceCache[traceKey] = t
+	s.traceCacheOrder = append(s.traceCacheOrder, traceKey)
+	if len(s.traceCacheOrder) > s.cacheCapacity {
+		evict := s.traceCacheOrder[0]
+		s.traceCacheOrder = s.traceCacheOrder[1:]
+		delete(s.traceCache, evict)
 	}
 }
 
@@ -252,19 +311,35 @@ func (s *MemStore) CancelJob(jobID string) error {
 
 // ---- SearchClient (delegates to injected backend; provides stub for tests) ----
 
-// GetSourceChunk — task-12.2 fallback path. MemStore has no real index → return
-// ErrDataPlaneUnavailable so the REST layer surfaces 503 (deep defense; ADR-016 D4).
-func (s *MemStore) GetSourceChunk(_ string) (contractv1.SourceChunk, error) {
+// GetSourceChunk — task-12.2 + task-15.1 fallback path. MemStore has no real
+// index, but task-15.1 caches stub SearchResults emitted by Search() so a
+// drill-down GET after POST /v1/search returns 200 rather than 503. Cache miss
+// still returns ErrDataPlaneUnavailable for deep defense (ADR-016 D4).
+func (s *MemStore) GetSourceChunk(chunkID string) (contractv1.SourceChunk, error) {
+	s.mu.Lock()
+	if sc, ok := s.chunkCache[chunkID]; ok {
+		s.mu.Unlock()
+		return sc, nil
+	}
+	s.mu.Unlock()
 	if s.SearchBackend != nil {
-		return s.SearchBackend.GetSourceChunk("")
+		return s.SearchBackend.GetSourceChunk(chunkID)
 	}
 	return contractv1.SourceChunk{}, ErrDataPlaneUnavailable
 }
 
-// GetSearchTrace — task-12.3 fallback path. Same rationale as GetSourceChunk.
-func (s *MemStore) GetSearchTrace(_ string) (contractv1.RetrievalTrace, error) {
+// GetSearchTrace — task-12.3 + task-15.1 fallback path. Looks up the trace
+// cache keyed by query_id (Search() aligns trace.TraceID with res.QueryID so
+// callers can resolve traces via the query_id from the search response).
+func (s *MemStore) GetSearchTrace(queryID string) (contractv1.RetrievalTrace, error) {
+	s.mu.Lock()
+	if t, ok := s.traceCache[queryID]; ok {
+		s.mu.Unlock()
+		return t, nil
+	}
+	s.mu.Unlock()
 	if s.SearchBackend != nil {
-		return s.SearchBackend.GetSearchTrace("")
+		return s.SearchBackend.GetSearchTrace(queryID)
 	}
 	return contractv1.RetrievalTrace{}, ErrDataPlaneUnavailable
 }
@@ -301,8 +376,11 @@ func (s *MemStore) Search(req contractv1.SearchRequest) (contractv1.SearchResult
 		Availability: contractv1.FieldAvailability{Object: "SearchResult"},
 	}
 	expanded := ""
+	// task-15.1: align TraceID with QueryID so GetSearchTrace keyed by query_id
+	// hits the cache (Console UI flow: POST /v1/search → response.result.query_id
+	// → GET /v1/search/{query_id}/trace).
 	trace := contractv1.RetrievalTrace{
-		TraceID:                  "trace-1",
+		TraceID:                  res.QueryID,
 		Query:                    req.Query,
 		ExpandedQuery:            &expanded,
 		CandidateGenerationSteps: []string{"bm25"},
@@ -313,7 +391,32 @@ func (s *MemStore) Search(req contractv1.SearchRequest) (contractv1.SearchResult
 		FinalContextCount:        1,
 		Availability:             contractv1.FieldAvailability{Object: "RetrievalTrace"},
 	}
+	// task-15.1: cache the stub so drill-down GETs return 200 instead of 503.
+	chunk := buildSourceChunkFromResult(res)
+	s.mu.Lock()
+	s.cacheChunkUnlocked(res.ChunkID, chunk)
+	s.cacheTraceUnlocked(res.QueryID, trace)
+	s.mu.Unlock()
 	return res, trace, nil
+}
+
+// buildSourceChunkFromResult maps a SearchResult to a SourceChunk for cache
+// population. The fallback has no real chunk text, so ChunkTextPreview is
+// reused as the chunk_text_preview field; offset fields are 0; redaction status
+// reports "none" (fallback skips secret scanning by design).
+func buildSourceChunkFromResult(res contractv1.SearchResult) contractv1.SourceChunk {
+	return contractv1.SourceChunk{
+		ChunkID:          res.ChunkID,
+		WorkspaceID:      res.WorkspaceID,
+		SourceFilePath:   res.SourceFilePath,
+		LineStart:        res.LineStart,
+		LineEnd:          res.LineEnd,
+		ChunkTextPreview: res.ChunkTextPreview,
+		ChunkOffsetStart: 0,
+		ChunkOffsetEnd:   0,
+		RedactionStatus:  "none",
+		Availability:     contractv1.FieldAvailability{Object: "SourceChunk"},
+	}
 }
 
 // ---- EventsClient ----

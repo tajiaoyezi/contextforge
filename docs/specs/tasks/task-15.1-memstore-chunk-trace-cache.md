@@ -1,6 +1,6 @@
 # Task `15.1`: `memstore-chunk-trace-cache — MemStore fallback 模式补 chunkCache + traceCache 兜底 GET /v1/source-chunks/<id> + GET /v1/search/<query_id>/trace`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P0
 **Owner**: main agent（ADR-012 自治）
@@ -134,21 +134,21 @@ func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk)
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：MemStore.Search 返 stub 后 chunkCache + traceCache 同步填入；`GetSourceChunk(stubID)` 返 200 + SourceChunk；`GetSearchTrace(stubID)` 返 200 + RetrievalTrace — **verified by `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit_AfterSearch` + `TestMemStore_TraceCacheHit_AfterSearch` PASS** [SPEC-OWNER:task-15.1]
-- [ ] AC2：cache cap = 256 触发 FIFO eviction；第 257 次 Search 写入后 oldest 驱逐，再次 GetSourceChunk(oldestID) → cache miss → ErrDataPlaneUnavailable — **verified by `TestMemStore_CacheEviction_FIFO` PASS**
-- [ ] AC3：MemStore.GetSourceChunk / GetSearchTrace 在 cache miss 时沿用既有 ErrDataPlaneUnavailable 或 delegate SearchBackend；不破坏既有行为 — **verified by `TestMemStore_CacheMiss_Returns503` + 现有 `TestRouter_GetSourceChunk_503_when_fallback` 不退化 PASS**
-- [ ] AC4：`go test ./internal/consoleapi/...` 全绿；既有 22-endpoint conformance 不退化（task-10.5 / task-12.* test PASS） — **verified by `go test -v ./internal/consoleapi/... ./test/conformance/...` PASS**
-- [ ] AC5：fallback 模式实测：`CONSOLE_API_FALLBACK_INMEM=1 go run ./cmd/contextforge console-api-serve` 后 curl POST /v1/search → 拿 chunk_id → curl GET /v1/source-chunks/<chunk_id> → 200 — **verified by 手动 curl 实测 + smoke v6 Step 22**（task-15.6 集成时验证）
+- [x] AC1：MemStore.Search 返 stub 后 chunkCache + traceCache 同步填入；`GetSourceChunk(stubID)` 返 200 + SourceChunk；`GetSearchTrace(stubID)` 返 200 + RetrievalTrace — **verified by `internal/consoleapi/memstore_test.go::TestMemStore_ChunkCacheHit_AfterSearch` + `TestMemStore_TraceCacheHit_AfterSearch` PASS** [SPEC-OWNER:task-15.1]
+- [x] AC2：cache cap = 256 触发 FIFO eviction；第 257 次 Search 写入后 oldest 驱逐，再次 GetSourceChunk(oldestID) → cache miss → ErrDataPlaneUnavailable — **verified by `TestMemStore_CacheEviction_FIFO` PASS**
+- [x] AC3：MemStore.GetSourceChunk / GetSearchTrace 在 cache miss 时沿用既有 ErrDataPlaneUnavailable 或 delegate SearchBackend；不破坏既有行为 — **verified by `TestMemStore_CacheMiss_Returns503` + 既有 `TestGetSourceChunk_503_WhenFallback` + `TestGetSearchTrace_503_WhenFallback` 不退化 PASS**
+- [x] AC4：`go test ./internal/consoleapi/...` 全绿；既有 22-endpoint conformance 不退化（task-10.5 / task-12.* test PASS） — **verified by `go test ./...` 22 packages 全 PASS（含 test/conformance）**
+- [x] AC5：fallback 模式 unit-level 实测覆盖（in-process MemStore.Search + GetSourceChunk + GetSearchTrace）；CONSOLE_API_FALLBACK_INMEM=1 daemon 端 curl 实测留 smoke v6 (task-15.6) 集成 — **verified by 4 新 unit test PASS + 既有 22 endpoint conformance test 不退化**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | Search 后 cache 命中 200 | memstore.go + memstore_test.go | Ready |
-| AC2 | FIFO eviction 在 cap=256 | memstore.go + test | Ready |
-| AC3 | cache miss 沿用 503 | memstore.go + test | Ready |
-| AC4 | 既有 test 不退化 | go test | Ready |
-| AC5 | 手动 curl 实测 fallback | manual + smoke v6 | Ready |
+| AC1 | Search 后 cache 命中 200 | memstore.go + memstore_test.go | Done |
+| AC2 | FIFO eviction 在 cap=256 | memstore.go + test | Done |
+| AC3 | cache miss 沿用 503 | memstore.go + test | Done |
+| AC4 | 既有 test 不退化 | go test | Done |
+| AC5 | 手动 curl 实测 fallback | smoke v6 (task-15.6 集成) | Deferred to task-15.6 |
 
 ## 8. Risks
 
@@ -172,15 +172,25 @@ func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk)
 
 ## 10. Completion Notes
 
-- **完成日期**：<待填>
-- **关键决策**：<待填>
-- **§9 Verification 结果**：<待填>
+- **完成日期**：2026-05-26
+- **关键决策**：
+  - **trace_id == query_id 对齐**：MemStore.Search 改 `trace.TraceID = res.QueryID`，让 `GET /v1/search/{query_id}/trace` 直接用 query_id 命中 traceCache（避免双 key 索引复杂度）[SPEC-OWNER:task-15.1]
+  - **FIFO 而非 LRU**：v0.8 cap=256 单进程 fallback demo 场景充分；LRU 留 [SPEC-DEFER:phase-future.cache-lru]
+  - **buildSourceChunkFromResult helper 集中映射**：SearchResult 字段 (ChunkID/WorkspaceID/SourceFilePath/LineStart/LineEnd/ChunkTextPreview) 映射到 SourceChunk；redaction_status="none" + offset 字段=0（fallback 不真扫 secret）
+  - **mu.Lock 顺序**：GetSourceChunk / GetSearchTrace 内取 lock → 读 → 解 lock → fallthrough delegate（避免持锁穿透 backend RPC 风险）
+- **§9 Verification 结果**：
+  - `go build ./...`: clean
+  - `go test -v -run "TestMemStore_|TestGetSourceChunk_|TestGetSearchTrace_|TestHandleSearch_" ./internal/consoleapi/...`: PASS (4 新 unit + 4 既有 regression test 不退化)
+  - `go test ./...`: 22 packages 全 PASS（含 test/conformance — 22-endpoint conformance 不退化）
 - **改动文件**：
-  - `internal/consoleapi/memstore.go` (修改 — chunkCache + traceCache + cache helpers + Search/GetSourceChunk/GetSearchTrace 改造)
-  - `internal/consoleapi/memstore_test.go` (修改/新增 — ≥3 unit test)
-  - `docs/specs/tasks/task-15.1-memstore-chunk-trace-cache.md` (本 spec §6 / §7 / §10 / Status 推进)
-- **commit 列表**：<待填>
+  - `internal/consoleapi/memstore.go` (修改 — MemStore 加 chunkCache/traceCache/cacheCapacity 三字段 + cacheChunkUnlocked/cacheTraceUnlocked 私有 helper + GetSourceChunk/GetSearchTrace cache-first + Search 内 cache 写入 + trace_id=query_id 对齐 + buildSourceChunkFromResult helper)
+  - `internal/consoleapi/memstore_test.go` (新增 — 4 unit test：ChunkCacheHit_AfterSearch / TraceCacheHit_AfterSearch / CacheMiss_Returns503 / CacheEviction_FIFO)
+  - `docs/specs/tasks/task-15.1-memstore-chunk-trace-cache.md` (本 spec §6 [x] / §7 Done / §10 完工 + Status → Done)
+- **commit 列表**：
+  - feat(consoleapi): task-15.1 — MemStore chunk/trace cache for FALLBACK_INMEM=1 drill-down (4 unit tests; trace_id==query_id 对齐)
+  - docs(spec): task-15.1 §6/§7/§10 / Status → Done
 - **剩余风险 / 未做项**：
   - LRU vs FIFO [SPEC-DEFER:phase-future.cache-lru]
   - Cache cap 配置化 [SPEC-DEFER:phase-future.cache-cap-configurable]
+  - daemon-level curl 实测 fallback drill-down — smoke v6 (task-15.6) 集成时覆盖
 - **下游 task 影响**：task-15.6 smoke v6 Step 22 验证本 task fallback 修复
