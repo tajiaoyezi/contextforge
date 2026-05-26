@@ -4,6 +4,12 @@
 //! (task-13.1) + Pin / Deprecate / SoftDelete each emit one audit event via
 //! the shared `AuditSink` so Console UI's audit log panel surfaces the trace.
 //!
+//! task-15.2 (Phase 15 P0 #2 / ADR-021): each state op also emits an
+//! `ObservabilityEvent` (`memory.pin` / `memory.deprecate` / `memory.soft_delete`)
+//! to the shared `EventBus` so Console UI's `/v1/observability/events` stream
+//! surfaces memory state changes alongside `indexing.*` events. Both audit
+//! and event paths are best-effort and decoupled from state success.
+//!
 //! Error mapping (ADR-016 §D3 thin proxy):
 //!   - `MemoryStoreError::NotFound` → `tonic::Status::not_found`
 //!   - `MemoryStoreError::Invalid` → `tonic::Status::invalid_argument`
@@ -21,8 +27,8 @@ use crate::memoryops::audit::{AuditEvent, AuditOperation, AuditSink};
 use crate::pb_console::memory_service_server::MemoryService;
 use crate::pb_console::{
     DeprecateMemoryRequest, DeprecateMemoryResponse, GetMemoryRequest, ListMemoryRequest,
-    ListMemoryResponse, MemoryItem as PbMemoryItem, PinMemoryRequest, PinMemoryResponse,
-    SoftDeleteMemoryRequest, SoftDeleteMemoryResponse,
+    ListMemoryResponse, MemoryItem as PbMemoryItem, ObservabilityEvent as PbEvent,
+    PinMemoryRequest, PinMemoryResponse, SoftDeleteMemoryRequest, SoftDeleteMemoryResponse,
 };
 
 use super::DataPlaneStores;
@@ -36,7 +42,14 @@ impl MemoryServer {
         Self { stores }
     }
 
-    fn emit_audit(&self, op: AuditOperation, memory_id: &str) {
+    /// task-15.2 (Phase 15 P0 #2 / ADR-021): emit audit AND broadcast a
+    /// matching `ObservabilityEvent` to the shared `EventBus` so the Console UI
+    /// `/v1/observability/events` stream surfaces memory state changes. Both
+    /// paths are best-effort: `AuditSink.record` failure or `EventBus.send`
+    /// no-subscriber `SendError` is swallowed and the state-op return is
+    /// unaffected (observability != authority).
+    fn emit_audit_and_event(&self, op: AuditOperation, memory_id: &str) {
+        // 1. AuditSink (既有路径 — Phase 13 task-13.1 ship)
         if let Some(audit) = self.stores.audit.as_ref() {
             if let Ok(mut sink) = audit.lock() {
                 let event = AuditEvent {
@@ -53,7 +66,75 @@ impl MemoryServer {
                 let _ = sink.record(event);
             }
         }
+        // 2. EventBus broadcast (task-15.2 / ADR-021 D1 新增桥接)
+        if let Some(bus) = self.stores.event_bus.as_ref() {
+            if let Some(evt) = build_memory_event(op, memory_id) {
+                // ADR-021 D4: SendError swallowed (no subscriber is fine; events
+                // are observability, not durable state).
+                let _ = bus.send(evt);
+            }
+        }
     }
+}
+
+/// task-15.2 / ADR-021 D2: map AuditOperation → ObservabilityEvent.event_type
+/// string. Pin and Unpin share `memory.pin` (payload_json `op` distinguishes)
+/// per ADR-021 D2 to keep the event_type namespace compact.
+fn audit_op_to_event_type(op: AuditOperation) -> Option<&'static str> {
+    match op {
+        AuditOperation::MemoryPin | AuditOperation::MemoryUnpin => Some("memory.pin"),
+        AuditOperation::MemoryDeprecate => Some("memory.deprecate"),
+        AuditOperation::MemorySoftDelete => Some("memory.soft_delete"),
+        // Non-memory ops should never reach this bridge; returning None
+        // causes `emit_audit_and_event` to skip EventBus emission without
+        // panicking.
+        _ => None,
+    }
+}
+
+/// task-15.2 / ADR-021 D3: build the `PbEvent` populating the fixed field
+/// contract for memory events. `trace_id` and `job_id` are `None` (memory ops
+/// have no trace / job context); `payload_json` carries `memory_id` + `op`
+/// so subscribers can disambiguate pin vs unpin without parsing the message.
+fn build_memory_event(op: AuditOperation, memory_id: &str) -> Option<PbEvent> {
+    let event_type = audit_op_to_event_type(op)?;
+    let op_str = match op {
+        AuditOperation::MemoryPin => "pin",
+        AuditOperation::MemoryUnpin => "unpin",
+        AuditOperation::MemoryDeprecate => "deprecate",
+        AuditOperation::MemorySoftDelete => "soft_delete",
+        _ => return None,
+    };
+    let payload_json = format!(
+        r#"{{"memory_id":{},"op":"{}"}}"#,
+        serde_json::to_string(memory_id).unwrap_or_else(|_| String::from("\"\"")),
+        op_str,
+    );
+    Some(PbEvent {
+        event_id: format!("evt-memory-{}", now_unix_nanos()),
+        event_type: event_type.to_string(),
+        severity: "info".to_string(),
+        source: "contextforge-core".to_string(),
+        message: format!("memory {op_str}: {memory_id}"),
+        ts_unix: now_unix(),
+        trace_id: None,
+        job_id: None,
+        payload_json,
+    })
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn now_unix_nanos() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
 }
 
 fn memory_to_pb(m: RustMemoryItem) -> PbMemoryItem {
@@ -135,7 +216,7 @@ impl MemoryService for MemoryServer {
         memory
             .set_pinned(&req.memory_id, req.pin)
             .map_err(mem_err_to_status)?;
-        self.emit_audit(
+        self.emit_audit_and_event(
             if req.pin {
                 AuditOperation::MemoryPin
             } else {
@@ -159,7 +240,7 @@ impl MemoryService for MemoryServer {
         memory
             .set_status(&id, "deprecated")
             .map_err(mem_err_to_status)?;
-        self.emit_audit(AuditOperation::MemoryDeprecate, &id);
+        self.emit_audit_and_event(AuditOperation::MemoryDeprecate, &id);
         Ok(Response::new(DeprecateMemoryResponse {}))
     }
 
@@ -176,7 +257,7 @@ impl MemoryService for MemoryServer {
         memory
             .set_status(&id, "soft_deleted")
             .map_err(mem_err_to_status)?;
-        self.emit_audit(AuditOperation::MemorySoftDelete, &id);
+        self.emit_audit_and_event(AuditOperation::MemorySoftDelete, &id);
         Ok(Response::new(SoftDeleteMemoryResponse {}))
     }
 }
@@ -228,6 +309,32 @@ mod tests {
         ));
         let stores = DataPlaneStores::with_memory(ws, js, mem.clone(), audit);
         (MemoryServer::new(stores), mem)
+    }
+
+    /// task-15.2 test helper: like `fresh_server` but also wires a shared
+    /// EventBus so the new audit→event bridge path is exercised. Returns the
+    /// EventBus too so callers can subscribe and assert emitted events.
+    fn fresh_server_with_event_bus(
+    ) -> (MemoryServer, Arc<SqliteMemoryStore>, Arc<crate::data_plane::events::EventBus>) {
+        let dir = temp_dir("evt");
+        let ws = Arc::new(SqliteWorkspaceStore::open(&dir).unwrap());
+        let js = Arc::new(SqliteJobStore::open(&dir).unwrap());
+        let mem = Arc::new(SqliteMemoryStore::open(&dir).unwrap());
+        let audit = Arc::new(Mutex::new(
+            AuditSink::open(dir.as_path(), "memory").expect("audit open"),
+        ));
+        let event_bus = crate::data_plane::events::EventBus::new();
+        let stores = Arc::new(DataPlaneStores {
+            workspace_store: ws,
+            job_store: js,
+            job_runner: None,
+            data_dir: std::path::PathBuf::new(),
+            event_bus: Some(event_bus.clone()),
+            memory: Some(mem.clone()),
+            audit: Some(audit),
+            eval: None,
+        });
+        (MemoryServer::new(stores), mem, event_bus)
     }
 
     fn mem(id: &str, scope: &str, status: &str) -> MemoryItem {
@@ -333,5 +440,162 @@ mod tests {
             .count_by_operation(AuditOperation::MemorySoftDelete)
             .unwrap()
             >= 1);
+    }
+
+    // =====================================================================
+    // task-15.2 (Phase 15 P0 #2 / ADR-021) — memory.* → EventBus bridge tests.
+    // =====================================================================
+
+    /// Helper: drain EventBus broadcast receiver into a Vec (best-effort,
+    /// returns whatever is already buffered when `try_recv` exhausts).
+    fn drain_events(
+        rx: &mut tokio::sync::broadcast::Receiver<PbEvent>,
+    ) -> Vec<PbEvent> {
+        let mut out = Vec::new();
+        loop {
+            match rx.try_recv() {
+                Ok(evt) => out.push(evt),
+                Err(_) => break,
+            }
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn test_pin_emits_event_bus_memory_pin() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store.seed_for_tests(vec![mem("p", "s", "active")]).unwrap();
+        // Subscribe BEFORE invoking pin so we don't miss the broadcast.
+        let mut rx = bus.subscribe();
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "p".into(),
+                pin: true,
+            }))
+            .await
+            .expect("pin ok");
+        // Allow the broadcast to settle (sync; no spawn here, but be defensive).
+        tokio::task::yield_now().await;
+        let events = drain_events(&mut rx);
+        assert_eq!(events.len(), 1, "exactly one memory.pin event expected");
+        let evt = &events[0];
+        assert_eq!(evt.event_type, "memory.pin");
+        assert_eq!(evt.severity, "info");
+        assert_eq!(evt.source, "contextforge-core");
+        assert!(evt.message.contains("memory pin: p"), "message: {}", evt.message);
+        assert!(evt.payload_json.contains("\"op\":\"pin\""), "payload: {}", evt.payload_json);
+        assert!(evt.payload_json.contains("\"memory_id\":\"p\""), "payload: {}", evt.payload_json);
+        assert!(evt.trace_id.is_none());
+        assert!(evt.job_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_unpin_emits_event_bus_memory_pin_with_op_unpin() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store
+            .seed_for_tests(vec![mem("q", "s", "active")])
+            .unwrap();
+        let mut rx = bus.subscribe();
+        // Pin first so unpin has a target — fire both ops, then assert second
+        // event has op=unpin.
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "q".into(),
+                pin: true,
+            }))
+            .await
+            .unwrap();
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "q".into(),
+                pin: false,
+            }))
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        let events = drain_events(&mut rx);
+        assert_eq!(events.len(), 2);
+        assert!(events[0].payload_json.contains("\"op\":\"pin\""));
+        assert!(events[1].payload_json.contains("\"op\":\"unpin\""));
+        // Both share event_type=memory.pin per ADR-021 D2.
+        assert_eq!(events[0].event_type, "memory.pin");
+        assert_eq!(events[1].event_type, "memory.pin");
+    }
+
+    #[tokio::test]
+    async fn test_deprecate_emits_event_bus_memory_deprecate() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store.seed_for_tests(vec![mem("d", "s", "active")]).unwrap();
+        let mut rx = bus.subscribe();
+        server
+            .deprecate(Request::new(DeprecateMemoryRequest {
+                memory_id: "d".into(),
+            }))
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        let events = drain_events(&mut rx);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "memory.deprecate");
+        assert!(events[0].payload_json.contains("\"op\":\"deprecate\""));
+        assert!(events[0].payload_json.contains("\"memory_id\":\"d\""));
+    }
+
+    #[tokio::test]
+    async fn test_soft_delete_emits_event_bus_memory_soft_delete() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store.seed_for_tests(vec![mem("x", "s", "active")]).unwrap();
+        let mut rx = bus.subscribe();
+        server
+            .soft_delete(Request::new(SoftDeleteMemoryRequest {
+                memory_id: "x".into(),
+            }))
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        let events = drain_events(&mut rx);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "memory.soft_delete");
+        assert!(events[0].payload_json.contains("\"op\":\"soft_delete\""));
+    }
+
+    /// AC3: when EventBus has no subscribers, SendError is swallowed and the
+    /// state-op return is unaffected. Audit still emitted.
+    #[tokio::test]
+    async fn test_pin_swallows_send_error_when_no_subscriber() {
+        let (server, mem_store, _bus) = fresh_server_with_event_bus();
+        mem_store.seed_for_tests(vec![mem("ns", "s", "active")]).unwrap();
+        // Do NOT subscribe → bus.send returns SendError.
+        let resp = server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "ns".into(),
+                pin: true,
+            }))
+            .await;
+        assert!(resp.is_ok(), "pin should succeed despite SendError");
+        // Audit still recorded.
+        let audit = server.stores.audit.as_ref().unwrap().lock().unwrap();
+        let count = audit
+            .count_by_operation(AuditOperation::MemoryPin)
+            .expect("count ok");
+        assert!(count >= 1, "MemoryPin audit event expected");
+    }
+
+    /// Sanity-check the helper mapping: non-memory ops (e.g. Import) return
+    /// None → emit_audit_and_event would skip the EventBus path entirely.
+    #[test]
+    fn test_audit_op_to_event_type_filters_non_memory() {
+        assert_eq!(audit_op_to_event_type(AuditOperation::MemoryPin), Some("memory.pin"));
+        assert_eq!(audit_op_to_event_type(AuditOperation::MemoryUnpin), Some("memory.pin"));
+        assert_eq!(
+            audit_op_to_event_type(AuditOperation::MemoryDeprecate),
+            Some("memory.deprecate")
+        );
+        assert_eq!(
+            audit_op_to_event_type(AuditOperation::MemorySoftDelete),
+            Some("memory.soft_delete")
+        );
+        assert_eq!(audit_op_to_event_type(AuditOperation::Import), None);
+        assert_eq!(audit_op_to_event_type(AuditOperation::Search), None);
     }
 }
