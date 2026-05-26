@@ -7,19 +7,26 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.7.2
+
+⚠️ **BREAKING — fallback-inmem default reversal** (ADR-018):
+
+- 删 Dockerfile `ENV CONSOLE_API_FALLBACK_INMEM=1` → daemon 默认 fallback **deny**
+- `docker run contextforge-daemon:v0.7.2` 不显式 opt-in → `/v1/health` 返 **503** + docker healthcheck unhealthy
+- 保留 v0.7.1 行为需 `docker run -e CONSOLE_API_FALLBACK_INMEM=1 ...` 显式 opt-in
+- 修复 v0.7.1 silent footgun：HTTP 200 healthcheck 掩盖容器重启数据失风险
+- 代码无改动；仅 Dockerfile 删 ENV 行 + ADR-018 spec lock + ratification test
+
+详 `RELEASE_NOTES.md` v0.7.2 段 + [ADR-018](docs/decisions/adr-018-fallback-inmem-default-reversal.md)。
+
 ## What's new in v0.7.1
 
 🐳 **Dockerfile + single-image deployment fix** — v0.7.0 Dockerfile 4 处 stale
-(rust 1.82 → 1.93 / go 1.22 → 1.26 / `ENV CONSOLE_API_FALLBACK_INMEM=1` /
-新 `.dockerignore` 排 9.3 GB cargo cache) 一次性收齐。`docker build` + `docker run`
-开箱即用。
+(rust 1.82 → 1.93 / go 1.22 → 1.26 / ENV `CONSOLE_API_FALLBACK_INMEM=1` 占位 /
+新 `.dockerignore` 排 9.3 GB cargo cache) 一次性收齐。
 
-⚠️ **v0.7.2 break change pre-announce**：v0.7.1 single-image default 是 in-mem
-fallback（容器重启数据失），HTTP 200 healthcheck 掩盖该风险。v0.7.2 将反转默认
-为强制 opt-in（默认返 503 + 显式 `CONSOLE_API_FALLBACK_INMEM=1` 才允许 fallback）。
-Console 端 standby docker-compose chore PR 已 ready 待 v0.7.2 ship 同步上线。
-
-详见 `RELEASE_NOTES.md` v0.7.1 段。
+注：v0.7.1 的 ENV 行已在 v0.7.2 移除（fallback 默认从 enable 反转为 deny，
+silent footgun fix）。详 v0.7.2 段。
 
 ## What's new in v0.7.0
 
