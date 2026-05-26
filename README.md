@@ -114,9 +114,12 @@ Console contract v1 REST endpoints; Console UI HTTPAdapter v1.0 双方握手成�
 - **真索引 + 真搜索**: `POST /v1/index-jobs` 真触发 `JobRunner.spawn_blocking(
   IndexSession::index_path_with_progress)`; `POST /v1/search` 真接 retriever
   (Tantivy + SQLite chunks). v0.3 占位 stub 完全 retired.
-- **EventBus broadcast** + `/v1/observability/events` long-poll (`?wait=<duration>`
-  default 30s, max 60s; `?limit=<int>` default 100): JobRunner heartbeat 真 emit
-  `indexing.progress` / `indexing.cancelled` / `indexing.error` 事件.
+- **EventBus broadcast** + `/v1/observability/events` batch polling (`?wait=<duration>`
+  + `?limit=<int>` 参数 reserved；v0.7.x REST tier 实现是 immediate batch return，
+  不真 block — long-poll honoring 留 [SPEC-DEFER:task-future.consoleapi-sse-or-long-poll-honoring]；
+  Console 端应自管轮询频率，详 `docs/releases/v0.7.0-integration.md` §7).
+  JobRunner heartbeat 真 emit `indexing.progress` / `indexing.cancelled` /
+  `indexing.error` 事件.
 - **`console_smoke.sh` v2 REAL mode default**: spawns both daemons + drives
   fixture index + verifies real chunks. Final marker
   `CONSOLE_REAL_SMOKE_EXIT=0`. `LOCAL_ONLY=1` retains v0.3 inmem fallback.

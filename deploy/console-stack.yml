@@ -51,11 +51,16 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: contextforge-daemon:v0.3.0
+    image: contextforge-daemon:v0.7.2
     ports:
       - "48181:48181"
     environment:
       CONTEXTFORGE_DATA_DIR: /data
+      # v0.7.2 (ADR-018): docker default fallback deny. 此 compose 是
+      # single-image dev/PoC stack，启用 in-mem fallback 让 healthcheck 过；
+      # production 部署应另起 contextforge-core daemon + 删本 env (留 v0.8
+      # production stack 范例).
+      CONSOLE_API_FALLBACK_INMEM: "1"
     volumes:
       - contextforge-data:/data
     healthcheck:

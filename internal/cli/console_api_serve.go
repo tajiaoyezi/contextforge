@@ -69,7 +69,8 @@ func runConsoleAPIServe(args []string, stdout, stderr io.Writer) int {
 		authMode = "bearer-token"
 	}
 	fmt.Fprintf(stdout, "contextforge console-api-serve: listening on http://%s (auth=%s backend=%s)\n", resolved, authMode, backend)
-	fmt.Fprintf(stdout, "  endpoints: GET /v1/health, POST/GET/GET /v1/workspaces*, POST/GET/POST /v1/index-jobs*, POST /v1/search, GET /v1/observability/events\n")
+	fmt.Fprintf(stdout, "  Console Contract v1: 20 routes (22 endpoint conformance; v0.7 ADR-017 Accepted)\n")
+	fmt.Fprintf(stdout, "  surfaces: health / workspace(4) / index-job(4) / search(3) / memory(5) / eval(2) / events(1)\n")
 
 	srv := &http.Server{Handler: router, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
