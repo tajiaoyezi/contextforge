@@ -7,6 +7,20 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.7.1
+
+🐳 **Dockerfile + single-image deployment fix** — v0.7.0 Dockerfile 4 处 stale
+(rust 1.82 → 1.93 / go 1.22 → 1.26 / `ENV CONSOLE_API_FALLBACK_INMEM=1` /
+新 `.dockerignore` 排 9.3 GB cargo cache) 一次性收齐。`docker build` + `docker run`
+开箱即用。
+
+⚠️ **v0.7.2 break change pre-announce**：v0.7.1 single-image default 是 in-mem
+fallback（容器重启数据失），HTTP 200 healthcheck 掩盖该风险。v0.7.2 将反转默认
+为强制 opt-in（默认返 503 + 显式 `CONSOLE_API_FALLBACK_INMEM=1` 才允许 fallback）。
+Console 端 standby docker-compose chore PR 已 ready 待 v0.7.2 ship 同步上线。
+
+详见 `RELEASE_NOTES.md` v0.7.1 段。
+
 ## What's new in v0.7.0
 
 🎉 **Console 22-endpoint conformance 100% PASS** — ContextForge ships all 22

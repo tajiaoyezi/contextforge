@@ -1,5 +1,82 @@
 # ContextForge Release Notes
 
+## v0.7.1 (2026-05-26) — Dockerfile + single-image deployment fix
+
+### 摘要
+
+v0.7.1 patch release：收齐 v0.7.0 Dockerfile 4 处 stale，single-image docker
+deployment ready。ContextForge-Console 团队联调期发现，本 patch 一次性 ship。
+
+### 4 处 fix (PR #94, master `233ced5`)
+
+#### 1. Rust 1.82-bullseye → 1.93-slim-bookworm
+- 现象：cargo build fail，`cpufeatures-0.3.0 Cargo.toml: feature edition2024 is required`
+- 根因：transitive deps `darling@0.23` / `tantivy@0.26` / `time@0.3.47` 要 rustc >= 1.88
+- Fix：升 `rust:1.93-slim-bookworm`（保稳定 + 300 MB 小镜像；bullseye Go 1.26 dropped）
+
+#### 2. Go 1.22-bullseye → 1.26-bookworm
+- 现象：`go: go.mod requires go >= 1.26 (running go 1.22.12)`
+- Fix：升 `golang:1.26-bookworm`（Go 1.26 dropped bullseye）
+
+#### 3. 加 ENV CONSOLE_API_FALLBACK_INMEM=1（single-image default 模式）
+- 现象：v0.7.0 image 起来后 daemon 只跑 REST proxy 不起 Rust gRPC core 进程
+  → `/v1/health` 返 503 → docker healthcheck `curl -fsS` 永远不过
+- Fix：single-image deployment 默认 in-memory MemStore 模式（ADR-016 §D4）
+  - 默认：`docker run contextforge-daemon:v0.7.1` → backend=inmem-fallback → 200
+  - 多进程：`docker run -e CONSOLE_API_FALLBACK_INMEM=0 ...` 关闭 fallback +
+    另起 contextforge-core daemon 实现真持久化
+
+#### 4. 加 .dockerignore（build context 瘦身）
+- 现象：v0.7.0 build context 含 `target/` 9.3 GB cargo cache 全 transfer →
+  build 5+ min 才到 cargo 阶段
+- Fix：新加 `.dockerignore` 排除 `target/` / `.git/` / `_dispatch/` / `docs/` /
+  `test/` 等，build context 从 GB 级降到 ~50 MB
+
+### Behavior change call-out
+
+- **Single-image deployment 默认 `inmem-fallback` 模式 → 容器重启数据全失**
+- Multi-process 部署用户需 `docker run -e CONSOLE_API_FALLBACK_INMEM=0` 显式 opt-out
+- PR #94 reviewer 与 ContextForge-Console 团队已独立 flag 该默认是 silent
+  footgun 风险（telemetry 充分但 HTTP 200 healthcheck 掩盖）→
+  **v0.7.2 将反转该默认行为**（详 §"v0.7.2 pre-announce"）
+
+### Verify
+
+```bash
+docker build -t contextforge-daemon:v0.7.1 .
+# 默认：should be healthy (fallback-inmem)
+docker run -d --name v071 -p 48181:48181 contextforge-daemon:v0.7.1
+curl localhost:48181/v1/health
+# 200 + status="degraded" + error_reason="...in-memory fallback store active..."
+
+# Override：should be 503 (no gRPC core)
+docker run -d --name v071-strict -e CONSOLE_API_FALLBACK_INMEM=0 -p 48182:48181 contextforge-daemon:v0.7.1
+curl localhost:48182/v1/health
+# 503
+```
+
+### v0.7.2 pre-announce — fallback default 反转 ⚠️ BREAKING
+
+为消除 single-image silent footgun（HTTP 200 healthcheck 掩盖 in-mem
+fallback 风险），v0.7.2 将反转默认行为：
+
+- Daemon default 改为 `CONSOLE_API_FALLBACK_INMEM=0`（强制 opt-in）
+- gRPC core 不可达时 → `/v1/health` 返 **503**，docker healthcheck 立刻报 unhealthy
+- 旧 v0.7.1 行为兼容：用户显式设 `CONSOLE_API_FALLBACK_INMEM=1` 即可保留
+- **Console 团队 standby**：docker-compose.yml 已准备好加 `CONSOLE_API_FALLBACK_INMEM=1`
+  env 显式 opt-in；ContextForge-Console 端 chore PR standby 待 v0.7.2 ship
+
+详 v0.7.2 ship 时 ADR-018。
+
+### Console (cross-repo) sync state
+
+- ContextForge-Console 联调期发现本 PR 4 项 stale，cross-repo notify → ship 同步
+- Console master `3370a92` (PR #91) 已更新 checklist §6.3 / §6.5 反映 v0.7.1 ship
+- Console docker-compose.yml `CONSOLE_API_FALLBACK_INMEM=1` env 当前作显式声明保留，
+  v0.7.2 ship 后转为必需 opt-in
+
+---
+
 ## v0.7.0 (2026-05-24) — Console 22-endpoint conformance 100% PASS 🎉
 
 ### 摘要
