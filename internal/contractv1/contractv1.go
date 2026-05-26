@@ -301,6 +301,15 @@ func (h CoreHealth) HasMissingMustHaveFields() bool {
 	return len(h.MissingMustHaveFields) > 0
 }
 
+// task-15.4 (Phase 15 P1 #4): filter for GET /v1/eval-runs list endpoint.
+// All fields optional; empty string = no constraint. Limit ≤ 0 falls back
+// to server-side default 50; > 200 is clamped server-side.
+type ListEvalRunsFilter struct {
+	WorkspaceID string
+	Status      string
+	Limit       int32
+}
+
 // task-15.3 (Phase 15 P1 #3): Dashboard "已索引块" stats response from
 // GET /v1/stats/chunks. add-only — does not touch any other contract type.
 //

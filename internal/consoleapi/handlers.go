@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -278,6 +279,36 @@ func handleGetSearchTrace(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, trace)
+	}
+}
+
+// handleListEvalRuns — GET /v1/eval-runs (task-15.4 / Phase 15 P1 #4).
+// Returns 200 + JSON []EvalRun; empty list when no rows match. Optional
+// filters: ?workspace_id=, ?status=, ?limit= (default 50, clamped 1..=200).
+func handleListEvalRuns(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		filter := contractv1.ListEvalRunsFilter{
+			WorkspaceID: strings.TrimSpace(r.URL.Query().Get("workspace_id")),
+			Status:      strings.TrimSpace(r.URL.Query().Get("status")),
+			Limit:       0,
+		}
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				if n > 200 {
+					n = 200
+				}
+				filter.Limit = int32(n)
+			}
+		}
+		runs, err := deps.Eval.List(filter)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		if runs == nil {
+			runs = []contractv1.EvalRun{}
+		}
+		writeJSON(w, http.StatusOK, runs)
 	}
 }
 

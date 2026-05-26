@@ -44,6 +44,9 @@ func NewRouter(deps Deps) http.Handler {
 	// — trigger async run, return 200 with running; GET reads state).
 	mux.HandleFunc("POST /v1/eval-runs", handleCreateEvalRun(deps))
 	mux.HandleFunc("GET /v1/eval-runs/{id}", handleGetEvalRun(deps))
+	// task-15.4 (Phase 15 P1 #4): list eval runs for "最近评测" panel.
+	// Non-destructive read; ?workspace_id= ?status= ?limit= optional.
+	mux.HandleFunc("GET /v1/eval-runs", handleListEvalRuns(deps))
 	return bearerAuthMiddleware(mux, deps.AuthToken)
 }
 

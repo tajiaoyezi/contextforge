@@ -359,10 +359,24 @@ message UpdateEvalRunProgressRequest {
 
 message UpdateEvalRunProgressResponse {}
 
+// task-15.4 (Phase 15 P1 #4): list eval runs for Console UI Eval "最近评测"
+// panel. Filter is exact-match on workspace_id / status; limit clamped 1..=200
+// server-side with a default of 50. ORDER BY started_at DESC.
+message ListEvalRunsRequest {
+  string workspace_id = 1;  // optional; empty = no constraint
+  string status = 2;        // optional; "" / "running" / "succeeded" / "failed" / "cancelled"
+  int32 limit = 3;          // 0 → use default (50); else clamped to [1, 200]
+}
+
+message ListEvalRunsResponse {
+  repeated EvalRun runs = 1;
+}
+
 service EvalService {
   rpc Create(CreateEvalRunRequest) returns (EvalRun);
   rpc Get(GetEvalRunRequest) returns (EvalRun);
   rpc UpdateProgress(UpdateEvalRunProgressRequest) returns (UpdateEvalRunProgressResponse);
+  rpc List(ListEvalRunsRequest) returns (ListEvalRunsResponse);  // task-15.4 add-only
 }
 
 // =====================================================================

@@ -59,6 +59,8 @@ func (degradedSearch) GetChunksStats(_ string) (contractv1.ChunksStats, error) {
 	return contractv1.ChunksStats{}, consoleapi.ErrDataPlaneUnavailable
 }
 
+// task-15.4: degraded EvalClient also implements List → 503.
+
 type degradedEvents struct{}
 
 func (degradedEvents) Recent(_ int) ([]contractv1.ObservabilityEvent, error) {
@@ -88,4 +90,7 @@ func (degradedEval) Get(_ string) (*contractv1.EvalRun, error) {
 func (degradedEval) UpdateProgress(_, _ string, _ map[string]float64,
 	_ []contractv1.CaseResult, _ string) error {
 	return consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedEval) List(_ contractv1.ListEvalRunsFilter) ([]contractv1.EvalRun, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
 }

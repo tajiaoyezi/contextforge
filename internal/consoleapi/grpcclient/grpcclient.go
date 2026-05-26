@@ -579,6 +579,23 @@ func (e *evalClient) Get(id string) (*contractv1.EvalRun, error) {
 	return &run, nil
 }
 
+// List wraps EvalService.List (task-15.4 / Phase 15 P1 #4).
+func (e *evalClient) List(filter contractv1.ListEvalRunsFilter) ([]contractv1.EvalRun, error) {
+	resp, err := e.c.List(context.Background(), &pb.ListEvalRunsRequest{
+		WorkspaceId: filter.WorkspaceID,
+		Status:      filter.Status,
+		Limit:       filter.Limit,
+	})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]contractv1.EvalRun, 0, len(resp.GetRuns()))
+	for _, r := range resp.GetRuns() {
+		out = append(out, protoToEvalRun(r))
+	}
+	return out, nil
+}
+
 func (e *evalClient) UpdateProgress(id, status string, metrics map[string]float64,
 	caseResults []contractv1.CaseResult, errorMessage string) error {
 	metricsJSON := "{}"
