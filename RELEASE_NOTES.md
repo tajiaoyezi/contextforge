@@ -1,5 +1,90 @@
 # ContextForge Release Notes
 
+## v0.7.2 (2026-05-26) — fallback-inmem default reversal ⚠️ BREAKING
+
+### 摘要
+
+v0.7.2 patch release：按 v0.7.1 pre-announce 反转 single-image deployment 默认行为，消除 in-mem fallback 的 silent footgun（HTTP 200 healthcheck 掩盖容器重启数据失风险）。代码无改动，仅 Dockerfile 删 ENV 行 + ADR-018 spec lock。
+
+### 变更点
+
+详 [ADR-018: fallback-inmem-default-reversal](docs/decisions/adr-018-fallback-inmem-default-reversal.md)（D1-D4 共 4 决策）。
+
+#### 1. Dockerfile 删 `ENV CONSOLE_API_FALLBACK_INMEM=1`
+- v0.7.1 行为：`docker run contextforge-daemon:v0.7.1` → 默认 fallback-inmem，`/v1/health` 返 200（degraded），容器重启数据失
+- **v0.7.2 行为**：`docker run contextforge-daemon:v0.7.2` → 默认 fallback **deny**，gRPC core 不可达时 `/v1/health` 返 **503**，docker healthcheck 立即报 unhealthy
+
+#### 2. Binary code 无变更
+- `internal/cli/console_api_serve.go` binary default 一直是 `false`，v0.7.1 是 Dockerfile ENV 单方面强制 set 成 true
+- v0.7.2 删 ENV 行后，binary default 自然生效，container 内外行为统一
+
+#### 3. ADR-018 ratification test
+- 新增 `TestADR018_BinaryDefaultIsFallbackDeny` 锚定意图（`internal/cli/console_api_serve_test.go`）
+- 现有 `TestBuildDeps_DegradedWhenNoDaemon` + `TestRouter_HealthDegraded_503` 已覆盖默认 deny 路径，本 patch 无 logic change
+
+### ⚠️ BREAKING change call-out
+
+**v0.7.1 → v0.7.2 升级前请 review 您的部署方式**：
+
+| 部署方式 | v0.7.1 默认 | v0.7.2 默认 | 升级动作 |
+|---|---|---|---|
+| `docker run` single-image | inmem-fallback (200) | **fallback deny (503)** | 保留旧行为需 `-e CONSOLE_API_FALLBACK_INMEM=1` opt-in |
+| docker-compose single-service | inmem-fallback (200) | **fallback deny (503)** | docker-compose.yml `environment` 加 `CONSOLE_API_FALLBACK_INMEM=1` opt-in |
+| docker-compose multi-process (核 + proxy) | 已 opt-out via `=0` | 无变更 | 无需动 |
+| k8s Deployment | inmem-fallback (200) | **fallback deny (503)** | manifest env 加 `CONSOLE_API_FALLBACK_INMEM=1` opt-in 或切真 multi-process |
+| 纯 binary (非 docker) | fallback deny | fallback deny | **无影响** |
+
+### Upgrade path (v0.7.1 → v0.7.2)
+
+```bash
+# 1. 切到新 image (拉 v0.7.2 tag)
+docker pull contextforge-daemon:v0.7.2
+
+# 2. 验证默认 deny 行为
+docker run -d -p 48181:48181 --name v072 contextforge-daemon:v0.7.2
+sleep 5
+curl -o /dev/null -w '%{http_code}\n' localhost:48181/v1/health
+# expect: 503 (v0.7.1 是 200)
+
+# 3. 保留旧行为 (in-mem fallback) → 显式 opt-in
+docker rm -f v072
+docker run -d -p 48181:48181 -e CONSOLE_API_FALLBACK_INMEM=1 --name v072-optin contextforge-daemon:v0.7.2
+sleep 5
+curl -o /dev/null -w '%{http_code}\n' localhost:48181/v1/health
+# expect: 200 + status=degraded
+```
+
+### Trade-offs / Conscious decisions
+
+- **env 名保留 `CONSOLE_API_FALLBACK_INMEM`**（不改 `ALLOW_INMEM`）— v0.7.x patch series 不引入 dual-name + deprecate 包袱；改名留 v0.8/v1.0
+- **不加 startup banner WARN** — (a) 方案的 503 healthcheck 已是 ops 链路最强信号，banner WARN 易被 multi-container log 掩盖
+- **不变更 contractv1.go / proto / Rust core code** — 仅 Dockerfile + 单元测试 + spec docs
+- **Console 端 standby chore PR 已准备好**（ContextForge-Console PR #91 §6.5 F1 列出动作清单）— v0.7.2 ship 后 Console 团队同步 ship docker-compose.yml + .env.example 更新
+
+### Tests
+
+- `cargo test -p contextforge-core`: 94 lib + 5 integration suites all PASS (无 logic change，不退化)
+- `go test ./...`: 43 packages PASS + 新增 1 个 `TestADR018_BinaryDefaultIsFallbackDeny`
+- Docker container 实测 (manual verify on PR review)：
+  - 默认 `docker run contextforge-daemon:v0.7.2` → `/v1/health` 503 + healthcheck unhealthy
+  - `-e CONSOLE_API_FALLBACK_INMEM=1` → `/v1/health` 200 + status=degraded + healthcheck healthy
+
+### Console (cross-repo) sync state
+
+- Console 主仓 master `3370a92` (PR #91) checklist §6.5 F1 已 standby
+- v0.7.2 ship 后 Console 端启动 chore PR：docker-compose.yml + .env.example 加 `CONSOLE_API_FALLBACK_INMEM=1` opt-in；checklist §6.5 F1 标 ✅
+- 跨仓 break change 双向 coordinate path：ContextForge → 用户转达 → Console 主 Agent 启动 standby PR
+
+### Rollback path
+
+若 v0.7.2 ship 后发现 (a) 方案不可接受（Console standby PR 延迟 / 其它用户 ops 链路无法适配）：
+1. `git revert <v0.7.2 commit>` 反转
+2. ship v0.7.3 patch + ADR-018 status 改 "Reverted"
+3. 重新 design：可能切到 (b) startup-banner WARN 双重防御，或等 v0.8 ship 2 进程 image 一起解决
+4. 跨仓通知 Console 团队 v0.7.3 ship + standby PR 撤回
+
+---
+
 ## v0.7.1 (2026-05-26) — Dockerfile + single-image deployment fix
 
 ### 摘要

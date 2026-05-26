@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -205,5 +206,18 @@ func TestRouter_BusinessEndpointDegraded_503(t *testing.T) {
 	}
 	if errObj, ok := body["error"].(map[string]any); !ok || errObj["code"] != "SERVICE_UNAVAILABLE" {
 		t.Errorf("expected SERVICE_UNAVAILABLE error code; got %v", body)
+	}
+}
+
+// TestADR018_BinaryDefaultIsFallbackDeny (ADR-018 D1 ratification): with no
+// CONSOLE_API_FALLBACK_INMEM env and no --fallback-inmem flag, envBoolTrue
+// of empty string returns false, so the daemon defaults to fallback-deny.
+// v0.7.2 removed the Dockerfile `ENV CONSOLE_API_FALLBACK_INMEM=1` line so
+// this binary default takes effect inside the docker image too.
+func TestADR018_BinaryDefaultIsFallbackDeny(t *testing.T) {
+	// Ensure no env leak from parent shell.
+	t.Setenv("CONSOLE_API_FALLBACK_INMEM", "")
+	if envBoolTrue(os.Getenv("CONSOLE_API_FALLBACK_INMEM")) {
+		t.Fatal("ADR-018 D1: empty CONSOLE_API_FALLBACK_INMEM must yield false (fallback deny by default)")
 	}
 }
