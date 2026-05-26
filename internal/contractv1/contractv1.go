@@ -301,6 +301,16 @@ func (h CoreHealth) HasMissingMustHaveFields() bool {
 	return len(h.MissingMustHaveFields) > 0
 }
 
+// task-15.5 (Phase 15 P1 #5): query history record. Returned by GET /v1/queries
+// as a JSON array. add-only — does not amend RetrievalTrace shape (workspace_id
+// and ts_unix are out-of-band metadata kept by the Rust TraceStore wrapper).
+type QueryRecord struct {
+	QueryID     string `json:"query_id"`
+	Query       string `json:"query"`
+	TsUnix      int64  `json:"ts_unix"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+}
+
 // task-15.4 (Phase 15 P1 #4): filter for GET /v1/eval-runs list endpoint.
 // All fields optional; empty string = no constraint. Limit ≤ 0 falls back
 // to server-side default 50; > 200 is clamped server-side.

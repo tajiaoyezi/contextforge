@@ -312,6 +312,32 @@ func handleListEvalRuns(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleListQueries — GET /v1/queries (task-15.5 / Phase 15 P1 #5).
+// Returns 200 + JSON []QueryRecord (most-recent first). ?limit= clamps
+// 1..=100; default 20 when missing or invalid.
+func handleListQueries(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				if n > 100 {
+					n = 100
+				}
+				limit = n
+			}
+		}
+		records, err := deps.Search.ListQueries(limit)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		if records == nil {
+			records = []contractv1.QueryRecord{}
+		}
+		writeJSON(w, http.StatusOK, records)
+	}
+}
+
 // handleGetChunksStats — GET /v1/stats/chunks (task-15.3 / Phase 15 P1 #3).
 // Returns 200 + contractv1.ChunksStats; 503 in fallback when SearchBackend
 // is unwired (MemStore stub returns zero). Optional ?workspace_id= filters

@@ -310,7 +310,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 15.2 | core/src/data_plane/memory.rs (emit EventBus) | docs/specs/tasks/task-15.2-memory-event-bus-bridge.md | Done | Phase15 #2 | `../ContextForge-wt-console-functional-gap-closure` |
 | 15.3 | proto + core/src/data_plane/search.rs + Go REST GET /v1/stats/chunks | docs/specs/tasks/task-15.3-chunks-stats-endpoint.md | Done | Phase15 #3（dep 15.2 后实施 — 复用 EventBus 已稳定）| `../ContextForge-wt-console-functional-gap-closure` |
 | 15.4 | proto + core/src/eval/store.rs + Go REST GET /v1/eval-runs | docs/specs/tasks/task-15.4-list-eval-runs-endpoint.md | Done | Phase15 #4（dep 15.3 完成 — 串行 proto 修改）| `../ContextForge-wt-console-functional-gap-closure` |
-| 15.5 | proto + core/src/data_plane/search.rs (TraceStore.list) + Go REST GET /v1/queries | docs/specs/tasks/task-15.5-query-history-endpoint.md | Ready | Phase15 #5（dep 15.4 完成 — 串行 proto）| `../ContextForge-wt-console-functional-gap-closure` |
+| 15.5 | proto + core/src/data_plane/search.rs (TraceStore.list) + Go REST GET /v1/queries | docs/specs/tasks/task-15.5-query-history-endpoint.md | Done | Phase15 #5（dep 15.4 完成 — 串行 proto）| `../ContextForge-wt-console-functional-gap-closure` |
 | 15.6 | proto + core/src/health.rs + Go REST GET /v1/health?detailed=true | docs/specs/tasks/task-15.6-health-component-detail.md | Ready | Phase15 #6（dep 15.5，收口含 smoke v6 + ADR-014 D2 lint + closeout）| `../ContextForge-wt-console-functional-gap-closure` |
 
 ## ADR 索引

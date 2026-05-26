@@ -553,6 +553,7 @@ const (
 	SearchService_GetSourceChunk_FullMethodName = "/contextforge.console_data_plane.v1.SearchService/GetSourceChunk"
 	SearchService_GetSearchTrace_FullMethodName = "/contextforge.console_data_plane.v1.SearchService/GetSearchTrace"
 	SearchService_GetChunksStats_FullMethodName = "/contextforge.console_data_plane.v1.SearchService/GetChunksStats"
+	SearchService_ListQueries_FullMethodName    = "/contextforge.console_data_plane.v1.SearchService/ListQueries"
 )
 
 // SearchServiceClient is the client API for SearchService service.
@@ -563,6 +564,7 @@ type SearchServiceClient interface {
 	GetSourceChunk(ctx context.Context, in *GetSourceChunkRequest, opts ...grpc.CallOption) (*SourceChunk, error)
 	GetSearchTrace(ctx context.Context, in *GetSearchTraceRequest, opts ...grpc.CallOption) (*RetrievalTrace, error)
 	GetChunksStats(ctx context.Context, in *GetChunksStatsRequest, opts ...grpc.CallOption) (*ChunksStats, error)
+	ListQueries(ctx context.Context, in *ListQueriesRequest, opts ...grpc.CallOption) (*ListQueriesResponse, error)
 }
 
 type searchServiceClient struct {
@@ -613,6 +615,16 @@ func (c *searchServiceClient) GetChunksStats(ctx context.Context, in *GetChunksS
 	return out, nil
 }
 
+func (c *searchServiceClient) ListQueries(ctx context.Context, in *ListQueriesRequest, opts ...grpc.CallOption) (*ListQueriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQueriesResponse)
+	err := c.cc.Invoke(ctx, SearchService_ListQueries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SearchServiceServer is the server API for SearchService service.
 // All implementations must embed UnimplementedSearchServiceServer
 // for forward compatibility.
@@ -621,6 +633,7 @@ type SearchServiceServer interface {
 	GetSourceChunk(context.Context, *GetSourceChunkRequest) (*SourceChunk, error)
 	GetSearchTrace(context.Context, *GetSearchTraceRequest) (*RetrievalTrace, error)
 	GetChunksStats(context.Context, *GetChunksStatsRequest) (*ChunksStats, error)
+	ListQueries(context.Context, *ListQueriesRequest) (*ListQueriesResponse, error)
 	mustEmbedUnimplementedSearchServiceServer()
 }
 
@@ -642,6 +655,9 @@ func (UnimplementedSearchServiceServer) GetSearchTrace(context.Context, *GetSear
 }
 func (UnimplementedSearchServiceServer) GetChunksStats(context.Context, *GetChunksStatsRequest) (*ChunksStats, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChunksStats not implemented")
+}
+func (UnimplementedSearchServiceServer) ListQueries(context.Context, *ListQueriesRequest) (*ListQueriesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListQueries not implemented")
 }
 func (UnimplementedSearchServiceServer) mustEmbedUnimplementedSearchServiceServer() {}
 func (UnimplementedSearchServiceServer) testEmbeddedByValue()                       {}
@@ -736,6 +752,24 @@ func _SearchService_GetChunksStats_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SearchService_ListQueries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQueriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServiceServer).ListQueries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SearchService_ListQueries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServiceServer).ListQueries(ctx, req.(*ListQueriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SearchService_ServiceDesc is the grpc.ServiceDesc for SearchService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -758,6 +792,10 @@ var SearchService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetChunksStats",
 			Handler:    _SearchService_GetChunksStats_Handler,
+		},
+		{
+			MethodName: "ListQueries",
+			Handler:    _SearchService_ListQueries_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

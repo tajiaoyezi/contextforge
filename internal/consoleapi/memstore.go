@@ -354,6 +354,38 @@ func (s *MemStore) GetChunksStats(workspaceID string) (contractv1.ChunksStats, e
 	return contractv1.ChunksStats{Total: 0, TodayDelta: 0}, nil
 }
 
+// ListQueries — task-15.5 fallback path. Returns QueryRecord entries derived
+// from the in-memory traceCache (populated by Search). traceCache keys are
+// query_ids; values include trace.Query. fallback ts_unix is set when Search()
+// writes the trace; if absent we return 0 [SPEC-OWNER:task-15.5].
+func (s *MemStore) ListQueries(limit int) ([]contractv1.QueryRecord, error) {
+	if s.SearchBackend != nil {
+		return s.SearchBackend.ListQueries(limit)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]contractv1.QueryRecord, 0, len(s.traceCache))
+	for queryID, trace := range s.traceCache {
+		out = append(out, contractv1.QueryRecord{
+			QueryID: queryID,
+			Query:   trace.Query,
+			TsUnix:  0, // fallback does not stamp ts; [SPEC-OWNER:task-15.5]
+		})
+	}
+	// Stable secondary order by QueryID so tests are deterministic.
+	sort.Slice(out, func(i, j int) bool { return out[i].QueryID > out[j].QueryID })
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (s *MemStore) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
 	if s.SearchBackend != nil {
 		return s.SearchBackend.Search(req)

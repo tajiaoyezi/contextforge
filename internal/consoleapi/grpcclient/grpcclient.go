@@ -277,6 +277,26 @@ func (s *searchClient) GetSearchTrace(queryID string) (contractv1.RetrievalTrace
 	return protoToRetrievalTrace(resp), nil
 }
 
+// ListQueries wraps SearchService.ListQueries (task-15.5 / Phase 15 P1 #5).
+func (s *searchClient) ListQueries(limit int) ([]contractv1.QueryRecord, error) {
+	resp, err := s.c.ListQueries(context.Background(), &pb.ListQueriesRequest{
+		Limit: int32(limit),
+	})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]contractv1.QueryRecord, 0, len(resp.GetRecords()))
+	for _, r := range resp.GetRecords() {
+		out = append(out, contractv1.QueryRecord{
+			QueryID:     r.GetQueryId(),
+			Query:       r.GetQuery(),
+			TsUnix:      r.GetTsUnix(),
+			WorkspaceID: r.GetWorkspaceId(),
+		})
+	}
+	return out, nil
+}
+
 // GetChunksStats wraps SearchService.GetChunksStats (task-15.3 / Phase 15 P1 #3).
 func (s *searchClient) GetChunksStats(workspaceID string) (contractv1.ChunksStats, error) {
 	resp, err := s.c.GetChunksStats(context.Background(), &pb.GetChunksStatsRequest{

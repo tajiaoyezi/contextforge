@@ -58,6 +58,9 @@ func (degradedSearch) GetSearchTrace(_ string) (contractv1.RetrievalTrace, error
 func (degradedSearch) GetChunksStats(_ string) (contractv1.ChunksStats, error) {
 	return contractv1.ChunksStats{}, consoleapi.ErrDataPlaneUnavailable
 }
+func (degradedSearch) ListQueries(_ int) ([]contractv1.QueryRecord, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
+}
 
 // task-15.4: degraded EvalClient also implements List → 503.
 
