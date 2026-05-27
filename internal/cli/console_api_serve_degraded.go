@@ -10,6 +10,8 @@
 package cli
 
 import (
+	"time"
+
 	"github.com/tajiaoyezi/contextforge/internal/consoleapi"
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
 )
@@ -66,7 +68,11 @@ func (degradedSearch) ListQueries(_ int) ([]contractv1.QueryRecord, error) {
 
 type degradedEvents struct{}
 
-func (degradedEvents) Recent(_ int) ([]contractv1.ObservabilityEvent, error) {
+// task-16.2 (Phase 16 P4 #11): signature mirrors EventsClient.Recent(limit, wait).
+// degraded mode has no event source so we don't honor `wait` (return immediately
+// with 503 so the operator sees the unhealthy signal fast; sleeping would just
+// delay the error response).
+func (degradedEvents) Recent(_ int, _ time.Duration) ([]contractv1.ObservabilityEvent, error) {
 	return nil, consoleapi.ErrDataPlaneUnavailable
 }
 

@@ -637,10 +637,14 @@ func handleGetEvalRun(deps Deps) http.HandlerFunc {
 func handleEvents(deps Deps) http.HandlerFunc {
 	const defaultLimit = 100
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse optional wait + limit query params (long-poll knobs).
-		_ = parseWaitParam(r) // task-11.4: currently passed to gRPC via grpcclient ctx timeout
+		// task-16.2 (Phase 16 P4 #11): pass parsed `wait` down to grpcclient
+		// (was previously discarded; the gRPC client used a hardcoded 30s ctx).
+		// Recent now drives a two-phase long-poll: phase-1 blocks up to `wait`
+		// for the first event; phase-2 drains immediately-available events with
+		// a short (~100ms) timeout.
+		wait := parseWaitParam(r)
 		limit := parseLimitParam(r, defaultLimit)
-		evts, err := deps.Events.Recent(limit)
+		evts, err := deps.Events.Recent(limit, wait)
 		if err != nil {
 			mapStorageError(w, err)
 			return

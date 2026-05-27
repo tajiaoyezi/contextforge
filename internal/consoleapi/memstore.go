@@ -463,7 +463,31 @@ func buildSourceChunkFromResult(res contractv1.SearchResult) contractv1.SourceCh
 
 // ---- EventsClient ----
 
-func (s *MemStore) Recent(limit int) ([]contractv1.ObservabilityEvent, error) {
+// Recent — MemStore fallback for GET /v1/observability/events.
+//
+// task-16.2 (Phase 16 P4 #11): fallback impl. There is no real event source
+// in MemStore (no broadcast channel), so we can't truly block-on-event. Two
+// behaviors:
+//   - Ring buffer non-empty → return slice immediately (wait ignored).
+//   - Ring buffer empty + wait > 0 → sleep `min(wait, 1s)` then return `[]`.
+//     Capping at 1s avoids HTTP handler holding goroutine for a long time on
+//     a fallback path that has no chance of new events arriving; capping
+//     above 0 avoids Console UI poll-storm if it sets `?wait=30s` and the
+//     ring is empty (the alternative — immediate `[]` return — would have
+//     Console UI immediately re-request, burning CPU).
+func (s *MemStore) Recent(limit int, wait time.Duration) ([]contractv1.ObservabilityEvent, error) {
+	s.mu.Lock()
+	have := len(s.events)
+	s.mu.Unlock()
+
+	if have == 0 && wait > 0 {
+		sleepFor := wait
+		if sleepFor > time.Second {
+			sleepFor = time.Second
+		}
+		time.Sleep(sleepFor)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if limit <= 0 || limit > len(s.events) {
