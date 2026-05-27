@@ -333,6 +333,7 @@ mod tests {
             memory: Some(mem.clone()),
             audit: Some(audit),
             eval: None,
+            trace_persist: None,
         });
         (MemoryServer::new(stores), mem, event_bus)
     }

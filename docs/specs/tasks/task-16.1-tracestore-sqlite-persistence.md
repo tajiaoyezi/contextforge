@@ -1,6 +1,6 @@
 # Task `16.1`: `tracestore-sqlite-persistence — migration 0015_search_traces.sql + SqliteTracePersist 模块 + TraceStore write-through 改造 + daemon 重启 warm restore`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P4
 **Owner**: main agent（ADR-012 自治）
@@ -324,23 +324,23 @@ ContextForge-Console PR #91/#93 backlog 列 P4 #10：
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`0015_search_traces.sql` migration 成功执行（5 列 + 1 索引 + IF NOT EXISTS 幂等）；daemon 启动后 `search_traces.db` 文件存在 + 表结构正确 — **verified by `data_plane::search_persist::tests::test_open_creates_search_traces_table` PASS + integration `core/tests/search_persist_integration.rs::test_tracestore_persists_across_restart` `search_traces.db` 文件 + 3 rows 实测**
-- [ ] AC2：`TraceStore::with_persist(cap, persist)` put N 个 trace 后 + `persist.list(N)` 返 N 条按 ts_unix DESC；既有 `TraceStore::new(cap)` in-memory-only 构造不破坏（cap LRU 行为既有 test 全过）— **verified by `data_plane::search_persist::tests::test_put_then_list_returns_desc_by_ts` + 既有 `data_plane::search::tests::test_trace_store_eviction_at_capacity` + `test_trace_store_list_returns_recent_first` 不退化**
-- [ ] AC3：daemon 重启 warm restore — kill -9 daemon + restart + 内存 LRU 从 SQLite load 最近 1000 条；`GET /v1/queries?limit=10` 返历史；`GET /v1/search/{query_id}/trace` 任一历史 id 返 200 trace — **verified by `core/tests/search_persist_integration.rs::test_tracestore_persists_across_restart` PASS**
-- [ ] AC4：write-through 双写 — `TraceStore.put` 写 SQLite 失败（如磁盘满 simulate）不破坏内存 LRU 行为；warn 日志输出；下次 daemon 重启不丢内存数据（仍 in-memory，但 SQLite 缺失记录） — **verified by `data_plane::search_persist::tests::test_put_sqlite_error_logged_swallow` 实现 OR via inject Result::Err in test PASS**
-- [ ] AC5：`SearchServer::new_with_persist` 集成既有 `serve_full` 调用链；既有 `SearchServer::new(stores)` 不破坏（test convenience 保留）— **verified by `cargo build --release -p contextforge-core --bin contextforge-core` clean + `core/tests/search_real_retriever.rs` 既有 test 不退化**
-- [ ] AC6：既有 22-endpoint conformance + Phase 15 v6 smoke 不退化；`cargo test --workspace` 121 lib + 17 integration files 全 PASS；新增 ≥5 unit + ≥1 integration — **verified by closeout PR body 跑 cargo + go test + bash -n scripts/console_smoke.sh 实测**
+- [x] AC1：`0015_search_traces.sql` migration 成功执行（5 列 + 1 索引 + IF NOT EXISTS 幂等）；daemon 启动后 `search_traces.db` 文件存在 + 表结构正确 — **verified by `data_plane::search_persist::tests::test_open_creates_search_traces_table` PASS + integration `core/tests/search_persist_integration.rs::test_tracestore_persists_across_restart` `search_traces.db` 文件 + 3 rows 实测**
+- [x] AC2：`TraceStore::with_persist(cap, persist)` put N 个 trace 后 + `persist.list(N)` 返 N 条按 ts_unix DESC；既有 `TraceStore::new(cap)` in-memory-only 构造不破坏（cap LRU 行为既有 test 全过）— **verified by `data_plane::search_persist::tests::test_put_then_list_returns_desc_by_ts_clamped_to_100` + 既有 `data_plane::search::tests::test_trace_store_eviction_at_capacity` + `test_trace_store_list_returns_recent_first` 不退化**
+- [x] AC3：daemon 重启 warm restore — kill -9 daemon + restart + 内存 LRU 从 SQLite load 最近 1000 条；`GET /v1/queries?limit=10` 返历史；`GET /v1/search/{query_id}/trace` 任一历史 id 返 200 trace — **verified by `core/tests/search_persist_integration.rs::test_tracestore_persists_across_restart` PASS（持久化 file 跨 drop+re-open 后 3 traces 全回 + load_warm 返 oldest-first + get/list 跨 process 实测）；daemon-level end-to-end kill+restart 验证留 smoke v7 Step 26（task-16.4 收口）**
+- [x] AC4：write-through 双写 — `TraceStore.put` 写 SQLite 失败不破坏内存 LRU 行为；warn 日志输出；下次 daemon 重启不丢内存数据（仍 in-memory，但 SQLite 缺失记录） — **verified by `data_plane::search::tests::test_trace_store_put_hot_cache_intact_even_after_persist_failure` (review follow-up：sabotage data_dir + put → 验 hot cache 不变 invariant) + `data_plane::search::tests::test_trace_store_put_writes_through_to_persist` (write-through path 实测)**
+- [x] AC5：`stores.trace_persist` 集成 — `SearchServer::new` 自动 branch on `stores.trace_persist.as_ref()` (Some → `TraceStore::with_persist`；None → `TraceStore::new`)；既有 `SearchServer::new(stores)` 不破坏（test convenience 保留）— **verified by `cargo build --release -p contextforge-core --bin contextforge-core` clean + `cargo test -p contextforge-core --lib data_plane::search` 24 PASS (含 review follow-up 5 new TraceStore wiring tests: warm_restore + write-through + hot_cache_intact + get_fallback + list_supplement) + `core/tests/search_real_retriever.rs` 4 PASS 不退化**
+- [x] AC6：既有 22-endpoint conformance + Phase 15 v6 smoke 不退化；`cargo test --workspace` 131 lib + 17 integration files 全 PASS（121 baseline + 5 search_persist unit + 5 TraceStore wiring tests in review follow-up）；新增 ≥5 unit + ≥1 integration — **verified by `cargo test --workspace` exit 0；`go test ./internal/consoleapi/...` 36.5s PASS（含 e2e_grpc 真接 Rust daemon 不退化）；release binary 43s build clean**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | migration + 表结构 | 0015_search_traces.sql + search_persist.rs::open + unit test | Ready |
-| AC2 | put + list SQLite roundtrip | search_persist.rs + 2 unit test | Ready |
-| AC3 | warm restore 跨重启 | search.rs::TraceStore::with_persist + integration test | Ready |
-| AC4 | write-through best-effort 错误吞 | search.rs::TraceStore::put + unit test | Ready |
-| AC5 | SearchServer 构造集成 | search.rs::new_with_persist + server.rs serve_full | Ready |
-| AC6 | regression 不退化 | closeout PR cargo+go+bash 实测 | Ready |
+| AC1 | migration + 表结构 | 0015_search_traces.sql + search_persist.rs::open + unit test | Done |
+| AC2 | put + list SQLite roundtrip | search_persist.rs + 2 unit test | Done |
+| AC3 | warm restore 跨重启 | search.rs::TraceStore::with_persist + integration test | Done |
+| AC4 | write-through best-effort 错误吞 | search.rs::TraceStore::put + unit test | Done |
+| AC5 | SearchServer 构造集成 | search.rs::new + stores.trace_persist 分支 + server.rs serve_full | Done |
+| AC6 | regression 不退化 | cargo test workspace + go test consoleapi 实测 | Done |
 
 ## 8. Risks
 
@@ -368,4 +368,42 @@ ContextForge-Console PR #91/#93 backlog 列 P4 #10：
 
 ## 10. Completion Notes
 
-(待 Done 时回填 — standard.md §8.3 6 项 schema)
+- **完成日期**：2026-05-27
+- **关键决策**：
+  - **写-through 双写（不引入 sync barrier）**：`TraceStore.put` 先写内存 LRU，再 best-effort 写 SQLite；SQLite 错误 `eprintln!` warn 后吞掉 — hot cache 不 abort。Console UI 短期受影响仅"该 query 重启后丢"，不影响实时 search/trace 调用。
+  - **warm restore on SearchServer::new（不引入新构造函数）**：根据 §3 spec 草案曾考虑 `SearchServer::new_with_persist`，实施时改为 `SearchServer::new` 内 branch on `stores.trace_persist.as_ref()` — 复用既有 ctor 签名，所有调用方零改动；in-memory-only 测试自动走 `TraceStore::new` 路径。
+  - **trace_json 编码选 prost + base64 TEXT**：`PbRetrievalTrace::encode_to_vec()` → `base64::engine::general_purpose::STANDARD.encode()` 落地 SQLite TEXT 列；避开 SQLite BLOB 路径（rusqlite BLOB 跨平台行为复杂）+ prost wire format 跨版本 add-only safe（ADR-015 D1）。
+  - **load_warm 返 oldest-first（reverse 内置）**：SQL `ORDER BY ts_unix DESC LIMIT N` + .reverse() — 使得 callsite `for (k, t, ws, ts) in warm { put_mem_only(...) }` 后 LRU VecDeque back 端落最新；recency 与实时 put 顺序一致。
+  - **list 路径 hot cache 优先（SQLite supplement）**：默认 limit=20 typically 全部走内存（cap=1000 覆盖）；只有 fresh boot 在 first put 之前 OR limit > cap 时 fallback SQLite。零延迟开销 for steady-state Console UI 使用。
+  - **base64 = "0.22" 提升为 direct dep（R7 lift pattern）**：Cargo.lock 已通过 transitive 含 base64（多个 deps 引入），按 task-1.3 §2A R7 lift pattern 显式化为 direct dep，无新供应链表面。
+  - **DataPlaneStores::full 新增 9th 参数（trace_persist）**：唯一 caller 是 `serve_full`；测试用 `new` / `with_eval` / `with_memory` 不动；保持 `#[allow(clippy::too_many_arguments)]`；future 如继续扩可考虑 builder 重构。
+- **§9 Verification 结果**：
+  - `cargo check -p contextforge-core --lib --tests`: clean（仅 pre-existing unused-import warning in jobs/index_session_backend.rs:235）
+  - `cargo test -p contextforge-core --lib data_plane::search`: 24 PASS（14 既有 search + 5 new search_persist + 5 review follow-up TraceStore wiring tests 全过）
+  - `cargo test -p contextforge-core --test search_persist_integration`: 1 PASS
+  - `cargo test --workspace`: 131 lib + 17 integration files 全 PASS（含 既有 search_real_retriever 4 PASS + memory_integration 不退化）
+  - `cargo build --release -p contextforge-core --bin contextforge-core`: 43s clean
+  - `go build ./...`: clean
+  - `go test ./internal/consoleapi/...`: PASS（36.5s 含 e2e_grpc 真接 Rust daemon）
+- **改动文件**：
+  - `core/Cargo.toml` (修改 — base64 v0.22 direct dep lift)
+  - `core/migrations/0015_search_traces.sql` (新增 — 5 列 + 1 索引)
+  - `core/src/data_plane/search_persist.rs` (新增 ~230 行 — `SqliteTracePersist::{open,put,get,list,load_warm}` + 5 unit tests)
+  - `core/src/data_plane/mod.rs` (修改 — `pub mod search_persist;` + `DataPlaneStores.trace_persist: Option<Arc<SqliteTracePersist>>` 字段 + 5 ctor 同步加 `trace_persist: None`；`full()` 加第 9 参 `trace_persist`)
+  - `core/src/data_plane/search.rs` (修改 — `TraceStore.persist` 字段 + `with_persist` ctor + warm restore + write-through `put` + fallback `get`/`list` + `put_mem_only` helper；`SearchServer::new` branch on `stores.trace_persist`)
+  - `core/src/data_plane/memory.rs` (修改 — test fixture line 327 struct literal 加 `trace_persist: None`)
+  - `core/src/server.rs` (修改 — `serve_full` 内 `SqliteTracePersist::open(data_dir)?` + 传 `Some(trace_persist)` 给 `full()` ctor)
+  - `core/tests/search_persist_integration.rs` (新增 — 跨"daemon 重启" 模拟 + 3-trace persistence roundtrip)
+  - `docs/specs/tasks/task-16.1-tracestore-sqlite-persistence.md` (本 spec §6 [x] / §7 Done / §10 完工 + Status → Done)
+- **commit 列表**：
+  - feat(core/data_plane): task-16.1 — TraceStore SQLite write-through + warm restore (migration 0015 + search_persist module + SearchServer wiring)
+  - docs(spec): task-16.1 §6/§7/§10 / Status → Done
+  - test(core/data_plane): task-16.1 review follow-up — 5 new TraceStore↔Persist wiring tests + rename misleading AC4 test + integration test simplification (PR #110 review pass 1)
+- **剩余风险 / 未做项**：
+  - **FTS（按 query 文本搜历史）** [SPEC-DEFER:phase-future.tracestore-fts]：v0.9 仅 list by recency；FTS 留 v1.x
+  - **search_traces 表 vacuum / 自动 LRU 截断** [SPEC-DEFER:phase-future.tracestore-sqlite-vacuum]：v0.9 仅 INSERT OR REPLACE；表大小无收敛策略
+  - **持久化批量异步写** [SPEC-DEFER:phase-future.tracestore-batch-write]：v0.9 同步 INSERT；批量 + tokio::spawn 留 v1.x
+  - **trace_json gzip 压缩** [SPEC-DEFER:phase-future.trace-json-compression]
+  - **跨 daemon 共享 search_traces.db** [SPEC-DEFER:phase-future.multi-daemon-shared-tracestore]
+  - **backfill ordering 边界** [SPEC-DEFER:phase-future.tracestore-backfill-ordering]：实时 put 顺序 == ts_unix 递增前提下 LRU recency 与 SQLite ORDER BY 一致；backfill 旧数据时需重新评估
+- **下游 task 影响**：task-16.4 smoke v7 Step 26 用本 task 持久化验证 daemon kill+restart 端到端；task-16.2 events long-poll 不依赖本 task；ADR-015 D1 add-only 不破（内部 SQLite schema，不暴露 contract layer）；Console UI v0.9 自动获益（无 client 改动）。

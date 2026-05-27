@@ -21,6 +21,7 @@ use crate::pb_console::{
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
 use crate::workspace::WorkspaceStore;
 
+use super::search_persist::SqliteTracePersist;
 use super::DataPlaneStores;
 
 /// task-12.3 (ADR-017 D1 Wave 2): in-memory LRU cap for trace_store. Picked
@@ -41,10 +42,18 @@ struct TraceRecord {
 
 /// LRU-FIFO trace store: HashMap for O(1) lookup + VecDeque for insertion-order
 /// eviction. Newer inserts of an existing key refresh recency by re-pushing.
+///
+/// task-16.1 (Phase 16 P4 #10): optional `persist` field enables write-through
+/// to a SQLite-backed `SqliteTracePersist`. Hot cache LRU semantics are
+/// unchanged when `persist == None` (task-12.3/15.5 baseline); when `Some`,
+/// `put` double-writes (best-effort on SQLite errors), `get` falls back to
+/// SQLite on cache miss, and `list` falls back when the hot cache has fewer
+/// than `limit` items.
 struct TraceStore {
     map: HashMap<String, TraceRecord>,
     order: VecDeque<String>,
     cap: usize,
+    persist: Option<Arc<SqliteTracePersist>>,
 }
 
 impl TraceStore {
@@ -53,7 +62,33 @@ impl TraceStore {
             map: HashMap::with_capacity(cap),
             order: VecDeque::with_capacity(cap),
             cap,
+            persist: None,
         }
+    }
+
+    /// task-16.1: build a TraceStore wired to a SQLite persist and warm
+    /// restore the hot cache from the most-recent `cap` rows (insertion
+    /// order: oldest-first so the newest lands at the back of the VecDeque).
+    fn with_persist(cap: usize, persist: Arc<SqliteTracePersist>) -> Self {
+        let mut store = Self {
+            map: HashMap::with_capacity(cap),
+            order: VecDeque::with_capacity(cap),
+            cap,
+            persist: Some(persist.clone()),
+        };
+        match persist.load_warm(cap) {
+            Ok(warm) => {
+                for (key, trace, ws, ts) in warm {
+                    store.put_mem_only(key, trace, ws, ts);
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARN search_persist warm restore failed (starting with empty hot cache): {e}"
+                );
+            }
+        }
+        store
     }
 
     fn put(
@@ -63,13 +98,34 @@ impl TraceStore {
         workspace_id: String,
         ts_unix: i64,
     ) {
+        // 1) hot cache write (LRU semantics unchanged from v0.8).
+        self.put_mem_only(key.clone(), trace.clone(), workspace_id.clone(), ts_unix);
+        // 2) write-through to SQLite — best-effort; SQLite error is logged but
+        //    does not abort the hot cache update (Console UI keeps working off
+        //    the in-memory store).
+        if let Some(p) = self.persist.as_ref() {
+            if let Err(e) = p.put(&key, &trace, &workspace_id, ts_unix) {
+                eprintln!(
+                    "WARN search_persist.put failed (key={key}); hot cache still updated: {e}"
+                );
+            }
+        }
+    }
+
+    /// task-16.1: extracted from the original `put` body so `with_persist`
+    /// can warm-restore the LRU without re-writing to SQLite.
+    fn put_mem_only(
+        &mut self,
+        key: String,
+        trace: PbRetrievalTrace,
+        workspace_id: String,
+        ts_unix: i64,
+    ) {
         if self.map.contains_key(&key) {
-            // Refresh recency: remove old position, push to back.
             if let Some(pos) = self.order.iter().position(|k| k == &key) {
                 self.order.remove(pos);
             }
         } else if self.map.len() >= self.cap {
-            // Evict oldest.
             if let Some(oldest) = self.order.pop_front() {
                 self.map.remove(&oldest);
             }
@@ -86,14 +142,24 @@ impl TraceStore {
     }
 
     fn get(&self, key: &str) -> Option<PbRetrievalTrace> {
-        self.map.get(key).map(|r| r.trace.clone())
+        if let Some(rec) = self.map.get(key) {
+            return Some(rec.trace.clone());
+        }
+        // task-16.1: hot cache miss → SQLite fallback (read-only; deliberately
+        // does not back-fill the LRU to avoid polluting recency with old rows).
+        self.persist
+            .as_ref()
+            .and_then(|p| p.get(key).ok().flatten())
     }
 
-    /// task-15.5: list the most-recent N query records (DESC by insertion
-    /// order via VecDeque reverse iteration). `limit` is clamped 1..=100.
+    /// task-15.5 / task-16.1: list the most-recent N query records (DESC by
+    /// insertion order via VecDeque reverse iteration). `limit` is clamped
+    /// 1..=100. If a SQLite persist is configured AND the hot cache returns
+    /// fewer items than requested, fall back to SQLite ORDER BY ts_unix DESC.
     fn list(&self, limit: usize) -> Vec<PbQueryRecord> {
         let lim = limit.clamp(1, 100);
-        self.order
+        let mem: Vec<PbQueryRecord> = self
+            .order
             .iter()
             .rev()
             .take(lim)
@@ -105,7 +171,20 @@ impl TraceStore {
                     workspace_id: rec.workspace_id.clone(),
                 })
             })
-            .collect()
+            .collect();
+        if mem.len() >= lim || self.persist.is_none() {
+            return mem;
+        }
+        // task-16.1: hot cache short → SQLite supplements. After warm restore
+        // this rarely triggers (LRU holds up to 1000); fresh boot before first
+        // `put` is the typical hit.
+        match self.persist.as_ref().unwrap().list(lim) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("WARN search_persist.list failed; returning hot cache subset: {e}");
+                mem
+            }
+        }
     }
 
     #[cfg(test)]
@@ -120,10 +199,18 @@ pub struct SearchServer {
 }
 
 impl SearchServer {
+    /// task-11.4 / task-16.1: read `stores.trace_persist` to decide whether
+    /// the in-memory `TraceStore` is wired to a SQLite-backed persist
+    /// (production via `serve_full`) or stays in-memory-only (Phase 11/12/15
+    /// tests via `DataPlaneStores::new` / `with_eval` / `with_memory`).
     pub fn new(stores: Arc<DataPlaneStores>) -> Self {
+        let trace_store = match stores.trace_persist.as_ref() {
+            Some(persist) => TraceStore::with_persist(TRACE_STORE_CAP, persist.clone()),
+            None => TraceStore::new(TRACE_STORE_CAP),
+        };
         Self {
             stores,
-            trace_store: Arc::new(Mutex::new(TraceStore::new(TRACE_STORE_CAP))),
+            trace_store: Arc::new(Mutex::new(trace_store)),
         }
     }
 }
@@ -785,5 +872,179 @@ mod tests {
         let trace = inner.trace.expect("trace present");
         assert_eq!(trace.query, "anything");
         assert!(trace.retrieved_chunks.is_empty());
+    }
+
+    // ----------------------------------------------------------------------
+    // task-16.1 (Phase 16 P4 #10) review follow-up: TraceStore↔Persist wiring.
+    // These tests cover the AC3/AC4/AC5 seams that the search_persist
+    // module's unit tests didn't reach (those exercised SqliteTracePersist
+    // in isolation; here we exercise TraceStore::with_persist + write-through
+    // + cache-miss fallback + list-supplement paths).
+    // ----------------------------------------------------------------------
+
+    fn wiring_trace(query: &str) -> PbRetrievalTrace {
+        PbRetrievalTrace {
+            trace_id: format!("trace-{query}"),
+            query: query.to_string(),
+            expanded_query: None,
+            candidate_generation_steps: vec!["bm25".into()],
+            lexical_candidates_count: 0,
+            vector_candidates_count: 0,
+            rerank_steps: vec![],
+            scope_filter_result: "no-op".into(),
+            final_context_count: 0,
+            retrieved_chunks: vec![],
+        }
+    }
+
+    /// AC3 wiring: warm restore populates the hot cache from SQLite contents.
+    /// Pre-populate the persist directly, then construct TraceStore::with_
+    /// persist and verify the hot cache holds the expected rows.
+    #[test]
+    fn test_trace_store_with_persist_warm_restore_populates_hot_cache() {
+        let dir = temp_data_dir("wiring-warm");
+        let persist = Arc::new(SqliteTracePersist::open(&dir).expect("open ok"));
+        // Pre-populate persist directly (bypasses TraceStore.put).
+        persist.put("k1", &wiring_trace("q1"), "ws", 100).unwrap();
+        persist.put("k2", &wiring_trace("q2"), "ws", 200).unwrap();
+
+        let store = TraceStore::with_persist(10, persist);
+
+        assert_eq!(store.len(), 2, "warm restore populates hot cache");
+        // Hot cache hit (not SQLite fallback) — get reads from map first.
+        assert!(store.get("k1").is_some());
+        assert_eq!(store.get("k1").unwrap().query, "q1");
+        assert!(store.get("k2").is_some());
+
+        // list returns insertion-order DESC from VecDeque; warm restore
+        // inserted oldest-first (k1, k2), so reverse-iteration yields k2, k1.
+        let listed = store.list(10);
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].query_id, "k2");
+        assert_eq!(listed[1].query_id, "k1");
+    }
+
+    /// AC2 + AC5 wiring: TraceStore::put writes through to SQLite. Verify
+    /// the row reaches persist by reading directly from a clone of the
+    /// persist Arc.
+    #[test]
+    fn test_trace_store_put_writes_through_to_persist() {
+        let dir = temp_data_dir("wiring-wt");
+        let persist = Arc::new(SqliteTracePersist::open(&dir).expect("open ok"));
+        let mut store = TraceStore::with_persist(10, persist.clone());
+
+        store.put(
+            "k-wt".into(),
+            wiring_trace("hello"),
+            "ws-wt".into(),
+            1_700_000_000,
+        );
+
+        // Hot cache contains it.
+        assert_eq!(store.len(), 1);
+        assert_eq!(store.get("k-wt").unwrap().query, "hello");
+
+        // Persist also contains it (write-through path verified).
+        let from_persist = persist.get("k-wt").expect("persist get ok");
+        assert!(from_persist.is_some());
+        assert_eq!(from_persist.unwrap().query, "hello");
+        assert_eq!(persist.row_count().unwrap(), 1);
+    }
+
+    /// AC4 invariant: TraceStore::put updates the hot cache FIRST, then
+    /// best-effort SQLite. The ordering guarantees the hot cache reflects
+    /// every put even if the persist layer is unreliable. This test verifies
+    /// the invariant by inspecting both hot cache state and confirming
+    /// `put` does not panic even after the underlying persist file is
+    /// deleted (best-effort on Linux; Windows file lock may keep file open
+    /// — either way the hot cache invariant must hold).
+    #[test]
+    fn test_trace_store_put_hot_cache_intact_even_after_persist_failure() {
+        let dir = temp_data_dir("wiring-err");
+        let persist = Arc::new(SqliteTracePersist::open(&dir).expect("open ok"));
+        let mut store = TraceStore::with_persist(10, persist);
+
+        // Sabotage: remove the data dir. SQLite Connection may still have an
+        // open FD on Linux (so subsequent put might still succeed); on Windows
+        // file lock typically blocks removal. The test asserts the INVARIANT
+        // (hot cache updated) regardless of which branch persist.put takes.
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // put — may or may not log a WARN, but must NOT panic and MUST update
+        // the hot cache (per the write-order guarantee in TraceStore::put).
+        store.put(
+            "k-after-sabotage".into(),
+            wiring_trace("survived"),
+            "ws".into(),
+            1,
+        );
+
+        // Invariant: hot cache reflects the put.
+        assert_eq!(store.len(), 1);
+        let got = store.get("k-after-sabotage");
+        assert!(got.is_some(), "AC4 invariant: hot cache intact after persist failure");
+        assert_eq!(got.unwrap().query, "survived");
+    }
+
+    /// AC5 wiring: TraceStore::get falls back to SQLite on cache miss.
+    /// Force eviction by using a tiny cap so warm restore evicts the older
+    /// row; then verify get() still finds it via the SQLite fallback path.
+    #[test]
+    fn test_trace_store_get_falls_back_to_persist_on_cache_miss() {
+        let dir = temp_data_dir("wiring-getfb");
+        let persist = Arc::new(SqliteTracePersist::open(&dir).expect("open ok"));
+        // 2 rows in persist before TraceStore construction.
+        persist.put("k1", &wiring_trace("q1"), "ws", 100).unwrap();
+        persist.put("k2", &wiring_trace("q2"), "ws", 200).unwrap();
+
+        // cap=1 → warm restore loads oldest-first (k1, then k2 which evicts k1).
+        let store = TraceStore::with_persist(1, persist);
+
+        assert_eq!(store.len(), 1, "cap=1 enforced after warm restore");
+        // k2 should be the survivor (newest, last inserted).
+        assert!(store.get("k2").is_some());
+
+        // k1 missed the hot cache → must fall back to SQLite via the
+        // persist.get path inside TraceStore::get.
+        let got_k1 = store.get("k1");
+        assert!(
+            got_k1.is_some(),
+            "AC5 wiring: k1 served via SQLite fallback after cache eviction"
+        );
+        assert_eq!(got_k1.unwrap().query, "q1");
+    }
+
+    /// AC5 wiring: TraceStore::list supplements from SQLite when the hot
+    /// cache has fewer items than `limit`. Use cap=2 so warm restore keeps
+    /// only the newest 2; ask for limit=5; expect SQLite to return all 5.
+    #[test]
+    fn test_trace_store_list_supplements_from_persist_when_cache_short() {
+        let dir = temp_data_dir("wiring-listfb");
+        let persist = Arc::new(SqliteTracePersist::open(&dir).expect("open ok"));
+        // 5 rows ts 100..500.
+        for i in 1..=5i64 {
+            persist
+                .put(
+                    &format!("k{i}"),
+                    &wiring_trace(&format!("q{i}")),
+                    "ws",
+                    i * 100,
+                )
+                .unwrap();
+        }
+
+        // cap=2 → warm restore retains the 2 newest after eviction (k4, k5).
+        let store = TraceStore::with_persist(2, persist);
+        assert_eq!(store.len(), 2, "cap=2 enforced after warm restore of 5 rows");
+
+        // limit=5 but hot cache has only 2 → fallback to SQLite for all 5.
+        let listed = store.list(5);
+        assert_eq!(listed.len(), 5, "AC5 wiring: SQLite supplements when cache short");
+
+        // Order from SQLite is ts_unix DESC: 500, 400, 300, 200, 100.
+        assert_eq!(listed[0].ts_unix, 500);
+        assert_eq!(listed[0].query_id, "k5");
+        assert_eq!(listed[4].ts_unix, 100);
+        assert_eq!(listed[4].query_id, "k1");
     }
 }

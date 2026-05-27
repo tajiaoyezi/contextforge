@@ -68,6 +68,10 @@ sha2 = "0.11.0"
 # +872 行 Cargo.lock。
 tantivy = "0.26.1"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
+# task-16.1 §5.2 NEEDS-DEP lift: base64 已作为 multiple transitive deps 在
+# Cargo.lock — 按 task-1.3 §2A R7 lift pattern（无新供应链表面）显式化为 direct
+# dep，让 SqliteTracePersist 以 base64-encoded prost bytes 形式存 trace_json TEXT 列。
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

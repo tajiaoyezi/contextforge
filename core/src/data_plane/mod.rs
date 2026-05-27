@@ -22,6 +22,7 @@ pub mod health;
 pub mod job;
 pub mod memory;
 pub mod search;
+pub mod search_persist;
 pub mod workspace;
 
 use crate::pb_console::eval_service_server::EvalServiceServer;
@@ -64,6 +65,11 @@ pub struct DataPlaneStores {
     pub audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
     /// task-14.1: shared `SqliteEvalStore` backing `EvalService` 3 RPC.
     pub eval: Option<Arc<crate::eval::SqliteEvalStore>>,
+    /// task-16.1 (Phase 16 P4 #10): SQLite-backed persistence for the in-memory
+    /// `TraceStore` (used by `SearchServer.get_search_trace` + `.list_queries`).
+    /// `None` keeps the in-memory-only behavior (task-11.1/12.3/15.5 baseline);
+    /// `Some` enables write-through + warm restore on daemon boot.
+    pub trace_persist: Option<Arc<search_persist::SqliteTracePersist>>,
 }
 
 impl DataPlaneStores {
@@ -83,6 +89,7 @@ impl DataPlaneStores {
             memory: None,
             audit: None,
             eval: None,
+            trace_persist: None,
         })
     }
 
@@ -101,6 +108,7 @@ impl DataPlaneStores {
             memory: None,
             audit: None,
             eval: Some(eval),
+            trace_persist: None,
         })
     }
 
@@ -122,6 +130,7 @@ impl DataPlaneStores {
             memory: Some(memory),
             audit: Some(audit),
             eval: None,
+            trace_persist: None,
         })
     }
 
@@ -135,7 +144,7 @@ impl DataPlaneStores {
         event_bus: Arc<events::EventBus>,
     ) -> Arc<Self> {
         Self::full(
-            workspace_store, job_store, job_runner, data_dir, event_bus, None, None, None,
+            workspace_store, job_store, job_runner, data_dir, event_bus, None, None, None, None,
         )
     }
 
@@ -152,6 +161,7 @@ impl DataPlaneStores {
         memory: Option<Arc<crate::memory::SqliteMemoryStore>>,
         audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
         eval: Option<Arc<crate::eval::SqliteEvalStore>>,
+        trace_persist: Option<Arc<search_persist::SqliteTracePersist>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             workspace_store,
@@ -162,6 +172,7 @@ impl DataPlaneStores {
             memory,
             audit,
             eval,
+            trace_persist,
         })
     }
 
@@ -183,6 +194,7 @@ impl DataPlaneStores {
             memory: None,
             audit: None,
             eval: None,
+            trace_persist: None,
         })
     }
 }

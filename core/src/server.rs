@@ -520,6 +520,13 @@ pub async fn serve_full(
             let eval_store = std::sync::Arc::new(
                 crate::eval::SqliteEvalStore::open(data_dir)?,
             );
+            // task-16.1 (Phase 16 P4 #10): SqliteTracePersist opens
+            // `<data_dir>/search_traces.db` and is wired into DataPlaneStores
+            // so SearchServer's in-memory TraceStore becomes write-through +
+            // warm-restores on every daemon boot.
+            let trace_persist = std::sync::Arc::new(
+                crate::data_plane::search_persist::SqliteTracePersist::open(data_dir)?,
+            );
             let stores = DataPlaneStores::full(
                 ws_store,
                 job_store,
@@ -529,6 +536,7 @@ pub async fn serve_full(
                 Some(memory_store),
                 Some(audit_sink),
                 Some(eval_store),
+                Some(trace_persist),
             );
 
             let mut builder = tonic::transport::Server::builder();
