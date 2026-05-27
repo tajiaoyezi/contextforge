@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -566,3 +568,230 @@ func TestGrpcClient_GetSourceChunk_Maps_NotFound(t *testing.T) {
 // Guard: unused imports (net/http) — kept for future fallback-inmem HTTP
 // tests in cli pkg.
 var _ = http.StatusServiceUnavailable
+
+// ============================================================================
+// task-16.2 (Phase 16 P4 #11) review pass 1: grpcclient eventsClient.Recent
+// two-phase long-poll unit tests via a fake EventsServiceServer. Spec PR
+// shipped only HTTP-handler-level tests using a stub EventsClient interface;
+// the actual two-phase logic lived in this file untested.
+// ============================================================================
+
+// fakeEventsServer drives controlled gRPC server-stream behavior. Each
+// Subscribe call consumes the next entry in `eventsByCall` (or empty if
+// callIdx exceeds the slice). If `blockOnLastCall` is true, the last
+// configured call blocks on ctx after emitting its events, mimicking a
+// long-lived broadcast subscription. If `failWithCode` is set (non-OK),
+// Subscribe returns that status code immediately on every call.
+type fakeEventsServer struct {
+	pb.UnimplementedEventsServiceServer
+	eventsByCall    [][]*pb.ObservabilityEvent
+	blockOnLastCall bool
+	failWithCode    codes.Code
+	callCount       int32 // protected via atomic for goroutine-safe test access
+	mu              sync.Mutex
+}
+
+func (f *fakeEventsServer) Subscribe(
+	_ *pb.SubscribeEventsRequest,
+	stream grpc.ServerStreamingServer[pb.ObservabilityEvent],
+) error {
+	f.mu.Lock()
+	idx := int(f.callCount)
+	f.callCount++
+	f.mu.Unlock()
+
+	if f.failWithCode != codes.OK {
+		return status.Error(f.failWithCode, "fake server error")
+	}
+	var events []*pb.ObservabilityEvent
+	if idx < len(f.eventsByCall) {
+		events = f.eventsByCall[idx]
+	}
+	for _, evt := range events {
+		if err := stream.Send(evt); err != nil {
+			return err
+		}
+	}
+	if f.blockOnLastCall && idx >= len(f.eventsByCall)-1 {
+		<-stream.Context().Done()
+		return stream.Context().Err()
+	}
+	return nil
+}
+
+func fakeEvt(id, eventType string) *pb.ObservabilityEvent {
+	return &pb.ObservabilityEvent{
+		EventId:     id,
+		EventType:   eventType,
+		Severity:    "info",
+		Source:      "contextforge-core",
+		Message:     "fake " + eventType,
+		TsUnix:      1_700_000_000,
+		PayloadJson: "{}",
+	}
+}
+
+// task-16.2 §6 AC2 (gRPC-level): phase-1 ctx timeout → return `[]` + nil.
+// Distinct from TestHandleEvents_Wait2s_Blocks (which tests HTTP handler via
+// stub EventsClient); this exercises the real grpcclient Recv loop ending
+// on DeadlineExceeded.
+func TestEventsClient_PhaseOneTimeout_ReturnsEmpty(t *testing.T) {
+	fake := &fakeEventsServer{
+		eventsByCall:    [][]*pb.ObservabilityEvent{{}},
+		blockOnLastCall: true,
+	}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterEventsServiceServer(s, fake)
+	})
+	defer stop()
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer dialCancel()
+	cli, err := New(dialCtx, addr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	start := time.Now()
+	out, err := cli.Events().Recent(10, 300*time.Millisecond)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Recent: want nil err on phase-1 timeout, got %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("Recent: want empty batch on phase-1 timeout, got %d events", len(out))
+	}
+	if elapsed < 250*time.Millisecond {
+		t.Errorf("Recent: elapsed %v — phase-1 did not wait for ctx timeout", elapsed)
+	}
+	if elapsed > 800*time.Millisecond {
+		t.Errorf("Recent: elapsed %v — phase-1 over-ran ctx timeout", elapsed)
+	}
+}
+
+// task-16.2 §6 AC3 (gRPC-level): phase-1 receives 1 event, phase-2 drains
+// the follow-up events that the SECOND Subscribe call emits. Validates the
+// two-phase batching mechanism end-to-end via a real gRPC server-stream.
+func TestEventsClient_PhaseTwoBatchesFollowupEvents(t *testing.T) {
+	fake := &fakeEventsServer{
+		eventsByCall: [][]*pb.ObservabilityEvent{
+			{fakeEvt("evt-1", "indexing.progress")},                                          // phase-1 call → 1 event
+			{fakeEvt("evt-2", "indexing.progress"), fakeEvt("evt-3", "indexing.cancelled")}, // phase-2 call → 2 events
+		},
+		blockOnLastCall: true,
+	}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterEventsServiceServer(s, fake)
+	})
+	defer stop()
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer dialCancel()
+	cli, err := New(dialCtx, addr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	out, err := cli.Events().Recent(100, 1*time.Second)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	// Phase-1 yields evt-1; phase-2 yields evt-2 + evt-3. Total ≥ 3.
+	if len(out) < 3 {
+		t.Errorf("Recent: want ≥3 events (phase-1 + phase-2 drain), got %d: %+v", len(out), out)
+	}
+	// Verify event IDs are present (order may vary slightly under stream
+	// scheduling but all 3 should appear).
+	ids := map[string]bool{}
+	for _, e := range out {
+		ids[e.EventID] = true
+	}
+	for _, want := range []string{"evt-1", "evt-2", "evt-3"} {
+		if !ids[want] {
+			t.Errorf("Recent: missing %s in batch %+v", want, out)
+		}
+	}
+}
+
+// task-16.2 §3: phase-1 Recv non-DeadlineExceeded / non-EOF error path
+// logs via log.Printf then returns `[]` + nil (Console expects 200 + []).
+// Trigger: server returns codes.Internal status; client's stream.Recv
+// surfaces it as a non-deadline non-EOF error.
+func TestEventsClient_PhaseOne_LogsNonDeadlineErrors(t *testing.T) {
+	fake := &fakeEventsServer{
+		failWithCode: codes.Internal,
+	}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterEventsServiceServer(s, fake)
+	})
+	defer stop()
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer dialCancel()
+	cli, err := New(dialCtx, addr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	// The Subscribe call itself succeeds (gRPC stream setup is OK); the
+	// server's Subscribe handler returns codes.Internal which surfaces as
+	// a Recv error. Our client swallows it after log.Printf.
+	out, err := cli.Events().Recent(10, 500*time.Millisecond)
+	if err != nil {
+		t.Errorf("Recent: want nil err (codes.Internal silently swallowed), got %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("Recent: want empty batch on server error, got %d", len(out))
+	}
+}
+
+// task-16.2 §6 AC6 (gRPC-level): defer cancel × 2 + ctx propagation must
+// not leak goroutines. Smoke test: capture runtime.NumGoroutine baseline
+// after a warm-up call, then run N Recent calls with short waits; assert
+// final count doesn't grow unboundedly (tolerance allows for gRPC internal
+// pool jitter — the bound catches +1-per-call regressions).
+func TestEventsClient_NoGoroutineLeakAfterMultipleCalls(t *testing.T) {
+	fake := &fakeEventsServer{
+		eventsByCall:    [][]*pb.ObservabilityEvent{{}},
+		blockOnLastCall: true,
+	}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterEventsServiceServer(s, fake)
+	})
+	defer stop()
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer dialCancel()
+	cli, err := New(dialCtx, addr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	// Warm-up: 1 call establishes baseline (gRPC may lazily spawn pool goroutines).
+	_, _ = cli.Events().Recent(10, 50*time.Millisecond)
+	runtime.GC()
+	time.Sleep(50 * time.Millisecond)
+	baseline := runtime.NumGoroutine()
+
+	const n = 10
+	for i := 0; i < n; i++ {
+		_, _ = cli.Events().Recent(10, 50*time.Millisecond)
+	}
+	runtime.GC()
+	time.Sleep(100 * time.Millisecond)
+	final := runtime.NumGoroutine()
+
+	// Tolerance bound: +5 absorbs gRPC pool / scheduler noise. A real
+	// leak (e.g., +1 goroutine per Recent call) would push final to
+	// baseline+10 and trip the bound.
+	if final > baseline+5 {
+		t.Errorf(
+			"goroutine count grew from %d to %d after %d Recent calls — possible leak (tolerance: +5)",
+			baseline, final, n,
+		)
+	}
+}

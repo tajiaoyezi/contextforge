@@ -10,8 +10,8 @@ package consoleapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,14 +24,12 @@ import (
 type sleepingEventsClient struct {
 	events   []contractv1.ObservabilityEvent
 	maxSleep time.Duration
-	calls    atomic.Int64
 }
 
 func (s *sleepingEventsClient) Recent(
 	_ int,
 	wait time.Duration,
 ) ([]contractv1.ObservabilityEvent, error) {
-	s.calls.Add(1)
 	sleep := wait
 	if sleep > s.maxSleep {
 		sleep = s.maxSleep
@@ -126,7 +124,7 @@ func TestHandleEvents_Returns_Early_OnEvent(t *testing.T) {
 	if elapsed > 500*time.Millisecond {
 		t.Errorf("elapsed too long: %v want ≤ 500ms — handler should return immediately on event", elapsed)
 	}
-	if !contains(w.Body.String(), "indexing.progress") {
+	if !strings.Contains(w.Body.String(), "indexing.progress") {
 		t.Errorf("body: missing indexing.progress event: %s", w.Body.String())
 	}
 }
@@ -259,12 +257,3 @@ func TestParseWaitParam_ClampUpperLowerAndDefault(t *testing.T) {
 	}
 }
 
-// helper — strings.Contains is in stdlib but we avoid the import.
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
