@@ -1,0 +1,66 @@
+# ContextForge production-ready compose stack (task-16.4).
+#
+# Two-process layout per ADR-016 D3 (Go thin proxy + Rust SoT):
+#   * contextforge-core   — Rust data-plane gRPC daemon (port 50551, bind 0.0.0.0)
+#   * console-api-serve   — Go control-plane REST (port 48181) → calls
+#                            contextforge-core:50551 via --grpc-addr
+#
+# ADR-018 D1 sticks: fallback deny default. No CONSOLE_API_FALLBACK_INMEM
+# injected; if Rust core is unreachable, /v1/health returns 503 +
+# docker healthcheck unhealthy (fast operator signal).
+#
+# Bring up:
+#   docker compose -f deploy/docker-compose.production.yml up -d
+#
+# Image:
+#   ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+#   (task-16.3 pushes images here on `v*` tag)
+
+services:
+  contextforge-core:
+    image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+    command: ["contextforge-core", "0.0.0.0:50551", "/data"]
+    environment:
+      CONTEXTFORGE_DATA_DIR: /data
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - contextforge-data:/data
+    healthcheck:
+      # gRPC server doesn't expose HTTP; use bash builtin TCP redirect to
+      # probe port 50551 (no extra tooling required — debian:bookworm-slim
+      # ships /bin/bash by default).
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/50551 && exec 3<&- 3>&-'"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  console-api-serve:
+    image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+    command:
+      - contextforge
+      - console-api-serve
+      - --addr
+      - 0.0.0.0:48181
+      - --grpc-addr
+      - contextforge-core:50551
+    environment:
+      # ADR-018: NOT injecting CONSOLE_API_FALLBACK_INMEM. Default deny.
+      CONTEXTFORGE_CONSOLEAPI_AUTH_TOKEN: ${CONSOLE_API_AUTH_TOKEN:-}
+    ports:
+      - "${HOST_PORT:-48181}:48181"
+    depends_on:
+      contextforge-core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:48181/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  contextforge-data:
+    driver: local
