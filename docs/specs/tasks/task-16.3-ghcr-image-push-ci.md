@@ -1,4 +1,4 @@
-# Task `16.3`: `ghcr-image-push-ci — .github/workflows/release.yml ghcr.io image push (v* tag triger) + .github/workflows/ci.yml PR/push test gate`
+# Task `16.3`: `ghcr-image-push-ci — .github/workflows/release.yml ghcr.io image push (v* tag trigger) + .github/workflows/ci.yml PR/push test gate`
 
 **Status**: Ready
 

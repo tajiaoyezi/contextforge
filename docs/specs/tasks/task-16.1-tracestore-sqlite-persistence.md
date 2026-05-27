@@ -350,6 +350,7 @@ ContextForge-Console PR #91/#93 backlog 列 P4 #10：
 - **search_traces.db 文件锁定 / Windows file lock 风险**：rusqlite 默认 mode 跨 Windows 测试可能撞 file in-use；缓解 — `Connection::open` 用 default mode + tmpdir 测试用唯一 nanos 名（既有 eval_integration.rs 同款）
 - **trace_json 列表大小**：每个 trace prost-encoded ≤ 4KB；100万行 ~ 4GB —— v0.9 接受；vacuum 留 [SPEC-DEFER:phase-future.tracestore-sqlite-vacuum]
 - **既有 `TraceStore::new` callers**：测试中既有 `TraceStore::new(3)` / `TraceStore::new(10)` 调用 — 保留 in-memory-only 行为；新构造 `with_persist` 不影响既有 path
+- **warm restore 排序 vs LRU 插入顺序边界**：`load_warm` 按 `ts_unix DESC` SELECT 后 reverse 成 oldest-first 给 LRU 插入 — 假设 put 顺序对齐 ts_unix 递增（实时 search 场景成立）。如 future 引入 backfill / 旧数据导入 → ts_unix 序与插入序背离时 LRU recency 不再等价 SQLite ORDER BY ts_unix DESC；v0.9 实时使用 case 不撞此问题 [SPEC-DEFER:phase-future.tracestore-backfill-ordering]
 - **关联 [ADR-015](../../decisions/adr-015-console-contract-v1-compatibility.md) D1 add-only**：本 task 不动 contractv1.go 字段集合 + 不动 proto wire format（仅内部 SQLite schema）；零跨仓影响
 
 ## 9. Verification Plan

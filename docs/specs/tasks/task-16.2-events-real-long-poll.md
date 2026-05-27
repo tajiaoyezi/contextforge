@@ -99,7 +99,12 @@ ContextForge-Console PR #91/#93 backlog 列 P4 #11：
       if err != nil {
           // ctx timeout / EOF / transport error — return empty (no events arrived).
           // Distinguishing DeadlineExceeded vs real error: empty return is
-          // safe for all (Console expects [] on timeout).
+          // safe for all (Console expects [] on timeout). Log non-deadline
+          // errors so operators can see real failures via daemon logs (e.g.
+          // gRPC core down) — /v1/health endpoint is the user-visible signal.
+          if !errors.Is(err, context.DeadlineExceeded) {
+              log.Printf("WARN events Recv error after phase-1 subscribe: %v", err)
+          }
           return []contractv1.ObservabilityEvent{}, nil
       }
       batch := make([]contractv1.ObservabilityEvent, 0, limit)
@@ -214,8 +219,8 @@ ContextForge-Console PR #91/#93 backlog 列 P4 #11：
 
 ### 5.2 Imports
 
-- **Go**: 既有 `context` / `time` / stdlib；既有 `tokio` 风格不变
-- **不引入新依赖**：R7 不触发
+- **Go**: 既有 `context` / `time` / stdlib；本 task 新加 `errors` (for `errors.Is(err, context.DeadlineExceeded)`) + `log` (for `log.Printf` warn on Recv error) 到 `grpcclient/grpcclient.go` import 块
+- **不引入新外部依赖**：R7 不触发 — `errors` / `log` 均 stdlib
 
 ### 5.3 Wait timeout 行为对齐
 
@@ -249,6 +254,7 @@ ContextForge-Console PR #91/#93 backlog 列 P4 #11：
 ## 8. Risks
 
 - **gRPC stream Subscribe re-create overhead in phase 2 drain**：每次 drain 新建 Subscribe stream 有 ~5ms RTT；接受 — phase 2 上限 100ms，drain re-use stream 优化留 [SPEC-DEFER:phase-future.events-drain-reuse-stream]
+- **Phase 2 重订阅 race window 可能漏 event**：phase-1 stream.Recv 返回首 event 后到 phase-2 Subscribe 完成前的 ~5ms 窗内，broadcast::Sender 发送的新 event 不会被任一 receiver 处理（phase-1 receiver 已不再 Recv；phase-2 receiver 未订阅）。可接受 — observability event 是 informational 非 transactional；Console UI 用户可下一次 poll cycle 重拉。单 stream 设计（goroutine + 通道 + drainTimeout select）可消除 race，但 ~30 lines 复杂度上升 [SPEC-DEFER:phase-future.events-drain-reuse-stream]
 - **MemStore sleep min(wait, 1s) 阻塞 HTTP handler**：fallback 模式 single goroutine sleeping 1s 不影响其他 HTTP route（Go net/http handler-per-conn）；多 client 并发不死锁；接受
 - **Goroutine leak on phase-1 timeout**：`stream.Recv()` 收到 ctx.DeadlineExceeded 后 stream 内部 goroutine 应自动结束；缓解 — `cancel()` defer 显式释放 + `-race` test 验证 NumGoroutine 不增长
 - **client disconnect mid-wait**：HTTP client (curl) 收到 ctx cancel 时 Go handler 还在 grpcclient.Recent 内 block；缓解 — handler ctx 继承 r.Context() 在 future task；v0.9 接受 — handler 写 response 失败时 grpcclient still completes background；不 leak（cancel defer）但浪费少量 work；优化留 [SPEC-DEFER:phase-future.events-http-ctx-propagate]

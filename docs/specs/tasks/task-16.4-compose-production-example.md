@@ -72,9 +72,10 @@ ContextForge-Console PR #91/#93 backlog 列 P3 #9：
       volumes:
         - contextforge-data:/data
       healthcheck:
-        # gRPC server doesn't expose HTTP — check listen socket via netstat
-        # alternative if tooling absent. Simpler: process liveness via PID 1.
-        test: ["CMD-SHELL", "test -d /proc/1 && pgrep -x contextforge-core"]
+        # gRPC server doesn't expose HTTP; use bash builtin TCP redirect to
+        # probe port 50551 (no extra tooling required — debian:bookworm-slim
+        # ships /bin/bash by default).
+        test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/50551 && exec 3<&- 3>&-'"]
         interval: 10s
         timeout: 3s
         retries: 6
@@ -224,7 +225,7 @@ ContextForge-Console PR #91/#93 backlog 列 P3 #9：
 
 ## 8. Risks
 
-- **healthcheck `pgrep -x contextforge-core` 跨基础镜像兼容**：debian:bookworm-slim 含 procps-ng 提供 pgrep？— 缓解 — Dockerfile `apt-get install procps` 不在；如撞 → 改 healthcheck 用 `test -e /tmp/contextforge-core-ready` (Rust 端写一个 ready 文件) OR netstat / ss 检查 50551 监听；实施时实测决定 [SPEC-OWNER:task-16.4]
+- **healthcheck 不依赖额外 procps**：选用 bash builtin TCP redirect `exec 3<>/dev/tcp/127.0.0.1/50551` 探活 Rust core 监听端口；debian:bookworm-slim 默认含 `/bin/bash`，无需 Dockerfile apt-get 增 procps；如 future Dockerfile 切到更精简 base (e.g. distroless) → 改 healthcheck 用 Rust 端写 `/data/.contextforge-core.ready` 文件方式 [SPEC-DEFER:phase-future.distroless-runtime]
 - **ghcr image 未 ship 时 task-16.4 测试 blocker**：task-16.3 必须先 ship 到 ghcr；缓解 — 本 task spec PR 起步 image ref 用 `:latest` 临时占位 [SPEC-OWNER:task-16.4]；task-16.3 + 16.4 PR 顺序 merge；OR 用 `build: { context: .. }` 让 compose 自己 build（本地开发用）
 - **跨 service 启动顺序竞争**：console-api-serve depends_on contextforge-core healthy；如 Rust daemon 启动慢 (≥ 30s) → console-api-serve start_period 5s 不够 → healthy timeout；缓解 — Rust daemon 启动 ≤ 5s（既有 v0.8 测试观察）；如撞超 → contextforge-core healthcheck `start_period: 30s` 放宽
 - **跨容器 grpc-addr DNS resolve 延迟**：compose 默认 embedded DNS 通常 < 100ms；如 Rust daemon 启动后 console-api-serve gRPC 连接撞 DNS NXDOMAIN → 容器 restart_policy 自动重试 1 次 / 5s 内收敛；接受
