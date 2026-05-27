@@ -9,7 +9,6 @@
 //! returns the historical entries ordered by `ts_unix` DESC.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use contextforge_core::data_plane::search_persist::SqliteTracePersist;
@@ -53,18 +52,18 @@ fn fixture_trace(query: &str) -> PbRetrievalTrace {
 fn test_tracestore_persists_across_restart() {
     let dir = temp_data_dir("restart");
 
-    // --- "boot 1": fresh daemon, put 3 traces.
+    // --- "boot 1": fresh daemon, put 3 traces. SqliteTracePersist::put
+    // takes &self (internal Mutex handles concurrency) so the test does not
+    // need an outer Arc<Mutex<>> wrap.
     {
         let persist = SqliteTracePersist::open(&dir).expect("boot1 open ok");
-        let persist = Arc::new(Mutex::new(persist));
-        let guard = persist.lock().unwrap();
-        guard
+        persist
             .put("qry-1", &fixture_trace("alpha"), "ws-a", 100)
             .expect("put 1 ok");
-        guard
+        persist
             .put("qry-2", &fixture_trace("beta"), "ws-a", 200)
             .expect("put 2 ok");
-        guard
+        persist
             .put("qry-3", &fixture_trace("gamma"), "ws-b", 300)
             .expect("put 3 ok");
         // drop on scope exit closes the SQLite Connection.

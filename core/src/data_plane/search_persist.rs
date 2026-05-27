@@ -347,25 +347,29 @@ mod tests {
         assert!(huge.len() <= 1000);
     }
 
-    /// AC4 unit verification: write-through error handling is the caller's
-    /// concern (TraceStore.put logs+swallows). This unit just confirms the
-    /// API surface returns Result, not panics, on a write failure.
-    /// Simulate by opening a Persist against a path then deleting the
-    /// underlying file (rusqlite returns Sqlite error on next write).
+    /// Smoke test: API surface returns Result and does not panic on
+    /// degenerate input (empty strings, ts_unix = 0). The schema does not
+    /// NOT NULL-constrain text columns beyond the `NOT NULL` declaration
+    /// itself, so empty strings INSERT successfully — this test verifies
+    /// the API contract, not error-path handling.
+    ///
+    /// **Note**: The TraceStore-level AC4 invariant (hot cache intact even
+    /// when persist errors) lives in `search.rs::tests::test_trace_store_put_
+    /// hot_cache_intact_even_after_persist_failure` — see PR #110 review
+    /// follow-up for the actual error-path coverage.
     #[test]
-    fn test_put_sqlite_error_returns_result_does_not_panic() {
-        let dir = temp_dir("errpath");
+    fn test_put_with_degenerate_inputs_does_not_panic() {
+        let dir = temp_dir("degen");
         let persist = SqliteTracePersist::open(&dir).expect("open ok");
-        // First put OK.
+        // Empty strings + ts=0 → schema accepts (no CHECK constraint
+        // beyond NOT NULL). API returns Ok; no panic.
         persist
-            .put("qry-1", &fixture_trace("a"), "ws-err", 1)
-            .expect("first put ok");
-        // Close (drop) → re-open against a read-only path is non-trivial
-        // cross-platform; instead verify that the API is `Result` and
-        // panics-free even when called with a degenerate input (empty
-        // strings still succeed because the schema doesn't NOT NULL them
-        // beyond text type).
-        let _ = persist.put("", &fixture_trace(""), "", 0);
-        // No panic reached.
+            .put("", &fixture_trace(""), "", 0)
+            .expect("degenerate put ok");
+        // Re-put under the same (empty) key → INSERT OR REPLACE replaces row.
+        persist
+            .put("", &fixture_trace("again"), "ws-2", 1)
+            .expect("re-put same key ok");
+        assert_eq!(persist.row_count().unwrap(), 1, "same key replaced not duplicated");
     }
 }
