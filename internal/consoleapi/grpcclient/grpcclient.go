@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"time"
 
 	"google.golang.org/grpc"
@@ -379,37 +381,113 @@ func (s *searchClient) Search(req contractv1.SearchRequest) (contractv1.SearchRe
 }
 
 // =====================================================================
-// Events wrapper (task-11.4 [SPEC-OWNER:task-11.4] long-poll wrap 30s/100 evt;
-// task-11.2 only impl simple Recent(limit) using server-stream Subscribe).
+// Events wrapper (task-11.4 baseline; task-16.2 Phase 16 P4 #11 real long-poll).
 // =====================================================================
 
 type eventsClient struct{ c pb.EventsServiceClient }
 
-// Recent dispatches to gRPC Subscribe stream, collects up to `limit` events
-// within a short timeout (default 30s for long-poll behavior), then closes
-// the stream. Real long-poll wrap (selectable wait param + ctx cancel
-// propagation) lives in task-11.4 [SPEC-OWNER:task-11.4].
-func (e *eventsClient) Recent(limit int) ([]contractv1.ObservabilityEvent, error) {
+// task-16.2 (Phase 16 P4 #11): drain timeout for phase-2 — once the first
+// event arrives, give immediately-broadcast follow-up events ~drainTimeout
+// to land before returning. Hardcoded; tuning [SPEC-DEFER:phase-future.events-drain-timeout-config].
+const eventsDrainTimeout = 100 * time.Millisecond
+
+// isCtxDeadlineExceeded probes both the native ctx error and the gRPC
+// status-code variant. gRPC wraps context.DeadlineExceeded into
+// `status.Error(codes.DeadlineExceeded, ...)`, which `errors.Is(err,
+// context.DeadlineExceeded)` does NOT match.
+func isCtxDeadlineExceeded(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.DeadlineExceeded {
+		return true
+	}
+	return false
+}
+
+// Recent implements real long-poll over the gRPC server-stream `Subscribe`.
+//
+// Two phases:
+//  1. Block up to `wait` waiting for the first event. If the deadline fires
+//     before any event arrives, return `[]` + nil (Console expects 200 + []
+//     on timeout — NOT 408). Non-DeadlineExceeded Recv errors are logged
+//     (so operators see real transport failures) but still surface as `[]`
+//     to keep the HTTP contract simple.
+//  2. After the first event lands, open a SECOND Subscribe with a short
+//     `eventsDrainTimeout` and pull events emitted in that follow-up window.
+//     Note: a fresh broadcast::Receiver does NOT replay past events — this
+//     phase catches events broadcast in the ~drainTimeout window AFTER the
+//     phase-2 subscribe completes. Events emitted in the ~5ms gap between
+//     phase-1 first-event return and phase-2 subscribe land time are missed
+//     by both streams (acceptable for informational observability events;
+//     §8 risk note).
+//
+// Test-path caveat: when the Rust EventsServer is configured WITHOUT an
+// event_bus (e.g., data_plane unit tests), each Subscribe call emits a
+// single placeholder `core.keepalive` event then closes the stream. Under
+// v0.9 two-phase this can yield 2 keepalives where v0.8 yielded 1.
+// Production via `serve_full` always has event_bus configured so this
+// path is not hit; documented for completeness in task-16.2 §8.
+//
+// Refs: task-16.2 §3 / task-11.4 (broadcast EventBus baseline).
+func (e *eventsClient) Recent(
+	limit int,
+	wait time.Duration,
+) ([]contractv1.ObservabilityEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if wait <= 0 {
+		wait = 30 * time.Second
+	}
+
+	// Phase 1: wait up to `wait` for the first event.
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	stream, err := e.c.Subscribe(ctx, &pb.SubscribeEventsRequest{})
 	if err != nil {
 		return nil, mapGrpcErr(err)
 	}
-	batch := make([]contractv1.ObservabilityEvent, 0, limit)
-	for len(batch) < limit {
-		evt, err := stream.Recv()
-		if err != nil {
-			// Stream ended normally (server closed via drop(tx)) or ctx canceled
-			// or transport error: return what we have. err == io.EOF expected on
-			// normal close.
-			break
+	first, err := stream.Recv()
+	if err != nil {
+		// ctx timeout / EOF / transport error → return empty. Distinguishing
+		// DeadlineExceeded vs real error: log non-deadline + non-EOF cases so
+		// operators can see actual failures (gRPC core down, etc.) via daemon
+		// logs; /v1/health remains the user-visible signal. io.EOF is normal
+		// (server closed empty stream) and intentionally silent.
+		//
+		// gRPC wraps `context.DeadlineExceeded` into `status.Error(codes.
+		// DeadlineExceeded, ...)` — `errors.Is(err, context.DeadlineExceeded)`
+		// alone misses the wrapped variant, so we also probe the gRPC status
+		// code (caught via grpcclient_test.go::TestEventsClient_PhaseOneTimeout
+		// where the bare `errors.Is` check produced spurious WARN logs).
+		if !isCtxDeadlineExceeded(err) && !errors.Is(err, io.EOF) {
+			log.Printf("WARN events Recv (phase-1) error: %v", err)
 		}
-		batch = append(batch, protoToObservabilityEvent(evt))
+		return []contractv1.ObservabilityEvent{}, nil
 	}
+
+	batch := make([]contractv1.ObservabilityEvent, 0, limit)
+	batch = append(batch, protoToObservabilityEvent(first))
+
+	// Phase 2: drain follow-up events emitted in the next ~drainTimeout.
+	if len(batch) < limit {
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), eventsDrainTimeout)
+		defer drainCancel()
+		drainStream, dErr := e.c.Subscribe(drainCtx, &pb.SubscribeEventsRequest{})
+		if dErr == nil {
+			for len(batch) < limit {
+				evt, rErr := drainStream.Recv()
+				if rErr != nil {
+					// Normal exit: ctx done, EOF, etc.
+					break
+				}
+				batch = append(batch, protoToObservabilityEvent(evt))
+			}
+		}
+		// drain Subscribe error is benign — caller already has the phase-1 event.
+	}
+
 	return batch, nil
 }
 

@@ -14,6 +14,7 @@ package consoleapi
 
 import (
 	"errors"
+	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
 )
@@ -75,8 +76,15 @@ type SearchClient interface {
 }
 
 // EventsClient backs GET /v1/observability/events.
+//
+// task-16.2 (Phase 16 P4 #11): Recent takes a `wait` duration so the handler
+// can drive real long-poll semantics. Implementations:
+//   - grpcclient: phase-1 blocks up to `wait` on the broadcast stream; phase-2
+//     drains immediately-available events with a short (~100ms) timeout.
+//   - MemStore (fallback): sleeps min(wait, 1s) on empty ring buffer to avoid
+//     UI poll-storm; non-empty buffer returns immediately.
 type EventsClient interface {
-	Recent(limit int) ([]contractv1.ObservabilityEvent, error)
+	Recent(limit int, wait time.Duration) ([]contractv1.ObservabilityEvent, error)
 }
 
 // MemoryListFilter — task-13.2 (ADR-017 D1 Wave 3) filter struct mirroring
