@@ -403,8 +403,22 @@ pub fn resolve_data_dir(arg: Option<&str>) -> PathBuf {
 /// - `None` -> built-in loopback default (`DEFAULT_LISTEN`).
 /// - `"unix:/path"` -> `ListenAddr::Unix`.
 /// - `"<ip>:<port>"` -> `ListenAddr::Tcp`, **unless** the ip is unspecified
-///   (`0.0.0.0` / `::`), which is rejected.
+///   (`0.0.0.0` / `::`), which is rejected unless explicit opt-in via env
+///   `CONTEXTFORGE_ALLOW_WILDCARD_BIND=1` (task-16.4 — docker / k8s
+///   deployments where container network isolation makes wildcard bind safe).
 pub fn resolve_listen_addr(arg: Option<&str>) -> Result<ListenAddr, AddrError> {
+    let allow_wildcard =
+        std::env::var("CONTEXTFORGE_ALLOW_WILDCARD_BIND").as_deref() == Ok("1");
+    resolve_listen_addr_with_opts(arg, allow_wildcard)
+}
+
+/// Pure variant of [`resolve_listen_addr`] without env-var inspection. Used
+/// in tests to drive both opt-in / opt-out paths deterministically without
+/// racing on a process-global env var.
+pub fn resolve_listen_addr_with_opts(
+    arg: Option<&str>,
+    allow_wildcard: bool,
+) -> Result<ListenAddr, AddrError> {
     let s = arg.unwrap_or(DEFAULT_LISTEN);
 
     if let Some(path) = s.strip_prefix("unix:") {
@@ -417,10 +431,11 @@ pub fn resolve_listen_addr(arg: Option<&str>) -> Result<ListenAddr, AddrError> {
     let sock: SocketAddr = s
         .parse()
         .map_err(|_| AddrError(format!("not a valid socket address: {s}")))?;
-    if sock.ip().is_unspecified() {
+    if sock.ip().is_unspecified() && !allow_wildcard {
         return Err(AddrError(format!(
             "refusing wildcard bind {s}: 0.0.0.0/:: is forbidden \
-             (use 127.0.0.1, ::1, or unix:<path>)"
+             (set CONTEXTFORGE_ALLOW_WILDCARD_BIND=1 to opt-in for \
+              docker/k8s deployment, or use 127.0.0.1, ::1, or unix:<path>)"
         )));
     }
     Ok(ListenAddr::Tcp(sock))

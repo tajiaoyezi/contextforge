@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 14 console-22-endpoint complete smoke (v5).
+# scripts/console_smoke.sh — Phase 16 v0.9.0 backlog completion smoke (v7).
 #
-# v0.7 REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
+# REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
-# console-api-serve dials the Rust daemon over gRPC, so the 20 REST endpoints
+# console-api-serve dials the Rust daemon over gRPC, so the 22 REST endpoints
 # (v0.4 9 + task-12.1 3 + task-12.2 1 + task-12.3 1 + task-13.2 5 memory +
 # task-14.2 2 eval-runs) go through the real cross-process bridge
 # (ADR-016 D2 / ADR-017 D1 Wave 1+2+3+4 — full 22 endpoint conformance).
@@ -11,10 +11,17 @@
 # `GET /v1/index-jobs?status=active`) shared via filtered shape — flow tests 20
 # distinct invocations covering all 22 of the Console contract.
 #
+# v6 (Phase 15) added steps 21-24 — stats/chunks, eval-runs list, queries list,
+# health?detailed=true.
+#
+# v7 (Phase 16) added steps 25-27 — task-16.2 long-poll wait timing semantics,
+# task-16.1 TraceStore SQLite restart roundtrip, task-16.4 compose-prod stack
+# health (env-gated via COMPOSE_PROD_SMOKE=1).
+#
 # Modes (selected by env):
 #
 #   Default (REAL mode):  spawn contextforge-core + console-api-serve;
-#       curl the 9 endpoints + run index-job against test/fixtures/index-job-real/
+#       curl the 22 endpoints + run index-job against test/fixtures/index-job-real/
 #       + POST /v1/search returns ≥1 real chunk. Final marker:
 #       CONSOLE_REAL_SMOKE_EXIT=0.
 #
@@ -22,8 +29,13 @@
 #       with CONSOLE_API_FALLBACK_INMEM=1 (no Rust daemon). Final marker:
 #       CONSOLE_SMOKE_EXIT=0.
 #
-#   DOCKER_SMOKE=1: docker compose up; same 9 endpoint flow against the
+#   DOCKER_SMOKE=1: docker compose up; same 22 endpoint flow against the
 #       docker-published REST port (v0.3 compat path).
+#
+#   COMPOSE_PROD_SMOKE=1: also run step 27 (docker compose -f
+#       deploy/docker-compose.production.yml up -d → /v1/health 200). Gated
+#       default SKIP because it requires a live docker daemon and a published
+#       ghcr.io image; meant for release_smoke.sh + manual verification.
 #
 # Designed for Linux / WSL2 / macOS / Git Bash on Windows.
 
@@ -370,9 +382,10 @@ code404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/eval-runs/eval-does-
 
 # =====================================================================
 # v6 (Phase 15) — 4 new steps for task-15.3/15.4/15.5/15.6 endpoints.
+# v7 (Phase 16) — re-numbered to 21/27 — 24/27 (3 v7 steps appended below).
 # =====================================================================
 
-echo "  [21/24] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
+echo "  [21/27] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
 stats_body=$(curl -sf "$BASE/v1/stats/chunks") \
   || { echo "FAIL: GET stats/chunks" >&2; exit 1; }
 echo "$stats_body" | grep -q '"total"' \
@@ -381,7 +394,7 @@ echo "$stats_body" | grep -q '"today_delta"' \
   || { echo "FAIL: stats response missing today_delta" >&2; exit 1; }
 echo "    → stats response shape ok"
 
-echo "  [22/24] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
+echo "  [22/27] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
 list_body=$(curl -sf "$BASE/v1/eval-runs?limit=10") \
   || { echo "FAIL: GET eval-runs list" >&2; exit 1; }
 case "$list_body" in
@@ -399,7 +412,7 @@ filter_body=$(curl -sf "$BASE/v1/eval-runs?status=cancelled&limit=5") \
   || { echo "FAIL: GET eval-runs?status=cancelled" >&2; exit 1; }
 case "$filter_body" in [*]) echo "    → status filter returns array" ;; esac
 
-echo "  [23/24] task-15.5 GET /v1/queries (history; default limit 20)"
+echo "  [23/27] task-15.5 GET /v1/queries (history; default limit 20)"
 queries_body=$(curl -sf "$BASE/v1/queries") \
   || { echo "FAIL: GET queries" >&2; exit 1; }
 case "$queries_body" in
@@ -412,7 +425,7 @@ case "$queries_body" in
     ;;
 esac
 
-echo "  [24/24] task-15.6 GET /v1/health?detailed=true (5 components)"
+echo "  [24/27] task-15.6 GET /v1/health?detailed=true (5 components)"
 detail_body=$(curl -sf "$BASE/v1/health?detailed=true") \
   || { echo "FAIL: GET health?detailed=true" >&2; exit 1; }
 for name in db index embed retriever eval; do
@@ -428,13 +441,134 @@ if echo "$default_body" | grep -q '"components"'; then
 fi
 echo "    → default /v1/health stays binary ✅"
 
-echo "  [end] GET /v1/observability/events"
+# =====================================================================
+# v7 (Phase 16) — 3 new steps for task-16.1 / 16.2 / 16.4.
+# =====================================================================
+
+echo "  [25/27] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
+# REAL mode: assert wait truly blocks ≥ 1.5s when no event is pending (vs. v0.8
+# batch-poll path which returned immediately). LOCAL_ONLY / docker: sleep
+# fallback per task-16.2 memstore — also blocks min(wait, 1s).
+t_start=$(date +%s.%N 2>/dev/null || date +%s)
 events_body=$(curl -sf "$BASE/v1/observability/events?wait=2s")
-# REAL mode: at least 1 indexing.progress event from the index job; LOCAL_ONLY:
-# any event (or empty array — long-poll returned empty within timeout).
+t_end=$(date +%s.%N 2>/dev/null || date +%s)
+# Compute elapsed; tolerate plain seconds (Git Bash on Windows) by falling back
+# to integer math.
+if command -v awk >/dev/null 2>&1; then
+  elapsed=$(awk "BEGIN { printf \"%.2f\", $t_end - $t_start }")
+else
+  elapsed=$(( ${t_end%.*} - ${t_start%.*} ))
+fi
+echo "    → elapsed=${elapsed}s body_len=$(echo "$events_body" | wc -c)"
+# Soft assertion — REAL mode requires ≥ 1.5s blocking when no event pending,
+# but if the index-job finished mid-wait an event may be pending and return
+# early. We accept either, and only HARD fail when wait clearly didn't take
+# effect (returned in < 0.3s on real long-poll path).
+case "$MODE" in
+  real)
+    awk_cmd=$(awk "BEGIN { exit ($elapsed >= 0.3) ? 0 : 1 }" && echo ok || echo fail)
+    [ "$awk_cmd" = "ok" ] \
+      || { echo "FAIL: REAL wait=2s returned in ${elapsed}s (< 0.3s — long-poll not engaged?)" >&2; exit 1; }
+    ;;
+  local|docker)
+    # MemStore sleep fallback uses min(wait, 1s) — accept any return time
+    echo "    → $MODE mode wait fallback (not asserting timing)"
+    ;;
+esac
+
+echo "  [26/27] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
 if [ "$MODE" = "real" ]; then
-  echo "$events_body" | grep -q '"event_id"' \
-    || echo "  NOTE: REAL events array empty (race vs index finish; not fatal)"
+  # 3 more searches to seed TraceStore (already had 1 from step 8).
+  for i in 1 2 3; do
+    curl -sf -X POST "$BASE/v1/search" \
+      -H 'Content-Type: application/json' \
+      -d "{\"query\":\"persist-$i\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}" >/dev/null \
+      || { echo "FAIL: POST /v1/search seed $i" >&2; exit 1; }
+  done
+  echo "    → seeded 3 additional searches"
+
+  # Snapshot pre-restart query count.
+  pre_body=$(curl -sf "$BASE/v1/queries?limit=20")
+  pre_count=$(echo "$pre_body" | grep -o '"query_id"' | wc -l | tr -d ' ')
+  echo "    → pre-restart query count=$pre_count"
+  [ "$pre_count" -ge 3 ] \
+    || { echo "FAIL: expected ≥ 3 queries before restart; got $pre_count" >&2; exit 1; }
+
+  # Kill -9 the Rust core; the api proxy stays up but gRPC will reconnect after
+  # core restart.
+  echo "    → kill -9 core (pid $CORE_PID)"
+  kill -9 "$CORE_PID" 2>/dev/null || true
+  wait "$CORE_PID" 2>/dev/null || true
+
+  # Restart core on the same gRPC port + same DATA_DIR (so SQLite warm restore
+  # finds the previously-persisted search_traces rows).
+  echo "    → restart core"
+  "$CORE_BIN" "127.0.0.1:${GRPC_PORT}" "$DATA_DIR" >>"$STAGING/core.log" 2>&1 &
+  CORE_PID=$!
+  # Refresh the trap target to the new pid.
+  cleanup_local="kill -TERM $API_PID 2>/dev/null || true; kill -TERM $CORE_PID 2>/dev/null || true; wait $API_PID 2>/dev/null || true; wait $CORE_PID 2>/dev/null || true"
+
+  # Wait for /v1/health to recover (Go gRPC client reconnects automatically).
+  for i in $(seq 1 30); do
+    if curl -sf "$BASE/v1/health" >/dev/null 2>&1; then
+      echo "    → /v1/health recovered at attempt $i"
+      break
+    fi
+    sleep 1
+    if [ "$i" = "30" ]; then
+      echo "FAIL: /v1/health did not recover after core restart in 30s" >&2
+      tail -50 "$STAGING/core.log" >&2 || true
+      exit 1
+    fi
+  done
+
+  # Verify TraceStore warm restored from SQLite.
+  post_body=$(curl -sf "$BASE/v1/queries?limit=20")
+  post_count=$(echo "$post_body" | grep -o '"query_id"' | wc -l | tr -d ' ')
+  echo "    → post-restart query count=$post_count"
+  [ "$post_count" -ge "$pre_count" ] \
+    || { echo "FAIL: TraceStore lost queries on restart (pre=$pre_count post=$post_count)" >&2; exit 1; }
+  echo "    → TraceStore SQLite warm restore ✅"
+else
+  echo "    SKIP ($MODE mode — task-16.1 SoT only validated in real mode)"
+fi
+
+echo "  [27/27] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
+if [ "${COMPOSE_PROD_SMOKE:-0}" = "1" ]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "FAIL: COMPOSE_PROD_SMOKE=1 but docker not on PATH" >&2
+    exit 1
+  fi
+  # Bring stack up; assumes ghcr.io image is published (task-16.3 ship gate).
+  echo "    → docker compose -f deploy/docker-compose.production.yml up -d"
+  docker compose -f deploy/docker-compose.production.yml up -d
+  # Preserve the staging-dir cleanup by chaining to the cleanup() function
+  # instead of inlining only $cleanup_local (which would skip rm -rf $STAGING).
+  trap 'docker compose -f deploy/docker-compose.production.yml down -v 2>&1 | tail -3 || true; cleanup' EXIT
+
+  # Wait up to 60s for both services healthy.
+  ok=0
+  for i in $(seq 1 12); do
+    sleep 5
+    if curl -fsS "http://localhost:48181/v1/health" >/dev/null 2>&1; then
+      ok=1
+      echo "    → compose-prod /v1/health responsive at attempt $i"
+      break
+    fi
+  done
+  [ "$ok" = "1" ] \
+    || { echo "FAIL: compose-prod /v1/health did not respond within 60s" >&2; \
+         docker compose -f deploy/docker-compose.production.yml logs --tail 50 >&2; \
+         exit 1; }
+
+  # Assert healthy status (not degraded — ADR-018 fallback deny default).
+  health_body=$(curl -fsS "http://localhost:48181/v1/health")
+  echo "$health_body" | grep -q '"status":"healthy"' \
+    || { echo "FAIL: compose-prod /v1/health status not healthy: $health_body" >&2; exit 1; }
+  echo "    → compose-prod stack healthy ✅"
+  docker compose -f deploy/docker-compose.production.yml down -v 2>&1 | tail -3 || true
+else
+  echo "    SKIP (set COMPOSE_PROD_SMOKE=1 + ghcr image published to enable)"
 fi
 
 echo
