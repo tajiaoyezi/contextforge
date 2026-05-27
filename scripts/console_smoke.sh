@@ -542,7 +542,9 @@ if [ "${COMPOSE_PROD_SMOKE:-0}" = "1" ]; then
   # Bring stack up; assumes ghcr.io image is published (task-16.3 ship gate).
   echo "    → docker compose -f deploy/docker-compose.production.yml up -d"
   docker compose -f deploy/docker-compose.production.yml up -d
-  trap 'docker compose -f deploy/docker-compose.production.yml down -v 2>&1 | tail -3 || true; '"$cleanup_local" EXIT
+  # Preserve the staging-dir cleanup by chaining to the cleanup() function
+  # instead of inlining only $cleanup_local (which would skip rm -rf $STAGING).
+  trap 'docker compose -f deploy/docker-compose.production.yml down -v 2>&1 | tail -3 || true; cleanup' EXIT
 
   # Wait up to 60s for both services healthy.
   ok=0

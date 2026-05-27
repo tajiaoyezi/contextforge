@@ -23,6 +23,12 @@ services:
     environment:
       CONTEXTFORGE_DATA_DIR: /data
       RUST_LOG: ${RUST_LOG:-info}
+      # Explicit opt-in for wildcard bind. The Rust daemon refuses 0.0.0.0 by
+      # default (dev safety) — set this to "1" inside a container where the
+      # docker bridge network isolation makes wildcard bind safe (port 50551
+      # is NOT mapped to host; only contextforge-core's container IP is
+      # reachable within the compose network).
+      CONTEXTFORGE_ALLOW_WILDCARD_BIND: "1"
     volumes:
       - contextforge-data:/data
     healthcheck:

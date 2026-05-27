@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use contextforge_core::pb::context_service_client::ContextServiceClient;
 use contextforge_core::pb::{HealthRequest, SearchRequest};
-use contextforge_core::server::{resolve_listen_addr, serve, ListenAddr};
+use contextforge_core::server::{
+    resolve_listen_addr, resolve_listen_addr_with_opts, serve, ListenAddr,
+};
 
 /// Pick a free loopback port (listener dropped immediately so `serve` can bind).
 fn ephemeral_addr() -> SocketAddr {
@@ -37,13 +39,36 @@ async fn test_1_3_1_listen_addr_rejects_wildcard() {
         }
         ListenAddr::Unix(_) => {}
     }
+    // Drive the deterministic _with_opts variant so this test is immune to a
+    // future env-var leak from a parallel test setting
+    // CONTEXTFORGE_ALLOW_WILDCARD_BIND.
     assert!(
-        resolve_listen_addr(Some("0.0.0.0:50051")).is_err(),
+        resolve_listen_addr_with_opts(Some("0.0.0.0:50051"), false).is_err(),
         "0.0.0.0 bind must be rejected (security baseline)"
     );
     assert!(
-        resolve_listen_addr(Some("127.0.0.1:50551")).is_ok(),
+        resolve_listen_addr_with_opts(Some("127.0.0.1:50551"), false).is_ok(),
         "loopback bind must be accepted"
+    );
+}
+
+// task-16.4 SCEN-16.4.1: explicit opt-in via _with_opts(allow_wildcard=true)
+// — docker / k8s deployments where container network isolation makes 0.0.0.0
+// safe (production fallback deny per ADR-018 + bridge network DNS).
+#[tokio::test(flavor = "multi_thread")]
+async fn test_1_3_1b_wildcard_allowed_with_opt_in() {
+    assert!(
+        resolve_listen_addr_with_opts(Some("0.0.0.0:50051"), true).is_ok(),
+        "0.0.0.0 bind must be accepted with explicit opt-in (docker/k8s)"
+    );
+    assert!(
+        resolve_listen_addr_with_opts(Some("[::]:50051"), true).is_ok(),
+        ":: bind must be accepted with explicit opt-in (IPv6 wildcard)"
+    );
+    // Opt-in still rejects malformed addrs and still routes unix sockets.
+    assert!(
+        resolve_listen_addr_with_opts(Some("not-an-address"), true).is_err(),
+        "opt-in must not bypass malformed-addr rejection"
     );
 }
 

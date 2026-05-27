@@ -131,6 +131,15 @@ stay stopped; crash / OOM trigger restart.
 For richer telemetry, `GET /v1/health?detailed=true` returns per-component
 status (db / index / embed / retriever / eval — task-15.6).
 
+**Wildcard bind opt-in**: the Rust core refuses `0.0.0.0` by default (dev
+safety baseline — `core::server::resolve_listen_addr`). For docker / k8s
+deployment where container network isolation makes wildcard bind safe, the
+opt-in env var `CONTEXTFORGE_ALLOW_WILDCARD_BIND=1` allows it. The compose
+stack sets this on `contextforge-core` because the daemon needs `0.0.0.0:50551`
+to be reachable across the docker bridge network. Port 50551 is **not** mapped
+to the host — only the `contextforge-core` service container IP is reachable
+from `console-api-serve`.
+
 ---
 
 ## §5 Auth
@@ -223,7 +232,9 @@ spec:
       containers:
       - name: contextforge-core
         image: ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0
-        command: ["contextforge-core", "0.0.0.0:50551", "/data"]
+        # Same pod = shared network namespace; console-api-serve dials
+        # 127.0.0.1:50551 so wildcard bind is unnecessary here (unlike compose).
+        command: ["contextforge-core", "127.0.0.1:50551", "/data"]
         env:
         - name: CONTEXTFORGE_DATA_DIR
           value: /data
