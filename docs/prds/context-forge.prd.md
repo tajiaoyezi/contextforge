@@ -517,6 +517,15 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 - **ADR-020 / ADR-021 状态推进 Proposed → Accepted**（Phase 15 closeout PR；本 phase 一次推进两 ADR）；adapter §Phase 索引 Phase 15 → Done；剩余 P2 #6 (`is_pinned` ADR-015 D5 amendment) + P3 (2 项) + P4 (2 项) 留 Phase 16 / v0.9.0；v0.8.0 RELEASE_NOTES + evidence + artifacts 落盘 + cross-repo follow-up 通知 Console 团队启动 UI standby PR (Dashboard 3 KPI + CoreHealthCard 5 链路 + Memory 操作历史)。
 - ADR-014 cross-validation gate 第六次完整激活验证制度稳定性。
 
+**Phase 16 v0.9.0-backlog-completion**（v0.9 收口；ContextForge-Console PR #91/#93 backlog 剩余 5 项中 4 项 closure；不引入新 ADR — 4 task 全为既有 ADR 延伸实施）
+
+- task-16.1（P4 #10）：TraceStore SQLite 持久化 — 新增 migration `0015_search_traces.sql`（5 列 + 1 索引 IF NOT EXISTS 幂等）+ 新模块 `core/src/data_plane/search_persist.rs` `SqliteTracePersist` + 改造 `core/src/data_plane/search.rs::TraceStore` 为 write-through 设计（hot cache LRU cap=1000 不变 + SQLite SoT best-effort 双写）+ daemon 启动 warm restore；解决 `GET /v1/queries` / `GET /v1/search/{query_id}/trace` daemon 重启即丢痛点；`SearchServer::new_with_persist(stores, persist)` 新构造函数 + `serve_full` 集成。
+- task-16.2（P4 #11）：events `?wait=` 真 long-poll — `internal/consoleapi/handlers.go::handleEvents` 真把 `parseWaitParam` 传到 `deps.Events.Recent`；`EventsClient.Recent` 签名加 `wait time.Duration` 参；`grpcclient.eventsClient.Recent` 改两阶段（phase 1 block 等首 event ≤ wait；phase 2 短 drainTimeout 100ms drain immediately-available events）；MemStore fallback 空 buffer 时 sleep min(wait, 1s) 模拟；Rust 侧不改。
+- task-16.3（P3 #8）：新建 `.github/workflows/release.yml`（`v*` tag push 触发 docker build + push `ghcr.io/${repo_owner}/contextforge-daemon:{tag}` + `:latest`；linux/amd64 only v0.9；multi-arch [SPEC-DEFER:phase-future.multi-arch-image]）+ `.github/workflows/ci.yml`（PR + push master 触发 cargo-test + go-test + spec-lint 3 job 并行）；CI 强 lint (clippy/gofmt 卡红) [SPEC-DEFER:phase-future.ci-strict-lint] 留 v1.x。
+- task-16.4（P3 #9）：新加 `deploy/docker-compose.production.yml`（双 service — `contextforge-core` bind `0.0.0.0:50551` + `console-api-serve` `--grpc-addr=contextforge-core:50551`；fallback deny 默认 ADR-018 沿用；命名卷 `contextforge-data` 跨重启持久；healthcheck）+ `.env.production.example` + `docs/deploy/production.md`（9 段：Quick start / 镜像 / 数据 / 健康 / Auth / 升级 / K8s 骨架 / 故障 / 性能）；既有 `deploy/console-stack.yml` 保留作 dev/PoC；smoke v7 27-step（v6 24-step + long-poll wait + TraceStore restart roundtrip + compose-prod gated `COMPOSE_PROD_SMOKE=1` step）+ release_smoke.sh 加 `phase16_backlog_completion=ok` 子段。
+- **本 phase 不引入新 ADR**（4 task 全为 ADR-013/015/016/017/018 既有决策的延伸实施；ghcr/compose 是 ops 实践不构成 architectural decision）；adapter §Phase 索引 Phase 16 → Done；剩余 P2 #6 `is_pinned` 字段 amendment（需 cross-repo Console 端先 ship contractv1.go IsPinned 字段）独立 Phase 17 + ADR-022 推进 [SPEC-OWNER:phase-17.is-pinned-amendment]；v0.9.0 RELEASE_NOTES + evidence + artifacts 落盘 + cross-repo follow-up 通知 Console 团队 Phase 17 启动信号。
+- ADR-014 cross-validation gate 第七次完整激活验证制度稳定性。
+
 ---
 
 ## Decisions Log｜决策日志
