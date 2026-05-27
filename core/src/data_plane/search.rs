@@ -21,6 +21,7 @@ use crate::pb_console::{
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
 use crate::workspace::WorkspaceStore;
 
+use super::search_persist::SqliteTracePersist;
 use super::DataPlaneStores;
 
 /// task-12.3 (ADR-017 D1 Wave 2): in-memory LRU cap for trace_store. Picked
@@ -41,10 +42,18 @@ struct TraceRecord {
 
 /// LRU-FIFO trace store: HashMap for O(1) lookup + VecDeque for insertion-order
 /// eviction. Newer inserts of an existing key refresh recency by re-pushing.
+///
+/// task-16.1 (Phase 16 P4 #10): optional `persist` field enables write-through
+/// to a SQLite-backed `SqliteTracePersist`. Hot cache LRU semantics are
+/// unchanged when `persist == None` (task-12.3/15.5 baseline); when `Some`,
+/// `put` double-writes (best-effort on SQLite errors), `get` falls back to
+/// SQLite on cache miss, and `list` falls back when the hot cache has fewer
+/// than `limit` items.
 struct TraceStore {
     map: HashMap<String, TraceRecord>,
     order: VecDeque<String>,
     cap: usize,
+    persist: Option<Arc<SqliteTracePersist>>,
 }
 
 impl TraceStore {
@@ -53,7 +62,33 @@ impl TraceStore {
             map: HashMap::with_capacity(cap),
             order: VecDeque::with_capacity(cap),
             cap,
+            persist: None,
         }
+    }
+
+    /// task-16.1: build a TraceStore wired to a SQLite persist and warm
+    /// restore the hot cache from the most-recent `cap` rows (insertion
+    /// order: oldest-first so the newest lands at the back of the VecDeque).
+    fn with_persist(cap: usize, persist: Arc<SqliteTracePersist>) -> Self {
+        let mut store = Self {
+            map: HashMap::with_capacity(cap),
+            order: VecDeque::with_capacity(cap),
+            cap,
+            persist: Some(persist.clone()),
+        };
+        match persist.load_warm(cap) {
+            Ok(warm) => {
+                for (key, trace, ws, ts) in warm {
+                    store.put_mem_only(key, trace, ws, ts);
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARN search_persist warm restore failed (starting with empty hot cache): {e}"
+                );
+            }
+        }
+        store
     }
 
     fn put(
@@ -63,13 +98,34 @@ impl TraceStore {
         workspace_id: String,
         ts_unix: i64,
     ) {
+        // 1) hot cache write (LRU semantics unchanged from v0.8).
+        self.put_mem_only(key.clone(), trace.clone(), workspace_id.clone(), ts_unix);
+        // 2) write-through to SQLite — best-effort; SQLite error is logged but
+        //    does not abort the hot cache update (Console UI keeps working off
+        //    the in-memory store).
+        if let Some(p) = self.persist.as_ref() {
+            if let Err(e) = p.put(&key, &trace, &workspace_id, ts_unix) {
+                eprintln!(
+                    "WARN search_persist.put failed (key={key}); hot cache still updated: {e}"
+                );
+            }
+        }
+    }
+
+    /// task-16.1: extracted from the original `put` body so `with_persist`
+    /// can warm-restore the LRU without re-writing to SQLite.
+    fn put_mem_only(
+        &mut self,
+        key: String,
+        trace: PbRetrievalTrace,
+        workspace_id: String,
+        ts_unix: i64,
+    ) {
         if self.map.contains_key(&key) {
-            // Refresh recency: remove old position, push to back.
             if let Some(pos) = self.order.iter().position(|k| k == &key) {
                 self.order.remove(pos);
             }
         } else if self.map.len() >= self.cap {
-            // Evict oldest.
             if let Some(oldest) = self.order.pop_front() {
                 self.map.remove(&oldest);
             }
@@ -86,14 +142,24 @@ impl TraceStore {
     }
 
     fn get(&self, key: &str) -> Option<PbRetrievalTrace> {
-        self.map.get(key).map(|r| r.trace.clone())
+        if let Some(rec) = self.map.get(key) {
+            return Some(rec.trace.clone());
+        }
+        // task-16.1: hot cache miss → SQLite fallback (read-only; deliberately
+        // does not back-fill the LRU to avoid polluting recency with old rows).
+        self.persist
+            .as_ref()
+            .and_then(|p| p.get(key).ok().flatten())
     }
 
-    /// task-15.5: list the most-recent N query records (DESC by insertion
-    /// order via VecDeque reverse iteration). `limit` is clamped 1..=100.
+    /// task-15.5 / task-16.1: list the most-recent N query records (DESC by
+    /// insertion order via VecDeque reverse iteration). `limit` is clamped
+    /// 1..=100. If a SQLite persist is configured AND the hot cache returns
+    /// fewer items than requested, fall back to SQLite ORDER BY ts_unix DESC.
     fn list(&self, limit: usize) -> Vec<PbQueryRecord> {
         let lim = limit.clamp(1, 100);
-        self.order
+        let mem: Vec<PbQueryRecord> = self
+            .order
             .iter()
             .rev()
             .take(lim)
@@ -105,7 +171,20 @@ impl TraceStore {
                     workspace_id: rec.workspace_id.clone(),
                 })
             })
-            .collect()
+            .collect();
+        if mem.len() >= lim || self.persist.is_none() {
+            return mem;
+        }
+        // task-16.1: hot cache short → SQLite supplements. After warm restore
+        // this rarely triggers (LRU holds up to 1000); fresh boot before first
+        // `put` is the typical hit.
+        match self.persist.as_ref().unwrap().list(lim) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("WARN search_persist.list failed; returning hot cache subset: {e}");
+                mem
+            }
+        }
     }
 
     #[cfg(test)]
@@ -120,10 +199,18 @@ pub struct SearchServer {
 }
 
 impl SearchServer {
+    /// task-11.4 / task-16.1: read `stores.trace_persist` to decide whether
+    /// the in-memory `TraceStore` is wired to a SQLite-backed persist
+    /// (production via `serve_full`) or stays in-memory-only (Phase 11/12/15
+    /// tests via `DataPlaneStores::new` / `with_eval` / `with_memory`).
     pub fn new(stores: Arc<DataPlaneStores>) -> Self {
+        let trace_store = match stores.trace_persist.as_ref() {
+            Some(persist) => TraceStore::with_persist(TRACE_STORE_CAP, persist.clone()),
+            None => TraceStore::new(TRACE_STORE_CAP),
+        };
         Self {
             stores,
-            trace_store: Arc::new(Mutex::new(TraceStore::new(TRACE_STORE_CAP))),
+            trace_store: Arc::new(Mutex::new(trace_store)),
         }
     }
 }
