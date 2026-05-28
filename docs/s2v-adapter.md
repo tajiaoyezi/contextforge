@@ -249,6 +249,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 14 | `eval-rest-surface` | `docs/specs/phases/phase-14-eval-rest-surface.md` | Done | 2 | `../ContextForge-wt-eval-rest-surface` |
 | 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Done | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 | 16 | `v0.9.0-backlog-completion` | `docs/specs/phases/phase-16-v0.9.0-backlog-completion.md` | Done | 4 | `../ContextForge-wt-v0.9.0-backlog-completion` |
+| 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Pending | 1 | `../ContextForge-wt-is-pinned-amendment` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -317,6 +318,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 16.2 | internal/consoleapi (handlers + types + grpcclient + memstore) Recent(limit, wait) | docs/specs/tasks/task-16.2-events-real-long-poll.md | Done | Phase16 #2（dep 16.1，串行 ship 便于 review；无文件级冲突）| `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 16.3 | .github/workflows/release.yml + ci.yml | docs/specs/tasks/task-16.3-ghcr-image-push-ci.md | Done | Phase16 #3（可与 16.4 并行 — 纯 ops）| `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 16.4 | deploy/docker-compose.production.yml + .env.production.example + docs/deploy/production.md + smoke v7 + release_smoke.sh phase16 段 | docs/specs/tasks/task-16.4-compose-production-example.md | Done | Phase16 #4（dep 16.3 image push；收口含 smoke v7 + ADR-014 D2 lint + closeout）| `../ContextForge-wt-v0.9.0-backlog-completion` |
+| 17.1 | proto MemoryItem.is_pinned + core/migrations/0017_memory_items_add_is_pinned.sql + core/src/memory/store.rs::set_pinned + internal/contractv1/contractv1.go::MemoryItem.IsPinned + internal/consoleapi/memstore.go is_pinned map + smoke v8 | docs/specs/tasks/task-17.1-memory-is-pinned-field.md | Pending | Phase17 #1（dep [ADR-022](decisions/adr-022-memory-is-pinned-field-amendment.md) D4 cross-repo signal — Console contractv1.go IsPinned amend PR merged）| `../ContextForge-wt-is-pinned-amendment` |
 
 ## ADR 索引
 
@@ -346,6 +348,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 018 | fallback-inmem-default-reversal | Accepted | docs/decisions/adr-018-fallback-inmem-default-reversal.md |
 | 020 | health-component-breakdown | Accepted | docs/decisions/adr-020-health-component-breakdown.md |
 | 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
+| 022 | memory-is-pinned-field-amendment | Proposed | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
 
 ## BDD Feature 索引
 
@@ -376,6 +379,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 12.1 / 12.2 / 12.3 / 13.1 / 13.2 / 14.1 / 14.2 | test/features/console-contract-completion.feature |
 | 15.1 / 15.2 / 15.3 / 15.4 / 15.5 / 15.6 | test/features/phase-15-console-functional-gap-closure.feature |
 | 16.1 / 16.2 / 16.3 / 16.4 | test/features/phase-16-v0.9.0-backlog-completion.feature |
+| 17.1 | test/features/phase-17-is-pinned-amendment.feature |
 
 ---
 

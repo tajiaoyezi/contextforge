@@ -526,6 +526,12 @@ MCP tool 的返回字段必须与 REST search result 的可解释字段保持一
 - **本 phase 不引入新 ADR**（4 task 全为 ADR-013/015/016/017/018 既有决策的延伸实施；ghcr/compose 是 ops 实践不构成 architectural decision）；adapter §Phase 索引 Phase 16 → Done；剩余 P2 #6 `is_pinned` 字段 amendment（需 cross-repo Console 端先 ship contractv1.go IsPinned 字段）独立 Phase 17 + ADR-022 推进 [SPEC-OWNER:phase-17.is-pinned-amendment]；v0.9.0 RELEASE_NOTES + evidence + artifacts 落盘 + cross-repo follow-up 通知 Console 团队 Phase 17 启动信号。
 - ADR-014 cross-validation gate 第七次完整激活验证制度稳定性。
 
+**Phase 17 is-pinned-amendment**（v0.10 收口；ContextForge-Console PR #91/#93 backlog 最后 1 项 closure = 11/11 = 100%；首次 ADR-015 D5 字段冻结 amendment 路径激活；详见 [ADR-022](../decisions/adr-022-memory-is-pinned-field-amendment.md)；**Status: Pending** 等 cross-repo signal — Console 主仓 PR ship `internal/contractv1/contractv1.go::MemoryItem.IsPinned` add-only field merged）
+
+- task-17.1（P2 #6）：[ADR-022](../decisions/adr-022-memory-is-pinned-field-amendment.md) D1-D5 落地 — proto `MemoryItem` add-only `bool is_pinned = N` 字段 + 新增 migration `core/migrations/0017_memory_items_add_is_pinned.sql`（PRAGMA `table_info` 预检 + 条件 `ALTER TABLE memory_items ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0` 幂等）+ `SqliteMemoryStore.set_pinned(memory_id, pin)` 新方法 + List/Get SELECT 返字段 + `MemoryServer.Pin` RPC handler 写穿 SQLite（既有 ADR-021 D1 `emit_audit_and_event` 路径不变）+ Go `internal/contractv1/contractv1.go::MemoryItem.IsPinned bool` add-only 字段 + `MemMemoryStore` fallback `is_pinned map` 同步 + smoke v8 28-step（v7 27 + step 28 Pin RPC roundtrip + restart 验证持久化）+ release_smoke.sh `phase17_is_pinned_amendment=ok` 子段；Console UI Memory 列表按 pin 排序 + 显示 pin 状态图标 visual closure（cross-repo Console 主仓领域）。
+- **本 phase 引入 ADR-022**（首次 ADR-015 D5 字段冻结 amendment 路径激活；task-17.1 ship 时 closeout PR 内 ADR-022 Status Proposed → Accepted）；adapter §Phase 索引 Phase 17 → Done（待 cross-repo trigger 后启动；当前 Pending）；ContextForge-Console PR #91/#93 backlog 11/11 = 100% closure 完成；v0.10.0 (or v0.9.x patch) RELEASE_NOTES + evidence + artifacts 落盘 + cross-repo follow-up 宣告 backlog 圆满收口。
+- ADR-014 cross-validation gate 第八次完整激活验证制度稳定性（首次跨 ADR amendment 路径）。
+
 ---
 
 ## Decisions Log｜决策日志
