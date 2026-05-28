@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 16 v0.9.0 backlog completion smoke (v7).
+# scripts/console_smoke.sh — Phase 17 task-17.1 is-pinned amendment smoke (v8).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -17,6 +17,12 @@
 # v7 (Phase 16) added steps 25-27 — task-16.2 long-poll wait timing semantics,
 # task-16.1 TraceStore SQLite restart roundtrip, task-16.4 compose-prod stack
 # health (env-gated via COMPOSE_PROD_SMOKE=1).
+#
+# v8 (Phase 17) added step 28 — task-17.1 MemoryItem.is_pinned add-only field
+# Pin RPC roundtrip (POST {"pin": true} + GET asserts is_pinned=true; POST
+# {"pin": false} + GET asserts is_pinned=false). Step 26 already validates
+# SQLite persistence across daemon restart, so step 28 trusts that path and
+# focuses on the wire-field roundtrip exposed by task-17.1.
 #
 # Modes (selected by env):
 #
@@ -382,10 +388,11 @@ code404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/eval-runs/eval-does-
 
 # =====================================================================
 # v6 (Phase 15) — 4 new steps for task-15.3/15.4/15.5/15.6 endpoints.
-# v7 (Phase 16) — re-numbered to 21/27 — 24/27 (3 v7 steps appended below).
+# v7 (Phase 16) — re-numbered to 21/28 — 24/28 (3 v7 steps appended below).
+# v8 (Phase 17) — step 28 appended for task-17.1 is_pinned wire roundtrip.
 # =====================================================================
 
-echo "  [21/27] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
+echo "  [21/28] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
 stats_body=$(curl -sf "$BASE/v1/stats/chunks") \
   || { echo "FAIL: GET stats/chunks" >&2; exit 1; }
 echo "$stats_body" | grep -q '"total"' \
@@ -394,7 +401,7 @@ echo "$stats_body" | grep -q '"today_delta"' \
   || { echo "FAIL: stats response missing today_delta" >&2; exit 1; }
 echo "    → stats response shape ok"
 
-echo "  [22/27] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
+echo "  [22/28] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
 list_body=$(curl -sf "$BASE/v1/eval-runs?limit=10") \
   || { echo "FAIL: GET eval-runs list" >&2; exit 1; }
 case "$list_body" in
@@ -412,7 +419,7 @@ filter_body=$(curl -sf "$BASE/v1/eval-runs?status=cancelled&limit=5") \
   || { echo "FAIL: GET eval-runs?status=cancelled" >&2; exit 1; }
 case "$filter_body" in [*]) echo "    → status filter returns array" ;; esac
 
-echo "  [23/27] task-15.5 GET /v1/queries (history; default limit 20)"
+echo "  [23/28] task-15.5 GET /v1/queries (history; default limit 20)"
 queries_body=$(curl -sf "$BASE/v1/queries") \
   || { echo "FAIL: GET queries" >&2; exit 1; }
 case "$queries_body" in
@@ -425,7 +432,7 @@ case "$queries_body" in
     ;;
 esac
 
-echo "  [24/27] task-15.6 GET /v1/health?detailed=true (5 components)"
+echo "  [24/28] task-15.6 GET /v1/health?detailed=true (5 components)"
 detail_body=$(curl -sf "$BASE/v1/health?detailed=true") \
   || { echo "FAIL: GET health?detailed=true" >&2; exit 1; }
 for name in db index embed retriever eval; do
@@ -445,7 +452,7 @@ echo "    → default /v1/health stays binary ✅"
 # v7 (Phase 16) — 3 new steps for task-16.1 / 16.2 / 16.4.
 # =====================================================================
 
-echo "  [25/27] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
+echo "  [25/28] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
 # REAL mode: assert wait truly blocks ≥ 1.5s when no event is pending (vs. v0.8
 # batch-poll path which returned immediately). LOCAL_ONLY / docker: sleep
 # fallback per task-16.2 memstore — also blocks min(wait, 1s).
@@ -476,7 +483,7 @@ case "$MODE" in
     ;;
 esac
 
-echo "  [26/27] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
+echo "  [26/28] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
 if [ "$MODE" = "real" ]; then
   # 3 more searches to seed TraceStore (already had 1 from step 8).
   for i in 1 2 3; do
@@ -533,7 +540,7 @@ else
   echo "    SKIP ($MODE mode — task-16.1 SoT only validated in real mode)"
 fi
 
-echo "  [27/27] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
+echo "  [27/28] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
 if [ "${COMPOSE_PROD_SMOKE:-0}" = "1" ]; then
   if ! command -v docker >/dev/null 2>&1; then
     echo "FAIL: COMPOSE_PROD_SMOKE=1 but docker not on PATH" >&2
@@ -569,6 +576,59 @@ if [ "${COMPOSE_PROD_SMOKE:-0}" = "1" ]; then
   docker compose -f deploy/docker-compose.production.yml down -v 2>&1 | tail -3 || true
 else
   echo "    SKIP (set COMPOSE_PROD_SMOKE=1 + ghcr image published to enable)"
+fi
+
+# =====================================================================
+# v8 (Phase 17) — task-17.1 MemoryItem.is_pinned add-only wire field.
+# Validates: (a) POST body {"pin": true|false} toggles the persisted column;
+# (b) GET /v1/memory/{id} surfaces is_pinned in the JSON payload; (c) empty
+# body POST falls back to pin=true (v0.7-v0.9 backward compat path).
+# =====================================================================
+
+echo "  [28/28] task-17.1 MemoryItem.is_pinned Pin RPC roundtrip (REAL mode + sqlite3)"
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  # The seed.sql from step 13 already created mem-seed-1; step 16 pinned it via
+  # empty-body POST (backward-compat path that defaults to pin=true). After
+  # step 26's daemon restart, the SQLite is_pinned column survives. Verify.
+  body_pre=$(curl -sf "$BASE/v1/memory/mem-seed-1")
+  echo "$body_pre" | grep -q '"is_pinned":true' \
+    || { echo "FAIL: post-restart mem-seed-1 expected is_pinned=true (step 16 pinned + SQLite persist); body=$body_pre" >&2; exit 1; }
+  echo "    → mem-seed-1 is_pinned=true survived step-26 daemon restart ✅"
+
+  # (b) explicit pin=false body
+  code204=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/pin" \
+    -H 'Content-Type: application/json' -d '{"pin":false}' || true)
+  [ "$code204" = "204" ] \
+    || { echo "FAIL: POST pin=false expected 204; got $code204" >&2; exit 1; }
+  body_unpin=$(curl -sf "$BASE/v1/memory/mem-seed-1")
+  echo "$body_unpin" | grep -q '"is_pinned":false' \
+    || { echo "FAIL: after pin=false expected is_pinned=false; body=$body_unpin" >&2; exit 1; }
+  echo "    → POST {\"pin\":false} → is_pinned=false ✅"
+
+  # (c) explicit pin=true body
+  code204=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/pin" \
+    -H 'Content-Type: application/json' -d '{"pin":true}' || true)
+  [ "$code204" = "204" ] \
+    || { echo "FAIL: POST pin=true expected 204; got $code204" >&2; exit 1; }
+  body_pin=$(curl -sf "$BASE/v1/memory/mem-seed-1")
+  echo "$body_pin" | grep -q '"is_pinned":true' \
+    || { echo "FAIL: after pin=true expected is_pinned=true; body=$body_pin" >&2; exit 1; }
+  echo "    → POST {\"pin\":true} → is_pinned=true ✅"
+
+  # (d) empty body backward-compat — defaults to pin=true (v0.7-v0.9 contract).
+  # Unpin first so we can verify the no-body path actually re-pins.
+  curl -sf -o /dev/null -X POST "$BASE/v1/memory/mem-seed-1/pin" \
+    -H 'Content-Type: application/json' -d '{"pin":false}' \
+    || { echo "FAIL: setup unpin for backward-compat probe" >&2; exit 1; }
+  code204=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/pin" || true)
+  [ "$code204" = "204" ] \
+    || { echo "FAIL: empty-body POST expected 204; got $code204" >&2; exit 1; }
+  body_compat=$(curl -sf "$BASE/v1/memory/mem-seed-1")
+  echo "$body_compat" | grep -q '"is_pinned":true' \
+    || { echo "FAIL: empty-body POST should default to pin=true; body=$body_compat" >&2; exit 1; }
+  echo "    → empty-body POST → is_pinned=true (v0.7-v0.9 backward compat) ✅"
+else
+  echo "    SKIP ($MODE mode or sqlite3 unavailable — task-17.1 wire roundtrip validated via Rust + Go unit tests)"
 fi
 
 echo

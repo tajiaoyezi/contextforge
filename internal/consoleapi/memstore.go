@@ -521,6 +521,9 @@ func NewMemMemoryStore() *MemMemoryStore {
 
 // SeedFixtures populates 5 hard-coded memory items for fallback demo mode.
 // task-13.2 §3 in scope; trade-off accepted (smoke test + Console UI demo).
+// task-17.1 / ADR-022 D3 §"MemMemoryStore SeedFixtures 默认 false"：fixture-1
+// preset to IsPinned: true so Console UI fallback mode renders at least one
+// pinned row when verifying the new is_pinned field.
 func (s *MemMemoryStore) SeedFixtures() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -528,7 +531,7 @@ func (s *MemMemoryStore) SeedFixtures() {
 	seeds := []contractv1.MemoryItem{
 		{MemoryID: "mem-fixture-1", AgentScope: "agent-default:session", ContentPreview: "first fixture item",
 			SourceType: "fixture", SourceRef: "memstore:1", CreatedAt: now, UpdatedAt: now,
-			HitCount: 0, Status: "active",
+			HitCount: 0, Status: "active", IsPinned: true,
 			Availability: contractv1.FieldAvailability{Object: "MemoryItem"}},
 		{MemoryID: "mem-fixture-2", AgentScope: "agent-default:project", ContentPreview: "second fixture item",
 			SourceType: "fixture", SourceRef: "memstore:2", CreatedAt: now, UpdatedAt: now,
@@ -584,14 +587,16 @@ func (s *MemMemoryStore) Get(id string) (*contractv1.MemoryItem, error) {
 	return nil, nil
 }
 
-func (s *MemMemoryStore) Pin(id string, _ bool) error {
+func (s *MemMemoryStore) Pin(id string, pin bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[id]
 	if !ok {
 		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
 	}
-	// pin state not exposed in contractv1.MemoryItem; bump UpdatedAt to signal change
+	// task-17.1 / ADR-022 D1: pin state now first-class on MemoryItem.IsPinned;
+	// Pin(id, true/false) toggles the snapshot in-place + bumps UpdatedAt.
+	item.IsPinned = pin
 	item.UpdatedAt = time.Now().UTC()
 	s.items[id] = item
 	return nil

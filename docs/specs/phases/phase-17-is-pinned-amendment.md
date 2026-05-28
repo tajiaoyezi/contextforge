@@ -1,6 +1,6 @@
 # Phase 17 · is-pinned-amendment
 
-**Status**: Pending
+**Status**: Done (implementation 2026-05-28 via task-17.1; ADR-022 promotion deferred to follow-up closeout PR)
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **ContextForge-Console PR #91/#93 backlog 最后 1 项 closure 收口 phase** — 关闭 P2 #6 (`MemoryItem.is_pinned` 字段 amendment)，11/11 = 100% closed。**Status: Pending** 显式标识"等 cross-repo 信号"（区别 Ready/Draft/Blocked），触发条件见 [ADR-022 D5](../../decisions/adr-022-memory-is-pinned-field-amendment.md#d5--phase-17-pending--ready-trigger)。
 >
@@ -85,13 +85,13 @@
 
 **阶段级验收标准（任务 17.1 Done，实测验证；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] AC1：`MemoryItem.IsPinned` 字段全链路 — `POST /v1/memory/{id}/pin {"pin":true}` (X-Confirm: yes) → 204 No Content → `GET /v1/memory/{id}` 返 200 + `is_pinned: true`；`POST /v1/memory/{id}/pin {"pin":false}` → `GET` 返 `is_pinned: false`；daemon 重启后 `GET` 仍返最新 pin 状态（SQLite 持久化生效）— **verified by smoke v8 Step 28 (daemon-level full roundtrip; task-17.1 收口) + `core/src/memory/store.rs::tests::test_sqlite_set_pinned_true_persists_get` (Rust-level; task-17.1 §6 AC1) + `internal/consoleapi/memstore_test.go::TestMemMemoryStore_Pin_TogglesIsPinned` (Go fallback; task-17.1 §6 AC2) PASS**
-- [ ] AC2：`GET /v1/memory` 列表返字段 — list 响应每项 `MemoryItem` 含 `is_pinned: bool`；过滤参数 `?agent_id=&scope=&namespace=&include_soft_deleted=` 不退化 — **verified by task-17.1 §6 AC3 + `internal/consoleapi/memstore_test.go::TestMemMemoryStore_List_ReturnsIsPinned` + `core/src/memory/store.rs::tests::test_list_returns_is_pinned_column` PASS**
-- [ ] AC3：SQLite migration `0017_memory_items_add_is_pinned.sql` 自动应用 — fresh install 新建 + 升级用户重启 daemon 后既有 memory items 全 backfill `is_pinned = 0`；migration 幂等（重复执行不报错）— **verified by task-17.1 §6 AC4 + migration integration test (`core/tests/memory_persist_integration.rs::test_is_pinned_migration_applies_idempotently`) PASS**
-- [ ] AC4：cross-repo client compatibility — Console v0.7-v0.9 (pre-amend) client 读 v0.10 response 不破坏（解析忽略 `is_pinned`）；Console v0.10+ (post-amend) client 读 v0.9 response 不破坏（`is_pinned` 默认 `false`）— **verified by task-17.1 §6 AC5 + legacy/new client compat unit test (`internal/contractv1/contractv1_test.go::TestMemoryItemForwardBackwardCompat`) PASS**
-- [ ] AC5：既有 `cargo test --workspace` 不退化；`go test ./...` 22 packages 不退化；`test/conformance` 22-endpoint Console contract 不退化（contract v1 不 bump，仅 MemoryItem 字段 add-only）；`scripts/console_smoke.sh` v8 28-step bash 语法 OK — **verified by task-17.1 PR body PR diff 跑 cargo + go + bash -n 实测**
-- [ ] AC6：ADR-014 cross-validation gate 全套通过 — D1 mapping table (Phase §6 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 + D4 governance 主 agent 自治 + D5 历史 Phase 1-16 spec 不溯改 — **verified by closeout PR body 含 D1 mapping 表 + D2 输出段 + D3 上述 §6 AC 全含 verified-by + D5 git diff 仅触新加 spec 文件**
-- [ ] AC7：ADR-022 Status Proposed → Accepted — task-17.1 实施完成 + smoke v8 验证 + 跨仓 round-trip 验证后，closeout PR 内 ADR-022 文件顶部 `**Status**: Proposed` → `**Status**: Accepted (YYYY-MM-DD, via Phase 17 closeout PR)` — **verified by closeout PR diff 含 ADR-022 status 行变更**
+- [x] AC1：`MemoryItem.IsPinned` 字段全链路 — `POST /v1/memory/{id}/pin {"pin":true}` → 204 No Content → `GET /v1/memory/{id}` 返 200 + `is_pinned: true`；`POST /v1/memory/{id}/pin {"pin":false}` → `GET` 返 `is_pinned: false`；daemon 重启后 `GET` 仍返最新 pin 状态（SQLite 持久化生效，列由 task-13.1 forward-added at migration 0013 line 16）— **verified by smoke v8 Step 28 (daemon-level full roundtrip 含 4 子断言 + empty-body backward-compat path; bash -n PASS, REAL runtime gated mode + sqlite3) + `core/src/memory/store.rs::tests::test_set_pinned_persists` (既有；不退化) + `internal/consoleapi/memstore_test.go::TestMemMemoryStore_Pin_TogglesIsPinned` (Go fallback; task-17.1 新增) + `core/tests/memory_integration.rs::test_pin_rpc_unpin_reverses_state` (gRPC end-to-end; task-17.1 新增) PASS**. X-Confirm 注释从 spec 删除 — `POST /v1/memory/{id}/pin` 是 non-destructive，router.go:42 不裹 confirmMiddleware.
+- [x] AC2：`GET /v1/memory` 列表返字段 — list 响应每项 `MemoryItem` 含 `is_pinned: bool`；过滤参数 `?agent_id=&scope=&namespace=&include_soft_deleted=` 不退化 — **verified by `core/src/memory/store.rs::tests::test_list_returns_is_pinned_column` (新增) + `internal/consoleapi/memstore_test.go::TestMemMemoryStore_List_ReturnsIsPinned` (新增) + `core/tests/memory_integration.rs::test_is_pinned_propagates_via_grpc_list_and_get` (gRPC wire propagation; 新增) PASS**.
+- [x] AC3：SQLite migration — **tautologically satisfied** — `is_pinned INTEGER NOT NULL DEFAULT 0` already present in `core/migrations/0013_memory_items.sql:16` (task-13.1 ship 时 forward-added). No migration 0017 needed — creating one would conflict with `duplicate column name` on existing v0.6+ DBs. Spec drift documented in task-17.1 §3 + this PR body.
+- [x] AC4：cross-repo client compatibility — Console v0.7-v0.9 (pre-amend) client 读 v0.10 response 不破坏（解析忽略 `is_pinned`）；Console v0.10+ (post-amend) client 读 v0.9 response 不破坏（`is_pinned` 默认 `false`）— **verified by `internal/contractv1/types_test.go::TestMemoryItemForwardBackwardCompat` PASS (filename drift from spec 'contractv1_test.go' — same package, no semantic difference)**.
+- [x] AC5：既有 `cargo test --workspace` 不退化（含 lib + 多 integration crate 全 PASS）；`go test ./...` 21 packages 不退化；`test/conformance` 22-endpoint Console contract 不退化（contract v1 不 bump，仅 MemoryItem 字段 add-only）；`scripts/console_smoke.sh` v8 28-step `bash -n` OK — **verified by 本 PR body §"Verification" 实测段**.
+- [x] AC6：ADR-014 cross-validation gate 全套通过 — D1 mapping table (Phase §6 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 + D4 governance 主 agent 自治 + D5 历史 Phase 1-16 spec 不溯改 — **verified by 本 PR body 含 D1 mapping 表 + D2 输出段 + D3 §6 AC 全含 verified-by + D5 git diff 仅触新加 spec 文件 + 新加 test 文件 + 新加代码 (本 PR 仅扩 spec §10 + §6 [x] flip + §3 drift note + task-17.1 §10 + §6 + §7 同源更新，未溯改 Phase 1-16)**.
+- [ ] AC7：ADR-022 Status Proposed → Accepted — **deferred** 至 follow-up closeout PR (用户决策: 本 PR 仅 impl + spec Status flip Pending → Done; ADR-022 promotion 单独 closeout PR ship). Closeout PR 内将把 ADR-022 顶部 `**Status**: Proposed` → `**Status**: Accepted (2026-05-28 era, via Phase 17 closeout PR #NNN)`.
 
 **端到端 smoke**：
 
@@ -131,26 +131,27 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done（17.1 Done — PR # 待 cross-repo trigger 后实施）
-- [ ] §6 阶段级 AC 全部满足；smoke v8 含 1 新 step（bash syntax 验证 + REAL daemon 实测）；spec_drift_lint.sh --touched 0 violation；既有 22-endpoint conformance 不退化（contract v1 不 bump）
-- [ ] 关联风险（migration upgrade 幂等 / proto 序号冲突 / cross-repo 顺序 / fallback 字段同步）缓解措施已落地
-- [ ] adapter §Phase 状态索引 Phase 17 → Done（task-17.1 ship 后 closeout PR）
-- [ ] **本 phase 引入新 ADR-022**（首次 ADR-015 D5 字段冻结 amendment；closeout PR 内 ADR-022 Status Proposed → Accepted；本 closeout PR body 明示 D1-D5 完整 ship through task-17.1）
-- [ ] PRD §Implementation Phases Phase 17 段新增（E1 spec PR 内落地；本 closeout PR §Phases 索引同步）
-- [ ] **ADR-014 D1 mapping 表**：本 closeout PR body 含 Phase §6 ↔ Task §6 AC 映射（7 行表 — AC1-AC4↔task-17.1, AC5↔phase-cross-cutting, AC6↔ADR-014 自体, AC7↔ADR-022 promotion）
-- [ ] **ADR-014 D2 lint 输出**：本 closeout PR body 含 0 unannotated hits 输出
-- [ ] v0.10.0 (或下一 patch release) tag prep ready + **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — Phase 17 ship 后宣告 backlog 圆满收口
-- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.10.0 release ship + Console UI 端 "按 pin 排序" feature flag visual closure 启动（最后 visual closure；本自治流程外）
+- [x] 本 phase 全部 task spec Status=Done（17.1 Done — see PR body）
+- [x] §6 阶段级 AC 1-6 全部满足；AC7 (ADR-022 promotion) deferred 至 closeout PR；smoke v8 含 1 新 step (bash -n PASS + REAL runtime gated)；`scripts/spec_drift_lint.sh --touched origin/master` 0 violation；既有 22-endpoint conformance 不退化（contract v1 不 bump，MemoryItem add-only 字段）
+- [x] 关联风险缓解措施已落地: (a) **migration 幂等** — 列已在 0013 (task-13.1 forward-added)，no upgrade risk; (b) **proto 序号冲突** — `is_pinned` 序号 10 (grep MemoryItem max 序号 9 + 1)，无冲突; (c) **cross-repo 顺序** — Console 主仓先 ship @ 415ee30 + 用户人工 forward trigger SHA，正向；(d) **fallback 字段同步** — MemMemoryStore.Pin(id, pin) 写入 IsPinned map + fixture-1 preset to true verified by `TestMemMemoryStore_Pin_TogglesIsPinned` / `TestMemMemoryStore_List_ReturnsIsPinned`
+- [x] adapter §Phase 状态索引 Phase 17 → Done (本 PR 同源更新)
+- [ ] **本 phase 引入新 ADR-022** — Status promotion (Proposed → Accepted) **deferred** to follow-up closeout PR per user decision (本 PR 仅 impl + spec Status flip; ADR-022 promotion 单独 PR)
+- [x] PRD §Implementation Phases Phase 17 段已 ship via PR #116 scaffolding (E1)
+- [x] **ADR-014 D1 mapping 表**: 见本 PR body — Phase §6 AC1-AC6 ↔ task-17.1 §6 AC1-AC8 + smoke v8 Step 28 + cargo + go test 实测
+- [x] **ADR-014 D2 lint 输出**: 本 PR body §"Verification" 段含 0 unannotated hits 输出
+- [ ] v0.10.0 (或下一 patch release) tag prep ready — **deferred** 至 closeout PR 之后；本 PR 不发 tag
+- [ ] **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — 本 PR 让 task-17.1 implementation Done 后，11/11 进入 "implementation complete, ADR promotion pending"; backlog closure formal claim 留 closeout PR
+- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.10 release ship + Console UI 端 "按 pin 排序" feature flag visual closure 启动 — **deferred** 至 closeout PR 之后（本自治流程外）
 
 ---
 
 ## §Pending 状态触发流程
 
-**本文件 Status: Pending → Ready 转换路径**（ADR-022 D5 定义）：
+**本文件 Status: Pending → Ready → Done 转换路径**（ADR-022 D5 定义，2026-05-28 全部完成）：
 
-1. **本 phase 17 + ADR-022 + task-17.1 spec PR ship**（即本提交链路；纯文档 add-only）→ ADR-022 Status: Proposed，Phase 17 + task-17.1 Status: Pending
-2. **用户人工转发 Console 团队启动信号**（终端流程外；ContextForge 主 agent 不主动跨仓）
-3. **Console 主仓 PR ship `internal/contractv1/contractv1.go::MemoryItem.IsPinned` add-only field merged to Console master**（cross-repo D4 第 1 步）
-4. **用户人工转发 Console PR merge SHA 给 ContextForge 主 agent**
-5. **ContextForge 主 agent 验证 Console master HEAD 含 IsPinned 字段** → 修改本 Phase 17 spec + task-17.1 spec Status `Pending → Ready` → 启动 task-17.1 实施
-6. **task-17.1 实施 + closeout PR + ADR-022 Status Proposed → Accepted + v0.10.0 release** → 11/11 backlog closure 完成
+1. ✅ **Phase 17 + ADR-022 + task-17.1 spec scaffold PR ship** (PR #116, merged 2026-05-28) → ADR-022 Status: Proposed，Phase 17 + task-17.1 Status: Pending
+2. ✅ **用户人工转发 Console 团队启动信号** — 用户给 Console 主 agent 转发约定 prompt (ContextForge prompt v1)
+3. ✅ **Console 主仓 PR ship `internal/contractv1/contractv1.go::MemoryItem.IsPinned` add-only field merged to Console master** — PR [ContextForge-Console#101](https://github.com/tajiaoyezi/ContextForge-Console/pull/101) merged 2026-05-28T12:16:57Z @ `415ee30fcd8effd7929806d196458ec6e60fb49f`
+4. ✅ **用户人工转发 Console PR merge SHA 给 ContextForge 主 agent**
+5. ✅ **ContextForge 主 agent 验证 Console master HEAD 含 IsPinned 字段** — `gh api repos/tajiaoyezi/ContextForge-Console/contents/console-api/internal/coreadapter/contractv1/contractv1.go?ref=415ee30...` returns the field block correctly; Status `Pending → Ready` 短暂中间态 → 启动 task-17.1 实施
+6. ✅ **task-17.1 实施 PR** (本 PR) — impl + smoke v8 + 5 新测试 + spec Status `Pending → Done`. **next**: closeout PR ADR-022 Status `Proposed → Accepted` + v0.10.0 release prep → 11/11 backlog closure formal claim

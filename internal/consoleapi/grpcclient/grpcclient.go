@@ -678,6 +678,7 @@ func protoToMemoryItem(p *pb.MemoryItem) contractv1.MemoryItem {
 		UpdatedAt:      time.Unix(p.UpdatedAtUnix, 0).UTC(),
 		HitCount:       int(p.HitCount),
 		Status:         p.Status,
+		IsPinned:       p.IsPinned,
 		Availability:   contractv1.FieldAvailability{Object: "MemoryItem"},
 	}
 }

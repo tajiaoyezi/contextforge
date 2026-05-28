@@ -148,6 +148,7 @@ fn memory_to_pb(m: RustMemoryItem) -> PbMemoryItem {
         updated_at_unix: m.updated_at_unix,
         hit_count: m.hit_count,
         status: m.status,
+        is_pinned: m.is_pinned,
     }
 }
 

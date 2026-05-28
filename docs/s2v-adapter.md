@@ -249,7 +249,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 14 | `eval-rest-surface` | `docs/specs/phases/phase-14-eval-rest-surface.md` | Done | 2 | `../ContextForge-wt-eval-rest-surface` |
 | 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Done | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 | 16 | `v0.9.0-backlog-completion` | `docs/specs/phases/phase-16-v0.9.0-backlog-completion.md` | Done | 4 | `../ContextForge-wt-v0.9.0-backlog-completion` |
-| 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Pending | 1 | `../ContextForge-wt-is-pinned-amendment` |
+| 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Done | 1 | `../ContextForge-wt-is-pinned-amendment` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -318,7 +318,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 16.2 | internal/consoleapi (handlers + types + grpcclient + memstore) Recent(limit, wait) | docs/specs/tasks/task-16.2-events-real-long-poll.md | Done | Phase16 #2（dep 16.1，串行 ship 便于 review；无文件级冲突）| `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 16.3 | .github/workflows/release.yml + ci.yml | docs/specs/tasks/task-16.3-ghcr-image-push-ci.md | Done | Phase16 #3（可与 16.4 并行 — 纯 ops）| `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 16.4 | deploy/docker-compose.production.yml + .env.production.example + docs/deploy/production.md + smoke v7 + release_smoke.sh phase16 段 | docs/specs/tasks/task-16.4-compose-production-example.md | Done | Phase16 #4（dep 16.3 image push；收口含 smoke v7 + ADR-014 D2 lint + closeout）| `../ContextForge-wt-v0.9.0-backlog-completion` |
-| 17.1 | proto MemoryItem.is_pinned + core/migrations/0017_memory_items_add_is_pinned.sql + core/src/memory/store.rs::set_pinned + internal/contractv1/contractv1.go::MemoryItem.IsPinned + internal/consoleapi/memstore.go is_pinned map + smoke v8 | docs/specs/tasks/task-17.1-memory-is-pinned-field.md | Pending | Phase17 #1（dep [ADR-022](decisions/adr-022-memory-is-pinned-field-amendment.md) D4 cross-repo signal — Console contractv1.go IsPinned amend PR merged）| `../ContextForge-wt-is-pinned-amendment` |
+| 17.1 | proto MemoryItem.is_pinned + memory_to_pb mapper + internal/contractv1/contractv1.go::MemoryItem.IsPinned + grpcclient.protoToMemoryItem + internal/consoleapi/memstore.go is_pinned wiring + handleMemoryPin body parse + smoke v8 step 28 (migration 0017 not needed — column already in 0013) | docs/specs/tasks/task-17.1-memory-is-pinned-field.md | Done | Phase17 #1（dep [ADR-022](decisions/adr-022-memory-is-pinned-field-amendment.md) D4 cross-repo signal resolved 2026-05-28 — Console master @ 415ee30 ships MemoryItem.IsPinned）| `../ContextForge-wt-is-pinned-amendment` |
 
 ## ADR 索引
 

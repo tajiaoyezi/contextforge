@@ -345,6 +345,24 @@ mod tests {
         assert!(!s.get("p").unwrap().unwrap().is_pinned);
     }
 
+    /// task-17.1 / ADR-022 AC3: List SELECT must project is_pinned per row.
+    #[test]
+    fn test_list_returns_is_pinned_column() {
+        let s = fresh_store();
+        s.seed_for_tests(vec![
+            mem("p1", "scope", "active"),
+            mem("p2", "scope", "active"),
+        ])
+        .unwrap();
+        s.set_pinned("p1", true).unwrap();
+        let items = s.list(MemoryListFilter::default()).unwrap();
+        assert_eq!(items.len(), 2);
+        let p1 = items.iter().find(|i| i.memory_id == "p1").unwrap();
+        let p2 = items.iter().find(|i| i.memory_id == "p2").unwrap();
+        assert!(p1.is_pinned, "p1 list row should reflect set_pinned(true)");
+        assert!(!p2.is_pinned, "p2 list row should default to is_pinned=false");
+    }
+
     #[test]
     fn test_set_pinned_not_found() {
         let s = fresh_store();

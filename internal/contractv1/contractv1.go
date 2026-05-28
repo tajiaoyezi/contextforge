@@ -193,6 +193,11 @@ type Citation struct {
 
 // MemoryItem — PRD must-have: memory_id/agent_scope/content_preview/
 // source_type/source_ref/created_at/updated_at/hit_count/status.
+// task-17.1 / ADR-022 D1: is_pinned add-only field — pin state snapshot
+// surfaced for Console UI list sort + icon rendering. Cross-repo aligned
+// with ContextForge-Console master @ 415ee30 (PR #101); v0.9 and earlier
+// daemon responses lacking the key unmarshal to bool zero value (false),
+// preserving forward / backward compatibility (ADR-022 D4).
 type MemoryItem struct {
 	MemoryID       string            `json:"memory_id"`
 	AgentScope     string            `json:"agent_scope"`
@@ -203,6 +208,7 @@ type MemoryItem struct {
 	UpdatedAt      time.Time         `json:"updated_at"`
 	HitCount       int               `json:"hit_count"`
 	Status         string            `json:"status"`
+	IsPinned       bool              `json:"is_pinned"`
 	Availability   FieldAvailability `json:"field_availability"`
 }
 

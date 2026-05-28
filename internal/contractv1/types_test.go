@@ -40,6 +40,7 @@ func TestJSONRoundtrip(t *testing.T) {
 		{"SourceChunk", SourceChunk{ChunkID: "c1", WorkspaceID: "w1", SourceFilePath: "/a/b", LineStart: 1, LineEnd: 10, ChunkTextPreview: "...", ChunkOffsetStart: 0, ChunkOffsetEnd: 100, RedactionStatus: "clean", Availability: FieldAvailability{Object: "SourceChunk"}}},
 		{"Citation", Citation{CitationID: "ct1", SourceFilePath: "/a/b", ChunkID: "c1", LineStart: 1, LineEnd: 10, Confidence: 0.95, Availability: FieldAvailability{Object: "Citation"}}},
 		{"MemoryItem", MemoryItem{MemoryID: "m1", AgentScope: "session", ContentPreview: "p", SourceType: "hermes", SourceRef: "MEMORY.md", CreatedAt: now, UpdatedAt: now, HitCount: 3, Status: "active", Availability: FieldAvailability{Object: "MemoryItem"}}},
+		{"MemoryItem_pinned", MemoryItem{MemoryID: "m1p", AgentScope: "session", ContentPreview: "pinned", SourceType: "hermes", SourceRef: "MEMORY.md", CreatedAt: now, UpdatedAt: now, HitCount: 7, Status: "active", IsPinned: true, Availability: FieldAvailability{Object: "MemoryItem"}}},
 		{"MemoryOperation", MemoryOperation{ID: "op1", MemoryID: "m1", OpType: "pin", Actor: "user", CreatedAt: now, SchemaVersion: "v1", Metadata: map[string]any{"src": "ui"}, Availability: FieldAvailability{Object: "MemoryOperation"}}},
 		{"EvalRun_running", EvalRun{EvalRunID: "e1", WorkspaceID: "w1", Status: "running", ConfigSnapshot: json.RawMessage(`{}`), StartedAt: now, FinishedAt: nil, Metrics: map[string]float64{"top5": 0.8}, CaseResults: []CaseResult{{CaseID: "c1", Query: "q", ExpectedChunks: []string{"x"}, ActualChunks: []string{"x"}, Score: 1.0, Passed: true}}, SchemaVersion: "v1", Availability: FieldAvailability{Object: "EvalRun"}}},
 		{"EvalRun_finished", EvalRun{EvalRunID: "e2", WorkspaceID: "w1", Status: "succeeded", ConfigSnapshot: json.RawMessage(`{"n":1}`), StartedAt: now, FinishedAt: &finished, Metrics: map[string]float64{"top5": 0.9}, CaseResults: nil, SchemaVersion: "v1", Availability: FieldAvailability{Object: "EvalRun"}}},
@@ -129,6 +130,61 @@ func TestFieldAvailability(t *testing.T) {
 func TestContractVersionConstant(t *testing.T) {
 	if ContractVersion != "v1" {
 		t.Errorf("ContractVersion must be \"v1\"; got %q", ContractVersion)
+	}
+}
+
+// TestMemoryItemForwardBackwardCompat — task-17.1 / ADR-022 D4 AC5.
+// Verifies the add-only IsPinned field preserves cross-version unmarshal:
+//
+//	(a) Legacy ContextForge v0.7-v0.9 response (no is_pinned key) → new client
+//	    unmarshals IsPinned: false (Go bool zero value — the ADR-022 D4
+//	    forward-compat path that lets Console v0.10 talk to v0.9 daemons).
+//	(b) New ContextForge v0.10+ response (is_pinned: true) → IsPinned: true.
+func TestMemoryItemForwardBackwardCompat(t *testing.T) {
+	// (a) Legacy response missing the is_pinned key.
+	legacy := []byte(`{
+		"memory_id":"m-1",
+		"agent_scope":"agent-default:session",
+		"content_preview":"legacy item",
+		"source_type":"hermes",
+		"source_ref":"MEMORY.md",
+		"created_at":"2026-05-28T00:00:00Z",
+		"updated_at":"2026-05-28T00:00:00Z",
+		"hit_count":0,
+		"status":"active",
+		"field_availability":{"object":"MemoryItem","missing_must_have_fields":null}
+	}`)
+	var legacyItem MemoryItem
+	if err := json.Unmarshal(legacy, &legacyItem); err != nil {
+		t.Fatalf("legacy unmarshal failed: %v", err)
+	}
+	if legacyItem.IsPinned {
+		t.Errorf("v0.9 response missing is_pinned key should fallback to false; got true")
+	}
+	if legacyItem.MemoryID != "m-1" || legacyItem.Status != "active" {
+		t.Errorf("legacy fields lost during unmarshal: %+v", legacyItem)
+	}
+
+	// (b) Fresh v0.10+ response carrying is_pinned: true.
+	fresh := []byte(`{
+		"memory_id":"m-2",
+		"agent_scope":"agent-default:session",
+		"content_preview":"fresh pinned item",
+		"source_type":"hermes",
+		"source_ref":"MEMORY.md",
+		"created_at":"2026-05-28T00:00:00Z",
+		"updated_at":"2026-05-28T00:00:00Z",
+		"hit_count":0,
+		"status":"active",
+		"is_pinned":true,
+		"field_availability":{"object":"MemoryItem","missing_must_have_fields":null}
+	}`)
+	var freshItem MemoryItem
+	if err := json.Unmarshal(fresh, &freshItem); err != nil {
+		t.Fatalf("fresh unmarshal failed: %v", err)
+	}
+	if !freshItem.IsPinned {
+		t.Errorf("v0.10 response is_pinned:true should parse as true; got false")
 	}
 }
 
