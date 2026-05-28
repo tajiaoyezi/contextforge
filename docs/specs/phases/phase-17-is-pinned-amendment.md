@@ -91,7 +91,7 @@
 - [x] AC4：cross-repo client compatibility — Console v0.7-v0.9 (pre-amend) client 读 v0.10 response 不破坏（解析忽略 `is_pinned`）；Console v0.10+ (post-amend) client 读 v0.9 response 不破坏（`is_pinned` 默认 `false`）— **verified by `internal/contractv1/types_test.go::TestMemoryItemForwardBackwardCompat` PASS (filename drift from spec 'contractv1_test.go' — same package, no semantic difference)**.
 - [x] AC5：既有 `cargo test --workspace` 不退化（含 lib + 多 integration crate 全 PASS）；`go test ./...` 21 packages 不退化；`test/conformance` 22-endpoint Console contract 不退化（contract v1 不 bump，仅 MemoryItem 字段 add-only）；`scripts/console_smoke.sh` v8 28-step `bash -n` OK — **verified by 本 PR body §"Verification" 实测段**.
 - [x] AC6：ADR-014 cross-validation gate 全套通过 — D1 mapping table (Phase §6 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 + D4 governance 主 agent 自治 + D5 历史 Phase 1-16 spec 不溯改 — **verified by 本 PR body 含 D1 mapping 表 + D2 输出段 + D3 §6 AC 全含 verified-by + D5 git diff 仅触新加 spec 文件 + 新加 test 文件 + 新加代码 (本 PR 仅扩 spec §10 + §6 [x] flip + §3 drift note + task-17.1 §10 + §6 + §7 同源更新，未溯改 Phase 1-16)**.
-- [ ] AC7：ADR-022 Status Proposed → Accepted — **deferred** 至 follow-up closeout PR (用户决策: 本 PR 仅 impl + spec Status flip Pending → Done; ADR-022 promotion 单独 closeout PR ship). Closeout PR 内将把 ADR-022 顶部 `**Status**: Proposed` → `**Status**: Accepted (2026-05-28 era, via Phase 17 closeout PR #NNN)`.
+- [x] AC7：ADR-022 Status Proposed → Accepted — closeout PR 内 ADR-022 顶部 `**Status**: Proposed` → `**Status**: Accepted (2026-05-28, via Phase 17 closeout PR — implementation shipped via PR #118 task-17.1; cross-repo trigger ContextForge-Console PR #101 master @ 415ee30)` — **verified by closeout PR diff 含 ADR-022 status 行变更**.
 
 **端到端 smoke**：
 
@@ -135,13 +135,13 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 - [x] §6 阶段级 AC 1-6 全部满足；AC7 (ADR-022 promotion) deferred 至 closeout PR；smoke v8 含 1 新 step (bash -n PASS + REAL runtime gated)；`scripts/spec_drift_lint.sh --touched origin/master` 0 violation；既有 22-endpoint conformance 不退化（contract v1 不 bump，MemoryItem add-only 字段）
 - [x] 关联风险缓解措施已落地: (a) **migration 幂等** — 列已在 0013 (task-13.1 forward-added)，no upgrade risk; (b) **proto 序号冲突** — `is_pinned` 序号 10 (grep MemoryItem max 序号 9 + 1)，无冲突; (c) **cross-repo 顺序** — Console 主仓先 ship @ 415ee30 + 用户人工 forward trigger SHA，正向；(d) **fallback 字段同步** — MemMemoryStore.Pin(id, pin) 写入 IsPinned map + fixture-1 preset to true verified by `TestMemMemoryStore_Pin_TogglesIsPinned` / `TestMemMemoryStore_List_ReturnsIsPinned`
 - [x] adapter §Phase 状态索引 Phase 17 → Done (本 PR 同源更新)
-- [ ] **本 phase 引入新 ADR-022** — Status promotion (Proposed → Accepted) **deferred** to follow-up closeout PR per user decision (本 PR 仅 impl + spec Status flip; ADR-022 promotion 单独 PR)
+- [x] **本 phase 引入新 ADR-022** — Status promotion (Proposed → Accepted) completed in this closeout PR. First ADR-015 D5 字段冻结 amendment 路径激活成功.
 - [x] PRD §Implementation Phases Phase 17 段已 ship via PR #116 (E1 spec foundation PR — merged 2026-05-28)
 - [x] **ADR-014 D1 mapping 表**: 见本 PR body — Phase §6 AC1-AC6 ↔ task-17.1 §6 AC1-AC8 + smoke v8 Step 28 + cargo + go test 实测
 - [x] **ADR-014 D2 lint 输出**: 本 PR body §"Verification" 段含 0 unannotated hits 输出
-- [ ] v0.10.0 (或下一 patch release) tag prep ready — **deferred** 至 closeout PR 之后；本 PR 不发 tag
-- [ ] **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — 本 PR 让 task-17.1 implementation Done 后，11/11 进入 "implementation complete, ADR promotion pending"; backlog closure formal claim 留 closeout PR
-- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.10 release ship + Console UI 端 "按 pin 排序" feature flag visual closure 启动 — **deferred** 至 closeout PR 之后（本自治流程外）
+- [x] v0.10.0 release docs ready in this closeout PR — README + RELEASE_NOTES + docs/releases/v0.10.0-evidence.md + docs/releases/v0.10.0-artifacts.md. Annotated tag `v0.10.0` push 留 closeout PR merge 后由 user 触发 (release.yml workflow on `v*` tag push handles ghcr image build/push).
+- [x] **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — v0.10.0 release notes formally claims 100% closure; mapping table (Phase 13/15/16/17) ship 10 + this PR 1 = 11/11.
+- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.10 release ship + Console UI 端 "按 pin 排序" feature flag visual closure 启动 — **deferred** 至本 closeout PR merge + v0.10.0 tag push 之后（user-forwarded outside autonomous flow）
 
 ---
 
