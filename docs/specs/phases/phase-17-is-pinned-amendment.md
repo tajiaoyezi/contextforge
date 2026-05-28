@@ -136,7 +136,7 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 - [x] 关联风险缓解措施已落地: (a) **migration 幂等** — 列已在 0013 (task-13.1 forward-added)，no upgrade risk; (b) **proto 序号冲突** — `is_pinned` 序号 10 (grep MemoryItem max 序号 9 + 1)，无冲突; (c) **cross-repo 顺序** — Console 主仓先 ship @ 415ee30 + 用户人工 forward trigger SHA，正向；(d) **fallback 字段同步** — MemMemoryStore.Pin(id, pin) 写入 IsPinned map + fixture-1 preset to true verified by `TestMemMemoryStore_Pin_TogglesIsPinned` / `TestMemMemoryStore_List_ReturnsIsPinned`
 - [x] adapter §Phase 状态索引 Phase 17 → Done (本 PR 同源更新)
 - [ ] **本 phase 引入新 ADR-022** — Status promotion (Proposed → Accepted) **deferred** to follow-up closeout PR per user decision (本 PR 仅 impl + spec Status flip; ADR-022 promotion 单独 PR)
-- [x] PRD §Implementation Phases Phase 17 段已 ship via PR #116 scaffolding (E1)
+- [x] PRD §Implementation Phases Phase 17 段已 ship via PR #116 (E1 spec foundation PR — merged 2026-05-28)
 - [x] **ADR-014 D1 mapping 表**: 见本 PR body — Phase §6 AC1-AC6 ↔ task-17.1 §6 AC1-AC8 + smoke v8 Step 28 + cargo + go test 实测
 - [x] **ADR-014 D2 lint 输出**: 本 PR body §"Verification" 段含 0 unannotated hits 输出
 - [ ] v0.10.0 (或下一 patch release) tag prep ready — **deferred** 至 closeout PR 之后；本 PR 不发 tag
@@ -149,7 +149,7 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 
 **本文件 Status: Pending → Ready → Done 转换路径**（ADR-022 D5 定义，2026-05-28 全部完成）：
 
-1. ✅ **Phase 17 + ADR-022 + task-17.1 spec scaffold PR ship** (PR #116, merged 2026-05-28) → ADR-022 Status: Proposed，Phase 17 + task-17.1 Status: Pending
+1. ✅ **Phase 17 + ADR-022 + task-17.1 spec foundation PR ship** (PR #116, merged 2026-05-28) → ADR-022 Status: Proposed，Phase 17 + task-17.1 Status: Pending
 2. ✅ **用户人工转发 Console 团队启动信号** — 用户给 Console 主 agent 转发约定 prompt (ContextForge prompt v1)
 3. ✅ **Console 主仓 PR ship `internal/contractv1/contractv1.go::MemoryItem.IsPinned` add-only field merged to Console master** — PR [ContextForge-Console#101](https://github.com/tajiaoyezi/ContextForge-Console/pull/101) merged 2026-05-28T12:16:57Z @ `415ee30fcd8effd7929806d196458ec6e60fb49f`
 4. ✅ **用户人工转发 Console PR merge SHA 给 ContextForge 主 agent**
