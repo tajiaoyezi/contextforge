@@ -1,6 +1,6 @@
 # ADR `022`: `memory-is-pinned-field-amendment`
 
-**Status**: Proposed
+**Status**: Accepted (2026-05-28, via Phase 17 closeout PR — implementation shipped via PR #118 task-17.1; cross-repo trigger ContextForge-Console PR #101 master @ `415ee30`)
 **Category**: 协议接口 / 契约演进 / Memory schema
 **Date**: 2026-05-28
 **Decided By**: tajiaoyezi objective + main agent execution + ContextForge-Console PR #91/#93 backlog 反馈

@@ -348,7 +348,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 018 | fallback-inmem-default-reversal | Accepted | docs/decisions/adr-018-fallback-inmem-default-reversal.md |
 | 020 | health-component-breakdown | Accepted | docs/decisions/adr-020-health-component-breakdown.md |
 | 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
-| 022 | memory-is-pinned-field-amendment | Proposed | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
+| 022 | memory-is-pinned-field-amendment | Accepted | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
 
 ## BDD Feature 索引
 

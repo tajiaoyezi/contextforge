@@ -7,6 +7,20 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.10.0
+
+🎉 **v0.10.0 is-pinned-amendment** — closes the final ContextForge-Console PR #91/#93 backlog item (P2 #6 `MemoryItem.is_pinned`). Backlog is now **11/11 = 100% closed** 🎊. First successful activation of the ADR-015 D5 字段冻结 amendment path via ADR-022.
+
+- **Phase 17 is-pinned-amendment** (ADR-022 Proposed → Accepted) — single task, single closeout PR:
+  - **task-17.1 (P2 #6)** `MemoryItem.is_pinned` add-only wire field — proto field 10 + Rust `memory_to_pb` mapper + Go `contractv1.MemoryItem.IsPinned bool` + `grpcclient.protoToMemoryItem` + `MemMemoryStore.Pin(id, pin)` actually writing IsPinned + fixture-1 preset `IsPinned: true` + `handleMemoryPin` JSON body parser (`{"pin": bool}` with empty-body backward-compat default `true`) + 5 new tests + smoke v8 step 28 (4 sub-assertions covering pin/unpin/empty-body across REAL daemon + sqlite3). PR [#118](https://github.com/tajiaoyezi/contextforge/pull/118).
+  - **Cross-repo coordination** — ContextForge-Console PR [#101](https://github.com/tajiaoyezi/ContextForge-Console/pull/101) shipped `MemoryItem.IsPinned bool` add-only on Console master @ `415ee30` first (ADR-022 D4 第 1 步, merged 2026-05-28T12:16:57Z); ContextForge backend caught up the same day. Verified via `gh api` round-trip before flipping Phase 17 Status `Pending → Ready → Done` in PR #118.
+  - **Spec drift discovery** — `is_pinned INTEGER NOT NULL DEFAULT 0` was already added in migration `0013_memory_items.sql` at task-13.1 ship (Phase 13 forward-added). Migration `0017` prescribed by task-17.1 §3 was **not needed** — would conflict with `duplicate column name` on existing DBs. PR #118 commit body + task-17.1 §3 document this discovery.
+- **ADR-022 Accepted** — first amendment ADR activating the ADR-015 D5 字段冻结 amendment path. Documents cross-repo coordination protocol (D4 Console-first / ContextForge-second ship order; D5 `Pending → Ready → Done` trigger via user-forwarded merge SHA) for future schema evolutions.
+- **ADR-014 cross-validation gate 8th activation** — D1 mapping table + D2 lint 0 hits + D3 verified-by + D4/D5 governance — see PR #118 + this closeout PR body.
+- **Console PR #91/#93 backlog formally 11/11 = 100% closed 🎊** — the backlog raised by the Console team in v0.7 review is now entirely addressed across Phase 13 / 15 / 16 / 17. Mapping table in `docs/releases/v0.10.0-evidence.md` §9.
+
+详 `RELEASE_NOTES.md` v0.10.0 段 + [Phase 17 spec](docs/specs/phases/phase-17-is-pinned-amendment.md) + [ADR-022](docs/decisions/adr-022-memory-is-pinned-field-amendment.md)。
+
 ## What's new in v0.9.0
 
 🚀 **v0.9.0-backlog-completion** — closes 4/5 remaining Console backlog items (P3 + P4) plus production release infrastructure. ContextForge-Console PR #91/#93 backlog now **10/11 = 91% closed**; only `MemoryItem.is_pinned` (P2 #6, ADR-015 D5 amendment) remains for Phase 17 cross-repo coord.

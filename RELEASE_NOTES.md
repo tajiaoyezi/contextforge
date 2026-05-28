@@ -1,5 +1,102 @@
 # ContextForge Release Notes
 
+## v0.10.0 (2026-05-28) — is-pinned-amendment (Console PR #91/#93 backlog 11/11 = 100% closed)
+
+### 摘要
+
+v0.10.0 minor release: closes the **final** ContextForge-Console PR #91/#93 backlog item (P2 #6 `MemoryItem.is_pinned`). Backlog is now **11/11 = 100% closed** — the full review feedback raised by the Console team in v0.7.x is addressed. **First successful activation of the ADR-015 D5 字段冻结 amendment path** via ADR-022 (`memory-is-pinned-field-amendment`, Proposed → Accepted in this closeout PR).
+
+### Backlog item closed (1 final)
+
+| Item | Backlog signal | Solution | PR |
+|---|---|---|---|
+| **P2 #6** | `MemoryItem.is_pinned` field missing — Console UI Memory list/detail could only infer pin state from `MemoryOperation.op_type=pin` history (fragile: unpin still leaves a pin record) | task-17.1 — proto field 10 + Rust `memory_to_pb` mapper + Go `contractv1.MemoryItem.IsPinned` + `grpcclient.protoToMemoryItem` + `MemMemoryStore.Pin(id, pin)` (no longer discards `_`) + fixture-1 preset `IsPinned: true` + `handleMemoryPin` JSON body parser (backward-compat empty-body default true) + 5 new tests + smoke v8 step 28 (4 sub-assertions: post-restart survive + explicit pin=false + explicit pin=true + empty-body backward-compat) | [#118](https://github.com/tajiaoyezi/contextforge/pull/118) |
+
+Additional Phase 17 ship:
+- **Phase 17 E1 scaffolding** (PR #116, post-v0.9.0): Phase 17 spec + task-17.1 spec + ADR-022 (Proposed) + adapter index — Status: Pending awaiting Console cross-repo amend trigger
+- **Phase 17 closeout** (this PR): ADR-022 Status Proposed → Accepted + Phase 17 + task-17.1 spec final §10 fills + v0.10.0 release docs (README + RELEASE_NOTES + evidence + artifacts)
+
+### Cross-repo coordination — first end-to-end exercise of ADR-022 D4/D5
+
+Phase 17 is the first phase to use the ADR-022 D5 cross-repo `Pending → Ready → Done` protocol:
+
+1. **2026-05-28 (Phase 17 scaffolding ship via PR #116)**: ContextForge ships Phase 17 spec + ADR-022 Proposed + task-17.1 with Status: Pending awaiting Console signal.
+2. **2026-05-28T12:16:57Z (Console-first ship)**: ContextForge-Console PR [#101](https://github.com/tajiaoyezi/ContextForge-Console/pull/101) merges to Console master @ `415ee30fcd8effd7929806d196458ec6e60fb49f` — `MemoryItem.IsPinned bool` add-only field in `console-api/internal/coreadapter/contractv1/contractv1.go` (between `Status` and `Availability`, JSON tag `is_pinned`).
+3. **2026-05-28 (User forwards SHA)**: User forwards Console PR #101 merge SHA `415ee30` to ContextForge main agent.
+4. **2026-05-28 (Verification)**: ContextForge main agent verifies via `gh api repos/tajiaoyezi/ContextForge-Console/contents/console-api/internal/coreadapter/contractv1/contractv1.go?ref=415ee30` returns the expected field block; flips Phase 17 + task-17.1 Status: `Pending → Ready → Done` within PR #118 implementation PR.
+5. **2026-05-28 (ContextForge ship via PR #118)**: PR #118 ships the proto + Rust + Go end-to-end + tests + smoke v8.
+6. **2026-05-28 (this closeout PR)**: ADR-022 Status Proposed → Accepted; v0.10.0 release docs.
+
+This pattern is now reusable for any future cross-repo schema evolution (`tags`, `pinned_at`, etc. — all `[SPEC-DEFER:phase-future.*]`).
+
+### Spec drift discovery
+
+The original task-17.1 §3 prescribed migration `0017_memory_items_add_is_pinned.sql` + PRAGMA gate + Rust `SqliteMemoryStore::set_pinned` implementation. Recon during PR #118 revealed task-13.1 (Phase 13) already shipped most of it forward-looking:
+
+- **Migration 0017 NOT needed** — `is_pinned INTEGER NOT NULL DEFAULT 0` was already added in `core/migrations/0013_memory_items.sql:16` at task-13.1 ship (Phase 13). The comment in 0013 even read "9 columns 1:1 mirror contractv1.MemoryItem + orthogonal is_pinned flag". Creating 0017 would have errored with `duplicate column name` on existing v0.6+ DBs.
+- **Rust `SqliteMemoryStore::set_pinned` + `MemoryServer.Pin` write-through wiring** already shipped at Phase 13. Only the proto wire propagation (via `memory_to_pb` mapper) and the Go-side surface needed update.
+- **`handleMemoryPin` body parsing gap** — the original handler at `internal/consoleapi/handlers.go:524` hardcoded `deps.Memory.Pin(id, true)` and never read the request body. Task-17.1 spec §3 missed this gap; the new handler now parses `{"pin": bool}` with empty/malformed body defaulting to `true` (preserving v0.7-v0.9 backward-compat contract).
+
+PR #118 commit body + task-17.1 §3 + this release notes capture the discovery for future readers.
+
+### Schema additions (add-only per ADR-015 D1 + first ADR-015 D5 amendment via ADR-022)
+
+- `proto/contextforge/console_data_plane/v1/console_data_plane.proto`: `MemoryItem.bool is_pinned = 10` (add-only field 10; next available after `string status = 9`)
+- `internal/contractv1/contractv1.go::MemoryItem.IsPinned bool` (json tag `is_pinned`, position between `Status` and `Availability` — mirrors Console master @ `415ee30` exactly)
+- No SQLite migration needed (column already at `0013:16`)
+- 22-endpoint Console contract conformance unaffected (contract v1 not bumped)
+- Forward/backward compat: legacy v0.7-v0.9 daemon responses lacking `is_pinned` key unmarshal to Go bool zero value (`false`) — Console v0.10+ client treats this as "memory item not currently pinned" fallback. New v0.10+ daemon responses carry the real state.
+
+### 关键设计取舍
+
+- **`bool` type, not `*bool`**: pin state is always defined (never "not applicable" — Memory items are either pinned or not). Pointer + `omitempty` would let Console UI render ambiguously. ADR-022 D1 locks this.
+- **`handleMemoryPin` empty-body defaults to `pin=true`**: preserves v0.7-v0.9 callers that POST without body. Pointer-typed body (`*bool`) cleanly distinguishes "absent" (default true) from "explicit false". Malformed JSON also falls back to `true` rather than 400 — lenient contract preserved.
+- **No `pinned_at` / `pin_actor` / `tags` / `priority` fields in this amendment**: explicitly `[SPEC-DEFER:phase-future.*]`. ADR-022 §Trade-offs locks this — future amendments can follow the same D4/D5 protocol established here.
+- **MemMemoryStore fixture-1 preset `IsPinned: true`**: ADR-022 D3 stipulates at least one pinned fixture so Console UI fallback mode (`CONSOLE_API_FALLBACK_INMEM=1`) renders a pinned row when verifying the new field. ADR-018 deny default keeps this off in production.
+- **Smoke v8 step 28 gated on `MODE=real && sqlite3`**: the runtime end-to-end check needs both the Rust daemon (for SQLite persistence) and `sqlite3` CLI (for fixture seeding via `test/fixtures/memory-seed/seed.sql`). LOCAL_ONLY/docker modes verify via `internal/consoleapi/memstore_test.go` unit tests instead.
+
+### ADR-014 cross-validation gate 第八次激活
+
+- D1 mapping table: PR #118 body contains the Phase §6 ↔ task-17.1 §6 AC mapping (7-row table including the deferred AC7 → resolved in this closeout PR)
+- D2 lint `--touched origin/master`: 0 unannotated hits across PR #118 + this closeout PR
+- D3 verified-by: every Phase 17 §6 AC and task-17.1 §6 AC carries an explicit `verified by <test>` clause
+- D4 governance: 主 agent 自治 §2A Ready review + R6 merge decision; user as single driver forwards the Console SHA but does not edit ContextForge code
+- D5 历史不溯改: Phase 1-16 specs untouched (verified via `git diff origin/master` scoping)
+
+### Tests (cumulative Phase 17)
+
+- `cargo test --workspace`: 41 tests across crates (lib + integration); PR #118 adds 1 new lib test (`test_list_returns_is_pinned_column`) + 2 new gRPC integration tests (`test_is_pinned_propagates_via_grpc_list_and_get`, `test_pin_rpc_unpin_reverses_state`). Existing `test_set_pinned_persists` from Phase 13 covers the SqliteMemoryStore toggle path.
+- `go test ./...`: 21 packages all PASS. PR #118 adds 2 new unit tests in `internal/consoleapi/memstore_test.go` (`TestMemMemoryStore_Pin_TogglesIsPinned`, `TestMemMemoryStore_List_ReturnsIsPinned`) + 1 new test in `internal/contractv1/types_test.go` (`TestMemoryItemForwardBackwardCompat`) + extended `TestJSONRoundtrip` with `MemoryItem_pinned` case.
+- `test/conformance` 22-endpoint Console contract: unchanged (contract v1 not bumped).
+- `bash scripts/console_smoke.sh` v8 28-step bash syntax verified; runtime gated `MODE=real && sqlite3` per step 28.
+- `bash scripts/spec_drift_lint.sh --touched origin/master`: 0 unannotated hits across PR #118 + this closeout PR.
+
+### Upgrade path (v0.9.0 → v0.10.0)
+
+- **SQLite DB users**: no migration required (column already in 0013 from v0.6 ship). After upgrade to v0.10.0, `is_pinned` field begins surfacing on `GET /v1/memory[/<id>]` responses with the actual persisted value.
+- **Console UI clients (v0.7-v0.9)**: existing client code reading the v0.10.0 response silently ignores the new `is_pinned` key (Go JSON unmarshal ignores unknown fields). No client-side change required.
+- **Console UI clients (v0.10+ adapted)**: client can now sort/render based on `MemoryItem.IsPinned`. Existing Console PR #101 ships the field type; rendering UI is the next user-driven Console PR (visual closure, outside this autonomous flow).
+- **Docker users**: `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.10.0` after tag push (release.yml handles ghcr build/push on `v*` tag).
+- **No BREAKING** — purely additive schema. Backward compatible in both directions per ADR-015 D1 + ADR-022 D4.
+
+### Rollback path
+
+If v0.10.0 ship reveals an unexpected issue:
+
+1. `git revert <v0.10.0 merge SHA>` to roll back to v0.9.0 (master HEAD `cfcdbd4` post-PR-#118 but pre-this-closeout)
+2. Ship v0.10.0.1 patch tagging the specific concern
+3. No DB rollback needed — `is_pinned` column has always been in 0013 (Phase 13); rolling back the proto/contractv1 field doesn't drop the column
+4. ADR-022 stays Accepted (the decision path is sound even if implementation needs patching)
+
+### Cross-repo follow-up
+
+User-forwarded after this closeout PR merge + v0.10.0 tag push:
+- Notify Console team of v0.10.0 release ship via GitHub Release page URL
+- Console UI can then ship the visual closure: "按 pinned 排序 + pin icon" feature flag activation (Console-side single-driver PR; outside ContextForge autonomous flow)
+- After Console UI visual closure merges, ContextForge-Console PR #91/#93 review backlog is **fully closed end-to-end** (both backend protocol + UI surface)
+
+---
+
 ## v0.9.0 (2026-05-28) — v0.9.0-backlog-completion (10/11 closed) + release infra
 
 ### 摘要
