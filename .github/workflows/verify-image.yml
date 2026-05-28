@@ -1,0 +1,120 @@
+name: Verify release image (pull + run + /v1/health)
+
+# Out-of-band release-verify gate. Runs INSIDE GitHub Actions so it can use the
+# workflow-scoped GITHUB_TOKEN (with packages: read) to pull the GHCR image
+# even when the source repo + package are private. Replaces the local
+# `docker pull` step of release verify when the maintainer's local gh token
+# lacks read:packages scope or the package visibility hasn't been flipped to
+# public via UI.
+#
+# Trigger: workflow_dispatch only (manual). Takes a tag input (default
+# v0.9.0-rc1 — matches the first Phase 16 release-candidate tag).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'image tag to verify (e.g. v0.9.0-rc1 or latest)'
+        required: true
+        type: string
+        default: 'v0.9.0-rc1'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/contextforge-daemon:${{ inputs.tag }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: docker pull image
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          echo "::group::Image digest"
+          docker images --digests "$IMAGE"
+          echo "::endgroup::"
+
+      - name: docker run + curl /v1/health (fallback in-mem opt-in)
+        run: |
+          set -euo pipefail
+          docker run -d --rm \
+            -p 48181:48181 \
+            -e CONSOLE_API_FALLBACK_INMEM=1 \
+            --name cf-verify \
+            "$IMAGE"
+
+          # Poll /v1/health up to 30s
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:48181/v1/health > /tmp/health.json 2>/dev/null; then
+              ok=1
+              echo "/v1/health responsive at attempt $i"
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ok" != "1" ]; then
+            echo "::error::/v1/health did not respond within 30s" >&2
+            docker logs cf-verify 2>&1 | tail -50 >&2 || true
+            docker stop cf-verify 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "::group::/v1/health response body"
+          cat /tmp/health.json
+          echo
+          echo "::endgroup::"
+
+          # Assert contract_version=v1 (sanity)
+          if ! grep -q '"contract_version":"v1"' /tmp/health.json; then
+            echo "::error::/v1/health body missing contract_version=v1" >&2
+            docker stop cf-verify 2>/dev/null || true
+            exit 1
+          fi
+          echo "✅ contract_version=v1 confirmed"
+
+          docker stop cf-verify
+
+      - name: Verify :latest matches the tag digest
+        if: inputs.tag != 'latest'
+        run: |
+          set -euo pipefail
+          TAG_IMAGE="ghcr.io/${{ github.repository_owner }}/contextforge-daemon:${{ inputs.tag }}"
+          LATEST_IMAGE="ghcr.io/${{ github.repository_owner }}/contextforge-daemon:latest"
+          docker pull "$LATEST_IMAGE"
+
+          TAG_DIGEST=$(docker inspect --format '{{ index .RepoDigests 0 }}' "$TAG_IMAGE" | awk -F@ '{ print $2 }')
+          LATEST_DIGEST=$(docker inspect --format '{{ index .RepoDigests 0 }}' "$LATEST_IMAGE" | awk -F@ '{ print $2 }')
+          echo "  ${{ inputs.tag }} digest: $TAG_DIGEST"
+          echo "  latest digest:         $LATEST_DIGEST"
+
+          if [ "$TAG_DIGEST" != "$LATEST_DIGEST" ]; then
+            echo "::error::digest mismatch — :${{ inputs.tag }} and :latest point to different images" >&2
+            exit 1
+          fi
+          echo "✅ :${{ inputs.tag }} and :latest share digest $TAG_DIGEST"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Release Verify — ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`$IMAGE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Pull: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Run + curl /v1/health: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- contract_version=v1: ✅" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.tag }}" != "latest" ]; then
+            echo "- :latest digest parity: ✅" >> $GITHUB_STEP_SUMMARY
+          fi
