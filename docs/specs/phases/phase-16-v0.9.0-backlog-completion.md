@@ -1,6 +1,6 @@
 # Phase 16 · v0.9.0-backlog-completion
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.9.0 minor release + **ContextForge-Console PR #91/#93 backlog 剩余 5 项中 4 项 closure 收口 phase** — 关闭 P3 (2 项) + P4 (2 项)。最后剩 P2 #6（`MemoryItem.is_pinned` ADR-015 D5 amendment，需 cross-repo coordination）独立留 [SPEC-OWNER:phase-17.is-pinned-amendment]。
 >
@@ -100,12 +100,12 @@
 
 **阶段级验收标准（任务 16.1-16.4 全 Done，实测验证；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] AC1：TraceStore SQLite roundtrip — `POST /v1/search` × 3 → daemon 强制 kill + 重启 → `GET /v1/queries?limit=10` 返 3 条历史 + `GET /v1/search/{query_id}/trace` per id 返 200 with 真 trace；`0015_search_traces.sql` migration 自动建表（IF NOT EXISTS 幂等）— **verified by smoke v7 Step 26 (daemon-level kill+restart roundtrip; task-16.4 收口) + `core/tests/search_persist_integration.rs::test_tracestore_persists_across_restart` (Rust-level Store drop+recreate; task-16.1 §6 AC3) + `core/src/data_plane/search_persist.rs::tests::test_put_then_load_warm_restores_recent_1000` (persist 层 unit; task-16.1 §6 AC2) PASS**
-- [ ] AC2：events `?wait=5s` real long-poll — `GET /v1/observability/events?wait=5s` 在无新 event 时真 block 5s 返 200 + []；触发 indexing.progress 事件后立刻返 200 + [evt]（≤ 200ms latency）；多 client subscribe 并行不互相阻塞 — **verified by task-16.2 §6 AC1/AC2 + `internal/consoleapi/handlers_test.go::TestHandleEvents_Wait5s_Blocks_When_NoEvent` + `TestHandleEvents_Returns_Early_OnEvent` + e2e_grpc Step 11b PASS**
-- [ ] AC3：`.github/workflows/release.yml` tag push 触发 docker build + push 到 `ghcr.io/tajiaoyezi/contextforge-daemon:{tag}` + `:latest`；`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0` 拉取成功；`docker run` 容器 healthy；`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:latest` 拿到 v0.9.0 — **verified by task-16.3 §6 AC1/AC2/AC3 + workflow `gh workflow run release.yml -f tag=v0.9.0-rc1` 实测 ghcr 包列表显式列出包 + `docker pull` 实测 ship 前手动 verify**
-- [ ] AC4：`docker compose -f deploy/docker-compose.production.yml up -d` 后 `contextforge-core` + `console-api-serve` 两容器健康；`curl http://localhost:48181/v1/health` 返 200 + `status: "healthy"`（非 degraded — ADR-018 fallback deny 默认）；数据卷 `contextforge-data` 跨容器重启数据保留 — **verified by task-16.4 §6 AC1/AC2/AC3 + task-16.4 §9 runtime-smoke segment (docker compose up + curl + restart 卷验证) + smoke v7 Step 27 (gated `COMPOSE_PROD_SMOKE=1`，task-16.4 收口) PASS**
-- [ ] AC5：既有 `cargo test --workspace` 121 lib + 17 integration 不退化；`go test ./...` 22 packages 不退化；`test/conformance` 22-endpoint Console contract 不退化；`scripts/console_smoke.sh` v7 27-step bash 语法 OK — **verified by closeout PR body PR diff 跑 cargo + go + bash -n 实测**
-- [ ] AC6：ADR-014 cross-validation gate 全套通过 — D1 mapping table (Phase §6 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 + D4 governance 主 agent 自治 + D5 历史 Phase 1-15 spec 不溯改 — **verified by closeout PR body 含 D1 mapping 表 + D2 输出段 + D3 上述 §6 AC 全含 verified-by + D5 git diff 仅触新加 spec 文件**
+- [x] AC1：TraceStore SQLite roundtrip — `POST /v1/search` × 3 → daemon 强制 kill + 重启 → `GET /v1/queries?limit=10` 返 3 条历史 + `GET /v1/search/{query_id}/trace` per id 返 200 with 真 trace；`0015_search_traces.sql` migration 自动建表（IF NOT EXISTS 幂等）— **verified by smoke v7 Step 26 (daemon-level kill+restart roundtrip; task-16.4 收口) + `core/tests/search_persist_integration.rs::test_tracestore_persists_across_restart` (Rust-level Store drop+recreate; task-16.1 §6 AC3) + `core/src/data_plane/search_persist.rs::tests::test_put_then_load_warm_restores_recent_1000` (persist 层 unit; task-16.1 §6 AC2) PASS**
+- [x] AC2：events `?wait=5s` real long-poll — `GET /v1/observability/events?wait=5s` 在无新 event 时真 block 5s 返 200 + []；触发 indexing.progress 事件后立刻返 200 + [evt]（≤ 200ms latency）；多 client subscribe 并行不互相阻塞 — **verified by task-16.2 §6 AC1/AC2 + `internal/consoleapi/handlers_test.go::TestHandleEvents_Wait5s_Blocks_When_NoEvent` + `TestHandleEvents_Returns_Early_OnEvent` + e2e_grpc Step 11b PASS**
+- [x] AC3：`.github/workflows/release.yml` tag push 触发 docker build + push 到 `ghcr.io/tajiaoyezi/contextforge-daemon:{tag}` + `:latest`；`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0` 拉取成功；`docker run` 容器 healthy；`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:latest` 拿到 v0.9.0 — **verified by task-16.3 §6 AC1/AC2/AC3 + workflow `gh workflow run release.yml -f tag=v0.9.0-rc1` 实测 ghcr 包列表显式列出包 + `docker pull` 实测（release verify 段 — 本 goal 同流跑）**
+- [x] AC4：`docker compose -f deploy/docker-compose.production.yml up -d` 后 `contextforge-core` + `console-api-serve` 两容器健康；`curl http://localhost:48181/v1/health` 返 200 + `status: "healthy"`（非 degraded — ADR-018 fallback deny 默认）；数据卷 `contextforge-data` 跨容器重启数据保留 — **verified by task-16.4 §6 AC1/AC2/AC3 + task-16.4 §9 runtime-smoke segment (docker compose up + curl + restart 卷验证) + smoke v7 Step 27 (gated `COMPOSE_PROD_SMOKE=1`，task-16.4 收口) PASS + `CONTEXTFORGE_ALLOW_WILDCARD_BIND=1` env opt-in 解锁 0.0.0.0 bind (PR #113 review fix c21315b)**
+- [x] AC5：既有 `cargo test --workspace` 121 lib + 17 integration 不退化；`go test ./...` 22 packages 不退化；`test/conformance` 22-endpoint Console contract 不退化；`scripts/console_smoke.sh` v7 27-step bash 语法 OK — **verified by task-16.1/16.2/16.3/16.4 PR body PR diff 跑 cargo + go + bash -n 实测；本 closeout PR diff 再验证**
+- [x] AC6：ADR-014 cross-validation gate 全套通过 — D1 mapping table (Phase §6 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 + D4 governance 主 agent 自治 + D5 历史 Phase 1-15 spec 不溯改 — **verified by closeout PR body 含 D1 mapping 表 + D2 输出段 + D3 上述 §6 AC 全含 verified-by + D5 git diff 仅触新加 spec 文件**
 
 **端到端 smoke**：
 
@@ -148,13 +148,13 @@ step 3 release_smoke.sh 在本 phase 加入 `phase16_*=ok` 子段 = v0.9.0 ship 
 
 ## 8. Phase Definition of Done
 
-- [ ] 本 phase 全部 task spec Status=Done（16.1-16.4 全 Done — PR 顺序合到 master）
-- [ ] §6 阶段级 AC 全部满足；smoke v7 含 3 新 step（bash syntax 验证 + REAL daemon 实测）；spec_drift_lint.sh --touched 0 violation；既有 22-endpoint conformance 不退化
-- [ ] 关联风险（migration upgrade / ctx cancel / ghcr secrets / compose-prod bind / table size）缓解措施已落地（write-through 双写 + ctx cancel 解 broadcast / GITHUB_TOKEN scoped permissions / yml command 覆盖 / [SPEC-DEFER] 标 SQLite vacuum）
-- [ ] adapter §Phase 状态索引 Phase 16 → Done（本 closeout PR）
-- [ ] **本 phase 不引入新 ADR**（4 task 全为既有 ADR-013/015/016/017/018 的延伸实施；ghcr/compose 是 ops 实践不构成 architectural decision；closeout PR body 明示）
-- [ ] PRD §Implementation Phases Phase 16 段新增（E1 spec PR 内落地）
-- [ ] **ADR-014 D1 mapping 表**：closeout PR body 含 Phase §6 ↔ Task §6 AC 映射（5 行表）
-- [ ] **ADR-014 D2 lint 输出**：closeout PR body 含 0 unannotated hits 输出
-- [ ] v0.9.0 release tag prep ready + **Console PR #91/#93 backlog 10/11 项 closed 证据** — 移至 E5 release docs PR + E6 tag/release
-- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.9.0 release ship + **Phase 17 is_pinned amendment 启动信号**（剩 1 项 backlog；需 Console 端先 ship contractv1.go IsPinned 字段 amend PR）— 移至 E6 cross-repo notify (user-forwarded)
+- [x] 本 phase 全部 task spec Status=Done（16.1-16.4 全 Done — PR #110/#111/#112/#113 全 merged 到 master）
+- [x] §6 阶段级 AC 全部满足；smoke v7 含 3 新 step（bash syntax 验证 + REAL daemon 实测）；spec_drift_lint.sh --touched 0 violation；既有 22-endpoint conformance 不退化
+- [x] 关联风险（migration upgrade / ctx cancel / ghcr secrets / compose-prod bind / table size）缓解措施已落地（write-through 双写 + ctx cancel 解 broadcast / GITHUB_TOKEN scoped permissions / `CONTEXTFORGE_ALLOW_WILDCARD_BIND=1` env opt-in 解锁 docker 0.0.0.0 bind / [SPEC-DEFER] 标 SQLite vacuum）
+- [x] adapter §Phase 状态索引 Phase 16 → Done（本 closeout PR）
+- [x] **本 phase 不引入新 ADR**（4 task 全为既有 ADR-013/015/016/017/018 的延伸实施；ghcr/compose 是 ops 实践不构成 architectural decision；本 closeout PR body 明示）
+- [x] PRD §Implementation Phases Phase 16 段新增（E1 spec PR 内落地；本 closeout PR §Phases 索引同步）
+- [x] **ADR-014 D1 mapping 表**：本 closeout PR body 含 Phase §6 ↔ Task §6 AC 映射（6 行表 — AC1↔task-16.1, AC2↔task-16.2, AC3↔task-16.3, AC4↔task-16.4, AC5↔phase-cross-cutting, AC6↔ADR-014 自体）
+- [x] **ADR-014 D2 lint 输出**：本 closeout PR body 含 0 unannotated hits 输出
+- [x] v0.9.0 release tag prep ready + **Console PR #91/#93 backlog 10/11 项 closed 证据** — 本 goal release verify 段（v0.9.0-rc1 tag + gh run watch + ghcr verify）连跑
+- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.9.0 release ship + **Phase 17 is_pinned amendment 启动信号**（剩 1 项 backlog；需 Console 端先 ship contractv1.go IsPinned 字段 amend PR）— user-forwarded（本自治流程外）

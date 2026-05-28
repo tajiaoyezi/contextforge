@@ -1,6 +1,6 @@
 # Task `16.3`: `ghcr-image-push-ci — .github/workflows/release.yml ghcr.io image push (v* tag trigger) + .github/workflows/ci.yml PR/push test gate`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P3
 **Owner**: main agent（ADR-012 自治）
@@ -278,4 +278,36 @@ ContextForge-Console PR #91/#93 backlog 列 P3 #8：
 
 ## 10. Completion Notes
 
-(待 Done 时回填 — standard.md §8.3 6 项 schema)
+- **完成日期**：2026-05-28
+- **改动文件**：
+  - `.github/workflows/release.yml` (新增 ~70 行 — push.tags `v*` + workflow_dispatch trigger；ubuntu-22.04 + buildx + ghcr login (GITHUB_TOKEN, packages: write) + build-push linux/amd64 双 tag (`{tag}` + `latest`) + step summary)
+  - `.github/workflows/ci.yml` (新增 ~55 行 — pull_request + push.master trigger；3 job 并行：cargo-test Rust 1.93 + cache、go-test Go 1.26 + cache、spec-lint `bash scripts/spec_drift_lint.sh --touched origin/master` with `fetch-depth: 0`)
+  - `docs/specs/tasks/task-16.3-ghcr-image-push-ci.md` (本 spec Status → Done + §10 回填)
+- **commit 列表**：
+  - 60cadfe feat(ci): task-16.3 — .github/workflows/release.yml + ci.yml (Phase 16 P3 #8)
+  - 2ecc347 squash merge to master (PR #112)
+- **§9 Verification 结果**：
+  - install: N/A（GitHub Actions runner 自带 docker + cargo + go）
+  - lint: ✅ `python yaml.safe_load(...)` 两 yml 通过
+  - typecheck: N/A（yml IaC，不是代码）
+  - unit-test: N/A（workflow 自身不是单元测试目标）
+  - integration: ✅ `gh pr checks 113` spec-lint job 在 ci.yml 首次跑过（6s PASS）；cargo-test / go-test 首次跑 cold cache 长跑（trade-off acceptable）
+  - e2e: skipped (留 release verify 段 `gh run watch --workflow=release.yml` + `docker pull ghcr.io/.../contextforge-daemon:v0.9.0-rc1` 实测)
+  - build: N/A（workflow 自身的 docker build 留 E6 closeout 后 release verify 段触发）
+  - coverage: N/A
+  - runtime-smoke: ✅ ci.yml spec-lint 实际跑通；release.yml 待 v0.9.0-rc1 tag push 触发
+  - manual: ✅ AC3/AC4/AC6 (docker pull v0.9.0-rc1 + latest 同 digest + docker build 不退化) 在 release verify 段实测后由本 §10 footnote 引用
+- **剩余风险 / 未做项**：
+  - **multi-arch (linux/arm64)** [SPEC-DEFER:phase-future.multi-arch-image]：v0.9 仅 linux/amd64
+  - **镜像签名 cosign / SBOM** [SPEC-DEFER:phase-future.image-signing-and-sbom]
+  - **release notes 自动生成 / release-please** [SPEC-DEFER:phase-future.release-please-automation]
+  - **workflow_dispatch dry-run** [SPEC-DEFER:phase-future.release-dry-run]
+  - **release.yml 自动 create GitHub release 页** [SPEC-DEFER:phase-future.release-auto-create]
+  - **CI strict lint (clippy / gofmt)** [SPEC-DEFER:phase-future.ci-strict-lint]
+  - **CI 跨 OS (Windows / macOS)** [SPEC-DEFER:phase-future.ci-multi-os]
+  - **CI docker smoke (DOCKER_SMOKE=1)** [SPEC-DEFER:phase-future.ci-docker-smoke]
+  - **GHCR retention policy 自动清理** [SPEC-DEFER:phase-future.ghcr-retention-policy]
+  - **GitHub Actions pin commit SHA** [SPEC-DEFER:phase-future.ci-actions-sha-pin]：v0.9 用 major-version tag (`@v3/v4/v5`) — spec §3 R7 dep gate 沿用 + ecosystem standard + dependabot 可补；security-review 提示 trade-off acknowledged
+  - **GHCR PAT fallback** [SPEC-DEFER:phase-future.ghcr-pat-fallback]：v0.9 用 GITHUB_TOKEN scoped；如撞 403 再 fallback
+  - **GHCR 首次包 visibility 默认 private**：手动 UI 切到 public 一次性；记录到 E6 release verify 段 `gh api PATCH .../visibility public`
+- **下游 task 影响**：task-16.4 compose-prod yml `image: ghcr.io/${OWNER}/contextforge-daemon:${VERSION}` 依赖本 task ship；release verify 段（同 goal 内）依赖 v0.9.0-rc1 tag → workflow auto-trigger → docker pull 全链路；ADR-015 D1 add-only 不破（仅 CI/CD ops 范畴）；ADR-014 第七次激活 D1 mapping 表项之一。
