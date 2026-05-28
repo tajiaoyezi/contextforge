@@ -7,6 +7,24 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.9.0
+
+🚀 **v0.9.0-backlog-completion** — closes 4/5 remaining Console backlog items (P3 + P4) plus production release infrastructure. ContextForge-Console PR #91/#93 backlog now **10/11 = 91% closed**; only `MemoryItem.is_pinned` (P2 #6, ADR-015 D5 amendment) remains for Phase 17 cross-repo coord.
+
+- **Phase 16 v0.9.0-backlog-completion** (no new ADR — 4 tasks all extend existing ADR-013/015/016/017/018):
+  - **task-16.1 (P4 #10)** TraceStore SQLite persistence — migration `0015_search_traces.sql` (5 cols + 1 index, IF NOT EXISTS idempotent) + new `core/src/data_plane/search_persist.rs::SqliteTracePersist` + `TraceStore` write-through redesign (hot cache LRU cap=1000 unchanged + SQLite SoT best-effort dual-write) + daemon warm restore on startup. `GET /v1/queries` and `GET /v1/search/{query_id}/trace` now survive daemon restart.
+  - **task-16.2 (P4 #11)** events `?wait=` real long-poll — `handleEvents` now propagates `parseWaitParam` to `deps.Events.Recent`; `EventsClient.Recent` signature gains `wait time.Duration`; `grpcclient.eventsClient.Recent` implements two-phase wait (phase 1 block ≤ wait for first event; phase 2 short `drainTimeout=100ms` drain). `?wait=5s` GET now truly blocks 5s when no events vs prior batch polling.
+  - **task-16.3 (P3 #8)** GHCR image push CI — new `.github/workflows/release.yml` (`v*` tag push triggers docker build + push `ghcr.io/${owner}/contextforge-daemon:{tag}` + `:latest`; linux/amd64 only for v0.9; multi-arch deferred) + new `.github/workflows/ci.yml` (PR + push master → cargo-test + go-test + spec-lint 3 parallel jobs). Users can now `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0`.
+  - **task-16.4 (P3 #9)** docker-compose.production.yml — new `deploy/docker-compose.production.yml` (dual-container: `contextforge-core` daemon bind 0.0.0.0:50551 + `console-api-serve` REST proxy --grpc-addr=contextforge-core:50551; fallback deny default per ADR-018; named volume `contextforge-data` persistence + healthcheck) + `.env.production.example` + `docs/deploy/production.md` (9 sections: Quick start / image / data / health / auth / upgrade / k8s skeleton / troubleshooting / perf) + new env opt-in `CONTEXTFORGE_ALLOW_WILDCARD_BIND=1` for 0.0.0.0 bind. smoke v7 27-step.
+  - **release verify workflow (E7)** — new `.github/workflows/verify-image.yml` (workflow_dispatch with `tag` input → pull + run + `/v1/health` health probe; opt-in `--detailed=true` 5-component breakdown via ADR-020). Verified green on v0.9.0-rc1 and v0.9.0.
+- **ADR-014 cross-validation gate 7th activation** — D1 mapping table + D2 lint 0 hits + D3 verified-by + D4/D5 governance — see PR #114 closeout body.
+- **No new ADR in v0.9.0 itself** — Phase 17 + ADR-022 (`memory-is-pinned-field-amendment`) scaffolded as separate post-release PR (#116, Status: Pending awaiting Console contractv1.go cross-repo amend trigger).
+
+Remaining Console backlog (deferred to Phase 17):
+- P2 #6 `MemoryItem.is_pinned` (ADR-015 D5 amendment via ADR-022 Proposed → needs Console cross-repo trigger).
+
+详 `RELEASE_NOTES.md` v0.9.0 段 + [Phase 16 spec](docs/specs/phases/phase-16-v0.9.0-backlog-completion.md) + [docs/deploy/production.md](docs/deploy/production.md)。
+
 ## What's new in v0.8.0
 
 🎯 **Console functional gap closure** — closes 6/11 backlog items raised by the Console team (Console PR #91/#93) covering P0 fallback / memory event bridge + P1 Dashboard backend endpoints + P2 5-link health detail. Console UI Dashboard 3 KPI cards and CoreHealthCard now have backend data; Memory 详情面板 "操作历史" 列表 auto-populates via the new memory.* event stream.
