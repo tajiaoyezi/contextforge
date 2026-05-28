@@ -48,7 +48,11 @@ jobs:
       - name: docker run + curl /v1/health (fallback in-mem opt-in)
         run: |
           set -euo pipefail
-          docker run -d --rm \
+          # No --rm: keep the container around so a failed /v1/health probe can
+          # still print docker logs (the always-cleanup step below handles
+          # removal). Without this, `docker run -d --rm` on a crashed daemon
+          # auto-removes the container before we can read its logs.
+          docker run -d \
             -p 48181:48181 \
             -e CONSOLE_API_FALLBACK_INMEM=1 \
             --name cf-verify \
@@ -67,8 +71,7 @@ jobs:
 
           if [ "$ok" != "1" ]; then
             echo "::error::/v1/health did not respond within 30s" >&2
-            docker logs cf-verify 2>&1 | tail -50 >&2 || true
-            docker stop cf-verify 2>/dev/null || true
+            docker logs cf-verify 2>&1 | tail -80 >&2 || true
             exit 1
           fi
 
@@ -80,12 +83,15 @@ jobs:
           # Assert contract_version=v1 (sanity)
           if ! grep -q '"contract_version":"v1"' /tmp/health.json; then
             echo "::error::/v1/health body missing contract_version=v1" >&2
-            docker stop cf-verify 2>/dev/null || true
+            docker logs cf-verify 2>&1 | tail -80 >&2 || true
             exit 1
           fi
-          echo "✅ contract_version=v1 confirmed"
+          echo "contract_version=v1 confirmed"
 
-          docker stop cf-verify
+      - name: Cleanup cf-verify container
+        if: always()
+        run: |
+          docker rm -f cf-verify 2>/dev/null || true
 
       - name: Verify :latest matches the tag digest
         if: inputs.tag != 'latest'
