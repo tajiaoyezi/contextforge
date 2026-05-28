@@ -269,10 +269,11 @@ service SearchService {
 }
 
 // =====================================================================
-// Memory (task-13.1 / ADR-017 D1 Wave 3; mirrors contractv1.MemoryItem)
-// 9 fields 1:1 + orthogonal is_pinned column on the store side (not exposed
-// in contractv1.MemoryItem per ADR-015 D5 字段锁定; pin state visible only
-// via the dedicated Pin RPC outcome / future contractv1 amendment).
+// Memory (task-13.1 / ADR-017 D1 Wave 3; mirrors contractv1.MemoryItem).
+// task-17.1 / ADR-022 D1: is_pinned promoted from orthogonal store-side
+// column to a first-class wire field. Add-only (field 10); ADR-015 D5
+// 字段冻结 amendment 路径首次激活. Cross-repo coord: ContextForge-Console
+// shipped MemoryItem.IsPinned bool add-only at master @ 415ee30 (PR #101).
 // =====================================================================
 
 message MemoryItem {
@@ -285,6 +286,7 @@ message MemoryItem {
   int64 updated_at_unix = 7;
   int64 hit_count = 8;
   string status = 9;  // "active" | "deprecated" | "soft_deleted"
+  bool is_pinned = 10;  // task-17.1 / ADR-022 D1 — pin state snapshot
 }
 
 message ListMemoryRequest {

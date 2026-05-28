@@ -214,3 +214,71 @@ async fn test_soft_delete_excluded_from_default_list() {
         .unwrap();
     assert_eq!(resp2.into_inner().items.len(), 1);
 }
+
+/// task-17.1 / ADR-022 D1 — verify gRPC wire propagates is_pinned end-to-end:
+/// SqliteMemoryStore.set_pinned writes the column, MemoryServer.memory_to_pb
+/// copies it onto PbMemoryItem, and the gRPC client surfaces it on Get / List.
+#[tokio::test]
+async fn test_is_pinned_propagates_via_grpc_list_and_get() {
+    let (url, mem_store, _h) = spawn_server().await;
+    mem_store
+        .seed_for_tests(vec![
+            mem("pinned", "agent-a", "active"),
+            mem("unpinned", "agent-a", "active"),
+        ])
+        .unwrap();
+    mem_store.set_pinned("pinned", true).unwrap();
+    let mut client = MemoryServiceClient::connect(url).await.unwrap();
+
+    let list_resp = client
+        .list(Request::new(ListMemoryRequest {
+            agent_id: "".into(),
+            scope: "".into(),
+            namespace: "".into(),
+            include_soft_deleted: false,
+        }))
+        .await
+        .unwrap();
+    let items = list_resp.into_inner().items;
+    let pinned = items.iter().find(|i| i.memory_id == "pinned").unwrap();
+    let unpinned = items.iter().find(|i| i.memory_id == "unpinned").unwrap();
+    assert!(pinned.is_pinned, "List wire response: pinned.is_pinned should be true");
+    assert!(!unpinned.is_pinned, "List wire response: unpinned.is_pinned should be false");
+
+    let get_resp = client
+        .get(Request::new(GetMemoryRequest {
+            memory_id: "pinned".into(),
+        }))
+        .await
+        .unwrap();
+    assert!(
+        get_resp.into_inner().is_pinned,
+        "Get wire response: pinned.is_pinned should be true"
+    );
+}
+
+/// task-17.1 / ADR-022 D2 — Pin RPC pin=false unpins after an earlier pin=true.
+/// Validates the Go-side handleMemoryPin body parsing path equivalence at the
+/// proto layer: PinMemoryRequest{pin: false} reverses store state.
+#[tokio::test]
+async fn test_pin_rpc_unpin_reverses_state() {
+    let (url, mem_store, _h) = spawn_server().await;
+    mem_store.seed_for_tests(vec![mem("u", "scope", "active")]).unwrap();
+    let mut client = MemoryServiceClient::connect(url).await.unwrap();
+    client
+        .pin(Request::new(PinMemoryRequest {
+            memory_id: "u".into(),
+            pin: true,
+        }))
+        .await
+        .unwrap();
+    assert!(mem_store.get("u").unwrap().unwrap().is_pinned);
+    client
+        .pin(Request::new(PinMemoryRequest {
+            memory_id: "u".into(),
+            pin: false,
+        }))
+        .await
+        .unwrap();
+    assert!(!mem_store.get("u").unwrap().unwrap().is_pinned);
+}

@@ -1,6 +1,7 @@
 package consoleapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -510,6 +511,11 @@ func handleGetMemory(deps Deps) http.HandlerFunc {
 }
 
 // handleMemoryPin — POST /v1/memory/{id}/pin → 204 (non-destructive).
+//
+// task-17.1 / ADR-022 D2: body shape `{"pin": bool}` toggles state. Empty body
+// (v0.7-v0.9 callers) or absent `pin` key falls back to `pin=true` so existing
+// callers that POST without a body keep working (backward compat); malformed
+// JSON also falls back rather than 400 to preserve the v0.7 lenient contract.
 func handleMemoryPin(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Memory == nil {
@@ -521,7 +527,14 @@ func handleMemoryPin(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
 			return
 		}
-		if err := deps.Memory.Pin(id, true); err != nil {
+		pin := true
+		var body struct {
+			Pin *bool `json:"pin"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Pin != nil {
+			pin = *body.Pin
+		}
+		if err := deps.Memory.Pin(id, pin); err != nil {
 			mapStorageError(w, err)
 			return
 		}

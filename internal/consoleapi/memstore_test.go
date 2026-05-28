@@ -8,6 +8,70 @@ import (
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
 )
 
+// task-17.1 / ADR-022 (Phase 17): MemMemoryStore fallback wires IsPinned into
+// Pin / Get / List + SeedFixtures preset of mem-fixture-1 to IsPinned: true.
+
+// TestMemMemoryStore_Pin_TogglesIsPinned — task-17.1 AC2.
+func TestMemMemoryStore_Pin_TogglesIsPinned(t *testing.T) {
+	s := NewMemMemoryStore()
+	s.SeedFixtures()
+
+	item, err := s.Get("mem-fixture-1")
+	if err != nil || item == nil {
+		t.Fatalf("Get mem-fixture-1: err=%v item=%v", err, item)
+	}
+	if !item.IsPinned {
+		t.Errorf("fixture-1 preset expected IsPinned=true (ADR-022 D3 fixture-1); got false")
+	}
+
+	if err := s.Pin("mem-fixture-1", false); err != nil {
+		t.Fatalf("Pin(false): %v", err)
+	}
+	item, _ = s.Get("mem-fixture-1")
+	if item.IsPinned {
+		t.Errorf("after Pin(false) expected IsPinned=false; got true")
+	}
+
+	if err := s.Pin("mem-fixture-1", true); err != nil {
+		t.Fatalf("Pin(true): %v", err)
+	}
+	item, _ = s.Get("mem-fixture-1")
+	if !item.IsPinned {
+		t.Errorf("after Pin(true) expected IsPinned=true; got false")
+	}
+}
+
+// TestMemMemoryStore_List_ReturnsIsPinned — task-17.1 AC3.
+func TestMemMemoryStore_List_ReturnsIsPinned(t *testing.T) {
+	s := NewMemMemoryStore()
+	s.SeedFixtures()
+
+	items, err := s.List(MemoryListFilter{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	var sawPinned, sawUnpinned bool
+	for _, item := range items {
+		switch item.MemoryID {
+		case "mem-fixture-1":
+			if item.IsPinned {
+				sawPinned = true
+			}
+		case "mem-fixture-2", "mem-fixture-3", "mem-fixture-5":
+			if !item.IsPinned {
+				sawUnpinned = true
+			}
+		}
+	}
+	if !sawPinned {
+		t.Errorf("expected at least one pinned fixture (mem-fixture-1) in list; items=%+v", items)
+	}
+	if !sawUnpinned {
+		t.Errorf("expected at least one unpinned fixture in list; items=%+v", items)
+	}
+}
+
 // task-15.1 (Phase 15 P0 #1) — MemStore chunk/trace cache fallback.
 //
 // In CONSOLE_API_FALLBACK_INMEM=1 mode, MemStore.Search emits a stub
