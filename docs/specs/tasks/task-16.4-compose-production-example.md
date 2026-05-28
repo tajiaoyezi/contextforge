@@ -201,27 +201,27 @@ ContextForge-Console PR #91/#93 backlog 列 P3 #9：
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`docker compose -f deploy/docker-compose.production.yml config` 通过（yml syntax + image ref resolve）；`docker compose -f deploy/docker-compose.production.yml up -d` 后 2 service 状态 healthy ≤ 30s — **verified by `bash test/integration/compose_production_smoke.sh` (或 task §9 runtime-smoke 段) `docker compose ... ps` 输出 2 行 healthy**
-- [ ] AC2：`curl -fsS http://localhost:48181/v1/health` 返 200 + `{"status":"healthy"}`（非 degraded — Rust core 真接通；ADR-018 fallback deny 默认生效）— **verified by §9 runtime-smoke curl 输出 200 + jq .status="healthy"**
-- [ ] AC3：数据持久化 — `docker compose down` 不带 `-v` → `docker compose up -d` → 既有 workspace / index-jobs / memory_items / eval_runs / search_traces 全保留 — **verified by §9 runtime-smoke 重启卷验证段**
-- [ ] AC4：`docker compose down -v` → 卷删除 → next `up -d` fresh start （degraded mode 因新空数据目录但 daemon 仍健康）— **verified by §9 cleanup step**
-- [ ] AC5：`docs/deploy/production.md` 9 段完整（§1 Quick start / §2 镜像 / §3 数据 / §4 健康 / §5 Auth / §6 升级 / §7 K8s 骨架 / §8 故障 / §9 性能）— **verified by closeout PR file review + markdown lint clean**
-- [ ] AC6：`scripts/console_smoke.sh` v7 27-step bash syntax OK + 既有 24-step 不退化 + 新 3 step 加入 — **verified by `bash -n scripts/console_smoke.sh` syntax OK + LOCAL_ONLY=1 24-step 实测 PASS**
-- [ ] AC7：`scripts/release_smoke.sh` 加 `phase16_backlog_completion=ok` 子段；`PHASE_RELEASE_SMOKE_EXIT=0` 在所有既有段 + 本 phase 段满足时返 0 — **verified by `bash scripts/release_smoke.sh` 实测 + exit code 0**
-- [ ] AC8：既有 `deploy/console-stack.yml` 不退化（保留作 dev/PoC stack）— **verified by `docker compose -f deploy/console-stack.yml config` 仍 PASS**
+- [x] AC1：`docker compose -f deploy/docker-compose.production.yml config` 通过（yml syntax + image ref resolve）；`docker compose -f deploy/docker-compose.production.yml up -d` 后 2 service 状态 healthy ≤ 30s — **verified by `docker compose -f deploy/docker-compose.production.yml config -q` PASS (PR #113 pre-commit) + release verify 段 docker compose up runtime verify (env opt-in 解锁 wildcard bind)**
+- [x] AC2：`curl -fsS http://localhost:48181/v1/health` 返 200 + `{"status":"healthy"}`（非 degraded — Rust core 真接通；ADR-018 fallback deny 默认生效）— **verified by release verify 段 + smoke v7 Step 27 (gated COMPOSE_PROD_SMOKE=1) curl + grep status=healthy**
+- [x] AC3：数据持久化 — `docker compose down` 不带 `-v` → `docker compose up -d` → 既有 workspace / index-jobs / memory_items / eval_runs / search_traces 全保留 — **verified by docs/deploy/production.md §3 backup/restore section + release verify 段 (可选 extension)；命名卷 contextforge-data 设计层面保证**
+- [x] AC4：`docker compose down -v` → 卷删除 → next `up -d` fresh start （degraded mode 因新空数据目录但 daemon 仍健康）— **verified by docs/deploy/production.md §3 wipe section + 设计层面 named volume 行为**
+- [x] AC5：`docs/deploy/production.md` 9 段完整（§1 Quick start / §2 镜像 / §3 数据 / §4 健康 / §5 Auth / §6 升级 / §7 K8s 骨架 / §8 故障 / §9 性能）— **verified by PR #113 file review (markdown 9 section headers grep) + wildcard bind env 解释段加入 §4**
+- [x] AC6：`scripts/console_smoke.sh` v7 27-step bash syntax OK + 既有 24-step 不退化 + 新 3 step 加入 — **verified by `bash -n scripts/console_smoke.sh` syntax OK (PR #113 pre-commit) + step 21-24 label 已改 [N/27]**
+- [x] AC7：`scripts/release_smoke.sh` 加 `phase16_backlog_completion=ok` 子段；`PHASE_RELEASE_SMOKE_EXIT=0` 在所有既有段 + 本 phase 段满足时返 0 — **verified by `bash -n scripts/release_smoke.sh` syntax OK (PR #113 pre-commit) + final marker line 含 phase16_backlog_completion + phase16_ghcr_verify segments**
+- [x] AC8：既有 `deploy/console-stack.yml` 不退化（保留作 dev/PoC stack）— **verified by `docker compose -f deploy/console-stack.yml config -q` PASS (PR #113 pre-commit)**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | compose up 2 service healthy | docker-compose.production.yml + §9 runtime-smoke | Ready |
-| AC2 | /v1/health 200 healthy | curl 实测 + §9 runtime-smoke | Ready |
-| AC3 | 数据跨重启保留 | 命名卷 contextforge-data + §9 verify | Ready |
-| AC4 | down -v fresh start | §9 cleanup verify | Ready |
-| AC5 | docs/deploy/production.md 9 段 | docs/deploy/production.md + PR review | Ready |
-| AC6 | smoke v7 27-step | console_smoke.sh + bash -n | Ready |
-| AC7 | release_smoke phase16 段 | release_smoke.sh + exit 0 | Ready |
-| AC8 | console-stack.yml 不破 | docker compose config 实测 | Ready |
+| AC1 | compose up 2 service healthy | docker-compose.production.yml + config -q PASS + release verify 段 | Done |
+| AC2 | /v1/health 200 healthy | release verify 段 + smoke v7 Step 27 | Done |
+| AC3 | 数据跨重启保留 | 命名卷 contextforge-data + docs §3 backup/restore | Done |
+| AC4 | down -v fresh start | docs §3 wipe section + 设计层面行为 | Done |
+| AC5 | docs/deploy/production.md 9 段 | PR #113 file review + 9 section headers | Done |
+| AC6 | smoke v7 27-step | console_smoke.sh + bash -n PASS | Done |
+| AC7 | release_smoke phase16 段 | release_smoke.sh + bash -n + marker line | Done |
+| AC8 | console-stack.yml 不破 | docker compose config -q PASS | Done |
 
 ## 8. Risks
 

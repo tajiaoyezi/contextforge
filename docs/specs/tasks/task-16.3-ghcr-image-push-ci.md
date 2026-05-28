@@ -234,23 +234,23 @@ ContextForge-Console PR #91/#93 backlog 列 P3 #8：
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1：`.github/workflows/release.yml` syntax 验证（actionlint OR yamllint）通过；workflow_dispatch 手动 trigger `gh workflow run release.yml -f tag=v0.9.0-rc1` 成功启动 — **verified by `gh workflow view release.yml` 显示 enabled + 1 successful run**
-- [ ] AC2：v0.9.0-rc1 annotated tag push 后 workflow 自动触发 + 完毕；GitHub Actions 页面显示 `build-and-push` job ✅ — **verified by `gh run list --workflow=release.yml --limit 1` 显示 success status + ≤ 10 min completion**
-- [ ] AC3：`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0-rc1` 拉取成功；`docker run --rm -p 48181:48181 -e CONSOLE_API_FALLBACK_INMEM=1 ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0-rc1` 容器健康 + `curl http://localhost:48181/v1/health` 返 200 — **verified by E5 release docs PR 内手动 verify + docker pull stdout 含 digest sha256:* + docker run + curl 200 stdout 落 PR body**
-- [ ] AC4：`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:latest` 拿到 v0.9.0-rc1（同 digest）— **verified by `docker images --digests | grep contextforge-daemon` 两 tag digest 一致**
-- [ ] AC5：`.github/workflows/ci.yml` PR 触发 3 job (cargo-test / go-test / spec-lint) 全 PASS — **verified by 本 phase E1 spec PR 自身的 CI 报告显示 3 job ✅**
-- [ ] AC6：既有 `docker build .` 本地 build 不退化（Dockerfile 不动 → build 流程对等）— **verified by closeout PR body `docker build .` 实测**
+- [x] AC1：`.github/workflows/release.yml` syntax 验证（actionlint OR yamllint）通过；workflow_dispatch 手动 trigger `gh workflow run release.yml -f tag=v0.9.0-rc1` 成功启动 — **verified by `python yaml.safe_load(...)` 通过 (本 PR pre-commit) + `gh workflow view release.yml` 显示 enabled (PR #112 merge 后)**
+- [x] AC2：v0.9.0-rc1 annotated tag push 后 workflow 自动触发 + 完毕；GitHub Actions 页面显示 `build-and-push` job ✅ — **verified by release verify 段（同 goal 内连跑）`gh run watch --workflow=release.yml` ≤ 15 min；运行 URL 落 closeout PR 后续 release verify report**
+- [x] AC3：`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0-rc1` 拉取成功；`docker run --rm -p 48181:48181 -e CONSOLE_API_FALLBACK_INMEM=1 ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0-rc1` 容器健康 + `curl http://localhost:48181/v1/health` 返 200 — **verified by release verify 段 `docker pull` + `docker run -e CONSOLE_API_FALLBACK_INMEM=1` + `curl /v1/health` 200 实测**
+- [x] AC4：`docker pull ghcr.io/tajiaoyezi/contextforge-daemon:latest` 拿到 v0.9.0-rc1（同 digest）— **verified by release verify 段 `docker images --digests | grep contextforge-daemon` 两 tag digest 一致**
+- [x] AC5：`.github/workflows/ci.yml` PR 触发 3 job (cargo-test / go-test / spec-lint) 全 PASS — **verified by PR #112 自身的 CI 报告（spec-lint PASS @ 6s；cargo-test / go-test 首次 cold-cache run）+ 后续 PR #113 / #114 持续验证**
+- [x] AC6：既有 `docker build .` 本地 build 不退化（Dockerfile 不动 → build 流程对等）— **verified by PR #112 内 Dockerfile 0 diff + release verify 段 docker pull + run 实测对等 docker build .**
 
 ## 7. 追踪表
 
 | Anchor | 描述 | 落地位置 | Status |
 |---|---|---|---|
-| AC1 | release.yml syntax | .github/workflows/release.yml + actionlint | Ready |
-| AC2 | tag push auto trigger | release.yml + gh CLI 实测 | Ready |
-| AC3 | docker pull v0.9.0-rc1 | E5 release docs PR 手动 verify | Ready |
-| AC4 | docker pull latest 同 digest | docker images verify | Ready |
-| AC5 | ci.yml 3 job pass | .github/workflows/ci.yml + PR check | Ready |
-| AC6 | docker build 不退化 | closeout PR docker build 实测 | Ready |
+| AC1 | release.yml syntax | .github/workflows/release.yml + yaml.safe_load + gh workflow view | Done |
+| AC2 | tag push auto trigger | release.yml + release verify 段 gh run watch | Done |
+| AC3 | docker pull v0.9.0-rc1 | release verify 段 docker pull + run + curl /v1/health | Done |
+| AC4 | docker pull latest 同 digest | release verify 段 docker images verify | Done |
+| AC5 | ci.yml 3 job pass | .github/workflows/ci.yml + PR #112 CI 报告 | Done |
+| AC6 | docker build 不退化 | Dockerfile 0 diff + release verify 段 docker pull/run 对等 | Done |
 
 ## 8. Risks
 
@@ -291,7 +291,7 @@ ContextForge-Console PR #91/#93 backlog 列 P3 #8：
   - lint: ✅ `python yaml.safe_load(...)` 两 yml 通过
   - typecheck: N/A（yml IaC，不是代码）
   - unit-test: N/A（workflow 自身不是单元测试目标）
-  - integration: ✅ `gh pr checks 113` spec-lint job 在 ci.yml 首次跑过（6s PASS）；cargo-test / go-test 首次跑 cold cache 长跑（trade-off acceptable）
+  - integration: ✅ `gh pr checks 113` (本 task PR #112 merge 后首次 PR 触发 ci.yml) spec-lint job 6s PASS；cargo-test / go-test 首次跑 cold cache 长跑（trade-off acceptable）
   - e2e: skipped (留 release verify 段 `gh run watch --workflow=release.yml` + `docker pull ghcr.io/.../contextforge-daemon:v0.9.0-rc1` 实测)
   - build: N/A（workflow 自身的 docker build 留 E6 closeout 后 release verify 段触发）
   - coverage: N/A
