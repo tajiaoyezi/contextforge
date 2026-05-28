@@ -1,5 +1,125 @@
 # ContextForge Release Notes
 
+## v0.9.0 (2026-05-28) — v0.9.0-backlog-completion (10/11 closed) + release infra
+
+### 摘要
+
+v0.9.0 minor release：closes 4 of the remaining 5 Console PR #91/#93 backlog items (P3 + P4) + ships production release infrastructure (GHCR image push CI + docker-compose.production.yml + verify-image.yml workflow). Backlog status now **10/11 = 91% closed**; only `MemoryItem.is_pinned` (P2 #6) remains for Phase 17 cross-repo coord. **No new ADR in v0.9.0 itself** — 4 Phase 16 tasks all extend existing ADR-013/015/016/017/018.
+
+### Backlog items closed (4 more)
+
+| Item | Backlog signal | Solution | PR |
+|---|---|---|---|
+| **P4 #10** | TraceStore daemon-restart 即丢历史 | task-16.1 — migration 0015_search_traces.sql + SqliteTracePersist + TraceStore write-through + warm restore | #110 |
+| **P4 #11** | events `?wait=` 等价 batch polling | task-16.2 — handleEvents 真传 wait + EventsClient.Recent(limit, wait) + 两阶段 long-poll (phase 1 block + phase 2 100ms drain) | #111 |
+| **P3 #8** | ghcr.io image push 缺 CI/CD | task-16.3 — `.github/workflows/release.yml` (tag push → docker build + push ghcr) + `ci.yml` (PR/push → cargo+go+lint 3 parallel jobs) | #112 |
+| **P3 #9** | production-ready docker-compose 缺示例 | task-16.4 — `deploy/docker-compose.production.yml` 双容器 (contextforge-core + console-api-serve, ADR-018 fallback deny 沿用, 卷持久化, healthcheck) + `.env.production.example` + `docs/deploy/production.md` + smoke v7 27-step | #113 |
+
+Additional Phase 16 ship:
+- **Phase 16 E6 closeout** (PR #114): Status → Done + §10 Completion Notes + adapter sync
+- **Phase 16 E7 release-verify** (PR #115): `.github/workflows/verify-image.yml` GHA pull+run+/v1/health verification workflow
+
+Remaining (deferred to Phase 17 / v0.10.0):
+- P2 #6 `MemoryItem.is_pinned` (ADR-015 D5 amendment via ADR-022 Proposed) — Phase 17 + task-17.1 scaffolded in PR #116 with Status: Pending awaiting Console contractv1.go cross-repo amend trigger
+
+### v0.9.0 不引入新 ADR
+
+Phase 16 4 task 全部是既有 ADR 的延伸实施：
+- task-16.1 ↔ ADR-013 (CLI data plane gRPC bridge) + ADR-015 D1 (add-only schema)
+- task-16.2 ↔ ADR-017 D4 (long-poll v1.0 lock — 不引入 SSE)
+- task-16.3 ↔ ops practice (CI/CD pipeline 不构成 architectural decision)
+- task-16.4 ↔ ADR-018 (fallback deny default 沿用)
+
+**ADR-022 (memory-is-pinned-field-amendment)** 在 v0.9.0 ship 后作为 Phase 17 scaffolding PR #116 单独 ship — Status: Proposed；属 Phase 17 不属 v0.9.0 release。
+
+### Schema additions (all add-only, ADR-015 D1)
+
+- `core/migrations/0015_search_traces.sql`: 新建 `search_traces` 表 (query_id PK / trace_json TEXT / workspace_id TEXT / ts_unix INTEGER / created_at TEXT) + `idx_search_traces_ts_desc` 索引 (IF NOT EXISTS 幂等)
+- `core/src/data_plane/search_persist.rs`: 新模块 `SqliteTracePersist` (open + put + get + list + load_warm)
+- `internal/consoleapi/types.go`: `EventsClient.Recent(limit int)` → `Recent(limit int, wait time.Duration)` (signature extension; 所有 callers 同步更新)
+- 既有 `RetrievalTrace` / `QueryRecord` / `MemoryItem` / `CoreHealth` 等 contract v1 message **完全不动** (ADR-015 D1 freeze 维持)
+
+### 关键设计取舍
+
+- **task-16.1 write-through dual-write**: 内存 LRU cap=1000 保留作 hot cache (低延迟读) + SQLite SoT best-effort 双写 (持久化保证)；SQLite write 失败 swallow 不阻塞 RPC 返回
+- **task-16.1 SQLite trace_json 序列化**: prost-encoded bytes → base64 → store as TEXT (与 PbRetrievalTrace prost-derive 一致；非 serde_json — 避免 schema drift)
+- **task-16.1 cap-by-LRU 内存 + cap-by-DELETE 留 future**: 内存 LRU cap=1000 同 v0.8；SQLite 端无 LRU eviction → 长时间运行后表可能数百万行；留 SPEC-DEFER:phase-future.tracestore-sqlite-vacuum
+- **task-16.2 两阶段 long-poll**: phase 1 block 等首 event ≤ wait；phase 2 短 drainTimeout=100ms drain immediately-available events；避免单 event 触发后立即返就只带 1 个 event 浪费 RTT
+- **task-16.4 CONTEXTFORGE_ALLOW_WILDCARD_BIND=1 env opt-in**: ADR-004 安全基线下 daemon 默认 127.0.0.1 bind；docker compose-prod 需 0.0.0.0 跨容器；引入 env opt-in 显式解锁 (PR #113 review fix c21315b) — 非默认行为 + 用户感知
+- **task-16.4 ADR-018 deny 默认沿用**: compose-prod 不注入 `CONSOLE_API_FALLBACK_INMEM=1` → 真 grpcclient 不可达时 503 (与 v0.7.2 deny 默认一致)
+
+### ADR-014 cross-validation gate 第七次激活
+
+- D1 closeout PR (#114) body 含 Phase §6 ↔ Task §6 mapping 表 (6 行)
+- D2 lint `--touched origin/master`: 0 unannotated hits in PR-changed lines
+- D3 phase-16 §6 每条 AC 含 verified-by owner 显式
+- D4 governance: 主 agent 自治 §2A Ready review + R6 merge decision
+- D5 历史不溯改: Phase 1-15 spec 内容未触
+
+### Tests (cumulative Phase 16 E1-E7)
+
+- `cargo test --workspace`: full PASS (Phase 11-15 既有 + Phase 16 task-16.1 新增 TraceStore SQLite persist tests + memory_persist_integration tests 不退化)
+- `go test ./...`: 22 packages 全 PASS (含 task-16.2 handlers_test.go::TestHandleEvents_Wait5s_Blocks_When_NoEvent + TestHandleEvents_Returns_Early_OnEvent + grpcclient 4 unit tests + e2e_grpc Step 11b real long-poll 不退化)
+- `test/conformance`: 22-endpoint Console contract conformance 不退化
+- `bash -n scripts/console_smoke.sh`: syntax OK; v7 27-step (v6 24 + step 25 `?wait=2s` + step 26 TraceStore restart roundtrip + step 27 compose-prod stack health gated `COMPOSE_PROD_SMOKE=1`)
+- `gh workflow run verify-image.yml -f tag=v0.9.0-rc1`: GHA run 26555768957 GREEN in 18s (pull + run + /v1/health probe + `?detailed=true` 5-component breakdown)
+- `gh workflow run verify-image.yml -f tag=v0.9.0`: GHA run 26556137023 GREEN in 11s (post-release verify)
+
+### Upgrade path (v0.8.0 → v0.9.0)
+
+**Console UI / SDK 用户** (v0.7.x-v0.8.x clients 继续工作):
+- 旧 client 解析 v0.9 JSON 自动忽略未知字段 (`Events.wait` semantic 仅 server-side 生效) → zero migration
+- Console UI Dashboard 历史查询面板自动 survive daemon restart (无 client 改动)
+- Memory 操作历史 events stream 现在真 long-poll (≤ wait latency)
+
+**ContextForge daemon 升级**:
+- 二进制升级 v0.8.0 → v0.9.0 不破坏既有部署 (无 BREAKING)
+- SQLite migration 0015 自动应用 (IF NOT EXISTS 幂等)；既有 in-memory traces 不迁移 (重启时空 cap=1000 LRU + 后续 search 累积新 trace)
+- Docker users: `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0` (替代 v0.8 本地 `docker build`)
+
+**新功能 opt-in 试用**:
+
+```bash
+# 1. GHCR image pull (replaces local docker build)
+docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0
+docker pull ghcr.io/tajiaoyezi/contextforge-daemon:latest  # always points to latest release
+
+# 2. Real long-poll events
+curl 'http://localhost:48181/v1/observability/events?wait=5s'
+# now truly blocks 5s when no events (vs prior batch polling)
+
+# 3. Trace persistence — survive daemon restart
+curl -X POST -H "X-Confirm: yes" http://localhost:48181/v1/search \
+  -d '{"query":"foo","limit":5}'
+# (note query_id)
+docker restart contextforge
+curl 'http://localhost:48181/v1/queries?limit=10'    # 仍有历史
+curl http://localhost:48181/v1/search/{query_id}/trace  # 仍 200
+
+# 4. Production-ready compose stack
+git clone https://github.com/tajiaoyezi/contextforge && cd contextforge
+cp deploy/.env.production.example deploy/.env.production
+# edit deploy/.env.production for your tokens
+docker compose -f deploy/docker-compose.production.yml up -d
+curl http://localhost:48181/v1/health   # expect: {"status":"healthy", ...}
+```
+
+### Rollback path
+
+若 v0.9.0 ship 后发现非预期问题：
+1. `git revert <v0.9.0 merge SHA>` 回退到 v0.8.0 (master HEAD `622155b` 或 v0.8.0 tag)
+2. ship v0.9.0.1 patch + 标具体 task 16.x Reverted
+3. SQLite migration 0015 不撤回 (新表无 backward break — 既有 v0.8 binary 不读 search_traces 表)
+4. 不撤回 v0.8.0 ADR-020 / ADR-021 / v0.7.2 ADR-018 / v0.7.0 ADR-017 (跨版本独立)
+
+Cross-repo follow-up:
+- 通知 Console 团队 v0.9.0 ship → Console UI 验证 Dashboard 历史查询面板跨重启 + events real long-poll latency 提升
+- **Phase 17 启动信号**: 用户人工转发本 release page → Console 主 Agent 启动 contractv1.go IsPinned add-only field amend PR (ADR-022 D4 第 1 步) → 完成后回报触发 ContextForge Phase 17 Pending → Ready
+
+详 [docs/releases/v0.9.0-evidence.md](docs/releases/v0.9.0-evidence.md) + [v0.9.0-artifacts.md](docs/releases/v0.9.0-artifacts.md)。
+
+---
+
 ## v0.8.0 (2026-05-26) — Console functional gap closure (6/11 backlog)
 
 ### 摘要
