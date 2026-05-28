@@ -12,7 +12,7 @@
 
 ## 1. 阶段目标
 
-实现 ContextForge backend 端 `MemoryItem.is_pinned` 字段全链路落地 + ADR-022 promotion + v0.10.0 minor release（或 v0.9.x patch — 实施时按 git tag 节奏决定）：
+实现 ContextForge backend 端 `MemoryItem.is_pinned` 字段全链路落地 + ADR-022 promotion + v0.10.0 minor release（或下一 patch release — 实施时按 git tag 节奏决定）：
 
 - **proto 加 `bool is_pinned = N`**：`core/proto/console_data_plane.proto::MemoryItem` add-only 字段（序号按 proto 当前最大序号 + 1；具体在 task-17.1 §3 决定）— task-17.1
 - **SQLite migration `0017_memory_items_add_is_pinned.sql`**：`ALTER TABLE memory_items ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0`（既有数据 backfill 为 false）— task-17.1
@@ -139,7 +139,7 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 - [ ] PRD §Implementation Phases Phase 17 段新增（E1 spec PR 内落地；本 closeout PR §Phases 索引同步）
 - [ ] **ADR-014 D1 mapping 表**：本 closeout PR body 含 Phase §6 ↔ Task §6 AC 映射（7 行表 — AC1-AC4↔task-17.1, AC5↔phase-cross-cutting, AC6↔ADR-014 自体, AC7↔ADR-022 promotion）
 - [ ] **ADR-014 D2 lint 输出**：本 closeout PR body 含 0 unannotated hits 输出
-- [ ] v0.10.0 (or v0.9.x patch) release tag prep ready + **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — Phase 17 ship 后宣告 backlog 圆满收口
+- [ ] v0.10.0 (或下一 patch release) tag prep ready + **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — Phase 17 ship 后宣告 backlog 圆满收口
 - [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.10.0 release ship + Console UI 端 "按 pin 排序" feature flag visual closure 启动（最后 visual closure；本自治流程外）
 
 ---
@@ -148,7 +148,7 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 
 **本文件 Status: Pending → Ready 转换路径**（ADR-022 D5 定义）：
 
-1. **本 phase 17 + ADR-022 + task-17.1 spec scaffold PR ship**（即本提交链路）→ ADR-022 Status: Proposed，Phase 17 + task-17.1 Status: Pending
+1. **本 phase 17 + ADR-022 + task-17.1 spec PR ship**（即本提交链路；纯文档 add-only）→ ADR-022 Status: Proposed，Phase 17 + task-17.1 Status: Pending
 2. **用户人工转发 Console 团队启动信号**（终端流程外；ContextForge 主 agent 不主动跨仓）
 3. **Console 主仓 PR ship `internal/contractv1/contractv1.go::MemoryItem.IsPinned` add-only field merged to Console master**（cross-repo D4 第 1 步）
 4. **用户人工转发 Console PR merge SHA 给 ContextForge 主 agent**
