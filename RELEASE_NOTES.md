@@ -88,12 +88,19 @@ If v0.10.0 ship reveals an unexpected issue:
 3. No DB rollback needed — `is_pinned` column has always been in 0013 (Phase 13); rolling back the proto/contractv1 field doesn't drop the column
 4. ADR-022 stays Accepted (the decision path is sound even if implementation needs patching)
 
-### Cross-repo follow-up
+### Cross-repo follow-up — **COMPLETED 2026-05-29** 🎉
 
 User-forwarded after this closeout PR merge + v0.10.0 tag push:
-- Notify Console team of v0.10.0 release ship via GitHub Release page URL
-- Console UI can then ship the visual closure: "按 pinned 排序 + pin icon" feature flag activation (Console-side single-driver PR; outside ContextForge autonomous flow)
-- After Console UI visual closure merges, ContextForge-Console PR #91/#93 review backlog is **fully closed end-to-end** (both backend protocol + UI surface)
+- ✅ Notified Console team of v0.10.0 release ship via GitHub Release page URL (2026-05-28)
+- ✅ **Console UI visual closure SHIPPED end-to-end** to Console master @ `c1c4609744a9c34201e3fd87cba4ab1596be4fd4`:
+  - PR [#102](https://github.com/tajiaoyezi/ContextForge-Console/pull/102) `30aeff4` — pin 排序 + 列表 icon + 详情 "已置顶" badge (UI 主体)
+  - PR [#103](https://github.com/tajiaoyezi/ContextForge-Console/pull/103) `14f9ce0` — v0.10.0 ack: mock 落真 is_pinned + docker-compose 切 GHCR pull + 联调清单文档 + apiFetch typecheck 潜伏 bug 修
+  - PR [#104](https://github.com/tajiaoyezi/ContextForge-Console/pull/104) `c1c4609` — pin-sort util 抽函数 + 混合 pinned/unpinned 数组排序单测
+- ✅ E2E daemon-level verification (Console-reported): `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.10.0` → http stack → daemon fixtures → daemon → console-api(http) → BFF → web → 详情页 "已置顶" badge 实拍坐实
+- 🎉 **ContextForge-Console PR #91/#93 review backlog end-to-end 100% closed** (backend protocol via cumulative Phase 13/15/16/17 + UI visual surface via Console PRs #102/103/104)
+- Feedback acknowledged: GHCR package v0.10.0 / :latest was initially shipped as PRIVATE (anonymous pull 403, observed by Console team); owner has since flipped to public. Future enhancement to add anonymous-pull verify step `[SPEC-DEFER:phase-future.verify-image-anonymous-pull]`.
+
+ContextForge agent has no further obligation on this backlog.
 
 ---
 
