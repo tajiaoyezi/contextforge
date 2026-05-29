@@ -156,6 +156,25 @@ echo '{"memory_id":"x",...no_is_pinned...}' | go run cmd/new-client-test/main.go
 # expect: success; is_pinned 字段 = false 默认值
 ```
 
+### Cross-repo confirmation (2026-05-29, post-v0.10.0 visual closure ship)
+
+ContextForge-Console UI visual closure shipped end-to-end to Console master @ `c1c4609744a9c34201e3fd87cba4ab1596be4fd4`:
+
+- [Console PR #102](https://github.com/tajiaoyezi/ContextForge-Console/pull/102) `30aeff4` — pin sort + list icon + detail "已置顶" badge (UI 主体)
+- [Console PR #103](https://github.com/tajiaoyezi/ContextForge-Console/pull/103) `14f9ce0` — v0.10.0 ack: mock 落真 is_pinned + docker-compose 切 GHCR pull (`ghcr.io/tajiaoyezi/contextforge-daemon:v0.10.0`) + 联调清单文档 + .default() apiFetch typecheck 潜伏 bug 修
+- [Console PR #104](https://github.com/tajiaoyezi/ContextForge-Console/pull/104) `c1c4609` — pin-sort util 抽函数 + 混合 pinned/unpinned 数组排序单测 (AC verifier)
+
+E2E daemon-level verification on Console side: `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.10.0` → http stack → daemon fixtures (mem-fixture-1 `is_pinned=true` / fixture-2/3 `false`) → 整链 daemon → console-api → BFF → web → 详情页 "已置顶" badge 实拍坐实.
+
+ADR-022 D1-D5 实施路径 **end-to-end verified**:
+- D1 字段：proto + Rust + Go (ContextForge) + Console contractv1 (本仓 PR #101 → 415ee30)
+- D2 Pin RPC 写穿：ContextForge handler / Rust SoT 实现
+- D3 List/Get 返字段：ContextForge wire + Console UI 消费 (sort + icon)
+- D4 cross-repo Console-first ship 顺序：Console PR #101 (2026-05-28T12:16:57Z) → ContextForge PR #118 (2026-05-28T13:39:17Z) → Console PR #102/103/104 (2026-05-29) 三步全部按 D4 计划落地
+- D5 Pending → Ready → Done trigger via user-forwarded merge SHA：两次 trigger（Console 415ee30 → ContextForge ship；ContextForge v0.10.0 → Console visual closure ship）均按协议跑通
+
+**ContextForge-Console PR #91/#93 review backlog 由此达成 end-to-end 100% closed**（backend protocol + UI visual surface 双闭环）.
+
 ## Rollback path
 
 如 Phase 17 task-17.1 ship 后发现：

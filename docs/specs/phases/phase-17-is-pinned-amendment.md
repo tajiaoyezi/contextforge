@@ -141,7 +141,7 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 - [x] **ADR-014 D2 lint 输出**: 本 PR body §"Verification" 段含 0 unannotated hits 输出
 - [x] v0.10.0 release docs ready in this closeout PR — README + RELEASE_NOTES + docs/releases/v0.10.0-evidence.md + docs/releases/v0.10.0-artifacts.md. Annotated tag `v0.10.0` push 留 closeout PR merge 后由 user 触发 (release.yml workflow on `v*` tag push handles ghcr image build/push).
 - [x] **Console PR #91/#93 backlog 11/11 = 100% closed 证据** — v0.10.0 release notes formally claims 100% closure; mapping table (Phase 13/15/16/17) ship 10 + this PR 1 = 11/11.
-- [ ] cross-repo follow-up：通知 Console 团队 ContextForge v0.10 release ship + Console UI 端 "按 pin 排序" feature flag visual closure 启动 — **deferred** 至本 closeout PR merge + v0.10.0 tag push 之后（user-forwarded outside autonomous flow）
+- [x] cross-repo follow-up：通知 Console 团队 ContextForge v0.10 release ship + Console UI 端 "按 pin 排序" feature flag visual closure — completed 2026-05-29: 用户人工 forward v0.10.0 release URL 给 Console 主 agent；Console 端 ship 3 PRs (#102/#103/#104) end-to-end 到 master @ `c1c4609`；ContextForge-Console PR #91/#93 backlog **end-to-end 100% closed** (backend protocol + UI visual surface 双闭环)
 
 ---
 
@@ -154,4 +154,11 @@ step 3 release_smoke.sh 在本 phase 加入 `phase17_*=ok` 子段 = v0.10.0 ship
 3. ✅ **Console 主仓 PR ship `internal/contractv1/contractv1.go::MemoryItem.IsPinned` add-only field merged to Console master** — PR [ContextForge-Console#101](https://github.com/tajiaoyezi/ContextForge-Console/pull/101) merged 2026-05-28T12:16:57Z @ `415ee30fcd8effd7929806d196458ec6e60fb49f`
 4. ✅ **用户人工转发 Console PR merge SHA 给 ContextForge 主 agent**
 5. ✅ **ContextForge 主 agent 验证 Console master HEAD 含 IsPinned 字段** — `gh api repos/tajiaoyezi/ContextForge-Console/contents/console-api/internal/coreadapter/contractv1/contractv1.go?ref=415ee30...` returns the field block correctly; Status `Pending → Ready` 短暂中间态 → 启动 task-17.1 实施
-6. ✅ **task-17.1 实施 PR** (本 PR) — impl + smoke v8 + 5 新测试 + spec Status `Pending → Done`. **next**: closeout PR ADR-022 Status `Proposed → Accepted` + v0.10.0 release prep → 11/11 backlog closure formal claim
+6. ✅ **task-17.1 实施 PR #118** (merged `cfcdbd4`, 2026-05-28T13:39:17Z) — impl + smoke v8 + 5 新测试 + spec Status `Pending → Done`
+7. ✅ **Phase 17 closeout PR #119** (merged `cbaafe6`, 2026-05-28T13:54:20Z) — ADR-022 Status `Proposed → Accepted` + v0.10.0 release docs
+8. ✅ **v0.10.0 annotated tag push** (2026-05-28 ~14:00) — `release.yml` push GHCR image v0.10.0 + `:latest`; `verify-image.yml` health probe GREEN
+9. ✅ **SHA backfill PR #120** (merged `0911445`) — fill placeholders post-tag-push
+10. ✅ **GitHub Release v0.10.0 published** (2026-05-28T14:15:57Z) — `https://github.com/tajiaoyezi/contextforge/releases/tag/v0.10.0`
+11. ✅ **用户人工转发 v0.10.0 release URL 给 Console 主 agent** (2026-05-28)
+12. ✅ **Console UI visual closure end-to-end ship** (2026-05-29) — Console master @ `c1c4609`; PRs [#102](https://github.com/tajiaoyezi/ContextForge-Console/pull/102) (pin sort + list icon + detail badge) + [#103](https://github.com/tajiaoyezi/ContextForge-Console/pull/103) (default-mode fixture data 落真 is_pinned + GHCR pull + docs) + [#104](https://github.com/tajiaoyezi/ContextForge-Console/pull/104) (sort util + 混合 array 排序单测); E2E daemon-level 验证 OK
+13. ✅ **Phase 17 epilogue PR** (本 PR) — ADR-022 §Verification cross-repo confirmation 段；§8 DoD cross-repo follow-up `[x]`; release docs final closure 标记；ContextForge-Console PR #91/#93 backlog formally **end-to-end 100% closed**

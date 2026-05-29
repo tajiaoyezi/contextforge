@@ -18,6 +18,7 @@ It ships as two binaries (ADR-001):
 - **ADR-022 Accepted** — first amendment ADR activating the ADR-015 D5 字段冻结 amendment path. Documents cross-repo coordination protocol (D4 Console-first / ContextForge-second ship order; D5 `Pending → Ready → Done` trigger via user-forwarded merge SHA) for future schema evolutions.
 - **ADR-014 cross-validation gate 8th activation** — D1 mapping table + D2 lint 0 hits + D3 verified-by + D4/D5 governance — see PR #118 + this closeout PR body.
 - **Console PR #91/#93 backlog formally 11/11 = 100% closed 🎊** — the backlog raised by the Console team in v0.7 review is now entirely addressed across Phase 13 / 15 / 16 / 17. Mapping table in `docs/releases/v0.10.0-evidence.md` §9.
+- **Cross-repo end-to-end closure (2026-05-29)** 🎉 — ContextForge-Console UI visual closure shipped to Console master @ `c1c4609` (PRs [#102](https://github.com/tajiaoyezi/ContextForge-Console/pull/102) pin sort + list icon + detail badge / [#103](https://github.com/tajiaoyezi/ContextForge-Console/pull/103) mock + GHCR pull + docs / [#104](https://github.com/tajiaoyezi/ContextForge-Console/pull/104) sort util + 单测). Backlog end-to-end fully closed: backend protocol via cumulative Phase 13/15/16/17 + UI visual surface via Console PRs #102/103/104. E2E daemon-level verified via `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.10.0` → web 详情页 "已置顶" badge 实拍坐实.
 
 详 `RELEASE_NOTES.md` v0.10.0 段 + [Phase 17 spec](docs/specs/phases/phase-17-is-pinned-amendment.md) + [ADR-022](docs/decisions/adr-022-memory-is-pinned-field-amendment.md)。
 
