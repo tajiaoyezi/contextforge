@@ -152,6 +152,21 @@ async fn phase_9_index_grpc_end_to_end_smoke() {
     );
 
     // ---- 5. assert: SQLite + Tantivy 实际有数据 + secret 不可检索 ----
+    //
+    // Shut down the in-process tonic server BEFORE re-opening IndexSession on
+    // the same data_dir. The server-side IndexSession still holds the Tantivy
+    // IndexWriter's `directory.lock` until its task is cancelled and dropped;
+    // without this explicit shutdown + yield, the line below
+    // (IndexSession::open) intermittently failed with
+    // `Failed to acquire Lockfile: LockBusy` — observed in CI on PR #118
+    // cargo-test (run 26577717038) and PR #121 cargo-test (run 26643146337).
+    // The original `server_handle.abort()` at the end of the test was too
+    // late for the re-open path. yield_now() gives the cancelled task one
+    // poll to run its Drop chain (which releases the Tantivy lock).
+    server_handle.abort();
+    let _ = server_handle.await;
+    tokio::task::yield_now().await;
+
     let session = IndexSession::open(&data_dir, coll_id).expect("re-open indexer for assertions");
     let chunk_count = session.sqlite_chunk_count().expect("sqlite count");
     assert!(
@@ -177,9 +192,6 @@ async fn phase_9_index_grpc_end_to_end_smoke() {
         "AC5/R4: 原始 secret 不应入索引（scanner 已 redact），但命中 {} 个",
         secret_hits.len()
     );
-
-    server_handle.abort();
-    let _ = server_handle.await;
 }
 
 /// AC3 错误路径 — source_path 不存在 → 流建立前返回 Status::InvalidArgument.
