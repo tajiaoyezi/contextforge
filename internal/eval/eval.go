@@ -62,7 +62,26 @@ type Report struct {
 	Top10StrongRate  float64    `json:"top10_strong_rate"`
 	LatencyP95Millis int64      `json:"latency_p95_ms"`
 	MissCases        []MissCase `json:"miss_cases"`
+
+	// task-18.8: semantic (vector-path) recall, computed alongside the BM25 path when vector-backend
+	// results are supplied. SemanticEvaluated is false for a BM25-only run (no vector results) — the
+	// live semantic path requires the deferred vector-retrieval integration + an embedding provider,
+	// so production runs are BM25-only until then.
+	SemanticEvaluated    bool    `json:"semantic_evaluated"`
+	SemanticStrongHits5  int     `json:"semantic_strong_hits_top5"`
+	SemanticStrongHits10 int     `json:"semantic_strong_hits_top10"`
+	SemanticWeakHits     int     `json:"semantic_weak_hits"`
+	SemanticMisses       int     `json:"semantic_misses"`
+	SemanticRecallAt5    float64 `json:"semantic_recall_at_5"`
+	SemanticRecallAt10   float64 `json:"semantic_recall_at_10"`
 }
+
+// Recall gate thresholds (ADR-006 acceptance gate + Phase 18 task-18.8 amendment).
+const (
+	GateTop5StrongMin       = 0.75 // BM25 Top-5 strong-hit rate (ADR-006)
+	GateTop10StrongMin      = 0.85 // BM25 Top-10 strong-hit rate (ADR-006)
+	GateSemanticRecall10Min = 0.70 // SemanticRecall@10 (Phase 18 task-18.8 amendment)
+)
 
 func BuiltinGoldenQuestions() []Question {
 	cats := []struct {
@@ -264,6 +283,73 @@ func Summarize(results []Result) Report {
 		report.LatencyP95Millis = percentile95(latencies)
 	}
 	return report
+}
+
+// SemanticRecallAtK returns the fraction of questions whose expected chunk was a strong hit within
+// the top K of the semantic (vector) retrieval path — i.e. SemanticRecall@K = strong-hit@K rate.
+// (Weak hits do not count toward recall; only an exact-chunk / overlapping-line match does.)
+func SemanticRecallAtK(results []Result, k int) float64 {
+	if len(results) == 0 {
+		return 0
+	}
+	hits := 0
+	for _, r := range results {
+		if r.Outcome == OutcomeStrong && r.MatchedRank >= 1 && r.MatchedRank <= k {
+			hits++
+		}
+	}
+	return float64(hits) / float64(len(results))
+}
+
+// SummarizeHybrid summarizes the BM25 path (bm25) and, when semantic (vector-path) results are
+// supplied, the semantic path alongside it. With no semantic results the report is BM25-only
+// (SemanticEvaluated=false): the live semantic path requires the deferred vector-retrieval
+// integration + an embedding provider, so production runs stay BM25-only until those ship. The
+// bm25 and semantic result slices are the per-question outcomes of the two retrieval methods over
+// the same question set.
+func SummarizeHybrid(bm25 []Result, semantic []Result) Report {
+	report := Summarize(bm25)
+	if len(semantic) == 0 {
+		return report
+	}
+	report.SemanticEvaluated = true
+	for _, r := range semantic {
+		switch r.Outcome {
+		case OutcomeStrong:
+			if r.MatchedRank >= 1 && r.MatchedRank <= 5 {
+				report.SemanticStrongHits5++
+			}
+			if r.MatchedRank >= 1 && r.MatchedRank <= 10 {
+				report.SemanticStrongHits10++
+			}
+		case OutcomeWeak:
+			report.SemanticWeakHits++
+		default:
+			report.SemanticMisses++
+		}
+	}
+	report.SemanticRecallAt5 = SemanticRecallAtK(semantic, 5)
+	report.SemanticRecallAt10 = SemanticRecallAtK(semantic, 10)
+	return report
+}
+
+// MeetsRecallGate checks a report against the ADR-006 (+ Phase 18 task-18.8) recall thresholds.
+// It returns whether the gate passes and the list of failing checks. The SemanticRecall@10 check
+// applies only when the report carries semantic (vector-path) results (SemanticEvaluated); a
+// BM25-only report is gated on the BM25 thresholds alone, matching production until the
+// vector-retrieval integration ships.
+func MeetsRecallGate(report Report) (bool, []string) {
+	var failures []string
+	if report.Top5StrongRate < GateTop5StrongMin {
+		failures = append(failures, fmt.Sprintf("Top5StrongRate %.3f < %.2f", report.Top5StrongRate, GateTop5StrongMin))
+	}
+	if report.Top10StrongRate < GateTop10StrongMin {
+		failures = append(failures, fmt.Sprintf("Top10StrongRate %.3f < %.2f", report.Top10StrongRate, GateTop10StrongMin))
+	}
+	if report.SemanticEvaluated && report.SemanticRecallAt10 < GateSemanticRecall10Min {
+		failures = append(failures, fmt.Sprintf("SemanticRecallAt10 %.3f < %.2f", report.SemanticRecallAt10, GateSemanticRecall10Min))
+	}
+	return len(failures) == 0, failures
 }
 
 func isStrong(q Question, r *contextforgev1.RetrievalResult) bool {
