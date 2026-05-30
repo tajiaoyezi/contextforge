@@ -251,6 +251,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 16 | `v0.9.0-backlog-completion` | `docs/specs/phases/phase-16-v0.9.0-backlog-completion.md` | Done | 4 | `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Done | 1 | `../ContextForge-wt-is-pinned-amendment` |
 | 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Done | 9 | `../ContextForge-wt-vector-backend-selection`（v0.11.0 closeout 缩范围：AC1/2/5/6 met；AC3 partial=ADR-023 Proposed；AC4 deferred=生产集成 [SPEC-OWNER:phase-future.vector-retrieval-integration]） |
+| 19 | `vector-retrieval-integration` | `docs/specs/phases/phase-19-vector-retrieval-integration.md` | Draft | 7 | master（解 Phase 18 AC3/AC4 + [SPEC-OWNER:phase-future.vector-retrieval-integration]：embedding provider + 默认 backend 生产 wiring + 语义 API + 真实召回 ratify ADR-023；v0.12.0） |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -329,6 +330,13 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 18.7 | 4 路 backend 5 维横向对比（n=5000+100000）+ ADR-023 默认 backend 选型（Proposed，分层 D1-D6）+ comparison 文档 + hnsw evidence 补 Linux RSS/100k + known_backends unused_mut 清理 | docs/specs/tasks/task-18.7-decision-adr023.md | Done | Phase18 #7（合成 recall 不可区分 → 架构驱动选型：D1 sqlite-vec 嵌入式默认 provisional / D2 hnsw 跨平台 fallback / D3 qdrant scale-out / D4 lancedb 列式；ratify 待 task-18.8 真实 embedding recall）| `../ContextForge-wt-vector-backend-selection` |
 | 18.8 | internal/eval SemanticRecall@K 度量 + Report semantic 字段 + SummarizeHybrid 双路 + MeetsRecallGate（BM25 恒检 + SemanticRecall@10≥0.70 仅 semantic 时检）+ 4 单测 + ADR-006 add-only Amendment A1 | docs/specs/tasks/task-18.8-eval-semantic-recall.md | Done | Phase18 #8（度量+门禁+单测落地；live 语义召回值 + ratify 待真实 embedding provider [SPEC-OWNER:phase-future.vector-retrieval-integration]）| `../ContextForge-wt-vector-backend-selection` |
 | 18.9 | Phase 18 closeout（诚实缩范围）+ v0.11.0 release docs（README + RELEASE_NOTES + evidence + artifacts）+ phase-18 §6/§8 诚实状态（AC1/2/5/6 met / AC3 partial / AC4 deferred）+ v0.11.0 tag | docs/specs/tasks/task-18.9-release-v0.11.0-closeout.md | Done | Phase18 #9（v0.11.0 = 向量 backend 基础设施+选型里程碑；生产语义搜索 + ADR ratify 后置；用户授权切版）| `../ContextForge-wt-vector-backend-selection` |
+| 19.1 | core/src/embedding/{mod,traits,deterministic,&lt;chosen&gt;}.rs EmbeddingProvider trait + DeterministicEmbeddingProvider（无模型缺省，默认构建）+ real provider（feature-gated）+ 候选评估 evidence | docs/specs/tasks/task-19.1-spike-embedding-provider.md | Pending | Phase19 #1（embedding 首项；解锁 19.2 wiring；real provider 两平台受阻则 deterministic 续跑 stop-condition）| master |
+| 19.2 | core/src/retriever/mod.rs 默认 backend 接 with_vector_searcher 生产热路径 + index/query embedding | docs/specs/tasks/task-19.2-default-backend-wiring.md | Pending | Phase19 #2（dep 19.1 + ADR-023；Win MSVC 下 sqlite-vec 受阻→默认很可能 hnsw）| master |
+| 19.3 | proto SearchRequest semantic flag（add-only）+ Rust gRPC 语义路径 + Go /v1/search?semantic=true + vector_score/embedding_provider provenance | docs/specs/tasks/task-19.3-semantic-search-api.md | Pending | Phase19 #3（dep 19.2；contract add-only，22-endpoint conformance 不破坏）| master |
+| 19.4 | scripts/console_smoke.sh v9 30-step（+semantic search +eval --semantic）+ cmd/contextforge/eval.go --semantic CLI flag | docs/specs/tasks/task-19.4-smoke-v9.md | Pending | Phase19 #4（dep 19.3；接 task-18.8 SummarizeHybrid/MeetsRecallGate）| master |
+| 19.5 | 真实 dogfood embedding 语料 + SemanticRecall@K 实测 + docs/spikes/phase-19-real-recall.md | docs/specs/tasks/task-19.5-real-recall-eval.md | Pending | Phase19 #5（dep 19.1 real provider + 19.2；feed ADR-023 ratify；禁伪造 recall）| master |
+| 19.6 | ADR-023 Proposed→Accepted（据真实 recall）+ ADR-006 A1 gate 转正 + ADR-008 add-only + 记 Phase 18 AC3/AC4 解决（不溯改 Phase 18 spec） | docs/specs/tasks/task-19.6-adr-023-ratify.md | Pending | Phase19 #6（dep 19.5；ADR-013 禁据合成 ratify）| master |
+| 19.7 | Phase 19 closeout + v0.12.0 release docs + tag（用户授权）+ backfill | docs/specs/tasks/task-19.7-closeout-v0.12.0.md | Pending | Phase19 #7（dep 19.1-19.6；v0.12.0 = 端到端语义检索）| master |
 
 ## ADR 索引
 
@@ -391,6 +399,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 15.1 / 15.2 / 15.3 / 15.4 / 15.5 / 15.6 | test/features/phase-15-console-functional-gap-closure.feature |
 | 16.1 / 16.2 / 16.3 / 16.4 | test/features/phase-16-v0.9.0-backlog-completion.feature |
 | 17.1 | test/features/phase-17-is-pinned-amendment.feature |
+| 19.1 / 19.2 / 19.3 / 19.5 | test/features/phase-19-vector-retrieval-integration.feature |
 
 ---
 
