@@ -7,6 +7,30 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.12.0
+
+🔎 **v0.12.0 vector-retrieval-integration** — turns the Phase 18 vector-backend *infrastructure* into a **live, end-to-end semantic retrieval path** (Phase 19) and ratifies **ADR-023** on **real** embedding recall.
+
+- **End-to-end semantic path is live (opt-in).** A request can now take the vector path through the full stack: `POST /v1/search?semantic=true` (REST) → Go → Rust gRPC → `EmbeddingProvider` → vector backend → ranked hits carrying `retrieval_method="vector"` + `vector_score` + `embedding_provider`. The eval CLI gains `contextforge eval run --semantic` (BM25 + semantic dual-path report + recall gate). **Default retrieval stays BM25** — semantic is opt-in.
+- **Two embedding providers (ADR-008 amendment).** `DeterministicEmbeddingProvider` (Sha256→dim-384, **0 dep**) is the default-build provider — it proves the wiring end-to-end with zero new dependency. The **real** `FastEmbedProvider` (`all-MiniLM-L6-v2`, ONNX, dim 384) is behind the `embedding-fastembed` feature (rustls; builds on Linux + Windows MSVC).
+- **Real recall, measured (resolves the Phase 18 caveat).** With the real provider over real ContextForge text, **SemanticRecall@5 = 0.8333, @10 = 0.9333** (top-1 0.60, MRR 0.70) — clearing the ADR-006 A1 gate (≥ 0.70). The Phase 18 synthetic 1.0/1.0 was non-discriminating; real embeddings are. Evidence: `docs/spikes/phase-19-real-recall.md` (ADR-013: real run, no synthetic/fabricated figures).
+- **ADR-023 ratified → Accepted; ADR-006 Amendment A1 → Active.** The default-backend decision is ratified on real recall. The *implemented* default semantic searcher is the **0-dep `BruteForceVectorBackend`** (exact cosine, honoring D5); sqlite-vec (D1) / hnsw (D2) / qdrant (D3) / lancedb (D4) remain the feature-gated tiers.
+- **Default build unchanged & dependency-free.** No vector backend and no embedding model are compiled by default — the default semantic path uses the 0-dep deterministic provider + brute-force searcher. Real-model semantic search is a feature/deploy choice (`embedding-fastembed`).
+- **ADR-014 cross-validation gate — 10th activation** across PRs #141–#147 + this closeout.
+
+Quick start (semantic path):
+
+```bash
+# REST: opt into the vector path with ?semantic=true (default is BM25)
+curl -X POST "$BASE/v1/search?semantic=true" -H 'Content-Type: application/json' \
+  -d '{"query":"where is the config loader","workspace_id":"<ws>","top_k":5}'
+
+# eval CLI: BM25 + semantic dual-path report + recall gate
+contextforge eval run --semantic --collection=default
+```
+
+详 `RELEASE_NOTES.md` v0.12.0 段 + [Phase 19 spec](docs/specs/phases/phase-19-vector-retrieval-integration.md) + [ADR-023](docs/decisions/adr-023-vector-backend-default.md) + [real recall evidence](docs/spikes/phase-19-real-recall.md)。
+
 ## What's new in v0.11.0
 
 🧭 **v0.11.0 vector-backend-selection** — ships the **vector retrieval backend infrastructure + a data-driven backend selection** (Phase 18): the `Vector{Backend,Indexer,Searcher}` trait abstraction, a deterministic spike harness, **four real-data backend spikes** (sqlite-vec / qdrant / lancedb / hnsw) measured on one Linux host, the **ADR-023** default-backend decision (**Proposed**), and a `SemanticRecall@K` eval metric + gate.

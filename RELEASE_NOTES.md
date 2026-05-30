@@ -1,5 +1,54 @@
 # ContextForge Release Notes
 
+## v0.12.0 (2026-05-30) — vector-retrieval-integration (end-to-end semantic search + ADR-023 ratified)
+
+### 摘要
+
+v0.12.0 minor release: turns the Phase 18 vector-backend **infrastructure** into a **live, end-to-end semantic retrieval path** (Phase 19) and **ratifies ADR-023** on **real** embedding recall. A request can take the vector path through the whole stack (`POST /v1/search?semantic=true` → Go → Rust gRPC → `EmbeddingProvider` → vector backend → ranked hits), the eval CLI gains `contextforge eval run --semantic`, and the Phase 18 "synthetic recall is non-discriminating" caveat is resolved with measured real-embedding recall.
+
+**Honest scope (read this)**: semantic retrieval is **opt-in** — default retrieval stays BM25. The **default build is unchanged and dependency-free**: its semantic path uses the **0-dependency `DeterministicEmbeddingProvider` + `BruteForceVectorBackend`** (proves wiring correctness, not model quality). The **real** embedding provider (`FastEmbedProvider`, `all-MiniLM-L6-v2`) is behind the `embedding-fastembed` feature; the real recall numbers below were measured with it. No model or vector dependency is compiled by default (ADR-023 D5).
+
+### What shipped (Phase 19, tasks 19.1–19.7)
+
+| task | delivery | PR |
+|---|---|---|
+| 19.1 | `EmbeddingProvider` trait + `DeterministicEmbeddingProvider` (0-dep default) + `FastEmbedProvider` (real, feature-gated) + spike evidence | #142 |
+| 19.2 | default backend wired into `Retriever` (`with_embedder` + `with_vector_searcher` + `search_semantic`) | #143 |
+| 19.3 | `/v1/search?semantic=true` Go→Rust gRPC semantic path + proto add-only (`semantic`, `vector_score`, `embedding_provider`) + 0-dep `BruteForceVectorBackend` | #144 |
+| 19.4 | smoke v9 30-step (step 29 semantic REST + step 30 eval `--semantic`) + `contextforge eval run --semantic` dual-path CLI | #145 |
+| 19.5 | **real** dogfood embedding `SemanticRecall@K` (fastembed) + `docs/spikes/phase-19-real-recall.md` | #146 |
+| 19.6 | ADR-023 Proposed→**Accepted** + ADR-006 A1→**Active** + ADR-008 embedding-crate amendment | #147 |
+| 19.7 | Phase 19 closeout (end-to-end semantic search) + v0.12.0 release docs | this PR |
+
+### Real-embedding recall (resolves the Phase 18 non-discriminating caveat)
+
+Real `FastEmbedProvider` (`all-MiniLM-L6-v2`, dim 384) over real ContextForge text, exact cosine (`docs/spikes/phase-19-real-recall.md`):
+
+| metric | Phase 18 synthetic | Phase 19 real |
+|---|---|---|
+| SemanticRecall@5 | 1.0 (non-discriminating) | **0.8333** (25/30) |
+| SemanticRecall@10 | 1.0 (non-discriminating) | **0.9333** (28/30) |
+| top-1 / MRR | — | 0.60 / 0.70 |
+| ADR-006 A1 gate (≥ 0.70) | aspirational | **PASS** |
+
+ADR-013: every real number is a real fastembed run — no synthetic / deterministic / fabricated figures. The recall is exact-cosine (representative of any exact backend incl. the D1 `sqlite-vec` pick; upper bound for ANN).
+
+### Upgrade path
+
+- Drop-in: default build behavior is unchanged (BM25-only retrieval, 0 new dependency). No migration.
+- To use the semantic path: send `?semantic=true` on `POST /v1/search`, or run `contextforge eval run --semantic`. The default-build semantic path uses the deterministic provider; for real-model semantic search build/deploy with `--features embedding-fastembed`.
+- Proto: `SearchRequest.semantic` (7), `RetrievalResult.vector_score` (13) + `embedding_provider` (14) are **add-only** — existing clients are unaffected (22-endpoint conformance + proto-freeze guard PASS).
+
+### Rollback path
+
+`git tag -d v0.12.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.11.0 (BM25-only), so a rollback is non-breaking.
+
+### Contract
+
+Console Contract v1 unchanged in shape; the three new proto fields are add-only and default to BM25 behavior when unset.
+
+详 [Phase 19 spec](docs/specs/phases/phase-19-vector-retrieval-integration.md) + [ADR-023](docs/decisions/adr-023-vector-backend-default.md) + [v0.12.0 evidence](docs/releases/v0.12.0-evidence.md) + [v0.12.0 artifacts](docs/releases/v0.12.0-artifacts.md)。
+
 ## v0.11.0 (2026-05-30) — vector-backend-selection (infra + spike + ADR-023 Proposed)
 
 ### 摘要

@@ -1,6 +1,6 @@
 # Phase 19 · vector-retrieval-integration
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 把 Phase 18 交付的**向量 backend 基础设施**（trait + 4 backend spike + harness + `SemanticRecall@K` 度量 + ADR-023 Proposed）推进到**生产语义检索**：补 embedding provider、把选定默认 backend 接生产 retriever 热路径、真实召回评测、ratify ADR-023。解决 Phase 18 遗留 [SPEC-OWNER:phase-future.vector-retrieval-integration] + [SPEC-DEFER:phase-future.embedding-provider-full]。v0.12.0 收口。
 >
@@ -133,12 +133,12 @@ v0.12.0 ship 后 ContextForge 自带**端到端语义检索**：embedding provid
 
 **阶段级验收标准（C1 集成兜底门强制；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] **AC1**：`EmbeddingProvider` trait + `DeterministicEmbeddingProvider`（无模型,默认构建 0 新 dep,≥3 unit test）+ real provider（feature-gated,模型 lazy）落地;spike evidence `docs/spikes/phase-19-embedding-*.md` — verified by task-19.1 §6 AC1-3 + phase-smoke step 1
-- [ ] **AC2**：选定默认 backend 接 `Retriever::with_vector_searcher` 生产热路径 + index/query embedding;既有 BM25 检索不退化（`cargo test --workspace` 0 failed）— verified by task-19.2 §6 AC1-2 + phase-smoke step 2
-- [ ] **AC3**：`/v1/search?semantic=true` Go→Rust gRPC 语义通路通;proto 字段变更 add-only（contract conformance 不破坏）— verified by task-19.3 §6 AC1-2 + phase-smoke step 3
-- [ ] **AC4**：smoke v9 30-step（既有 28 不退化 + step 29 semantic search + step 30 eval `--semantic`）全 PASS — verified by task-19.4 §6 AC1 + phase-smoke step 4
-- [ ] **AC5**：真实 dogfood embedding `SemanticRecall@K` 实测 + ADR-023 ratify（Proposed→Accepted）或据实测 documented 未决（禁据合成 ratify,ADR-013）— verified by task-19.5 §6 AC1-2 + task-19.6 §6 AC1
-- [ ] **AC6**：ADR-014 cross-validation gate 全套通过（第十次激活）— D1 mapping table + D2 lint `--touched master` 0 unannotated hits + D3 verified-by 显式 owner + D4 主 agent 自治 + D5 历史 Phase 1-18 不溯改 — verified by task-19.7 closeout PR body
+- [x] **AC1**：`EmbeddingProvider` trait + `DeterministicEmbeddingProvider`（无模型,默认构建 0 新 dep,≥3 unit test）+ real provider（feature-gated,模型 lazy）落地;spike evidence `docs/spikes/phase-19-embedding-*.md` — verified by task-19.1 §6 AC1-3 + phase-smoke step 1（#142；`phase-19-embedding-{candidates,fastembed}.md` 在库）
+- [x] **AC2**：选定默认 backend 接 `Retriever::with_vector_searcher` 生产热路径 + index/query embedding;既有 BM25 检索不退化（`cargo test --workspace` 0 failed）— verified by task-19.2 §6 AC1-2 + phase-smoke step 2（#143）
+- [x] **AC3**：`/v1/search?semantic=true` Go→Rust gRPC 语义通路通;proto 字段变更 add-only（contract conformance 不破坏）— verified by task-19.3 §6 AC1-2 + phase-smoke step 3（#144；proto-freeze + 22-endpoint conformance PASS）
+- [x] **AC4**：smoke v9 30-step（既有 28 不退化 + step 29 semantic search + step 30 eval `--semantic`）全 PASS — verified by task-19.4 §6 AC1 + phase-smoke step 4（#145）
+- [x] **AC5**：真实 dogfood embedding `SemanticRecall@K` 实测 + ADR-023 ratify（Proposed→Accepted）或据实测 documented 未决（禁据合成 ratify,ADR-013）— verified by task-19.5 §6 AC1-2 + task-19.6 §6 AC1（#146 real @10=0.9333≥0.70 + #147 ADR-023 Accepted；据真实非合成数据）
+- [x] **AC6**：ADR-014 cross-validation gate 全套通过（第十次激活）— D1 mapping table + D2 lint `--touched master` 0 unannotated hits + D3 verified-by 显式 owner + D4 主 agent 自治 + D5 历史 Phase 1-18 不溯改 — verified by task-19.7 closeout PR body（本 PR）
 
 **端到端 smoke（6 step，C1 集成兜底）**：(1) deterministic embedding provider unit;(2) index→semantic search roundtrip via 默认 backend;(3) `/v1/search?semantic=true` gRPC;(4) smoke v9 30-step;(5) real-recall eval SemanticRecall@K;(6) D2 lint 0 hits。
 
