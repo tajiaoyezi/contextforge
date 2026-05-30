@@ -84,6 +84,13 @@ sqlite-vec = { version = "=0.1.9", optional = true }
 # vector-qdrant feature. Async client bridged to the sync trait via an owned tokio runtime. Pulls
 # tonic/prost (already in-tree) + transitive deps; optional — default build unaffected (0 new dep).
 qdrant-client = { version = "1.18", optional = true }
+# task-18.5 spike: lancedb — embedded Lance columnar vector store, gated behind the vector-lancedb
+# feature. arrow-array is pinned to lance's internal arrow major (58; lancedb only re-exports
+# arrow_schema, so arrow_array must be matched explicitly). futures for the search result stream.
+# Build needs protoc (lance build.rs). Optional — default build unaffected (0 new dep).
+lancedb = { version = "0.30", optional = true }
+arrow-array = { version = "58", optional = true }
+futures = { version = "0.3", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -96,7 +103,7 @@ default = []
 vector-spike = []
 vector-sqlite = ["dep:sqlite-vec"]
 vector-qdrant = ["dep:qdrant-client"]
-vector-lancedb = []
+vector-lancedb = ["dep:lancedb", "dep:arrow-array", "dep:futures"]
 vector-hnsw = ["dep:instant-distance"]
 
 [build-dependencies]
