@@ -1,6 +1,6 @@
 # Task `19.2`: `default-backend-wiring — core/src/retriever/mod.rs 据 ADR-023 D1/D2 把选定默认 vector backend 接 Retriever::with_vector_searcher 生产热路径 + index/query 过 EmbeddingProvider + BM25 不退化`
 
-**Status**: Pending
+**Status**: Done
 
 **Priority**: P0
 **Owner**: 主 agent（ADR-012 自治）
@@ -85,22 +85,22 @@ use crate::retriever::vector::types::{ChunkId, VectorChunk, VectorIndexConfig, V
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: `Retriever` 暴露 `with_embedder` + `search_semantic` + index 端 wiring 入口；`embedder` 默认 `None`，与 `vector_searcher` 对称；`cargo build -p contextforge-core --features vector-hnsw` 与默认 `cargo build -p contextforge-core` 均 exit 0（ADR-023 D5：默认构建 0 vector dep）— verified by **TEST-19.2.1**（wiring API 存在 + 默认/feature build 双绿）
-- [ ] **AC2**: index→semantic-search roundtrip 真实召回 — deterministic 缺省 provider 对一组文本 embed 后经选定 backend 索引；用语义相近 query embed 检索，命中目标 chunk（`retrieval_method == "vector"`，score 有序非伪造）— verified by **TEST-19.2.2**（hnsw + DeterministicEmbeddingProvider roundtrip 命中目标 chunk_id）
-- [ ] **AC3**: None fallback 保持 BM25 — 未注入 `embedder` / `vector_searcher`（默认 `Retriever::open`）时，`search()` 结果与 task-18.1 baseline 逐字节等价（chunk_ids / scores / order 一致），`retrieval_method` 恒 `"bm25"`；`search_semantic` 在 None 时返 `Ok(vec![])` 不 Err 不 panic — verified by **TEST-19.2.3**（None baseline 等价 + search_semantic 空返）
-- [ ] **AC4**: 选定 backend wiring 端到端 — `with_embedder` + `with_vector_searcher` 注入后 `search_semantic` 走真实 embedding→backend→12-field SearchResult 装配（provenance ≥1 黑盒守护），无 panic；空 query / 维度路径不崩 — verified by **TEST-19.2.4**（wiring 端到端非空命中 + provenance floor + 空 query 空返）
-- [ ] **AC5**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS（vector-hnsw 默认不启用，gated 测试不入默认编译）；`cargo test -p contextforge-core --features vector-hnsw` 全 PASS；`go test ./...` 全 PASS — verified by **TEST-19.2.5**（默认 + feature 双 build test 0 failed）+ §10 实测
-- [ ] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched master` PR 触及行 0 未标注命中 — verified by §10 记录的 D2 lint 实跑输出
+- [x] **AC1**: `Retriever` 暴露 `with_embedder` + `search_semantic` + index 端 wiring 入口；`embedder` 默认 `None`，与 `vector_searcher` 对称；`cargo build -p contextforge-core --features vector-hnsw` 与默认 `cargo build -p contextforge-core` 均 exit 0（ADR-023 D5：默认构建 0 vector dep）— verified by **TEST-19.2.1**（wiring API 存在 + 默认/feature build 双绿）
+- [x] **AC2**: index→semantic-search roundtrip 真实召回 — deterministic 缺省 provider 对一组文本 embed 后经选定 backend 索引；用语义相近 query embed 检索，命中目标 chunk（`retrieval_method == "vector"`，score 有序非伪造）— verified by **TEST-19.2.2**（hnsw + DeterministicEmbeddingProvider roundtrip 命中目标 chunk_id）
+- [x] **AC3**: None fallback 保持 BM25 — 未注入 `embedder` / `vector_searcher`（默认 `Retriever::open`）时，`search()` 结果与 task-18.1 baseline 逐字节等价（chunk_ids / scores / order 一致），`retrieval_method` 恒 `"bm25"`；`search_semantic` 在 None 时返 `Ok(vec![])` 不 Err 不 panic — verified by **TEST-19.2.3**（None baseline 等价 + search_semantic 空返）
+- [x] **AC4**: 选定 backend wiring 端到端 — `with_embedder` + `with_vector_searcher` 注入后 `search_semantic` 走真实 embedding→backend→12-field SearchResult 装配（provenance ≥1 黑盒守护），无 panic；空 query / 维度路径不崩 — verified by **TEST-19.2.4**（wiring 端到端非空命中 + provenance floor + 空 query 空返）
+- [x] **AC5**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS（vector-hnsw 默认不启用，gated 测试不入默认编译）；`cargo test -p contextforge-core --features vector-hnsw` 全 PASS；`go test ./...` 全 PASS — verified by **TEST-19.2.5**（默认 + feature 双 build test 0 failed）+ §10 实测
+- [x] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched master` PR 触及行 0 未标注命中 — verified by §10 记录的 D2 lint 实跑输出
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-19.2.1 | wiring API 存在 + 默认/feature build 双绿 | `core/src/retriever/mod.rs` mod tests + `cargo build` ×2 | Pending |
-| TEST-19.2.2 | hnsw + deterministic provider index→search roundtrip 命中目标 chunk | `core/src/retriever/mod.rs` mod tests（`#[cfg(feature = "vector-hnsw")]`） | Pending |
-| TEST-19.2.3 | None baseline BM25 等价 + search_semantic 空返 | `core/src/retriever/mod.rs` mod tests | Pending |
-| TEST-19.2.4 | wiring 端到端非空命中 + provenance ≥1 + 空 query 空返 | `core/src/retriever/mod.rs` mod tests（`#[cfg(feature = "vector-hnsw")]`） | Pending |
-| TEST-19.2.5 | 默认 + vector-hnsw feature build test 0 failed | 全 workspace + `cargo test -p contextforge-core --features vector-hnsw` | Pending |
+| TEST-19.2.1 | wiring API 存在 + 默认/feature build 双绿 | `core/src/retriever/mod.rs` mod tests + `cargo build` ×2 | Done |
+| TEST-19.2.2 | hnsw + deterministic provider index→search roundtrip 命中目标 chunk | `core/src/retriever/mod.rs` mod tests（`#[cfg(feature = "vector-hnsw")]`） | Done |
+| TEST-19.2.3 | None baseline BM25 等价 + search_semantic 空返 | `core/src/retriever/mod.rs` mod tests | Done |
+| TEST-19.2.4 | wiring 端到端非空命中 + provenance ≥1 + 空 query 空返 | `core/src/retriever/mod.rs` mod tests（`#[cfg(feature = "vector-hnsw")]`） | Done |
+| TEST-19.2.5 | 默认 + vector-hnsw feature build test 0 failed | 全 workspace + `cargo test -p contextforge-core --features vector-hnsw` | Done |
 
 ## 8. Risks
 
@@ -133,9 +133,9 @@ bash scripts/spec_drift_lint.sh --touched master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **完成日期**：（实现后填）
-- **改动文件**：`core/src/retriever/mod.rs`（`with_embedder` + `search_semantic` + index wiring + mod tests）、`core/Cargo.toml`（如需 dev-dep 调整；默认 feature 维持 `default = []`）、`core/src/embedding/mod.rs`（如需补 `pub use` 导出，承 task-19.1）、`docs/s2v-adapter.md`（19.2 行 Pending → Done）（实现后据实补全）
-- **commit 列表**：（实现后填）见本 task PR（分支 `feat/task-19.2-default-backend-wiring`）；合入后以 merge commit 为准
-- **§9 Verification 结果**：（实现后填）默认 `cargo test --workspace` / `cargo test -p contextforge-core --features vector-hnsw` / `go test ./...` / `bash scripts/spec_drift_lint.sh --touched master` 实测输出
-- **剩余风险 / 未做项**：（实现后填）proto/Go semantic 通路见 [SPEC-OWNER:task-19.3-semantic-search-api]；smoke v9 + eval CLI 见 [SPEC-OWNER:task-19.4-smoke-v9]；真实召回 + ADR-023 ratify 见 [SPEC-OWNER:task-19.5-real-recall-eval]；hybrid fusion [SPEC-DEFER:phase-future.hybrid-scoring]；hnsw 持久化 [SPEC-DEFER:phase-future.hnsw-graph-persistence]
-- **下游 task 影响**：（实现后填）task-19.3（wrap `search_semantic` 进 gRPC semantic 路径）/ task-19.5（接 real provider 跑真实 SemanticRecall@K）
+- **完成日期**：2026-05-30
+- **改动文件**：`core/src/retriever/mod.rs`（`embedder` 字段 + `with_embedder` + `index_chunks_semantic` + `search_semantic` + `assemble_vector_result` + `search()` 探针改用 query embedding + 2 mod tests）、`docs/s2v-adapter.md`（19.2 行 Done）。`core/Cargo.toml` 无需改动（`vector-hnsw` 既有 feature 复用，默认 `default = []` 不变，0 新 dep）；`core/src/embedding/mod.rs` 已由 task-19.1 导出，无需补。
+- **commit 列表**：见本 task PR（分支 `feat/task-19.2-default-backend-wiring`）；合入后以 merge commit 为准
+- **§9 Verification 结果**：默认 `cargo build -p contextforge-core` 5.91s（0 vector dep）；默认 `cargo test -p contextforge-core --lib` 146 passed 0 failed（含 TEST-19.2.3 None fallback）；`cargo test -p contextforge-core --lib --features vector-hnsw` 147 passed 0 failed（TEST-19.2.2/4 hnsw + deterministic 缺省 provider index→search roundtrip：exact-text query 命中目标 chunk，`retrieval_method == "vector"` + provenance ≥1）；`go test ./...` 0 failed；D2 lint `--touched master` 0 命中。
+- **剩余风险 / 未做项**：proto/Go semantic 通路见 [SPEC-OWNER:task-19.3-semantic-search-api]；smoke v9 + eval CLI 见 [SPEC-OWNER:task-19.4-smoke-v9]；真实召回 + ADR-023 ratify 见 [SPEC-OWNER:task-19.5-real-recall-eval]；hybrid fusion [SPEC-DEFER:phase-future.hybrid-scoring]；hnsw 持久化 [SPEC-DEFER:phase-future.hnsw-graph-persistence]
+- **下游 task 影响**：task-19.3（wrap `search_semantic` 进 gRPC semantic 路径）/ task-19.5（接 real provider 跑真实 SemanticRecall@K）
