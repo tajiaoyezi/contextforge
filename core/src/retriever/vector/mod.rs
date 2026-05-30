@@ -11,6 +11,9 @@ pub mod noop;
 #[cfg(feature = "vector-hnsw")]
 pub mod hnsw;
 
+#[cfg(feature = "vector-sqlite")]
+pub mod sqlite_vec;
+
 #[cfg(test)]
 mod tests;
 
@@ -20,3 +23,6 @@ pub use noop::NoopVectorBackend;
 
 #[cfg(feature = "vector-hnsw")]
 pub use hnsw::HnswBackend;
+
+#[cfg(feature = "vector-sqlite")]
+pub use sqlite_vec::SqliteVecBackend;
