@@ -340,6 +340,7 @@ mod tests {
             retrieval_method: "bm25".into(),
             top_k: 5,
             config_snapshot: "{}".into(),
+            semantic: false,
         };
         assert_eq!(s.top_k, 5);
 
