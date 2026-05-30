@@ -139,6 +139,11 @@ func handleSearch(s RESTSearcher, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid JSON: " + err.Error()})
 		return
 	}
+	// task-19.3: `?semantic=true` requests the semantic path (OR-merged with the body field, so
+	// `/v1/search?semantic=true` works without a body flag).
+	if r.URL.Query().Get("semantic") == "true" {
+		req.Semantic = true
+	}
 	resp, err := s.Search(r.Context(), &req)
 	if err != nil {
 		writeJSON(w, GRPCStatusToHTTP(err), map[string]any{"error": err.Error()})

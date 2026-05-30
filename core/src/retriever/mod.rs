@@ -559,6 +559,20 @@ impl Retriever {
         Ok(out)
     }
 
+    /// task-19.3: enumerate `(chunk_id, content)` for every chunk in this collection — used to
+    /// build an in-memory vector index on demand for the semantic path (no vector persistence yet).
+    pub fn enumerate_chunks(&self) -> Result<Vec<(String, String)>, RetrieverError> {
+        let mut stmt = self
+            .sqlite
+            .prepare("SELECT chunk_id, content FROM chunks")?;
+        let iter = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut out = Vec::new();
+        for row in iter {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     pub fn config(&self) -> &RetrieverConfig {
         &self.config
     }

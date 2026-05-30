@@ -1,6 +1,6 @@
 # Task `19.3`: `semantic-search-api — proto SearchRequest add-only semantic flag + RetrievalResult vector_score/embedding_provider provenance + Rust CoreService::search semantic dispatch + Go /v1/search?semantic=true → gRPC`
 
-**Status**: Pending
+**Status**: Done
 
 **Priority**: P0
 **Owner**: 主 agent（ADR-012 自治）
@@ -108,23 +108,23 @@ Rust `search_result_to_proto`（`core/src/server.rs`）追加两字段映射；G
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: proto add-only — `SearchRequest.semantic`（tag 7）+ `RetrievalResult.vector_score`（tag 13）+ `RetrievalResult.embedding_provider`（tag 14）落地，FREEZE RULE 合规（既有 tag 1-12 未删除/未重编号），Rust（`cargo build`）+ Go（`buf generate`）绑定重生成成功 — verified by **TEST-19.3.1**（`proto_contract.rs` superset 含新字段 + freeze 守护 PASS + `buf generate` 后 `.pb.go` 含 `Semantic`/`VectorScore`/`EmbeddingProvider`）
-- [ ] **AC2**: Rust gRPC semantic roundtrip — `CoreService::search` with `semantic=true` 经 fixture index 经默认 vector searcher 返回结果，`vector_score`/`embedding_provider` 字段在响应中存在；`semantic=false` 保持既有 BM25 路径不变 — verified by **TEST-19.3.2**（semantic=true roundtrip + semantic=false BM25 守护）
-- [ ] **AC3**: Go param parse — `handleSearch` 读 `?semantic=true` → 透传 gRPC `req.Semantic == true`；无 param → `false`（向后兼容） — verified by **TEST-19.3.3**（fake RESTSearcher 捕获 Semantic flag）
-- [ ] **AC4**: contract conformance 不破坏 — 22-endpoint conformance（`test/conformance/console_contractv1_test.go` 在 `CONSOLE_REPO` set 时）+ `proto_contract.rs` TEST-1.1.3/1.1.5 全 PASS，add-only 未破坏既有契约 — verified by **TEST-19.3.4**（`go test ./test/conformance/...` + `cargo test -p contextforge-core --test proto_contract` 0 failed）
-- [ ] **AC5**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS + `go test ./...` 全 PASS（add-only proto 字段不影响既有 BM25 检索 / REST / CLI 路径） — verified by **TEST-19.3.5**（workspace + go 全测 0 failed）+ §10 实测
-- [ ] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched master` PR 触及行 0 未标注命中 — verified by **TEST-19.3.6**（§10 记录的 D2 lint 实跑输出）
+- [x] **AC1**: proto add-only — `SearchRequest.semantic`（tag 7）+ `RetrievalResult.vector_score`（tag 13）+ `RetrievalResult.embedding_provider`（tag 14）落地，FREEZE RULE 合规（既有 tag 1-12 未删除/未重编号），Rust（`cargo build`）+ Go（`buf generate`）绑定重生成成功 — verified by **TEST-19.3.1**（`proto_contract.rs` superset 含新字段 + freeze 守护 PASS + `buf generate` 后 `.pb.go` 含 `Semantic`/`VectorScore`/`EmbeddingProvider`）
+- [x] **AC2**: Rust gRPC semantic roundtrip — `CoreService::search` with `semantic=true` 经 fixture index 经默认 vector searcher 返回结果，`vector_score`/`embedding_provider` 字段在响应中存在；`semantic=false` 保持既有 BM25 路径不变 — verified by **TEST-19.3.2**（semantic=true roundtrip + semantic=false BM25 守护）
+- [x] **AC3**: Go param parse — `handleSearch` 读 `?semantic=true` → 透传 gRPC `req.Semantic == true`；无 param → `false`（向后兼容） — verified by **TEST-19.3.3**（fake RESTSearcher 捕获 Semantic flag）
+- [x] **AC4**: contract conformance 不破坏 — 22-endpoint conformance（`test/conformance/console_contractv1_test.go` 在 `CONSOLE_REPO` set 时）+ `proto_contract.rs` TEST-1.1.3/1.1.5 全 PASS，add-only 未破坏既有契约 — verified by **TEST-19.3.4**（`go test ./test/conformance/...` + `cargo test -p contextforge-core --test proto_contract` 0 failed）
+- [x] **AC5**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS + `go test ./...` 全 PASS（add-only proto 字段不影响既有 BM25 检索 / REST / CLI 路径） — verified by **TEST-19.3.5**（workspace + go 全测 0 failed）+ §10 实测
+- [x] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched master` PR 触及行 0 未标注命中 — verified by **TEST-19.3.6**（§10 记录的 D2 lint 实跑输出）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-19.3.1 | proto add-only 字段集 + freeze 守护 + Go/Rust 绑定重生成 | `core/tests/proto_contract.rs` + `proto/contextforge/v1/search.pb.go` | Pending |
-| TEST-19.3.2 | Rust gRPC semantic=true roundtrip + semantic=false BM25 守护 | `core/src/server.rs`（`mod tests`） | Pending |
-| TEST-19.3.3 | Go `?semantic=true` param parse → gRPC Semantic flag | `internal/daemon/rest_test.go` | Pending |
-| TEST-19.3.4 | 22-endpoint conformance + proto contract 不破坏 | `test/conformance/console_contractv1_test.go` + `core/tests/proto_contract.rs` | Pending |
-| TEST-19.3.5 | 默认 cargo test --workspace + go test ./... 0 failed | 全 workspace + 全 Go module | Pending |
-| TEST-19.3.6 | D2 lint --touched master 0 未标注命中 | `scripts/spec_drift_lint.sh` | Pending |
+| TEST-19.3.1 | proto add-only 字段集 + freeze 守护 + Go/Rust 绑定重生成 | `core/tests/proto_contract.rs` + `proto/contextforge/v1/search.pb.go` | Done |
+| TEST-19.3.2 | Rust gRPC semantic=true roundtrip + semantic=false BM25 守护 | `core/src/server.rs`（`mod tests`） | Done |
+| TEST-19.3.3 | Go `?semantic=true` param parse → gRPC Semantic flag | `internal/daemon/rest_test.go` | Done |
+| TEST-19.3.4 | 22-endpoint conformance + proto contract 不破坏 | `test/conformance/console_contractv1_test.go` + `core/tests/proto_contract.rs` | Done |
+| TEST-19.3.5 | 默认 cargo test --workspace + go test ./... 0 failed | 全 workspace + 全 Go module | Done |
+| TEST-19.3.6 | D2 lint --touched master 0 未标注命中 | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -166,9 +166,9 @@ bash scripts/spec_drift_lint.sh --touched master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **完成日期**：（实现后填）
-- **改动文件**：`proto/contextforge/v1/search.proto`（add-only semantic + vector_score + embedding_provider）、`proto/contextforge/v1/search.pb.go`（buf 重生成）、`core/src/server.rs`（semantic 分派 + `search_result_to_proto` 两字段映射 + `mod tests`）、`internal/daemon/rest.go`（`handleSearch` query param）、`internal/daemon/rest_test.go`（param parse test）、`core/tests/proto_contract.rs`（superset want 追加）—（实现后据实际 diff 补全）
-- **commit 列表**：（实现后填）见本 task PR（分支 `feat/task-19.3-semantic-search-api`）；合入后以 merge commit 为准
-- **§9 Verification 结果**：（实现后填）见 PR 描述（`cargo test --workspace` / `go test ./...` / proto_contract / conformance / D2 lint 实测输出）
+- **完成日期**：2026-05-30
+- **改动文件**：`proto/contextforge/v1/search.proto`（add-only semantic=7 + vector_score=13 + embedding_provider=14，字段 comment 置于 message-level 以兼容 contract.rs 解析器）、`proto/contextforge/v1/{search.pb.go,search_grpc.pb.go}`（buf generate 重生成）、`core/src/server.rs`（`CoreService::search` semantic 分派：DeterministicEmbeddingProvider + BruteForceVectorBackend 按需建索 + `search_result_to_proto` 两字段 + import + `mod tests` TEST-19.3）、`core/src/retriever/vector/{brute_force.rs（新增 0-dep 默认可用 exact-cosine backend）,mod.rs（export）}`、`core/src/retriever/mod.rs`（`enumerate_chunks` helper）、`internal/daemon/rest.go`（`handleSearch` `?semantic=true`）、`internal/daemon/rest_test.go`（`capturingSearcher` + param parse test）、`core/tests/proto_contract.rs`（superset want 追加 3 字段）、5 处既有 `SearchRequest` 测试 literal 补 `semantic: false`、`docs/s2v-adapter.md`（19.3 行 Done）
+- **commit 列表**：见本 task PR（分支 `feat/task-19.3-semantic-search-api`）；合入后以 merge commit 为准
+- **§9 Verification 结果**：`buf generate` exit 0（`.pb.go` 含 Semantic/VectorScore/EmbeddingProvider）；`cargo test -p contextforge-core --test proto_contract` 5 passed（superset 含新字段 + freeze 守护）；默认 `cargo test --workspace` 全 PASS（含 server::tests::test_19_3_semantic_dispatches_vector_path：semantic=true → retrieval_method "vector" + embedding_provider + vector_score）；`go test ./...` 全 PASS（含 TestTask193 param parse + test/conformance 22-endpoint add-only 不破坏）；D2 lint `--touched master` 0 命中。**注**：契约 add-only 解析器（contract.rs message_fields）不耐字段行内 comment，新字段 comment 已上移到 message doc
 - **剩余风险 / 未做项**：semantic 路径真实 SemanticRecall@K 见 [SPEC-OWNER:task-19.5-real-recall-eval]；smoke v9 step 29/30 + eval `--semantic` + CLI `--semantic` flag 见 [SPEC-OWNER:task-19.4-smoke-v9]；Console 数据面 semantic 暴露见 [SPEC-DEFER:phase-future.console-data-plane-semantic]；hybrid fusion 见 [SPEC-DEFER:phase-future.hybrid-scoring]
 - **下游 task 影响**：task-19.4（在本 task `/v1/search?semantic=true` 通路加 smoke v9 step 29 + eval `--semantic`）；task-19.5（在 semantic 路径跑真实召回）；task-19.6/19.7（评估 add-only 字段是否需通知 Console — cross-repo follow-up）

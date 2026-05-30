@@ -61,6 +61,46 @@ func emptySearchResponse() *contextforgev1.SearchResponse {
 	return &contextforgev1.SearchResponse{Results: nil}
 }
 
+// capturingSearcher — task-19.3: records the inbound gRPC SearchRequest so a test can assert how
+// the REST layer translated query params (e.g. ?semantic=true → req.Semantic).
+type capturingSearcher struct {
+	resp     *contextforgev1.SearchResponse
+	captured *contextforgev1.SearchRequest
+}
+
+func (c *capturingSearcher) Search(_ context.Context, req *contextforgev1.SearchRequest) (*contextforgev1.SearchResponse, error) {
+	c.captured = req
+	return c.resp, nil
+}
+
+// TEST-19.3 — POST /v1/search?semantic=true sets req.Semantic on the forwarded gRPC request;
+// absence of the param leaves it false.
+func TestTask193_SemanticQueryParamSetsFlag(t *testing.T) {
+	const token = "test-token-abc123"
+	do := func(url string) *contextforgev1.SearchRequest {
+		s := &capturingSearcher{resp: fakeSearchResponse("c1")}
+		server := httptest.NewServer(daemon.NewRESTHandler(s, token, t.TempDir()))
+		defer server.Close()
+		body := bytes.NewBufferString(`{"query":"foo","collections":["c1"]}`)
+		req, _ := http.NewRequest("POST", server.URL+url, body)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("http: %v", err)
+		}
+		resp.Body.Close()
+		return s.captured
+	}
+
+	if got := do("/v1/search?semantic=true"); got == nil || !got.GetSemantic() {
+		t.Fatalf("?semantic=true should set req.Semantic=true, got %+v", got)
+	}
+	if got := do("/v1/search"); got == nil || got.GetSemantic() {
+		t.Fatalf("no param → req.Semantic=false, got %+v", got)
+	}
+}
+
 // TEST-6.2.1 / SCEN-6.2.1 / AC1 — POST /v1/search 契约一致.
 func TestTask62_AC1_RESTSearchContract(t *testing.T) {
 	const token = "test-token-abc123"
