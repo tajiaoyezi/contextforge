@@ -335,7 +335,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 19.3 | proto SearchRequest.semantic=7 + RetrievalResult.vector_score=13/embedding_provider=14（add-only，buf 重生成）+ CoreService::search semantic 分派（DeterministicEmbeddingProvider + 新增 0-dep BruteForceVectorBackend 按需建索）+ Retriever.enumerate_chunks + Go handleSearch ?semantic=true + 3 测试 | docs/specs/tasks/task-19.3-semantic-search-api.md | Done | Phase19 #3（contract add-only，22-endpoint conformance + proto freeze 守护 PASS；默认构建语义路径可用经 brute-force 0-dep searcher，ADR-023 D5 默认 BM25 行为不变）| master |
 | 19.4 | scripts/console_smoke.sh v9 30-step（step 29 /v1/search?semantic=true 合约保形 + step 30 eval --semantic 双路）+ internal/cli/eval.go --semantic CLI flag（evalSearchPass 双趟 + SummarizeHybrid + MeetsRecallGate gate 行）+ 3 Go 测试 | docs/specs/tasks/task-19.4-smoke-v9.md | Done | Phase19 #4（dep 19.3；接 task-18.8 SummarizeHybrid/MeetsRecallGate；ADR-013 step 30 仅断言双路成形不预判召回；console-api semantic 转发 follow-up 留 task-19.5）| master |
 | 19.5 | core/examples/phase19_real_recall.rs（feature-gated real fastembed 谐波）+ test/fixtures/eval/dogfood-embeddings.jsonl（40 行 dim-384 real 语料）+ docs/spikes/phase-19-real-recall.md（真实 SemanticRecall@5=0.83/@10=0.93 gate PASS + top1/MRR 区分度 + per-category）+ bench fixture 测试 | docs/specs/tasks/task-19.5-real-recall-eval.md | Done | Phase19 #5（real provider R1 未触发；balanced corpus 修正 artifact 后可区分真实召回；@10=0.9333≥0.70 喂 19.6 ratify；ADR-013 数据源诚实声明 real-run）| master |
-| 19.6 | ADR-023 Proposed→Accepted（据真实 recall）+ ADR-006 A1 gate 转正 + ADR-008 add-only + 记 Phase 18 AC3/AC4 解决（不溯改 Phase 18 spec） | docs/specs/tasks/task-19.6-adr-023-ratify.md | Pending | Phase19 #6（dep 19.5；ADR-013 禁据合成 ratify）| master |
+| 19.6 | ADR-023 Proposed→**Accepted**（据 task-19.5 真实 recall@10=0.9333≥0.70 exact-cosine）+ ADR-006 A1 Proposed/provisional→**Active**（A1.4 ratification 注）+ ADR-008 add-only embedding crate（fastembed feature-gated）+ 记 Phase 18 §6 AC3/AC4 在 Phase 19 解决（不溯改 Phase 18 spec，D5）| docs/specs/tasks/task-19.6-adr-023-ratify.md | Done | Phase19 #6（dep 19.5；全 add-only 不改既有 ADR 正文；据真实非合成数据 ratify，ADR-013 守线；实现默认 backend = 0-dep brute-force exact 经 D5）| master |
 | 19.7 | Phase 19 closeout + v0.12.0 release docs + tag（用户授权）+ backfill | docs/specs/tasks/task-19.7-closeout-v0.12.0.md | Pending | Phase19 #7（dep 19.1-19.6；v0.12.0 = 端到端语义检索）| master |
 
 ## ADR 索引
@@ -367,7 +367,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 020 | health-component-breakdown | Accepted | docs/decisions/adr-020-health-component-breakdown.md |
 | 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
 | 022 | memory-is-pinned-field-amendment | Accepted | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
-| 023 | vector-backend-default | Proposed | docs/decisions/adr-023-vector-backend-default.md |
+| 023 | vector-backend-default | Accepted | docs/decisions/adr-023-vector-backend-default.md |
 
 ## BDD Feature 索引
 

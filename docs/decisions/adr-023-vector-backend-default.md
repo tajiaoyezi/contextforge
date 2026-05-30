@@ -1,6 +1,6 @@
 # ADR `023`: `vector-backend-default`
 
-**Status**: Proposed (2026-05-30; data-driven recommendation from the Phase 18 spikes — **provisional pending task-18.8 real-embedding recall**; to be ratified at Phase 18 closeout)
+**Status**: Accepted (2026-05-30; ratified in Phase 19 task-19.6 on task-19.5 real-embedding recall — see the **Amendment / Ratification** section below. Originally Proposed/provisional pending real-embedding recall.)
 **Category**: 数据平面 / 向量检索 / backend 选型
 **Date**: 2026-05-30
 **Decided By**: 主 agent (ADR-012 自治) on the task-18.3–18.6 5-dimension evidence; tajiaoyezi ratification at closeout
@@ -100,3 +100,39 @@ embedding pipeline (not yet in the project) and is **out of scope** here
   `[SPEC-DEFER:phase-future.hnsw-graph-persistence]`; sqlite-vec Windows MSVC port
   `[SPEC-DEFER:phase-future.sqlite-vec-cross-platform]`; production embedding + retrieval wiring
   `[SPEC-OWNER:phase-future.vector-retrieval-integration]`.
+
+## Amendment / Ratification (2026-05-30, Phase 19 task-19.6)
+
+> Add-only ratification. The Context / Decision (D1–D6) / Consequences above are **unchanged**; this
+> section records the real-embedding recall that D6 deferred and flips the top **Status** to Accepted.
+
+**Ratification basis — task-19.5 real-embedding SemanticRecall@K** (`docs/spikes/phase-19-real-recall.md`):
+the real `FastEmbedProvider` (`all-MiniLM-L6-v2`, dim 384) was run over real ContextForge text (the 6
+golden-question expected files + 5 distractor files → a 40-chunk balanced corpus, 30 built-in golden
+queries) and indexed into an **exact-cosine** backend. Result: **SemanticRecall@5 = 0.8333,
+SemanticRecall@10 = 0.9333** (top-1 = 0.60, MRR = 0.70) — clearing the ADR-006 Amendment A1 gate
+(`SemanticRecall@10 ≥ 0.70`).
+
+| corpus | recall@5 | recall@10 | discriminating? |
+|---|---|---|---|
+| Phase 18 synthetic seed vectors | 1.0 | 1.0 | **no** — non-discriminating (the D6 blocker) |
+| Phase 19 real `all-MiniLM-L6-v2` (exact cosine) | 0.8333 | 0.9333 | **yes** — top-1 0.60, MRR 0.70, per-category 0.40–1.0 |
+
+The recall was measured on **exact cosine**, so it is representative of any exact backend — including the
+D1 provisional pick `sqlite-vec` — and is an upper bound for the ANN tiers (hnsw). It resolves the single
+open dimension (D6): recall is discriminating on real distributions and the gate passes (ADR-013: real
+`FastEmbedProvider` run, no synthetic / deterministic / fabricated figures).
+
+**Status: Proposed → Accepted.** The tiered D1–D5 strategy is ratified. Note on the *implemented*
+default: task-19.3 wired the semantic hot path with the **0-dependency `BruteForceVectorBackend`** (exact
+cosine) as the default-available searcher — honoring **D5** (no vector dependency in the default build) —
+with `sqlite-vec` (D1, embedded-persistence) / `hnsw` (D2, cross-platform) / `qdrant` (D3) / `lancedb`
+(D4) remaining the feature-gated tiers. The recall ratification applies to the exact-cosine class
+(brute-force + sqlite-vec alike); the D1–D4 tier ranking continues to rest on the Phase 18
+latency / RSS / cold-start evidence, which this recall result does not disturb.
+
+**Phase 18 §6 AC3 / AC4 resolved in Phase 19** (recorded here per ADR-014 D5 — the Phase 18 spec is
+**not** retro-edited): AC3 (ADR-023 ratify, was partial/Proposed) is resolved by this ratification; AC4
+(production vector-retrieval integration, was deferred) is resolved by task-19.2 (default backend wired
+into `Retriever`) + task-19.3 (`/v1/search?semantic=true` → core gRPC semantic path) + task-19.5 (real
+recall measured through that path).
