@@ -17,7 +17,9 @@ FEATURES="${4:-vector-hnsw,vector-sqlite}"
 
 mkdir -p docs/spikes
 
-# task-18.4-18.5 extend this list: ("noop" "sqlite-vec" "qdrant" "lancedb" "hnsw")
+# task-18.5 extends this list with "lancedb". "qdrant" (task-18.4) is intentionally omitted: it
+# needs a running Qdrant server (gRPC 6334) + the vector-qdrant feature, so run it on demand:
+#   cargo run --release -p contextforge-bench --features vector-qdrant -- --backend qdrant ...
 BACKENDS=("noop" "sqlite-vec" "hnsw")
 
 for b in "${BACKENDS[@]}"; do

@@ -19,3 +19,5 @@ default = []
 vector-hnsw = ["contextforge-core/vector-hnsw"]
 # task-18.3: enable the sqlite-vec backend (pulls contextforge-core's vector-sqlite → sqlite-vec).
 vector-sqlite = ["contextforge-core/vector-sqlite"]
+# task-18.4: enable the qdrant backend (pulls contextforge-core's vector-qdrant → qdrant-client).
+vector-qdrant = ["contextforge-core/vector-qdrant"]
