@@ -254,6 +254,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 19 | `vector-retrieval-integration` | `docs/specs/phases/phase-19-vector-retrieval-integration.md` | Done | 7 | master（v0.12.0：端到端语义检索 live + ADR-023 ratify Accepted。解 Phase 18 AC3/AC4 + [SPEC-OWNER:phase-future.vector-retrieval-integration] **已解除**；real recall @10=0.9333≥0.70（task-19.5），默认构建 0-dep deterministic+brute-force 语义路径，real fastembed provider feature-gated） |
 | 20 | `semantic-retrieval-throughline` | `docs/specs/phases/phase-20-semantic-retrieval-throughline.md` | Draft | 0 | master（v0.13.0 规划：贯通 console-api `?semantic=true` + 经 Retriever 真实召回；闭合 v0.12.0 evidence §3b 两条 caveat。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.1） |
 | 21 | `retrieval-quality` | `docs/specs/phases/phase-21-retrieval-quality.md` | Draft | 0 | master（v0.14.0 规划：hybrid scoring（BM25+向量分数融合）+ reranker（cross-encoder）；hybrid+确定性管道 CI 可验证，real cross-encoder 真实质量如实 defer。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.2） |
+| 22 | `embedding-provider-completion` | `docs/specs/phases/phase-22-embedding-provider-completion.md` | Draft | 0 | master（v0.15.0 规划：把 Phase 19 deterministic 缺省 + 单一 fastembed real provider 扩成完整 provider 层 — 配置选择 + dim 协商 + embedding 缓存 + 远程 OpenAI/Cohere 骨架 + health 远程探针。Stage 0 规划阶段，4 task Draft；远程真实联调/密钥/召回质量如实 defer（ADR-013）；见 `docs/roadmap.md` §3.3） |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -345,6 +346,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 21.1 | core/src/retriever/fusion.rs 融合函数（RRF/加权归一）+ Retriever::search_hybrid + SearchResult.hybrid_score（add-only）+ proto RetrievalResult.hybrid_score=15/SearchRequest.hybrid=8 + retrieval_method="hybrid" | docs/specs/tasks/task-21.1-hybrid-scoring.md | Draft | Phase21 #1（首项；dep 19.2 search()/search_semantic() 两路；确定性融合序 CI 可断言；策略选型据真实 eval ratify ADR-025）| master |
 | 21.2 | core/src/rerank/{mod,traits,identity,cross_encoder}.rs Reranker trait + 确定性 IdentityReranker（默认 0 模型依赖）+ CrossEncoderReranker（feature-gated）+ Retriever::with_reranker seam | docs/specs/tasks/task-21.2-reranker-pipeline.md | Draft | Phase21 #2（dep 19.1 EmbeddingProvider trait 范式；可与 21.1 并行（fusion.rs vs rerank/ 新模块）；real 模型质量 ADR-013 如实 defer，受阻 stop-condition）| master |
 | 21.3 | internal/eval Report 加 hybrid/reranked 列 + internal/cli/eval.go --rerank flag + scripts/console_smoke.sh hybrid/rerank 真实断言 + v0.14.0 release docs + ADR-025/026 ratify + phase-21 §6 闭合 + adapter | docs/specs/tasks/task-21.3-closeout-v0.14.0.md | Draft | Phase21 #3（dep 21.1+21.2；tag push 经用户授权；承 task-19.7/20.3 closeout 模式）| master |
+| 22.1 | internal/config `[embedding]`（provider/dim，add-only TOML 段仿 `[remote]`）+ core/src/embedding/factory.rs `select_provider`（deterministic/fastembed/remote 工厂选择 + dim 协商 `DimMismatch`）+ core/src/server.rs 语义路径改用工厂（缺省确定性 identity 实现行为不变）| docs/specs/tasks/task-22.1-provider-config-selection.md | Draft | Phase22 #1（首项；提供 provider 选择 seam 解锁 22.2/22.3；0 网络 dep；缺省向后兼容承 ADR-027 D1/D2）| master |
+| 22.2 | core/src/embedding/cache.rs `CachingEmbeddingProvider`（content-hash Sha256(text)→embedding 缓存装饰器；内存缺省 + 可选 SQLite 持久化承 ADR-002）+ 确定性命中/失效单测（计数 wrapper 断言底层跳过）| docs/specs/tasks/task-22.2-embedding-cache.md | Draft | Phase22 #2（dep 22.1 工厂；可与 22.3 并行 cache.rs vs remote_provider.rs 写路径不相交；sha2/rusqlite/base64 已 direct dep 0 新 dep）| master |
+| 22.3 | core/src/embedding/remote_provider.rs `RemoteEmbeddingProvider`（OpenAI/Cohere HTTP，embedding-remote feature-gated，rustls 承 fastembed 口径）+ build_request_body/parse_response 纯函数 + 契约级确定性测试（请求构造/响应解析/错误路径，不打真实网络）+ Cargo.toml embedding-remote feature | docs/specs/tasks/task-22.3-remote-provider-skeleton.md | Draft | Phase22 #3（dep 22.1 工厂 remote 分支；可与 22.2 并行；默认构建 0 网络 dep 承 ADR-004/ADR-008 D5；真实联调+密钥 🔴 如实 defer，§8 R1 stop-condition，ADR-013）| master |
+| 22.4 | core/src/health.rs probe_embed 远程可达性探针（opt-in，config-only 缺省承 ADR-020 D1）+ scripts/console_smoke.sh v12（配置选择+缓存命中确定性断言）+ v0.15.0 release docs + ADR-027 ratify + phase-22 §6 闭合 + adapter | docs/specs/tasks/task-22.4-closeout-v0.15.0.md | Draft | Phase22 #4（dep 22.1+22.2+22.3 全 Done；承 task-19.7 closeout 模式；tag push 经用户授权；远程探针真实命中 [SPEC-DEFER:phase-future.embed-remote-probe] 如实 defer）| master |
 
 ## ADR 索引
 
@@ -379,6 +384,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 024 | console-api-semantic-forward | Proposed | docs/decisions/adr-024-console-api-semantic-forward.md |
 | 025 | hybrid-scoring-fusion | Proposed | docs/decisions/adr-025-hybrid-scoring-fusion.md |
 | 026 | reranker-provider | Proposed | docs/decisions/adr-026-reranker-provider.md |
+| 027 | embedding-provider-abstraction | Proposed | docs/decisions/adr-027-embedding-provider-abstraction.md |
 
 ## BDD Feature 索引
 
@@ -413,6 +419,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 19.1 / 19.2 / 19.3 / 19.5 | test/features/phase-19-vector-retrieval-integration.feature |
 | 20.1 / 20.2 / 20.3 | test/features/phase-20-semantic-retrieval-throughline.feature |
 | 21.1 / 21.2 / 21.3 | test/features/phase-21-retrieval-quality.feature |
+| 22.1 / 22.2 / 22.3 / 22.4 | test/features/phase-22-embedding-provider-completion.feature |
 
 ---
 
