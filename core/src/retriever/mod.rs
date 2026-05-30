@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rusqlite::{params, Connection};
 use tantivy::collector::TopDocs;
@@ -23,6 +24,10 @@ use tantivy::{Index, IndexReader, TantivyDocument};
 use thiserror::Error;
 
 use crate::chunker::Provenance;
+
+// ---- task-18.1: vector retrieval trait re-exports ----
+pub mod vector;
+pub use vector::{VectorBackend, VectorSearcher, NoopVectorBackend};
 
 // ---- task-4.2 §2A v0.1 schema-gap default 常量（task-2.4 indexer 未存 → 合成兜底）----
 const DEFAULT_CONTEXT_ID: &str = "";
@@ -44,6 +49,8 @@ pub struct Retriever {
     f_line_start: Field,
     f_line_end: Field,
     config: RetrieverConfig,
+    // task-18.1: optional vector backend (default None; Some wired by task-18.7)
+    vector_searcher: Option<Arc<dyn VectorSearcher>>,
 }
 
 #[derive(Error, Debug)]
@@ -261,6 +268,7 @@ impl Retriever {
             f_line_start,
             f_line_end,
             config,
+            vector_searcher: None, // task-18.1: default None (BM25-only)
         })
     }
 
@@ -427,6 +435,17 @@ impl Retriever {
             });
         }
 
+        // task-18.1: placeholder vector search call.
+        // If a vector_searcher is wired in, invoke it with a zero vector (embedding
+        // generation is task-18.2). Results are logged but not yet merged into
+        // the BM25 result set — full hybrid fusion is task-18.7.
+        if let Some(searcher) = &self.vector_searcher {
+            let _vector_hits = searcher
+                .search(&[], opts.top_k, None)
+                .unwrap_or_default();
+            // TODO task-18.7: merge _vector_hits with BM25 results (hybrid fusion)
+        }
+
         Ok(results)
     }
 
@@ -530,6 +549,12 @@ impl Retriever {
 
     pub fn config(&self) -> &RetrieverConfig {
         &self.config
+    }
+
+    /// task-18.1: builder method to wire in a vector backend.
+    pub fn with_vector_searcher(mut self, searcher: Arc<dyn VectorSearcher>) -> Self {
+        self.vector_searcher = Some(searcher);
+        self
     }
 
     /// task-15.3 (Phase 15 P1 #3): live-doc count from the Tantivy reader.
@@ -1203,5 +1228,31 @@ mod tests {
             got.is_none(),
             "AC2-E miss: get_chunk 未命中应返 Ok(None), got Some"
         );
+    }
+
+    // ---- task-18.1 retriever-level tests (TEST-18.1.6/7) ----
+
+    #[test]
+    fn test_retriever_vector_searcher_default_none() {
+        // Retriever constructed without with_vector_searcher → vector_searcher is None
+        let (_src, data, coll) = build_fixture("vec_default_none", &[("a.txt", "hello vector world")]);
+        let retr = Retriever::open(&data, &coll).expect("open");
+        assert!(retr.vector_searcher.is_none(), "default vector_searcher should be None");
+        // BM25 search still works normally
+        let results = retr.search(&SearchOptions { query: "vector".into(), top_k: 5, filters: SearchFilters::default(), explain: false }).expect("search");
+        assert!(!results.is_empty(), "BM25 should still return results without vector_searcher");
+    }
+
+    #[test]
+    fn test_retriever_with_noop_vector_searcher() {
+        // Retriever built with NoopVectorBackend wired in → vector_searcher is Some
+        let (_src, data, coll) = build_fixture("vec_with_noop", &[("b.txt", "semantic search test")]);
+        let retr = Retriever::open(&data, &coll)
+            .expect("open")
+            .with_vector_searcher(Arc::new(NoopVectorBackend));
+        assert!(retr.vector_searcher.is_some(), "with_vector_searcher should set Some");
+        // Search still returns BM25 results (noop vector returns empty, not merged yet)
+        let results = retr.search(&SearchOptions { query: "semantic".into(), top_k: 5, filters: SearchFilters::default(), explain: false }).expect("search");
+        assert!(!results.is_empty(), "BM25 results should still be returned with NoopVectorBackend");
     }
 }
