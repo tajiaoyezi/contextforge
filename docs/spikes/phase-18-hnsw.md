@@ -23,6 +23,25 @@ Cross-check — `noop` baseline, same params (n=5000/dim=64): recall@5/10 = 0.0,
 Debug run (n=2000/dim=64... dim=32) also gave recall@5/10 = 1.0 (recall is build-mode-independent),
 P95 0.79ms, cold-start ~2.2s (debug graph build).
 
+## Linux x86_64 re-run (task-18.7 — fills the RSS dims + the 100k scale point)
+
+The original table above was measured on the Windows dev box, where RSS sampling is unavailable. Re-run
+on Linux (WSL2 Ubuntu 26.04, release) fills the RSS dimensions and adds the n=100000 PRD-scale point:
+
+| dimension | n=5000 | n=100000 |
+|---|---|---|
+| recall@5 / recall@10 | 1.0 / 1.0 | 1.0 / 1.0 |
+| P95 latency (ms) | 0.382 | 0.871 |
+| idle RSS (MB) | 4.38 | 55.33 |
+| index RSS (MB) | 11.04 | **180.01** |
+| cold-start (ms) | 836.4 | **28432.4** |
+| reindex (ms) | 797.6 | 28984.0 |
+
+The 100k point exposes hnsw's defining cost: the HNSW **graph build is ~28 s at 100k** (O(n·log n) —
+up from 0.84 s at 5k) and the index footprint is **180 MB** (the heaviest in-process of the four
+backends). Query latency stays sub-ms (ANN). See `docs/spikes/phase-18-comparison.md` for the full
+4-backend comparison and `docs/decisions/adr-023-vector-backend-default.md` for the selection.
+
 ## Environment
 
 - platform / arch: `x86_64-pc-windows-msvc`
