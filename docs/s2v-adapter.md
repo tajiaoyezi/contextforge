@@ -285,12 +285,12 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 8.1 | eval | docs/specs/tasks/task-8.1-eval-harness.md | Done | Phase8 #1 | `../ContextForge-wt-eval-and-reliability` |
 | 8.2 | reliability | docs/specs/tasks/task-8.2-reliability.md | Done | Phase8 #2 | `../ContextForge-wt-eval-and-reliability` |
 | 8.3 | release | docs/specs/tasks/task-8.3-release-smoke.md | Done | Phase8 #3（dep 8.1,8.2）| `../ContextForge-wt-eval-and-reliability` |
-| 9.1 | proto | docs/specs/tasks/task-9.1-proto-index-rpc.md | Draft | Phase9 #1 | `../ContextForge-wt-cli-pipeline` |
-| 9.2 | core/server | docs/specs/tasks/task-9.2-rust-grpc-index.md | Draft | Phase9 #2（dep 9.1）| `../ContextForge-wt-cli-pipeline` |
-| 9.3 | cli/index | docs/specs/tasks/task-9.3-go-cli-index.md | Draft | Phase9 #3（dep 9.2）| `../ContextForge-wt-cli-pipeline` |
-| 9.4 | cli/import | docs/specs/tasks/task-9.4-go-cli-import.md | Draft | Phase9 #4（dep 9.2，可 ∥ 9.3）| `../ContextForge-wt-cli-pipeline` |
-| 9.5 | release | docs/specs/tasks/task-9.5-release-smoke-real.md | Draft | Phase9 #5（dep 9.3,9.4）| `../ContextForge-wt-cli-pipeline` |
-| 9.6 | release/readme | docs/specs/tasks/task-9.6-readme-quickstart-verified.md | Draft | Phase9 #6（dep 9.5，收口）| `../ContextForge-wt-cli-pipeline` |
+| 9.1 | proto | docs/specs/tasks/task-9.1-proto-index-rpc.md | Done | Phase9 #1 | `../ContextForge-wt-cli-pipeline` |
+| 9.2 | core/server | docs/specs/tasks/task-9.2-rust-grpc-index.md | Done | Phase9 #2（dep 9.1）| `../ContextForge-wt-cli-pipeline` |
+| 9.3 | cli/index | docs/specs/tasks/task-9.3-go-cli-index.md | Done | Phase9 #3（dep 9.2）| `../ContextForge-wt-cli-pipeline` |
+| 9.4 | cli/import | docs/specs/tasks/task-9.4-go-cli-import.md | Done | Phase9 #4（dep 9.2，可 ∥ 9.3）| `../ContextForge-wt-cli-pipeline` |
+| 9.5 | release | docs/specs/tasks/task-9.5-release-smoke-real.md | Done | Phase9 #5（dep 9.3,9.4）| `../ContextForge-wt-cli-pipeline` |
+| 9.6 | release/readme | docs/specs/tasks/task-9.6-readme-quickstart-verified.md | Done | Phase9 #6（dep 9.5，收口）| `../ContextForge-wt-cli-pipeline` |
 | 10.1 | contractv1 | docs/specs/tasks/task-10.1-contractv1-types.md | Done | Phase10 #1 | `../ContextForge-wt-console-contract-v1` |
 | 10.2 | core/workspace | docs/specs/tasks/task-10.2-workspace-resource.md | Done | Phase10 #2（dep 10.1）| `../ContextForge-wt-console-contract-v1` |
 | 10.3 | core/jobs | docs/specs/tasks/task-10.3-indexjob-resource.md | Done | Phase10 #3（dep 10.2，可 ∥ 10.2 部分阶段）| `../ContextForge-wt-console-contract-v1` |
