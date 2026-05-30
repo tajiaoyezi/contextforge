@@ -8,9 +8,15 @@ pub mod traits;
 pub mod types;
 pub mod noop;
 
+#[cfg(feature = "vector-hnsw")]
+pub mod hnsw;
+
 #[cfg(test)]
 mod tests;
 
 pub use traits::{VectorBackend, VectorIndexer, VectorSearcher};
 pub use types::{ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorMetric, VectorScore};
 pub use noop::NoopVectorBackend;
+
+#[cfg(feature = "vector-hnsw")]
+pub use hnsw::HnswBackend;

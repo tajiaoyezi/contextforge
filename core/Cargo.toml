@@ -72,6 +72,9 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 # Cargo.lock — 按 task-1.3 §2A R7 lift pattern（无新供应链表面）显式化为 direct
 # dep，让 SqliteTracePersist 以 base64-encoded prost bytes 形式存 trace_json TEXT 列。
 base64 = "0.22"
+# task-18.6 spike: instant-distance — pure-Rust HNSW approximate nearest-neighbour, gated behind
+# the vector-hnsw feature. Optional — default build unaffected (0 new dep at default features).
+instant-distance = { version = "0.6", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -85,7 +88,7 @@ vector-spike = []
 vector-sqlite = []
 vector-qdrant = []
 vector-lancedb = []
-vector-hnsw = []
+vector-hnsw = ["dep:instant-distance"]
 
 [build-dependencies]
 tonic-build = "0.12"

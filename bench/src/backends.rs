@@ -17,12 +17,26 @@ pub fn run_named(
 ) -> Result<Option<MeasureReport>, VectorError> {
     match name {
         "noop" => Ok(Some(run(&NoopVectorBackend, corpus, queries, dim)?)),
-        // task-18.3-18.6 add: "sqlite-vec" | "qdrant" | "lancedb" | "hnsw" (cfg-gated).
+        #[cfg(feature = "vector-hnsw")]
+        "hnsw" => Ok(Some(run(
+            &contextforge_core::retriever::vector::HnswBackend::new(),
+            corpus,
+            queries,
+            dim,
+        )?)),
+        // task-18.3-18.5 add: "sqlite-vec" | "qdrant" | "lancedb" (cfg-gated).
         _ => Ok(None),
     }
 }
 
 /// Backend names this harness can currently run.
 pub fn known_backends() -> &'static [&'static str] {
-    &["noop"]
+    #[cfg(feature = "vector-hnsw")]
+    {
+        &["noop", "hnsw"]
+    }
+    #[cfg(not(feature = "vector-hnsw"))]
+    {
+        &["noop"]
+    }
 }
