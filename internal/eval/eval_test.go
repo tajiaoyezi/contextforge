@@ -129,6 +129,83 @@ func TestTask81_AC5_JSONLRoundTrip(t *testing.T) {
 	}
 }
 
+// TEST-18.8.1 / AC1: SemanticRecall@K counts strong hits within the top K only.
+func TestTask188_AC1_SemanticRecallAtK(t *testing.T) {
+	results := []Result{
+		{Outcome: OutcomeStrong, MatchedRank: 1},  // strong @1  → counts for @5 and @10
+		{Outcome: OutcomeStrong, MatchedRank: 5},  // strong @5  → counts for @5 and @10
+		{Outcome: OutcomeStrong, MatchedRank: 8},  // strong @8  → counts for @10 only
+		{Outcome: OutcomeWeak, MatchedRank: 2},    // weak       → never counts toward recall
+		{Outcome: OutcomeMiss, MatchedRank: -1},   // miss
+	}
+	if got, want := SemanticRecallAtK(results, 5), 2.0/5.0; got != want {
+		t.Fatalf("SemanticRecall@5 = %v, want %v", got, want)
+	}
+	if got, want := SemanticRecallAtK(results, 10), 3.0/5.0; got != want {
+		t.Fatalf("SemanticRecall@10 = %v, want %v", got, want)
+	}
+	if got := SemanticRecallAtK(nil, 10); got != 0 {
+		t.Fatalf("SemanticRecall@10 of empty = %v, want 0", got)
+	}
+}
+
+// TEST-18.8.2 / AC2: SummarizeHybrid fills BOTH the BM25 and the semantic (vector-path) fields.
+func TestTask188_AC2_SummarizeHybridBothPaths(t *testing.T) {
+	bm25 := []Result{
+		{Outcome: OutcomeStrong, StrongTop5: true, StrongTop10: true, MatchedRank: 1, Latency: 5 * time.Millisecond},
+		{Outcome: OutcomeWeak, MatchedRank: 3, Latency: 7 * time.Millisecond},
+	}
+	semantic := []Result{
+		{Outcome: OutcomeStrong, MatchedRank: 2},
+		{Outcome: OutcomeStrong, MatchedRank: 9},
+	}
+	report := SummarizeHybrid(bm25, semantic)
+	if report.Total != 2 || report.Top5StrongHits != 1 || report.WeakHits != 1 {
+		t.Fatalf("bm25 fields wrong: %+v", report)
+	}
+	if !report.SemanticEvaluated {
+		t.Fatalf("SemanticEvaluated should be true when semantic results supplied")
+	}
+	if report.SemanticStrongHits5 != 1 || report.SemanticStrongHits10 != 2 {
+		t.Fatalf("semantic strong hits wrong: top5=%d top10=%d", report.SemanticStrongHits5, report.SemanticStrongHits10)
+	}
+	if report.SemanticRecallAt5 != 1.0/2.0 || report.SemanticRecallAt10 != 2.0/2.0 {
+		t.Fatalf("semantic recall wrong: @5=%v @10=%v", report.SemanticRecallAt5, report.SemanticRecallAt10)
+	}
+}
+
+// TEST-18.8.3 / AC3: with no vector results SummarizeHybrid is BM25-only (SemanticEvaluated false),
+// and the gate does not require the semantic threshold — the production fallback until a vector
+// backend + embedding provider are wired in.
+func TestTask188_AC3_EmptySemanticBM25Only(t *testing.T) {
+	bm25 := []Result{{Outcome: OutcomeStrong, StrongTop5: true, StrongTop10: true, MatchedRank: 1}}
+	report := SummarizeHybrid(bm25, nil)
+	if report.SemanticEvaluated {
+		t.Fatalf("SemanticEvaluated should be false with no semantic results")
+	}
+	if report.SemanticRecallAt10 != 0 {
+		t.Fatalf("semantic recall should be 0 in BM25-only, got %v", report.SemanticRecallAt10)
+	}
+	pass, failures := MeetsRecallGate(Report{Top5StrongRate: 0.8, Top10StrongRate: 0.9, SemanticEvaluated: false})
+	if !pass {
+		t.Fatalf("BM25-only gate should pass at 0.8/0.9: %v", failures)
+	}
+}
+
+// TEST-18.8.4 / AC4: the recall gate enforces the BM25 thresholds always and SemanticRecall@10 only
+// when the semantic path was evaluated.
+func TestTask188_AC4_RecallGate(t *testing.T) {
+	if pass, failures := MeetsRecallGate(Report{Top5StrongRate: 0.8, Top10StrongRate: 0.9, SemanticEvaluated: true, SemanticRecallAt10: 0.75}); !pass {
+		t.Fatalf("gate should pass at bm25 0.8/0.9 + semantic 0.75: %v", failures)
+	}
+	if pass, failures := MeetsRecallGate(Report{Top5StrongRate: 0.8, Top10StrongRate: 0.9, SemanticEvaluated: true, SemanticRecallAt10: 0.5}); pass || len(failures) != 1 {
+		t.Fatalf("gate should fail only on semantic recall: pass=%v failures=%v", pass, failures)
+	}
+	if pass, _ := MeetsRecallGate(Report{Top5StrongRate: 0.5, Top10StrongRate: 0.6, SemanticEvaluated: false}); pass {
+		t.Fatalf("gate should fail on bm25 thresholds below 0.75/0.85")
+	}
+}
+
 func result(chunkID, filePath string, lineStart, lineEnd int64) *contextforgev1.RetrievalResult {
 	return &contextforgev1.RetrievalResult{
 		ChunkId:   chunkID,
