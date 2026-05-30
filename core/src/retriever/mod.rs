@@ -24,10 +24,15 @@ use tantivy::{Index, IndexReader, TantivyDocument};
 use thiserror::Error;
 
 use crate::chunker::Provenance;
+// task-19.1 / task-19.2: embedding provider for semantic retrieval wiring.
+use crate::embedding::EmbeddingProvider;
 
 // ---- task-18.1: vector retrieval trait re-exports ----
 pub mod vector;
 pub use vector::{VectorBackend, VectorSearcher, NoopVectorBackend};
+// task-19.2: internal imports for the semantic index/search wiring.
+use vector::VectorIndexer;
+use vector::types::{ChunkId, VectorChunk, VectorIndexConfig, VectorMetric};
 
 // ---- task-4.2 §2A v0.1 schema-gap default 常量（task-2.4 indexer 未存 → 合成兜底）----
 const DEFAULT_CONTEXT_ID: &str = "";
@@ -51,6 +56,9 @@ pub struct Retriever {
     config: RetrieverConfig,
     // task-18.1: optional vector backend (default None; Some wired by task-18.7)
     vector_searcher: Option<Arc<dyn VectorSearcher>>,
+    // task-19.2: optional embedding provider (default None; pairs with vector_searcher for the
+    // semantic path). Both None → BM25-only hot path unchanged.
+    embedder: Option<Arc<dyn EmbeddingProvider>>,
 }
 
 #[derive(Error, Debug)]
@@ -269,6 +277,7 @@ impl Retriever {
             f_line_end,
             config,
             vector_searcher: None, // task-18.1: default None (BM25-only)
+            embedder: None,        // task-19.2: default None (BM25-only)
         })
     }
 
@@ -435,15 +444,18 @@ impl Retriever {
             });
         }
 
-        // task-18.1: placeholder vector search call.
-        // If a vector_searcher is wired in, invoke it with a zero vector (embedding
-        // generation is task-18.2). Results are logged but not yet merged into
-        // the BM25 result set — full hybrid fusion is task-18.7.
-        if let Some(searcher) = &self.vector_searcher {
-            let _vector_hits = searcher
-                .search(&[], opts.top_k, None)
-                .unwrap_or_default();
-            // TODO task-18.7: merge _vector_hits with BM25 results (hybrid fusion)
+        // task-18.1 / task-19.2: probe the vector path. With both an embedder and a backend wired,
+        // use the real query embedding; otherwise keep the task-18.1 None-safe zero-vector probe.
+        // Results are NOT merged into the BM25 set — `retrieval_method` stays "bm25" here; semantic
+        // results go via `search_semantic`, and hybrid fusion is [SPEC-DEFER:phase-future.hybrid-scoring].
+        if let (Some(embedder), Some(searcher)) = (&self.embedder, &self.vector_searcher) {
+            if let Ok(vecs) = embedder.embed(&[opts.query.clone()]) {
+                if let Some(qv) = vecs.into_iter().next() {
+                    let _vector_hits = searcher.search(&qv, opts.top_k, None).unwrap_or_default();
+                }
+            }
+        } else if let Some(searcher) = &self.vector_searcher {
+            let _vector_hits = searcher.search(&[], opts.top_k, None).unwrap_or_default();
         }
 
         Ok(results)
@@ -555,6 +567,150 @@ impl Retriever {
     pub fn with_vector_searcher(mut self, searcher: Arc<dyn VectorSearcher>) -> Self {
         self.vector_searcher = Some(searcher);
         self
+    }
+
+    /// task-19.2: builder method to wire in an embedding provider (pairs with `with_vector_searcher`).
+    pub fn with_embedder(mut self, embedder: Arc<dyn EmbeddingProvider>) -> Self {
+        self.embedder = Some(embedder);
+        self
+    }
+
+    /// task-19.2: embed a batch of `(chunk_id, text)` and build the vector index via `indexer`
+    /// (full-reindex semantics, task-18.1). A no-op `Ok(())` when no embedder is wired — the
+    /// BM25-only path indexes nothing on the vector side. The caller passes the concrete backend so
+    /// the built index lives in the same instance it injects as `Arc<dyn VectorSearcher>` for
+    /// `search_semantic` (`Arc<dyn VectorSearcher>` alone cannot index — write path is `VectorIndexer`).
+    pub fn index_chunks_semantic(
+        &self,
+        indexer: &dyn VectorIndexer,
+        items: &[(String, String)],
+    ) -> Result<(), RetrieverError> {
+        let embedder = match &self.embedder {
+            Some(e) => e,
+            None => return Ok(()),
+        };
+        if items.is_empty() {
+            return Ok(());
+        }
+        let texts: Vec<String> = items.iter().map(|(_, t)| t.clone()).collect();
+        let vectors = embedder
+            .embed(&texts)
+            .map_err(|e| RetrieverError::InvalidConfig(format!("embedding: {e}")))?;
+        let chunks: Vec<VectorChunk> = items
+            .iter()
+            .zip(vectors)
+            .map(|((id, _), embedding)| VectorChunk {
+                chunk_id: ChunkId(id.clone()),
+                embedding,
+                metadata: None,
+            })
+            .collect();
+        let config = VectorIndexConfig {
+            dim: embedder.dim(),
+            metric: VectorMetric::Cosine,
+            persistence_path: None,
+            collection_id: self.collection_id.clone(),
+        };
+        indexer
+            .open(config)
+            .and_then(|_| indexer.index_batch(&chunks).map(|_| ()))
+            .and_then(|_| indexer.flush())
+            .map_err(|e| RetrieverError::InvalidConfig(format!("vector index: {e}")))?;
+        Ok(())
+    }
+
+    /// task-19.2: semantic search — embed `query`, run the wired vector backend, and assemble
+    /// 12-field `SearchResult`s (`retrieval_method = "vector"`). Returns `Ok(vec![])` when the
+    /// semantic path is unavailable (no embedder / no backend / empty query) so callers fall back to
+    /// BM25. Independent of the BM25 `search()` path — hybrid fusion is deferred
+    /// (`[SPEC-DEFER:phase-future.hybrid-scoring]`).
+    pub fn search_semantic(
+        &self,
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>, RetrieverError> {
+        let (embedder, searcher) = match (&self.embedder, &self.vector_searcher) {
+            (Some(e), Some(s)) => (e, s),
+            _ => return Ok(vec![]),
+        };
+        if query.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        let vectors = embedder
+            .embed(&[query.to_string()])
+            .map_err(|e| RetrieverError::InvalidConfig(format!("embedding: {e}")))?;
+        let query_vec = match vectors.into_iter().next() {
+            Some(v) => v,
+            None => return Ok(vec![]),
+        };
+        let hits = searcher
+            .search(&query_vec, top_k, None)
+            .map_err(|e| RetrieverError::InvalidConfig(format!("vector search: {e}")))?;
+        let mut results = Vec::with_capacity(hits.len());
+        for hit in hits {
+            if let Some(r) = self.assemble_vector_result(&hit.chunk_id.0, hit.score.as_f32())? {
+                results.push(r);
+            }
+        }
+        Ok(results)
+    }
+
+    /// task-19.2: assemble a 12-field `SearchResult` from a vector hit's chunk_id via SQLite +
+    /// provenance synthesis (same floor as `get_chunk`; `retrieval_method = "vector"`). `Ok(None)`
+    /// when the chunk is absent from SQLite (vector/SQLite not yet in sync).
+    fn assemble_vector_result(
+        &self,
+        chunk_id: &str,
+        score: f32,
+    ) -> Result<Option<SearchResult>, RetrieverError> {
+        let row = self.sqlite.query_row(
+            "SELECT chunk_id, file_path, content, language, line_start, line_end, indexed_at
+             FROM chunks WHERE chunk_id = ?1 LIMIT 1",
+            params![chunk_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            },
+        );
+        let (chunk_id_db, file_path, content, language, line_start, line_end, indexed_at) =
+            match row {
+                Ok(t) => t,
+                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+                Err(e) => return Err(RetrieverError::from(e)),
+            };
+        let mut provenance = self.read_provenance(&chunk_id_db)?;
+        if provenance.is_empty() {
+            provenance.push(Provenance {
+                importer: SYNTHESIZED_IMPORTER.to_string(),
+                original_path: file_path.clone(),
+                imported_at: indexed_at.clone(),
+                source_modified_at: String::new(),
+            });
+        }
+        Ok(Some(SearchResult {
+            chunk_id: chunk_id_db,
+            context_id: DEFAULT_CONTEXT_ID.to_string(),
+            source_type: DEFAULT_SOURCE_TYPE.to_string(),
+            file_path,
+            line_start: line_start.max(0) as u64,
+            line_end: line_end.max(0) as u64,
+            score,
+            retrieval_method: "vector".to_string(),
+            reason: String::new(),
+            agent_scope: Vec::new(),
+            redaction_status: DEFAULT_REDACTION_STATUS.to_string(),
+            provenance,
+            language,
+            content,
+            matched_terms: Vec::new(),
+        }))
     }
 
     /// task-15.3 (Phase 15 P1 #3): live-doc count from the Tantivy reader.
@@ -1292,5 +1448,79 @@ mod tests {
             with_noop.iter().all(|(_, _, m)| m == "bm25"),
             "retrieval_method must stay \"bm25\" (empty vector hits are not merged)"
         );
+    }
+
+    // ---- task-19.2 default-backend-wiring tests ----
+
+    // TEST-19.2.3 — AC3: search_semantic returns Ok(vec![]) (not Err/panic) when the semantic path
+    // is unavailable — no embedder, or embedder but no backend — so callers fall back to BM25.
+    #[test]
+    fn test_19_2_search_semantic_none_returns_empty() {
+        use crate::embedding::DeterministicEmbeddingProvider;
+        let (_src, data, coll) = build_fixture("sem_none", &[("a.txt", "hello vector world")]);
+
+        let retr = Retriever::open(&data, &coll).expect("open");
+        assert!(retr.embedder.is_none() && retr.vector_searcher.is_none());
+        assert!(retr.search_semantic("hello", 5).expect("none path").is_empty());
+
+        // embedder wired but no backend → still empty (no panic).
+        let retr2 = Retriever::open(&data, &coll)
+            .expect("open")
+            .with_embedder(Arc::new(DeterministicEmbeddingProvider::default()));
+        assert!(retr2.search_semantic("hello", 5).expect("no backend").is_empty());
+    }
+
+    // TEST-19.2.2 / 19.2.4 — AC2/AC4: end-to-end index→semantic-search roundtrip via the
+    // DeterministicEmbeddingProvider + the cross-platform hnsw backend. Querying with a chunk's
+    // exact text yields the same deterministic vector, so the nearest neighbour is that chunk —
+    // proving the embed → index → search → 12-field assembly wiring (retrieval_method "vector",
+    // provenance floor ≥1). Deterministic vectors carry no semantics; real recall is task-19.5.
+    #[cfg(feature = "vector-hnsw")]
+    #[test]
+    fn test_19_2_semantic_roundtrip_hits_target_chunk() {
+        use crate::embedding::DeterministicEmbeddingProvider;
+        use crate::retriever::vector::HnswBackend;
+
+        let (_src, data, coll) = build_fixture(
+            "sem_roundtrip",
+            &[
+                ("config.md", "where is the config loader and default data dir"),
+                ("daemon.md", "how the daemon restarts after a crash"),
+            ],
+        );
+        let base = Retriever::open(&data, &coll).expect("open base");
+        // Pull the real (chunk_id, content) pairs from SQLite via BM25 so the indexed ids match.
+        let pick = |q: &str| -> (String, String) {
+            let r = base
+                .search(&SearchOptions {
+                    query: q.into(),
+                    top_k: 1,
+                    filters: SearchFilters::default(),
+                    explain: false,
+                })
+                .expect("bm25");
+            assert!(!r.is_empty(), "fixture should yield a hit for {q}");
+            (r[0].chunk_id.clone(), r[0].content.clone())
+        };
+        let items = vec![pick("config"), pick("daemon")];
+
+        let backend = Arc::new(HnswBackend::new());
+        let retr = Retriever::open(&data, &coll)
+            .expect("open wired")
+            .with_embedder(Arc::new(DeterministicEmbeddingProvider::default()))
+            .with_vector_searcher(backend.clone());
+        retr.index_chunks_semantic(backend.as_ref(), &items)
+            .expect("index_chunks_semantic");
+
+        // Query with target chunk's exact text → its own deterministic vector → nearest = itself.
+        let (target_id, target_text) = &items[0];
+        let results = retr.search_semantic(target_text, 5).expect("search_semantic");
+        assert!(!results.is_empty(), "semantic search should hit");
+        assert_eq!(&results[0].chunk_id, target_id, "exact-text query hits its own chunk");
+        assert_eq!(results[0].retrieval_method, "vector");
+        assert!(!results[0].provenance.is_empty(), "provenance floor ≥1");
+
+        // Empty query → empty (no panic).
+        assert!(retr.search_semantic("   ", 5).expect("empty query").is_empty());
     }
 }
