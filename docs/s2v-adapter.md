@@ -250,7 +250,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Done | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 | 16 | `v0.9.0-backlog-completion` | `docs/specs/phases/phase-16-v0.9.0-backlog-completion.md` | Done | 4 | `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Done | 1 | `../ContextForge-wt-is-pinned-amendment` |
-| 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Ready | 2 | `../ContextForge-wt-vector-backend-selection` |
+| 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Ready | 4 | `../ContextForge-wt-vector-backend-selection` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -322,6 +322,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 17.1 | proto MemoryItem.is_pinned + memory_to_pb mapper + internal/contractv1/contractv1.go::MemoryItem.IsPinned + grpcclient.protoToMemoryItem + internal/consoleapi/memstore.go is_pinned wiring + handleMemoryPin body parse + smoke v8 step 28 (migration 0017 not needed — column already in 0013) | docs/specs/tasks/task-17.1-memory-is-pinned-field.md | Done | Phase17 #1（dep [ADR-022](decisions/adr-022-memory-is-pinned-field-amendment.md) D4 cross-repo signal resolved 2026-05-28 — Console master @ 415ee30 ships MemoryItem.IsPinned）| `../ContextForge-wt-is-pinned-amendment` |
 | 18.1 | core/src/retriever/vector/{mod,traits,noop}.rs 三 trait + NoopVectorBackend 占位 + retriever wiring Option&lt;Arc&lt;dyn VectorSearcher&gt;&gt; + Cargo workspace vector-spike feature scaffold | docs/specs/tasks/task-18.1-vector-trait.md | Done | Phase18 #1（trait-first 决策首项；ship 后 task-18.2 spike harness 启动 + task-18.3-18.6 4 backend 并行可启）| `../ContextForge-wt-vector-backend-selection` |
 | 18.2 | bench/ crate（确定性 corpus 生成 + measure 5 维 + runner over trait + Noop smoke）+ scripts/spike_vector_backends.sh + docs/spikes/_template.md + dogfood fixture | docs/specs/tasks/task-18.2-spike-harness.md | Done | Phase18 #2（测量台；ship 后 task-18.3-18.6 接入真 backend 跑 evidence、task-18.7 消费 5 维数据选型）| `../ContextForge-wt-vector-backend-selection` |
+| 18.3 | sqlite-vec backend — Windows MSVC 构建受阻（sqlite-vec.c cl.exe exit 2），Linux-first 延后；无实现、无 5 维数据 | docs/spikes/phase-18-sqlite-vec.md | Deferred | Phase18 #3（[SPEC-DEFER:phase-future.sqlite-vec-cross-platform]；§7 R1 Linux-first；评估须在 Linux/gcc-clang 复跑）| `../ContextForge-wt-vector-backend-selection` |
+| 18.6 | core/src/retriever/vector/hnsw.rs HnswBackend (instant-distance 纯 Rust HNSW) + vector-hnsw feature + bench 注册表接入 + 5 维 evidence | docs/specs/tasks/task-18.6-spike-hnsw.md | Done | Phase18 #4（首个真实召回数据 backend；release n=5000/dim=64 recall@5/10=1.0 P95 0.23ms；跨平台可构建）| `../ContextForge-wt-vector-backend-selection` |
 
 ## ADR 索引
 
