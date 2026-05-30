@@ -253,6 +253,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Done | 9 | `../ContextForge-wt-vector-backend-selection`（v0.11.0 closeout 缩范围：AC1/2/5/6 met；AC3 partial=ADR-023 Proposed；AC4 deferred=生产集成 [SPEC-OWNER:phase-future.vector-retrieval-integration]）。**→ Phase 19 (v0.12.0) 解除**：AC3 ADR-023 ratify Accepted（task-19.6）+ AC4 生产集成 live（task-19.2/19.3/19.5）；记录于 ADR-023 Amendment，Phase 18 spec 正文未溯改（D5） |
 | 19 | `vector-retrieval-integration` | `docs/specs/phases/phase-19-vector-retrieval-integration.md` | Done | 7 | master（v0.12.0：端到端语义检索 live + ADR-023 ratify Accepted。解 Phase 18 AC3/AC4 + [SPEC-OWNER:phase-future.vector-retrieval-integration] **已解除**；real recall @10=0.9333≥0.70（task-19.5），默认构建 0-dep deterministic+brute-force 语义路径，real fastembed provider feature-gated） |
 | 20 | `semantic-retrieval-throughline` | `docs/specs/phases/phase-20-semantic-retrieval-throughline.md` | Draft | 0 | master（v0.13.0 规划：贯通 console-api `?semantic=true` + 经 Retriever 真实召回；闭合 v0.12.0 evidence §3b 两条 caveat。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.1） |
+| 21 | `retrieval-quality` | `docs/specs/phases/phase-21-retrieval-quality.md` | Draft | 0 | master（v0.14.0 规划：hybrid scoring（BM25+向量分数融合）+ reranker（cross-encoder）；hybrid+确定性管道 CI 可验证，real cross-encoder 真实质量如实 defer。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.2） |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -341,6 +342,9 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 20.1 | internal/contractv1 SearchRequest.Semantic（add-only）+ internal/consoleapi/handlers.go handleSearch ?semantic=true OR-merge + grpcclient 透传 pb.SearchRequest.Semantic | docs/specs/tasks/task-20.1-console-api-semantic-forward.md | Draft | Phase20 #1（首项；闭合 task-19.4 §10 console-api 未转发 caveat；仿 internal/daemon/rest.go 参考实现；0 Rust/proto delta） | master |
 | 20.2 | core/examples/phase20_recall_via_retriever.rs 经生产 Retriever::search_semantic 热路径跑真实召回 + docs/spikes/phase-20-recall-via-retriever.md（与 task-19.5 旁路 example 口径对比）| docs/specs/tasks/task-20.2-real-recall-via-retriever.md | Draft | Phase20 #2（dep 19.2 热路径；可与 20.1 并行，Go vs Rust 写路径不相交；real 数值本地复跑，ADR-013）| master |
 | 20.3 | scripts/console_smoke.sh v10 console-api ?semantic=true 真实语义断言 + v0.13.0 release docs + ADR-024 ratify + phase-20 §6 闭合 + adapter | docs/specs/tasks/task-20.3-closeout-v0.13.0.md | Draft | Phase20 #3（dep 20.1+20.2；tag push 经用户授权；承 task-19.7 closeout 模式）| master |
+| 21.1 | core/src/retriever/fusion.rs 融合函数（RRF/加权归一）+ Retriever::search_hybrid + SearchResult.hybrid_score（add-only）+ proto RetrievalResult.hybrid_score=15/SearchRequest.hybrid=8 + retrieval_method="hybrid" | docs/specs/tasks/task-21.1-hybrid-scoring.md | Draft | Phase21 #1（首项；dep 19.2 search()/search_semantic() 两路；确定性融合序 CI 可断言；策略选型据真实 eval ratify ADR-025）| master |
+| 21.2 | core/src/rerank/{mod,traits,identity,cross_encoder}.rs Reranker trait + 确定性 IdentityReranker（默认 0 模型依赖）+ CrossEncoderReranker（feature-gated）+ Retriever::with_reranker seam | docs/specs/tasks/task-21.2-reranker-pipeline.md | Draft | Phase21 #2（dep 19.1 EmbeddingProvider trait 范式；可与 21.1 并行（fusion.rs vs rerank/ 新模块）；real 模型质量 ADR-013 如实 defer，受阻 stop-condition）| master |
+| 21.3 | internal/eval Report 加 hybrid/reranked 列 + internal/cli/eval.go --rerank flag + scripts/console_smoke.sh hybrid/rerank 真实断言 + v0.14.0 release docs + ADR-025/026 ratify + phase-21 §6 闭合 + adapter | docs/specs/tasks/task-21.3-closeout-v0.14.0.md | Draft | Phase21 #3（dep 21.1+21.2；tag push 经用户授权；承 task-19.7/20.3 closeout 模式）| master |
 
 ## ADR 索引
 
@@ -373,6 +377,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 022 | memory-is-pinned-field-amendment | Accepted | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
 | 023 | vector-backend-default | Accepted | docs/decisions/adr-023-vector-backend-default.md |
 | 024 | console-api-semantic-forward | Proposed | docs/decisions/adr-024-console-api-semantic-forward.md |
+| 025 | hybrid-scoring-fusion | Proposed | docs/decisions/adr-025-hybrid-scoring-fusion.md |
+| 026 | reranker-provider | Proposed | docs/decisions/adr-026-reranker-provider.md |
 
 ## BDD Feature 索引
 
@@ -406,6 +412,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 17.1 | test/features/phase-17-is-pinned-amendment.feature |
 | 19.1 / 19.2 / 19.3 / 19.5 | test/features/phase-19-vector-retrieval-integration.feature |
 | 20.1 / 20.2 / 20.3 | test/features/phase-20-semantic-retrieval-throughline.feature |
+| 21.1 / 21.2 / 21.3 | test/features/phase-21-retrieval-quality.feature |
 
 ---
 
