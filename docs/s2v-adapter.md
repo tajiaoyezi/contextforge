@@ -250,6 +250,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Done | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 | 16 | `v0.9.0-backlog-completion` | `docs/specs/phases/phase-16-v0.9.0-backlog-completion.md` | Done | 4 | `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Done | 1 | `../ContextForge-wt-is-pinned-amendment` |
+| 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Draft | 0 | `../ContextForge-wt-vector-backend-selection` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
