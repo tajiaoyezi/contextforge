@@ -326,6 +326,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 18.6 | core/src/retriever/vector/hnsw.rs HnswBackend (instant-distance 纯 Rust HNSW) + vector-hnsw feature + bench 注册表接入 + 5 维 evidence | docs/specs/tasks/task-18.6-spike-hnsw.md | Done | Phase18 #4（首个真实召回数据 backend；release n=5000/dim=64 recall@5/10=1.0 P95 0.23ms；跨平台可构建）| `../ContextForge-wt-vector-backend-selection` |
 | 18.4 | core/src/retriever/vector/qdrant.rs QdrantBackend (qdrant-client 1.18 gRPC + 自带 tokio runtime block_on) + vector-qdrant feature + bench 注册表接入 + 5 维 evidence（Linux 本机 Qdrant v1.18.1 实测 recall@5/10=1.0 P95 0.650ms server RSS ~104.8MB cold-start 30.9ms） | docs/specs/tasks/task-18.4-spike-qdrant.md | Done | Phase18 #5（Linux 实测真实数据；外部 server 进程 is_local=false，server RSS ~10x 进程内 backend，gRPC 往返延迟）| `../ContextForge-wt-vector-backend-selection` |
 | 18.5 | core/src/retriever/vector/lance_db.rs LanceDbBackend (lancedb 0.30 embedded Lance + Arrow RecordBatch + 自带 tokio runtime block_on) + vector-lancedb feature + bench 注册表接入 + 5 维 evidence（Linux 实测 recall@5/10=1.0 P95 1.551ms idle/index RSS 30.5/50.9MB cold-start 7.4ms） | docs/specs/tasks/task-18.5-spike-lancedb.md | Done | Phase18 #6（Linux 实测真实数据；嵌入式 is_local=true 磁盘持久化列式；最重进程内 RSS + 最快写入；build 需 protoc）| `../ContextForge-wt-vector-backend-selection` |
+| 18.7 | 4 路 backend 5 维横向对比（n=5000+100000）+ ADR-023 默认 backend 选型（Proposed，分层 D1-D6）+ comparison 文档 + hnsw evidence 补 Linux RSS/100k + known_backends unused_mut 清理 | docs/specs/tasks/task-18.7-decision-adr023.md | Done | Phase18 #7（合成 recall 不可区分 → 架构驱动选型：D1 sqlite-vec 嵌入式默认 provisional / D2 hnsw 跨平台 fallback / D3 qdrant scale-out / D4 lancedb 列式；ratify 待 task-18.8 真实 embedding recall）| `../ContextForge-wt-vector-backend-selection` |
 
 ## ADR 索引
 
@@ -356,6 +357,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 020 | health-component-breakdown | Accepted | docs/decisions/adr-020-health-component-breakdown.md |
 | 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
 | 022 | memory-is-pinned-field-amendment | Accepted | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
+| 023 | vector-backend-default | Proposed | docs/decisions/adr-023-vector-backend-default.md |
 
 ## BDD Feature 索引
 

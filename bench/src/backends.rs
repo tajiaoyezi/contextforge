@@ -51,6 +51,8 @@ pub fn run_named(
 
 /// Backend names this harness can currently run (depends on which `vector-*` features are enabled).
 pub fn known_backends() -> Vec<&'static str> {
+    // `mut` is unused when no vector-* feature is enabled (default build); allow it.
+    #[allow(unused_mut)]
     let mut v = vec!["noop"];
     #[cfg(feature = "vector-hnsw")]
     v.push("hnsw");
