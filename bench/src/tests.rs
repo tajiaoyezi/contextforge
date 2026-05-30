@@ -99,3 +99,32 @@ fn test_render_evidence_md() {
     assert!(md.contains("P95 latency"));
     assert!(md.contains("`noop`"));
 }
+
+// TEST-19.5.1 — the task-19.5 real dogfood embedding fixture (produced by the real FastEmbedProvider,
+// not synthetic) parses via load_dogfood, is dim-384, has non-empty ids, and carries non-zero vectors.
+#[test]
+fn test_19_5_real_dogfood_fixture_format() {
+    use std::path::PathBuf;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../test/fixtures/eval/dogfood-embeddings.jsonl");
+    let chunks = crate::corpus::load_dogfood(&path).expect("load real dogfood fixture");
+    assert!(
+        chunks.len() >= 30,
+        "expected >=30 real dogfood chunks, got {}",
+        chunks.len()
+    );
+    for c in &chunks {
+        assert_eq!(
+            c.embedding.len(),
+            384,
+            "chunk {} embedding dim != 384 (all-MiniLM-L6-v2)",
+            c.chunk_id.0
+        );
+        assert!(!c.chunk_id.0.is_empty(), "empty chunk_id in fixture");
+        assert!(
+            c.embedding.iter().any(|x| *x != 0.0),
+            "chunk {} has an all-zero embedding (not a real model output)",
+            c.chunk_id.0
+        );
+    }
+}
