@@ -1,6 +1,6 @@
 # Task `19.7`: `closeout-v0.12.0 — Phase 19 收口 + v0.12.0 release docs（端到端语义检索 ship；若 embedding provider 受阻则诚实缩范围）`
 
-**Status**: Pending
+**Status**: Done（release docs + phase/adapter 收口完成；**v0.12.0 tag push 待用户授权**——见 §6 AC6 / §10）
 
 **Priority**: P0
 **Owner**: 主 agent（ADR-012 自治；v0.12.0 outward-facing release tag push 为 USER-AUTHORIZED-ONLY，须用户显式授权方可 push）
@@ -81,23 +81,23 @@ Phase 19 把 Phase 18 交付的**向量 backend 基础设施**（task-18.1 三 t
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: v0.12.0 release docs 四文件（`README.md` §v0.12.0 含语义召回 Quick start example + `RELEASE_NOTES.md` §v0.12.0 + `docs/releases/v0.12.0-evidence.md` 新 + `docs/releases/v0.12.0-artifacts.md` 新）落地，范围据 task-19.1/19.5 真实交付诚实写（端到端语义检索 live，或 deterministic 缺省 provider 跑通 + real recall defer）— verified by **TEST-19.7.1**（本 PR diff 含 4 文件 + 范围口径与 19.1/19.5 §10 一致）
-- [ ] **AC2**: phase-19 §6 AC1-6 据 19.1–19.6 真实交付勾选（AC5 含 ADR-023 ratify 结论或据实测 documented 未决，禁据合成 ratify，ADR-013）+ §8 DoD 据真实状态勾选 + 顶部 `Status: Draft → Done` — verified by **TEST-19.7.2**（phase-19 spec diff §6/§8 + Status，无 fake `[x]`）
-- [ ] **AC3**: `docs/s2v-adapter.md` Phase 19 `Draft → Done` + `Tasks 0 → 7` + 19.1–19.7 Task 行 + ADR-023 状态更新 + BDD `phase-19-vector-retrieval-integration.feature` 行 + Phase 18 forward-ref（`phase-future.vector-retrieval-integration` / `phase-future.embedding-provider-full`）解除标注（不溯改 Phase 18 spec 正文，D5）— verified by **TEST-19.7.3**（adapter diff 含 Phase/Task/ADR/BDD 四索引 + forward-ref 解除）
-- [ ] **AC4**: 既有不退化 — 默认 `cargo test --workspace` 0 failed（embedding/backend feature 默认不启用，gated path 不入默认编译）；`go test ./...` 全 PASS — verified by **TEST-19.7.4**（cargo + go test 实测）
-- [ ] **AC5**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched master` PR 触及行 0 未标注命中（D1-D5 第十次激活全通过：D1 mapping / D2 lint / D3 verified-by / D4 自治 / D5 历史 Phase 1-18 不溯改）— verified by **TEST-19.7.5**（D2 lint 实跑输出 0 hits + closeout PR body 记 D1-D5）
-- [ ] **AC6**: v0.12.0 annotated tag push（**经用户授权**）触发 `release.yml` → ghcr `ghcr.io/tajiaoyezi/contextforge-daemon:v0.12.0` + `:latest` 构建推送 — verified by **TEST-19.7.6**（tag SHA + release.yml run ID，post-tag-push backfill 填实）
+- [x] **AC1**: v0.12.0 release docs 四文件（`README.md` §v0.12.0 含语义召回 Quick start example + `RELEASE_NOTES.md` §v0.12.0 + `docs/releases/v0.12.0-evidence.md` 新 + `docs/releases/v0.12.0-artifacts.md` 新）落地，**路径 A（端到端语义检索 live）**诚实写：语义路径 opt-in（`/v1/search?semantic=true` + `eval run --semantic`），默认构建用 0-dep deterministic provider + brute-force（wiring），real fastembed provider feature-gated（real recall @10=0.9333）。**注：`contextforge search --semantic` 不存在**——Quick start 用实际落地的 REST `?semantic=true` + `eval run --semantic`（ADR-013：不写不存在的命令）— verified by **TEST-19.7.1**
+- [x] **AC2**: phase-19 §6 AC1-6 全 `[x]`（据 19.1–19.6 真实交付；AC5 ADR-023 ratify Accepted 据真实非合成 recall @10=0.9333，ADR-013）+ §8 DoD 真实状态 + 顶部 `Status: Draft → Done` — verified by **TEST-19.7.2**（无 fake `[x]`）
+- [x] **AC3**: `docs/s2v-adapter.md` Phase 19 `Draft → Done` + `Tasks 7` + 19.1–19.7 Task 行（19.7 Done）+ ADR-023 Accepted + BDD `phase-19-vector-retrieval-integration.feature` 行（PR #141 已建）+ Phase 18 forward-ref `→ Phase 19 解除`标注（adapter 内，不溯改 Phase 18 spec 正文，D5）— verified by **TEST-19.7.3**
+- [x] **AC4**: 既有不退化 — 本 closeout 纯文档（零代码改动）；默认 `cargo test --workspace`（embedding/backend feature 默认不启用）+ `go test ./...` 不退化（CI cargo-test/go-test gate 复核）— verified by **TEST-19.7.4**
+- [x] **AC5**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched master` PR 触及行 0 未标注命中（D1-D5 第十次激活：D1 mapping / D2 lint / D3 verified-by / D4 自治 / D5 Phase 1-18 不溯改，Phase 18 spec diff 空）— verified by **TEST-19.7.5**（CI spec-lint gate + 本 PR body 记 D1-D5）
+- [ ] **AC6**: v0.12.0 annotated tag push（**经用户授权——USER-AUTHORIZED-ONLY，stop-condition (c)**）触发 `release.yml` → ghcr `ghcr.io/tajiaoyezi/contextforge-daemon:v0.12.0` + `:latest` 构建推送 — verified by **TEST-19.7.6**（tag SHA + release.yml run ID，post-tag-push backfill 填实）。**当前状态：closeout docs PR 合入后等待用户显式授权方 push tag；未授权前本项不勾。**
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-19.7.1 | v0.12.0 release docs 4 文件 + 诚实范围口径 | README / RELEASE_NOTES / v0.12.0-{evidence,artifacts}.md | Pending |
-| TEST-19.7.2 | phase-19 §6 AC1-6 + §8 DoD + Status Done（据实，无 fake `[x]`） | docs/specs/phases/phase-19-vector-retrieval-integration.md | Pending |
-| TEST-19.7.3 | adapter Phase 0→7 / ADR-023 / BDD row / Phase 18 forward-ref 解除 | docs/s2v-adapter.md | Pending |
-| TEST-19.7.4 | cargo test --workspace + go test ./... 0 failed | 全 workspace | Pending |
-| TEST-19.7.5 | D2 lint --touched master 0 hits + D1-D5 第十次激活 | scripts/spec_drift_lint.sh + closeout PR body | Pending |
-| TEST-19.7.6 | v0.12.0 tag push + release.yml ghcr 构建 | git tag + GHA release.yml | Pending（backfill） |
+| TEST-19.7.1 | v0.12.0 release docs 4 文件 + 路径 A 诚实口径（实际命令，无 `search --semantic`） | README / RELEASE_NOTES / v0.12.0-{evidence,artifacts}.md | Done |
+| TEST-19.7.2 | phase-19 §6 AC1-6 [x] + Status Done（据实，无 fake `[x]`） | docs/specs/phases/phase-19-vector-retrieval-integration.md | Done |
+| TEST-19.7.3 | adapter Phase 19 Done / Tasks 7 / ADR-023 Accepted / BDD row / Phase 18 forward-ref 解除 | docs/s2v-adapter.md | Done |
+| TEST-19.7.4 | 零代码改动（cargo/go test 天然不退化，CI gate 复核） | 全 workspace | Done |
+| TEST-19.7.5 | D2 lint --touched master 0 hits + D1-D5 第十次激活 | scripts/spec_drift_lint.sh + closeout PR body | Done |
+| TEST-19.7.6 | v0.12.0 tag push + release.yml ghcr 构建 | git tag + GHA release.yml | **Pending（用户授权待 push；backfill）** |
 
 ## 8. Risks
 
@@ -124,9 +124,12 @@ git push origin v0.12.0       # → release.yml ghcr 构建 ghcr.io/tajiaoyezi/c
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **完成日期**：（实现后填）
-- **改动文件**：`README.md`（§v0.12.0）/ `RELEASE_NOTES.md`（§v0.12.0）/ `docs/releases/v0.12.0-evidence.md`（新）/ `docs/releases/v0.12.0-artifacts.md`（新）/ `docs/specs/phases/phase-19-vector-retrieval-integration.md`（§6 AC + §8 DoD + Status Done）/ `docs/s2v-adapter.md`（Phase 19 + Tasks 0→7 + ADR-023 + BDD row + Phase 18 forward-ref 解除）/ `scripts/console_smoke.sh`（v9 final 一致性）/ `docs/specs/tasks/task-19.7-closeout-v0.12.0.md`（本 spec）（实现后据实回填）
-- **commit 列表**：见本 task PR（分支 `chore/phase-19-closeout-v0.12.0`）；合入后以 merge commit 为准（实现后填）
-- **§9 Verification 结果**：（实现后填）closeout PR CI 三门绿 + D2 lint 0 命中 + smoke v9 PASS；v0.12.0 tag SHA + release.yml run ID 见 post-tag-push backfill
-- **剩余风险 / 未做项**：（实现后填）路径 A 则无缩范围；路径 B 则 real embedding recall + ADR-023 ratify 据实测 documented 未决 [SPEC-DEFER:phase-future.embedding-provider-remote]；reranker / hybrid scoring / multi-backend production 见各自 [SPEC-DEFER]；Console 语义召回 explain [SPEC-OWNER:phase-future.console-semantic-explain]
-- **下游 task 影响**：（实现后填）v0.12.0 release ship 后端到端语义检索可用（或诚实缩范围基础设施 + deterministic 缺省 provider 跑通）；后继 phase 消费 embedding provider seam + 生产语义 wiring
+- **完成日期**：2026-05-30（release docs + 收口；tag push 待用户授权）
+- **改动文件**：`README.md`（§v0.12.0 + 语义 Quick start）/ `RELEASE_NOTES.md`（§v0.12.0）/ `docs/releases/v0.12.0-evidence.md`（新）/ `docs/releases/v0.12.0-artifacts.md`（新）/ `docs/specs/phases/phase-19-vector-retrieval-integration.md`（§6 AC1-6 [x] + Status Draft→Done）/ `docs/s2v-adapter.md`（Phase 19 Done + Tasks 7 + ADR-023 Accepted + Phase 18 forward-ref 解除 + 19.7 行）/ `docs/specs/tasks/task-19.7-closeout-v0.12.0.md`（本 spec）。注：`scripts/console_smoke.sh` v9 由 task-19.4 落地，本 closeout 一致性确认**无需改动**；本 closeout 纯文档（零代码改动）。
+- **commit 列表**：见本 task PR（分支 `chore/phase-19-closeout-v0.12.0`）；合入后以 merge commit 为准
+- **路径选择（§5.2）**：**路径 A（端到端语义检索 live）**——real provider（fastembed）两平台可构建（task-19.1 R1 未触发）+ task-19.5 真实 `SemanticRecall@10=0.9333≥0.70` + task-19.6 ADR-023 Accepted。无缩范围。诚实限定：默认构建语义路径用 0-dep deterministic provider + brute-force（wiring 正确性），real-model 召回需 `--features embedding-fastembed`；`contextforge search` 无 `--semantic`（语义入口 = REST `?semantic=true` + `eval run --semantic`），README 据实写。
+- **§9 Verification 结果**：本 closeout 纯文档 → cargo/go test 天然不退化（CI cargo-test/go-test gate 复核）；D2 lint `--touched master` 0 未标注命中（CI spec-lint gate）。smoke v9（task-19.4 #145 落地）诚实记录：`bash -n` + 标号 + step 29/30 行为经 task-19.4/19.3 单测验证；本地 WSL REAL 复跑 step 1–25 + 迁号 `[21/30]…[26/30]` 跑通，**既有 step 26**（task-16.1 daemon `kill-9`-restart，非 Phase 19）在非交互 WSL 下停住（exit 0，无 FAIL 断言），未达 step 29/30——完整 daemon-restart REAL marker 由合规 Linux/release smoke 复跑定（见 `docs/releases/v0.12.0-evidence.md` §3b）。**v0.12.0 tag SHA + release.yml run ID + 镜像 digest 待 post-tag-push backfill 填**（tag push 经用户授权后）。
+- **AC6 / tag push 状态（stop-condition c）**：closeout docs PR 三门绿后自主合入；**v0.12.0 annotated tag push 为 USER-AUTHORIZED-ONLY**，未获用户显式授权前不 push tag、不触发 `release.yml`、不勾 AC6。合入后向用户请示授权。
+- **剩余风险 / 未做项**：路径 A 无缩范围。reranker [SPEC-DEFER:phase-future.reranker] / hybrid scoring [SPEC-DEFER:phase-future.hybrid-scoring] / remote provider [SPEC-DEFER:phase-future.embedding-provider-remote] / multi-backend production [SPEC-DEFER:phase-future.multi-backend-production] / hnsw graph persistence [SPEC-DEFER:phase-future.hnsw-graph-persistence] 各自后置；Console 语义召回 explain [SPEC-OWNER:phase-future.console-semantic-explain]（cross-repo，仅评估通知）；console-api `/v1/search` 转发 `?semantic=true` 到 gRPC（现仅 daemon rest.go 转发）属 task-19.5 follow-up 评估。
+- **下游 task 影响**：v0.12.0 release ship 后端到端语义检索 live（opt-in）；后继 phase 消费 embedding provider seam + 生产语义 wiring；post-tag-push backfill PR 填 tag SHA / run ID / digest。
+- **ADR-014 D1-D5 第十次激活**：D1 task-19.7 §6 AC1-6 ↔ phase-19 §6 AC6 mapping；D2 lint 0 unannotated（CI spec-lint）；D3 每 AC verified-by TEST-19.7.x；D4 主 agent 自治据真实数据收口；D5 Phase 1-18 spec 未溯改（Phase 18 AC3/AC4 解决记录写在 ADR-023 Amendment + adapter 行，`git diff --stat master -- docs/specs/phases/phase-18-*` 空）。
