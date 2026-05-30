@@ -69,7 +69,13 @@ pub struct VectorFilter {
 }
 
 /// All errors backend impls can return.
+///
+/// `#[non_exhaustive]`: downstream backend crates (the spike `bench/` workspace member and
+/// the future sqlite-vec / qdrant / lancedb / hnsw impls) must not write exhaustive matches,
+/// so new variants stay add-only-safe within the task-18.1 trait freeze (AC7) — a `match`
+/// in another crate cannot break when a variant is appended.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum VectorError {
     #[error("backend not initialized")]
     NotInitialized,
@@ -79,6 +85,13 @@ pub enum VectorError {
     InvalidScore(f32),
     #[error("backend I/O error: {0}")]
     Io(String),
+    /// Wraps a backend/transport error (e.g. Qdrant/LanceDB gRPC), preserving the source chain
+    /// instead of flattening to a string (the diagnostic gap noted in the task-18.1 review).
+    #[error("backend error: {source}")]
+    Backend {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("backend error: {0}")]
     Other(String),
 }

@@ -63,7 +63,7 @@ v0.11.0 ship 后 ContextForge 自带**向量召回 trait 抽象层** + **1 个 s
 - 新增 `core/src/retriever/vector/traits.rs`（`VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait）
 - 新增 `core/src/retriever/vector/noop.rs`（`NoopVectorBackend` 占位实现，返空 hits + log warning）
 - 修改 `core/src/retriever/mod.rs`（接入 vector backend `Option<Arc<dyn VectorSearcher>>` 字段；默认 `None` → BM25-only 路径不退化）
-- 修改 `core/Cargo.toml`（workspace 加 `[features] default = []; vector-spike = ["dep:..."]`，spike crate optional）
+- 修改 `core/Cargo.toml`（workspace 加 `[features] default = []; vector-spike = []`，0 新 dep；task-18.3-18.6 各自 PR 再填各自 dep list）
 - 新增 `core/src/retriever/vector/tests.rs` 或同源 `mod tests`（NoopVectorBackend + trait 契约 ≥3 unit test）
 - 不引入任何真 backend dep
 
