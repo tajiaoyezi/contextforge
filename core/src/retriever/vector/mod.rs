@@ -7,6 +7,8 @@
 pub mod traits;
 pub mod types;
 pub mod noop;
+// task-19.3: default-available exact-cosine searcher (0 dep) for the opt-in semantic path.
+pub mod brute_force;
 
 #[cfg(feature = "vector-hnsw")]
 pub mod hnsw;
@@ -26,6 +28,7 @@ mod tests;
 pub use traits::{VectorBackend, VectorIndexer, VectorSearcher};
 pub use types::{ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorMetric, VectorScore};
 pub use noop::NoopVectorBackend;
+pub use brute_force::BruteForceVectorBackend;
 
 #[cfg(feature = "vector-hnsw")]
 pub use hnsw::HnswBackend;

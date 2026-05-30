@@ -12,6 +12,7 @@
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,8 @@ use crate::pb::{
     HealthRequest, HealthResponse, IndexProgress, IndexRequest, Provenance as PbProvenance,
     RetrievalResult, SearchRequest, SearchResponse,
 };
+use crate::embedding::{DeterministicEmbeddingProvider, EmbeddingProvider};
+use crate::retriever::vector::BruteForceVectorBackend;
 use crate::retriever::{
     is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
     SearchOptions, SearchResult,
@@ -287,6 +290,43 @@ impl ContextService for CoreService {
             }
         }
 
+        // task-19.3: semantic path (opt-in via SearchRequest.semantic). Wire the model-free
+        // DeterministicEmbeddingProvider + the 0-dep BruteForceVectorBackend, build an in-memory
+        // index from this collection's chunks on demand (no persistence yet —
+        // [SPEC-DEFER:phase-future.hnsw-graph-persistence]), and run the vector path. Results carry
+        // retrieval_method "vector" + vector_score + embedding_provider. Deterministic embeddings
+        // prove the wiring, not recall (real recall is task-19.5; ADR-013).
+        if req.semantic {
+            let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
+            let embedder = Arc::new(DeterministicEmbeddingProvider::default());
+            let backend = Arc::new(BruteForceVectorBackend::new());
+            let wired = retriever
+                .with_embedder(embedder.clone())
+                .with_vector_searcher(backend.clone());
+            let items = wired
+                .enumerate_chunks()
+                .map_err(|e| Status::internal(format!("semantic enumerate: {}", e)))?;
+            wired
+                .index_chunks_semantic(backend.as_ref(), &items)
+                .map_err(|e| Status::internal(format!("semantic index: {}", e)))?;
+            let results = wired
+                .search_semantic(&req.query, top_k)
+                .map_err(|e| Status::internal(format!("semantic search: {}", e)))?;
+            let provider = embedder.name().to_string();
+            let proto_results = results
+                .iter()
+                .map(|r| {
+                    let mut pr = search_result_to_proto(r);
+                    pr.vector_score = r.score as f32;
+                    pr.embedding_provider = provider.clone();
+                    pr
+                })
+                .collect();
+            return Ok(Response::new(SearchResponse {
+                results: proto_results,
+            }));
+        }
+
         let filters_pb = req.filters.unwrap_or_default();
         let top_k = if req.top_k <= 0 {
             10
@@ -352,6 +392,9 @@ fn search_result_to_proto(r: &SearchResult) -> RetrievalResult {
         agent_scope: r.agent_scope.clone(),
         redaction_status: r.redaction_status.clone(),
         provenance: r.provenance.iter().map(provenance_to_proto).collect(),
+        // task-19.3 add-only: BM25 path leaves these at proto3 defaults; the semantic path overrides.
+        vector_score: 0.0,
+        embedding_provider: String::new(),
     }
 }
 
@@ -643,6 +686,7 @@ mod tests {
             top_k: 10,
             filters: None,
             explain: true,
+            semantic: false,
         };
         let resp = svc.search(Request::new(req)).await.expect("search ok");
         let inner = resp.into_inner();
@@ -672,6 +716,47 @@ mod tests {
         );
     }
 
+    // ---- TEST-19.3 — semantic=true dispatches the vector path ----
+    // The opt-in semantic flag builds an on-demand index (DeterministicEmbeddingProvider +
+    // BruteForceVectorBackend) and returns vector hits carrying retrieval_method "vector" +
+    // embedding_provider + vector_score. Deterministic embeddings prove the dispatch/plumbing, not
+    // recall quality (real recall is task-19.5; ADR-013).
+    #[tokio::test]
+    async fn test_19_3_semantic_dispatches_vector_path() {
+        let (data, coll) = build_fixture(
+            "semantic-dispatch",
+            &[
+                ("a.md", "where is the config loader and default data dir"),
+                ("b.md", "how the daemon restarts after a crash"),
+            ],
+        );
+        let svc = CoreService::new(data);
+        let req = SearchRequest {
+            query: "where is the config loader and default data dir".into(),
+            collections: vec![coll],
+            agent_scope: vec![],
+            top_k: 5,
+            filters: None,
+            explain: false,
+            semantic: true,
+        };
+        let inner = svc
+            .search(Request::new(req))
+            .await
+            .expect("semantic search ok")
+            .into_inner();
+        assert!(!inner.results.is_empty(), "semantic path should return hits");
+        let top = &inner.results[0];
+        assert_eq!(top.retrieval_method, "vector", "semantic hits use the vector method");
+        assert_eq!(top.embedding_provider, "deterministic-sha256");
+        assert!(
+            top.vector_score.is_finite() && top.vector_score <= 1.001 && top.vector_score >= -1.001,
+            "vector_score should be a valid cosine (±f32 eps), got {}",
+            top.vector_score
+        );
+        assert!(!top.provenance.is_empty(), "AC3 provenance floor still holds on the vector path");
+    }
+
     // ---- TEST-6.1.1b — collections 为空 → InvalidArgument ----
     #[tokio::test]
     async fn test_6_1_1_empty_collections_returns_invalid_argument() {
@@ -683,6 +768,7 @@ mod tests {
             top_k: 1,
             filters: None,
             explain: false,
+            semantic: false,
         };
         let err = svc.search(Request::new(req)).await.unwrap_err();
         assert_eq!(
@@ -705,6 +791,7 @@ mod tests {
             top_k: 1,
             filters: None,
             explain: false,
+            semantic: false,
         };
         let err = svc.search(Request::new(req)).await.unwrap_err();
         assert_eq!(
@@ -769,6 +856,7 @@ mod tests {
                 top_k: 10,
                 filters: None,
                 explain: false,
+            semantic: false,
             }))
             .await
             .expect("fast-path search ok");
@@ -814,6 +902,7 @@ mod tests {
                 top_k: 10,
                 filters: None,
                 explain: false,
+            semantic: false,
             }))
             .await
             .expect("fallback search ok (BM25 won't crash even if 0 hits)");

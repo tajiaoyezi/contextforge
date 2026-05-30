@@ -52,7 +52,8 @@ fn test_four_canonical_objects() {
 fn test_search_contract() {
     assert_superset(
         &contract::message_fields("SearchRequest"),
-        &["query", "collections", "agent_scope", "top_k", "filters", "explain"],
+        // task-19.3 add-only: `semantic` (tag 7).
+        &["query", "collections", "agent_scope", "top_k", "filters", "explain", "semantic"],
         "AC3 SearchRequest",
     );
     assert_superset(
@@ -61,6 +62,8 @@ fn test_search_contract() {
             "chunk_id", "context_id", "source_type", "file_path", "line_start",
             "line_end", "score", "retrieval_method", "reason", "agent_scope",
             "redaction_status", "provenance",
+            // task-19.3 add-only: vector_score (tag 13) + embedding_provider (tag 14).
+            "vector_score", "embedding_provider",
         ],
         "AC3 RetrievalResult",
     );
