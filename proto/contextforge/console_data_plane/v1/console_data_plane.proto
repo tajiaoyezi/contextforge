@@ -155,6 +155,10 @@ message SearchRequest {
   string retrieval_method = 4;
   int64 top_k = 5;
   string config_snapshot = 6;    // JSON-serialized opaque blob
+  // task-20.1 (Phase 20): add-only semantic flag. When true, SearchService.Query
+  // runs the opt-in vector/semantic path (mirrors core CoreService.search, task-19.3)
+  // instead of BM25. Default false → BM25 (backward-compatible, ADR-015 add-only).
+  bool semantic = 7;
 }
 
 message SourceChunk {

@@ -118,6 +118,11 @@ type SearchRequest struct {
 	RetrievalMethod string            `json:"retrieval_method"`
 	TopK            int               `json:"top_k"`
 	ConfigSnapshot  json.RawMessage   `json:"config_snapshot"`
+	// Semantic — task-20.1 (Phase 20): add-only opt-in semantic-search flag.
+	// OR-merged from the `?semantic=true` query param or this body field by
+	// handleSearch, then forwarded to gRPC SearchRequest.Semantic. Default false
+	// → BM25 (backward-compatible, ADR-015 add-only).
+	Semantic        bool              `json:"semantic"`
 	Availability    FieldAvailability `json:"field_availability"`
 }
 

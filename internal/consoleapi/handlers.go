@@ -446,6 +446,12 @@ func handleSearch(deps Deps) http.HandlerFunc {
 		if !readJSONBody(w, r, &body) {
 			return
 		}
+		// task-20.1 (Phase 20): `?semantic=true` query param OR-merges into the
+		// body flag (mirrors internal/daemon/rest.go), so the semantic path can be
+		// requested via query param or JSON body. Default false → BM25.
+		if r.URL.Query().Get("semantic") == "true" {
+			body.Semantic = true
+		}
 		result, trace, err := deps.Search.Search(body)
 		if err != nil {
 			mapStorageError(w, err)

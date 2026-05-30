@@ -470,6 +470,51 @@ func (f *fakeSearchServer) GetSourceChunk(_ context.Context, req *pb.GetSourceCh
 	}, nil
 }
 
+// fakeQueryServer (task-20.1) captures the inbound SearchRequest.Semantic so the
+// grpcclient passthrough can be asserted.
+type fakeQueryServer struct {
+	pb.UnimplementedSearchServiceServer
+	mu     sync.Mutex
+	gotSem bool
+}
+
+func (f *fakeQueryServer) Query(_ context.Context, req *pb.SearchRequest) (*pb.SearchResponse, error) {
+	f.mu.Lock()
+	f.gotSem = req.Semantic
+	f.mu.Unlock()
+	return &pb.SearchResponse{
+		Results: []*pb.SearchResultItem{},
+		Trace:   &pb.RetrievalTrace{TraceId: "t", Query: req.Query},
+	}, nil
+}
+
+// TestTask201_GrpcClient_Search_ForwardsSemantic — task-20.1 §6 AC3: searchClient
+// .Search maps contractv1.SearchRequest.Semantic onto the gRPC pb.SearchRequest
+// .Semantic field (both true and false reach the core SearchService.Query).
+func TestTask201_GrpcClient_Search_ForwardsSemantic(t *testing.T) {
+	for _, sem := range []bool{true, false} {
+		fake := &fakeQueryServer{}
+		addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+			pb.RegisterSearchServiceServer(s, fake)
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		cli, _ := New(ctx, addr)
+		_, _, err := cli.Search().Search(contractv1.SearchRequest{Query: "q", WorkspaceID: "w", Semantic: sem})
+		if err != nil {
+			t.Fatalf("Search(semantic=%v): %v", sem, err)
+		}
+		fake.mu.Lock()
+		got := fake.gotSem
+		fake.mu.Unlock()
+		if got != sem {
+			t.Errorf("forwarded pb.SearchRequest.Semantic = %v, want %v", got, sem)
+		}
+		_ = cli.Close()
+		cancel()
+		stop()
+	}
+}
+
 func TestGrpcClient_GetSourceChunk_MapsFields(t *testing.T) {
 	fake := &fakeSearchServer{}
 	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {

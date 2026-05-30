@@ -243,6 +243,7 @@ async fn test_search_empty_response_via_grpc() {
             retrieval_method: "bm25".into(),
             top_k: 5,
             config_snapshot: "{}".into(),
+            semantic: false,
         })
         .await
         .expect("query ok");
@@ -319,6 +320,7 @@ async fn test_serve_full_listens_both_planes() {
             retrieval_method: "bm25".into(),
             top_k: 1,
             config_snapshot: "{}".into(),
+            semantic: false,
         })
         .await
         .expect("search ok");

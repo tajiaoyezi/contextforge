@@ -18,6 +18,8 @@ use crate::pb_console::{
     QueryRecord as PbQueryRecord, RetrievalTrace as PbRetrievalTrace,
     SearchRequest as PbSearchRequest, SearchResponse, SearchResultItem, SourceChunk as PbSourceChunk,
 };
+use crate::embedding::DeterministicEmbeddingProvider;
+use crate::retriever::vector::BruteForceVectorBackend;
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
 use crate::workspace::WorkspaceStore;
 
@@ -259,16 +261,40 @@ impl SearchService for SearchServer {
         };
 
         let top_k = if req.top_k <= 0 { 5 } else { req.top_k as usize };
-        let opts = SearchOptions {
-            query: req.query.clone(),
-            top_k,
-            filters: SearchFilters::default(),
-            explain: false,
-        };
 
-        let hits = retriever
-            .search(&opts)
-            .map_err(|e| Status::internal(format!("retriever search: {e}")))?;
+        // task-20.1 (Phase 20): opt-in semantic path. Mirrors core CoreService.search
+        // (server.rs, task-19.3): wire the model-free DeterministicEmbeddingProvider +
+        // the 0-dep BruteForceVectorBackend, build an on-demand in-memory index from this
+        // collection's chunks (no persistence — [SPEC-DEFER:phase-future.hnsw-graph-persistence]),
+        // and run the vector path. Hits carry retrieval_method "vector". Deterministic
+        // embeddings prove the wiring, not recall (real recall is task-19.5/20.2; ADR-013).
+        // Default (semantic == false) keeps the BM25 path byte-for-byte unchanged.
+        let hits = if req.semantic {
+            let embedder = Arc::new(DeterministicEmbeddingProvider::default());
+            let backend = Arc::new(BruteForceVectorBackend::new());
+            let wired = retriever
+                .with_embedder(embedder)
+                .with_vector_searcher(backend.clone());
+            let items = wired
+                .enumerate_chunks()
+                .map_err(|e| Status::internal(format!("semantic enumerate: {e}")))?;
+            wired
+                .index_chunks_semantic(backend.as_ref(), &items)
+                .map_err(|e| Status::internal(format!("semantic index: {e}")))?;
+            wired
+                .search_semantic(&req.query, top_k)
+                .map_err(|e| Status::internal(format!("semantic search: {e}")))?
+        } else {
+            let opts = SearchOptions {
+                query: req.query.clone(),
+                top_k,
+                filters: SearchFilters::default(),
+                explain: false,
+            };
+            retriever
+                .search(&opts)
+                .map_err(|e| Status::internal(format!("retriever search: {e}")))?
+        };
 
         // task-11.4 §6 AC2: build RetrievalTrace.retrieved_chunks (score +
         // source_file + content snippet ≤ 200 UTF-8 chars).
@@ -326,9 +352,13 @@ impl SearchService for SearchServer {
             trace_id: format!("trace-{}", trace_seq()),
             query: req.query.clone(),
             expanded_query: None,
-            candidate_generation_steps: vec!["tantivy-bm25".to_string()],
-            lexical_candidates_count: final_context_count,
-            vector_candidates_count: 0,
+            candidate_generation_steps: vec![if req.semantic {
+                "vector-bruteforce".to_string()
+            } else {
+                "tantivy-bm25".to_string()
+            }],
+            lexical_candidates_count: if req.semantic { 0 } else { final_context_count },
+            vector_candidates_count: if req.semantic { final_context_count } else { 0 },
             rerank_steps: vec![],
             scope_filter_result: "no-op".to_string(),
             final_context_count,
@@ -863,6 +893,7 @@ mod tests {
                 retrieval_method: "bm25".into(),
                 top_k: 5,
                 config_snapshot: "{}".into(),
+                semantic: false,
             }))
             .await
             .expect("query ok");
@@ -872,6 +903,90 @@ mod tests {
         let trace = inner.trace.expect("trace present");
         assert_eq!(trace.query, "anything");
         assert!(trace.retrieved_chunks.is_empty());
+    }
+
+    // ---- TEST-20.1 — console SearchService.Query semantic branch dispatches the
+    // vector path (mirrors core CoreService TEST-19.3). Deterministic embeddings
+    // prove the dispatch/plumbing, not recall quality (real recall is task-19.5/
+    // 20.2; ADR-013). semantic=false keeps the BM25 baseline. ----
+    #[tokio::test]
+    async fn test_20_1_query_semantic_dispatches_vector_path() {
+        use crate::chunker::ChunkPolicy;
+        use crate::indexer::IndexSession;
+        use crate::scanner::{default_denylist, ScanOptions};
+
+        let src = temp_data_dir("sem-src");
+        let data = temp_data_dir("sem-data");
+        let coll = "ws-sem".to_string();
+        std::fs::write(
+            src.join("a.md"),
+            "where is the config loader and default data dir",
+        )
+        .unwrap();
+        std::fs::write(src.join("b.md"), "how the daemon restarts after a crash").unwrap();
+        let scan_opts = ScanOptions {
+            denylist: default_denylist(),
+            allowlist: Vec::new(),
+            allow_denylist_override: false,
+            dry_run: false,
+            max_file_bytes: 10 * 1024 * 1024,
+        };
+        let mut sess = IndexSession::open(&data, &coll).expect("open indexer");
+        sess.index_path(&src, &scan_opts, &ChunkPolicy::default(), vec![])
+            .expect("index_path");
+        sess.commit().expect("commit");
+        drop(sess); // release the index writer lock before the server opens a reader
+
+        let ws = Arc::new(SqliteWorkspaceStore::open(&data).unwrap());
+        let js = Arc::new(SqliteJobStore::open(&data).unwrap());
+        let mut stores = DataPlaneStores::new(ws, js);
+        // DataPlaneStores::new returns Arc<Self> with an empty data_dir; set the
+        // real index dir in place while the Arc is still unique (refcount 1).
+        Arc::get_mut(&mut stores)
+            .expect("stores Arc is unique here")
+            .data_dir = data.clone();
+        let server = SearchServer::new(stores);
+
+        // semantic=true → vector path.
+        let inner = server
+            .query(Request::new(PbSearchRequest {
+                query: "where is the config loader and default data dir".into(),
+                workspace_id: coll.clone(),
+                agent_scope: String::new(),
+                retrieval_method: String::new(),
+                top_k: 5,
+                config_snapshot: String::new(),
+                semantic: true,
+            }))
+            .await
+            .expect("semantic query ok")
+            .into_inner();
+        assert!(!inner.results.is_empty(), "semantic path should return hits");
+        assert_eq!(
+            inner.results[0].retrieval_method, "vector",
+            "semantic hits must report the vector retrieval_method"
+        );
+
+        // semantic=false → BM25 baseline (not the vector method); unchanged behavior.
+        let bm25 = server
+            .query(Request::new(PbSearchRequest {
+                query: "config loader".into(),
+                workspace_id: coll.clone(),
+                agent_scope: String::new(),
+                retrieval_method: String::new(),
+                top_k: 5,
+                config_snapshot: String::new(),
+                semantic: false,
+            }))
+            .await
+            .expect("bm25 query ok")
+            .into_inner();
+        if let Some(top) = bm25.results.first() {
+            assert_ne!(
+                top.retrieval_method, "vector",
+                "bm25 path must not report the vector method"
+            );
+        }
     }
 
     // ----------------------------------------------------------------------

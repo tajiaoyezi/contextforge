@@ -139,6 +139,7 @@ async fn test_search_real_chunks() {
             retrieval_method: "bm25".into(),
             top_k: 5,
             config_snapshot: "{}".into(),
+            semantic: false,
         })
         .await
         .expect("query ok")
@@ -182,6 +183,7 @@ async fn test_retrieval_trace_fields() {
             retrieval_method: "bm25".into(),
             top_k: 5,
             config_snapshot: "{}".into(),
+            semantic: false,
         })
         .await
         .expect("query ok")
