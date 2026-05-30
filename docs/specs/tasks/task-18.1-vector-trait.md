@@ -14,14 +14,14 @@ PRD §Open Questions O2 「向量后端最终选型」自 v0.1 起留白至 v0.1
 本 task 是 Phase 18 推荐序的首项（trait → harness → 4 backend ∥ → decision → eval → 收口），承担三件不可拆解的工作：
 
 1. **抽象层冻结**：在 `core/src/retriever/vector/` 落 `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait 定义，作为 task-18.3-18.6 4 backend 共享接口；本 task ship 后 4 spike 并行开始
-2. **占位实现**：`NoopVectorBackend` 实现三 trait 全 stub（search 返空 / index 返 Ok no-op / is_indexed 返 false），让既有 BM25-only retriever 路径在 vector backend 未配置时不退化（PRD §Anti-metrics「不能牺牲可解释性」）
-3. **retriever 端集成**：`core/src/retriever/mod.rs` 接入 `Option<Arc<dyn VectorSearcher>>` 字段；当 None 时既有 BM25-only 行为完全保留（不退化）；当 Some 时占位返空（实际 backend swap-in 由 task-18.7 default wiring 完成）
+2. **空实现**：`NoopVectorBackend` 实现三 trait 全部为空操作（search 返空 / index 返 Ok no-op / is_indexed 返 false），让既有 BM25-only retriever 路径在 vector backend 未配置时不退化（PRD §Anti-metrics「不能牺牲可解释性」）
+3. **retriever 端集成**：`core/src/retriever/mod.rs` 接入 `Option<Arc<dyn VectorSearcher>>` 字段；当 None 时既有 BM25-only 行为完全保留（不退化）；当 Some 时返空 vector hits（实际 backend swap-in 由 task-18.7 default wiring 完成）
 
-**实施策略**：本 task 不引入任何真 backend dep（sqlite-vec / qdrant / lancedb / hnsw 全不入 Cargo.toml）— 仅定义 trait + Noop 实现 + retriever wiring + `vector-spike` feature flag scaffold（让 task-18.3-18.6 接入各自 dep 时按 `[features] vector-spike = [...]` opt-in）。Cargo dep 完全 add-only — 现有 v0.10.0 build 时 `cargo build --workspace` 不引入新 dep。
+**实施策略**：本 task 不引入任何真 backend dep（sqlite-vec / qdrant / lancedb / hnsw 全不入 Cargo.toml）— 只定义 trait + Noop 实现 + retriever wiring + `vector-spike` feature flag 空块（让 task-18.3-18.6 接入各自 dep 时按 `[features] vector-spike = [...]` opt-in）。Cargo dep 完全 add-only — 现有 v0.10.0 build 时 `cargo build --workspace` 不引入新 dep。
 
 ## 2. Goal
 
-在 `core/src/retriever/vector/` 落地 `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait 定义 + `NoopVectorBackend` 占位实现 + retriever 端 `Option<Arc<dyn VectorSearcher>>` 集成；既有 BM25 / metadata / filter 检索路径不退化（`cargo test --workspace` 0 failed）；≥3 NoopVectorBackend unit test PASS；`core/Cargo.toml` workspace `[features] vector-spike` scaffold ready；ADR-014 D2 lint 0 unannotated hits。本 task ship 后 task-18.2 spike harness 可启动，task-18.3-18.6 4 backend 实现可并行开始（共享 trait 接口）。
+在 `core/src/retriever/vector/` 落地 `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait 定义 + `NoopVectorBackend` 空实现 + retriever 端 `Option<Arc<dyn VectorSearcher>>` 集成；既有 BM25 / metadata / filter 检索路径不退化（`cargo test --workspace` 0 failed）；≥3 NoopVectorBackend unit test PASS；`core/Cargo.toml` workspace `[features] vector-spike` 空 feature 块就绪；ADR-014 D2 lint `--touched` 增量门通过（PR 触及行 0 未标注命中）。本 task ship 后 task-18.2 spike harness 可启动，task-18.3-18.6 4 backend 实现可并行开始（共享 trait 接口）。
 
 ## 3. Scope
 
@@ -165,7 +165,6 @@ use std::fmt::Debug;
 use crate::retriever::vector::types::{ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig};
 
 // core/src/retriever/vector/noop.rs
-use tracing::debug;
 use crate::retriever::vector::traits::{VectorBackend, VectorIndexer, VectorSearcher};
 use crate::retriever::vector::types::{ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig};
 
@@ -260,7 +259,11 @@ pub struct VectorFilter {
 }
 
 /// All errors backend impls can return.
+///
+/// `#[non_exhaustive]` so downstream backend crates cannot write exhaustive matches —
+/// new variants stay add-only-safe within the AC7 trait freeze.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum VectorError {
     #[error("backend not initialized")]
     NotInitialized,
@@ -270,6 +273,12 @@ pub enum VectorError {
     InvalidScore(f32),
     #[error("backend I/O error: {0}")]
     Io(String),
+    /// Wraps a backend/transport error (Qdrant/LanceDB gRPC), preserving the source chain.
+    #[error("backend error: {source}")]
+    Backend {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("backend error: {0}")]
     Other(String),
 }
@@ -347,7 +356,7 @@ impl VectorSearcher for NoopVectorBackend {
         _k: usize,
         _filter: Option<&VectorFilter>,
     ) -> Result<Vec<VectorHit>, VectorError> {
-        debug!("NoopVectorBackend.search called - returning empty hits (vector backend not configured)");
+        // NoopVectorBackend.search: returning empty hits (vector backend not configured)
         Ok(vec![])
     }
     fn is_indexed(&self) -> bool { false }
@@ -417,13 +426,13 @@ impl Retriever {
 
 > ADR-014 D3 句式：每条 AC 末尾显式 `verified by <test-id> 或 <smoke-step>`。`(PRD §X)` 引用 PRD 锚点；`(本 task 新增)` 是 PRD 未覆盖但 phase-18 §2A 决策推导的扩展。
 
-- [ ] **AC1**: `core/src/retriever/vector/traits.rs` 定义 `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait + 相关 types (`VectorHit` / `VectorIndexConfig` / `VectorMetric` / `VectorError`)；trait method signature 全 sync (推荐) 或 全 async (备选，§2A 拍板)，统一不混用；trait API doc 含 doctest 示例 (`cargo test --doc -p contextforge-core --lib retriever::vector::traits` PASS) — verified by **TEST-18.1.1** (`core/src/retriever/vector/traits.rs` doctest) + **TEST-18.1.2** (`core/src/retriever/vector/tests.rs::trait_object_safety_test`)（本 task 新增）
-- [ ] **AC2**: `core/src/retriever/vector/noop.rs` 落 `NoopVectorBackend` 实现三 trait — `name()` 返 `"noop"`；`version()` 返 `"0.1.0"`；`is_local()` 返 `true`；`requires_embedding()` 返 `false`；`search(_, _, _)` 返 `Ok(vec![])` + `tracing::debug!`；`index_batch(_)` 返 `Ok(0)`；`is_indexed()` 返 `false`；`flush()` / `close()` 返 `Ok(())` — verified by **TEST-18.1.3** (`tests::test_noop_search_returns_empty`) + **TEST-18.1.4** (`tests::test_noop_index_batch_is_noop_ok`) + **TEST-18.1.5** (`tests::test_noop_is_indexed_always_false`)（本 task 新增，refs phase-18 §6 AC1）
-- [ ] **AC3**: `core/src/retriever/mod.rs` 接入 `Option<Arc<dyn VectorSearcher>>` 字段（`Retriever::new` 签名扩 add-only — 既有 caller 传 `None` 不破坏 API）；当 `None` 时 `Retriever::search()` hot path 与 v0.10 完全一致（既有 BM25 / metadata / filter 路径 0 字节改动到 search algorithm）；当 `Some(noop)` 时 `search()` 内部调 `searcher.search()` 返空 vector hits + 合并入 result，`retrieval_method` 字段保留 `"bm25"` 取值（PRD §Core Capabilities #2 retrieval_method 字段可解释性约束保留）— verified by **TEST-18.1.6** (`tests::test_retriever_none_vector_searcher_bm25_unchanged`) + **TEST-18.1.7** (`tests::test_retriever_some_noop_vector_searcher_returns_empty_vector_hits`)（本 task 新增，refs PRD §Core Capabilities #2 + §Constraints performance P95 < 500ms 不退化）
-- [ ] **AC4**: `core/Cargo.toml` workspace `[features]` 块新增 `vector-spike = []` 占位 feature（空 list — task-18.3-18.6 各自添加 dep）+ `default = []`（不强制 enable）+ `vector-sqlite = []` / `vector-qdrant = []` / `vector-lancedb = []` / `vector-hnsw = []` 四占位 feature（task-18.3-18.6 各自 PR ship 时填实 dep list）；`cargo build --workspace` 默认 features 不变 — 0 新 dep 引入 — verified by **TEST-18.1.8** (`cargo build --workspace --no-default-features` + `cargo build --workspace --features vector-spike` 均 PASS) + 本 task closeout PR diff `Cargo.lock` 0 行新增/删除（本 task 新增，refs phase-18 §7 R7 mitigation）
-- [ ] **AC5**: 既有 `cargo test --workspace` 全 PASS — Phase 1-17 既有所有 Rust 测试不退化（BM25 retrieval / Tantivy / SQLite / metadata / explain / memory / eval / ConsoleService / 等）；`go test ./...` 全 PASS（Go 端未触及 — proto / contractv1 / consoleapi 不变）— verified by **TEST-18.1.9** (`cargo test --workspace` 输出 0 failed) + 本 task §10 verification 段记录实测计数（本 task 新增，refs phase-18 §6 AC1 + PRD §Anti-metrics 性能不退化）
-- [ ] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits；本 task 引入的所有延后行为关键词全部用 [SPEC-DEFER:&lt;name&gt;] 或 [SPEC-OWNER:&lt;task&gt;] 标注（§3 Out of Scope 已罗列 12 项）— verified by 本 task PR body 含 D2 lint 输出段（refs ADR-014 D2 第九次激活）
-- [ ] **AC7**: 本 task ship 后下游可用 — task-18.2 spike harness 编程基于 trait 接口；task-18.3-18.6 4 backend 实现接入 trait；trait API 在本 task ship 后 90 天内不破坏（仅 add-only method / add-only field）；如确需 break → 走 chore/spec-fix-task-18.1 独立 PR 触发 §2A 重审 — verified by 本 task closeout PR body 含 "trait API stability contract" 段说明 90 天 add-only 约束（本 task 新增，refs phase-18 §2A 决策 4 trait-first 集成深度 + ADR-015 D1 add-only 模式）
+- [x] **AC1**: `core/src/retriever/vector/traits.rs` 定义 `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait + 相关 types (`VectorHit` / `VectorIndexConfig` / `VectorMetric` / `VectorError`)；trait method signature 全 sync (推荐) 或 全 async (备选，§2A 拍板)，统一不混用；trait API doc 含 doctest 示例 (`cargo test --doc -p contextforge-core --lib retriever::vector::traits` PASS) — verified by **TEST-18.1.1** (`core/src/retriever/vector/traits.rs` doctest) + **TEST-18.1.2** (`core/src/retriever/vector/tests.rs::trait_object_safety_test`)（本 task 新增）
+- [x] **AC2**: `core/src/retriever/vector/noop.rs` 落 `NoopVectorBackend` 实现三 trait — `name()` 返 `"noop"`；`version()` 返 `"0.1.0"`；`is_local()` 返 `true`；`requires_embedding()` 返 `false`；`search(_, _, _)` 返 `Ok(vec![])`（行内注释说明空返回，不引入 tracing 直接依赖；backend 日志接入留 [SPEC-OWNER:task-18.7-decision-adr023]）；`index_batch(_)` 返 `Ok(0)`；`is_indexed()` 返 `false`；`flush()` / `close()` 返 `Ok(())` — verified by **TEST-18.1.3** (`tests::test_noop_search_returns_empty`) + **TEST-18.1.4** (`tests::test_noop_index_batch_is_noop_ok`) + **TEST-18.1.5** (`tests::test_noop_is_indexed_always_false`)（本 task 新增，refs phase-18 §6 AC1）
+- [x] **AC3**: `core/src/retriever/mod.rs` 接入 `Option<Arc<dyn VectorSearcher>>` 字段（`Retriever::new` 签名扩 add-only — 既有 caller 传 `None` 不破坏 API）；当 `None` 时 `Retriever::search()` hot path 与 v0.10 完全一致（既有 BM25 / metadata / filter 路径 0 字节改动到 search algorithm）；当 `Some(noop)` 时 `search()` 内部调 `searcher.search()` 返空 vector hits + 合并入 result，`retrieval_method` 字段保留 `"bm25"` 取值（PRD §Core Capabilities #2 retrieval_method 字段可解释性约束保留）— verified by **TEST-18.1.6** (`tests::test_retriever_none_vector_searcher_bm25_unchanged`) + **TEST-18.1.7** (`tests::test_retriever_some_noop_vector_searcher_returns_empty_vector_hits`)（本 task 新增，refs PRD §Core Capabilities #2 + §Constraints performance P95 < 500ms 不退化）
+- [x] **AC4**: `core/Cargo.toml` workspace `[features]` 块新增 `vector-spike = []` 空 feature（空 list — task-18.3-18.6 各自添加 dep）+ `default = []`（不强制 enable）+ `vector-sqlite = []` / `vector-qdrant = []` / `vector-lancedb = []` / `vector-hnsw = []` 四个空 feature（task-18.3-18.6 各自 PR ship 时填实 dep list）；`cargo build --workspace` 默认 features 不变 — 0 新 dep 引入 — verified by **TEST-18.1.8** (`cargo build --workspace --no-default-features` + `cargo build --workspace --features vector-spike` 均 PASS) + 本 task closeout PR diff `Cargo.lock` 0 行新增/删除（本 task 新增，refs phase-18 §7 R7 mitigation）
+- [x] **AC5**: 既有 `cargo test --workspace` 全 PASS — Phase 1-17 既有所有 Rust 测试不退化（BM25 retrieval / Tantivy / SQLite / metadata / explain / memory / eval / ConsoleService / 等）；`go test ./...` 全 PASS（Go 端未触及 — proto / contractv1 / consoleapi 不变）— verified by **TEST-18.1.9** (`cargo test --workspace` 输出 0 failed) + 本 task §10 verification 段记录实测计数（本 task 新增，refs phase-18 §6 AC1 + PRD §Anti-metrics 性能不退化）
+- [x] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched <base>` 在本 task 及 chore/spec-fix PR 触及行 0 未标注命中；延后行为关键词全部用 [SPEC-DEFER:&lt;name&gt;] 或 [SPEC-OWNER:&lt;task&gt;] 标注（§3 Out of Scope 已罗列 14 项）— verified by §10 记录的 D2 lint 实跑输出（refs ADR-014 D2 第九次激活）
+- [x] **AC7**: 本 task ship 后下游可用 — task-18.2 spike harness 编程基于 trait 接口；task-18.3-18.6 4 backend 实现接入 trait；trait API 在本 task ship 后 90 天内不破坏（仅 add-only method / add-only field）；如确需 break → 走 chore/spec-fix-task-18.1 独立 PR 触发 §2A 重审 — verified by 本 task closeout PR body 含 "trait API stability contract" 段说明 90 天 add-only 约束（本 task 新增，refs phase-18 §2A 决策 4 trait-first 集成深度 + ADR-015 D1 add-only 模式）
 
 ## 7. 追踪表
 
@@ -436,8 +445,8 @@ impl Retriever {
 | TEST-18.1.3 | NoopVectorBackend.search 返空 vec | `core/src/retriever/vector/tests.rs::test_noop_search_returns_empty` (本 task 新增) | Done |
 | TEST-18.1.4 | NoopVectorBackend.index_batch 返 Ok(0) | `core/src/retriever/vector/tests.rs::test_noop_index_batch_is_noop_ok` (本 task 新增) | Done |
 | TEST-18.1.5 | NoopVectorBackend.is_indexed 返 false | `core/src/retriever/vector/tests.rs::test_noop_is_indexed_always_false` (本 task 新增) | Done |
-| TEST-18.1.6 | retriever.search(None searcher) BM25 路径不变 | `core/src/retriever/tests.rs::test_retriever_none_vector_searcher_bm25_unchanged` (本 task 新增) | Done |
-| TEST-18.1.7 | retriever.search(Some Noop) 返空 vector hits + retrieval_method 保留 | `core/src/retriever/tests.rs::test_retriever_some_noop_vector_searcher_returns_empty_vector_hits` (本 task 新增) | Done |
+| TEST-18.1.6 | retriever.search(None searcher) BM25 路径不变 + retrieval_method 保留 bm25 | `core/src/retriever/mod.rs::test_retriever_none_vector_searcher_bm25_unchanged` (本 task 新增) | Done |
+| TEST-18.1.7 | retriever.search(Some Noop) 与 None 基线等价（chunk_id/score/序）+ retrieval_method 保留 bm25 | `core/src/retriever/mod.rs::test_retriever_some_noop_vector_searcher_returns_empty_vector_hits` (本 task 新增) | Done |
 | TEST-18.1.8 | Cargo features vector-spike scaffold (no dep) build PASS | `cargo build --workspace --features vector-spike` (本 task 新增 — CI 段不变；本地实测) | Done |
 | TEST-18.1.9 | 既有 cargo test --workspace 0 failed (regression) | 全 workspace（既有；本 task 不退化）| Done |
 
@@ -537,17 +546,28 @@ bash scripts/spec_drift_lint.sh --touched origin/master
   - core/src/retriever/vector/noop.rs（新增）
   - core/src/retriever/vector/tests.rs（新增）
   - core/src/retriever/mod.rs（修改：+pub mod vector, +re-exports, +vector_searcher field, +with_vector_searcher builder, +search() placeholder call, +2 retriever-level tests）
-  - core/Cargo.toml（修改：+[features] scaffold vector-spike/vector-sqlite/vector-qdrant/vector-lancedb/vector-hnsw）
+  - core/Cargo.toml（修改：+[features] 空块 vector-spike/vector-sqlite/vector-qdrant/vector-lancedb/vector-hnsw）
 - **commit 列表**：
-  - 6a5134c feat(vector): task-18.1 vector trait abstraction + NoopVectorBackend + Retriever wiring
+  - ee701a9 feat(vector): task-18.1 vector trait abstraction + NoopVectorBackend + Retriever wiring（merge 1340c82）
 - **§9 Verification 结果**：
   - install: ✅ cargo fetch 无新 dep
   - lint: ⚠️ 11 pre-existing clippy warnings（非本 task 引入；vector 模块 0 新 warning）
   - typecheck: ✅ cargo check --workspace exit 0
   - unit-test: 196 passed / 0 failed（186 baseline + 8 vector module + 2 retriever-level）
   - doctest: 1 passed（traits.rs VectorSearcher doctest）
-  - coverage: skipped（cargo llvm-cov 未安装；Noop stub 覆盖率可推定 ~100%）
+  - coverage: skipped（cargo llvm-cov 未安装；Noop 空实现覆盖率可推定 ~100%）
   - build: ✅ cargo build --workspace --features vector-spike exit 0
   - manual: ✅ 三 trait API 冻结确认 — VectorBackend/VectorIndexer/VectorSearcher 全部 method 签名与 §5.3 §B 一致；types 字段与 §5.3 §A 一致
-- **剩余风险 / 未做项**：R5 ChunkId 用独立 newtype（crate::chunker 无同名类型，已 grep 确认）；tracing dep 未在 Cargo.toml — noop.rs debug 改为行内注释。ADR-014 D2 lint 脚本在 Windows/PS 环境下未跑（bash 脚本需 WSL）
+- **剩余风险 / 未做项**：R5 ChunkId 用独立 newtype（crate::chunker 无同名类型，已 grep 确认）；tracing dep 未在 Cargo.toml — noop.rs 改为行内注释（AC2 措辞已同步）。ADR-014 D2 lint 已在 git-bash 跑通（见 §10.1 spec-fix 追记）
 - **下游 task 影响**：task-18.2 (spike harness), task-18.3-18.6 (4 backend impl), task-18.7 (default wiring + hybrid fusion)
+
+### 10.1 Spec-fix 追记（chore/spec-fix-task-18.1，2026-05-30，review-driven）
+
+task-18.1 合并后全面审查（5 维 + 对抗复核）发现规格/测试完整性缺口；本 chore PR（ADR-014 D5 触线修订，不重启 closeout）修复如下：
+
+- **代码**：
+  - `core/src/retriever/vector/types.rs` — `VectorError` 加 `#[non_exhaustive]` + `Backend { source }` 变体（修 review API-4：冻结期内错误模型可 add-only 扩展、保留 source chain）
+  - `core/src/retriever/mod.rs` — TEST-18.1.6/7 重命名对齐规格，并强化为 AC3 等价断言：None 路径断言 `retrieval_method == "bm25"`；Some(Noop) 路径捕获 None 基线并断言 chunk_id/score/序完全一致（修 review TEST-1/TEST-2 弱 smoke + 假绿验证命令）
+- **文档**：AC1-7 复选框回填 `[x]`；AC2 措辞与 noop.rs 行内注释对齐（去 `tracing::debug!`）；§10 commit SHA 6a5134c→ee701a9；追踪表 TEST-18.1.6/7 落地文件 `tests.rs`→`mod.rs`；§2 Goal / §6 AC6 D2 lint 措辞改为真实的 `--touched` 增量门结论
+- **§9 复跑（git-bash / cargo 1.95）**：见提交时 PR body；`cargo test --workspace` 196 passed/0 failed、两条 build 命令 exit 0、`bash scripts/spec_drift_lint.sh --touched master` 0 未标注命中
+- **未做（accepted，留下游 add-only）**：API-1 VectorIndexConfig.extras / API-3 ChunkId 人体工学 / API-5 VectorStore 组合 trait / API-6 indexer object-safety 测试 / TEST-3 indexer lifecycle 测试 — 纳入 task-18.2 或后续；review 驳回项 API-2 / API-7 不处理

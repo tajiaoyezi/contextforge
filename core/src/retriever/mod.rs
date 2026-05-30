@@ -1232,27 +1232,65 @@ mod tests {
 
     // ---- task-18.1 retriever-level tests (TEST-18.1.6/7) ----
 
+    // TEST-18.1.6 — AC3: with no vector_searcher wired, the hot path stays the v0.10 BM25 path
+    // and retrieval_method is preserved as "bm25" on every hit.
     #[test]
-    fn test_retriever_vector_searcher_default_none() {
-        // Retriever constructed without with_vector_searcher → vector_searcher is None
-        let (_src, data, coll) = build_fixture("vec_default_none", &[("a.txt", "hello vector world")]);
+    fn test_retriever_none_vector_searcher_bm25_unchanged() {
+        let (_src, data, coll) = build_fixture("vec_none_bm25", &[("a.txt", "hello vector world")]);
         let retr = Retriever::open(&data, &coll).expect("open");
         assert!(retr.vector_searcher.is_none(), "default vector_searcher should be None");
-        // BM25 search still works normally
-        let results = retr.search(&SearchOptions { query: "vector".into(), top_k: 5, filters: SearchFilters::default(), explain: false }).expect("search");
+        let results = retr
+            .search(&SearchOptions { query: "vector".into(), top_k: 5, filters: SearchFilters::default(), explain: false })
+            .expect("search");
         assert!(!results.is_empty(), "BM25 should still return results without vector_searcher");
+        assert!(
+            results.iter().all(|r| r.retrieval_method == "bm25"),
+            "None vector_searcher must keep retrieval_method == \"bm25\" on every hit"
+        );
     }
 
+    // TEST-18.1.7 — AC3: wiring NoopVectorBackend must NOT perturb the BM25 result set.
+    // Prove equivalence against a None baseline (same chunk_ids, scores, order) rather than a
+    // weak "still returns ≥1 hit" smoke, and confirm retrieval_method stays "bm25" (vector hits
+    // are empty and not merged at task-18.1).
     #[test]
-    fn test_retriever_with_noop_vector_searcher() {
-        // Retriever built with NoopVectorBackend wired in → vector_searcher is Some
-        let (_src, data, coll) = build_fixture("vec_with_noop", &[("b.txt", "semantic search test")]);
+    fn test_retriever_some_noop_vector_searcher_returns_empty_vector_hits() {
+        let (_src, data, coll) = build_fixture(
+            "vec_noop_equiv",
+            &[("a.txt", "hello vector world"), ("b.txt", "semantic vector search world")],
+        );
+        let opts = || SearchOptions { query: "vector".into(), top_k: 5, filters: SearchFilters::default(), explain: false };
+
+        // Baseline: no vector_searcher wired.
+        let baseline: Vec<(String, f32, String)> = Retriever::open(&data, &coll)
+            .expect("open baseline")
+            .search(&opts())
+            .expect("baseline search")
+            .into_iter()
+            .map(|r| (r.chunk_id, r.score, r.retrieval_method))
+            .collect();
+        assert!(!baseline.is_empty(), "fixture should yield BM25 hits");
+
+        // Same index, NoopVectorBackend wired in.
         let retr = Retriever::open(&data, &coll)
-            .expect("open")
+            .expect("open noop")
             .with_vector_searcher(Arc::new(NoopVectorBackend));
         assert!(retr.vector_searcher.is_some(), "with_vector_searcher should set Some");
-        // Search still returns BM25 results (noop vector returns empty, not merged yet)
-        let results = retr.search(&SearchOptions { query: "semantic".into(), top_k: 5, filters: SearchFilters::default(), explain: false }).expect("search");
-        assert!(!results.is_empty(), "BM25 results should still be returned with NoopVectorBackend");
+        let with_noop: Vec<(String, f32, String)> = retr
+            .search(&opts())
+            .expect("noop search")
+            .into_iter()
+            .map(|r| (r.chunk_id, r.score, r.retrieval_method))
+            .collect();
+
+        // Noop returns empty vector hits → BM25 result set is identical to the baseline.
+        assert_eq!(
+            baseline, with_noop,
+            "NoopVectorBackend must not change BM25 chunk_ids / scores / order"
+        );
+        assert!(
+            with_noop.iter().all(|(_, _, m)| m == "bm25"),
+            "retrieval_method must stay \"bm25\" (empty vector hits are not merged)"
+        );
     }
 }
