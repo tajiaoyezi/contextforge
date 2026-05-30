@@ -25,6 +25,12 @@ FROM rust:1.93-slim-bookworm AS rust-build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY core/ ./core/
+# `bench` is a workspace member (Phase 18 task-18.2 spike harness) referenced by the root
+# Cargo.toml `members`. cargo must load its manifest to resolve the workspace even though
+# `-p contextforge-core` does not compile it — without it the build fails with
+# "failed to load manifest for workspace member /src/bench". The bench crate is tiny and is
+# not built into the image (no vector-* features → 0 extra compilation).
+COPY bench/ ./bench/
 COPY proto/ ./proto/
 RUN cargo build --release -p contextforge-core --bin contextforge-core
 
