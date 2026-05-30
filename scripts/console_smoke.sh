@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 17 task-17.1 is-pinned amendment smoke (v8).
+# scripts/console_smoke.sh — Phase 19 task-19.4 semantic-search amendment smoke (v9).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -23,6 +23,14 @@
 # {"pin": false} + GET asserts is_pinned=false). Step 26 already validates
 # SQLite persistence across daemon restart, so step 28 trusts that path and
 # focuses on the wire-field roundtrip exposed by task-17.1.
+#
+# v9 (Phase 19) added steps 29-30 — task-19.4 semantic-retrieval wiring. Step 29
+# exercises the task-19.3 /v1/search?semantic=true REST→gRPC path (add-only query
+# param; asserts the response is still nested {result, trace}). Step 30 builds the
+# Go binary and runs `contextforge eval run --semantic`, asserting the dual-path
+# (BM25 + semantic) report shape + recall-gate line. Per ADR-013 neither step
+# asserts a recall threshold — real SemanticRecall@K numbers come from task-19.5;
+# these steps only prove the semantic path is wired end-to-end.
 #
 # Modes (selected by env):
 #
@@ -388,11 +396,11 @@ code404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/eval-runs/eval-does-
 
 # =====================================================================
 # v6 (Phase 15) — 4 new steps for task-15.3/15.4/15.5/15.6 endpoints.
-# v7 (Phase 16) — re-numbered to 21/28 — 24/28 (3 v7 steps appended below).
+# v7 (Phase 16) — re-numbered to 21/30 — 24/30 (3 v7 steps appended below).
 # v8 (Phase 17) — step 28 appended for task-17.1 is_pinned wire roundtrip.
 # =====================================================================
 
-echo "  [21/28] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
+echo "  [21/30] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
 stats_body=$(curl -sf "$BASE/v1/stats/chunks") \
   || { echo "FAIL: GET stats/chunks" >&2; exit 1; }
 echo "$stats_body" | grep -q '"total"' \
@@ -401,7 +409,7 @@ echo "$stats_body" | grep -q '"today_delta"' \
   || { echo "FAIL: stats response missing today_delta" >&2; exit 1; }
 echo "    → stats response shape ok"
 
-echo "  [22/28] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
+echo "  [22/30] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
 list_body=$(curl -sf "$BASE/v1/eval-runs?limit=10") \
   || { echo "FAIL: GET eval-runs list" >&2; exit 1; }
 case "$list_body" in
@@ -419,7 +427,7 @@ filter_body=$(curl -sf "$BASE/v1/eval-runs?status=cancelled&limit=5") \
   || { echo "FAIL: GET eval-runs?status=cancelled" >&2; exit 1; }
 case "$filter_body" in [*]) echo "    → status filter returns array" ;; esac
 
-echo "  [23/28] task-15.5 GET /v1/queries (history; default limit 20)"
+echo "  [23/30] task-15.5 GET /v1/queries (history; default limit 20)"
 queries_body=$(curl -sf "$BASE/v1/queries") \
   || { echo "FAIL: GET queries" >&2; exit 1; }
 case "$queries_body" in
@@ -432,7 +440,7 @@ case "$queries_body" in
     ;;
 esac
 
-echo "  [24/28] task-15.6 GET /v1/health?detailed=true (5 components)"
+echo "  [24/30] task-15.6 GET /v1/health?detailed=true (5 components)"
 detail_body=$(curl -sf "$BASE/v1/health?detailed=true") \
   || { echo "FAIL: GET health?detailed=true" >&2; exit 1; }
 for name in db index embed retriever eval; do
@@ -452,7 +460,7 @@ echo "    → default /v1/health stays binary ✅"
 # v7 (Phase 16) — 3 new steps for task-16.1 / 16.2 / 16.4.
 # =====================================================================
 
-echo "  [25/28] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
+echo "  [25/30] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
 # REAL mode: assert wait truly blocks ≥ 1.5s when no event is pending (vs. v0.8
 # batch-poll path which returned immediately). LOCAL_ONLY / docker: sleep
 # fallback per task-16.2 memstore — also blocks min(wait, 1s).
@@ -483,7 +491,7 @@ case "$MODE" in
     ;;
 esac
 
-echo "  [26/28] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
+echo "  [26/30] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
 if [ "$MODE" = "real" ]; then
   # 3 more searches to seed TraceStore (already had 1 from step 8).
   for i in 1 2 3; do
@@ -540,7 +548,7 @@ else
   echo "    SKIP ($MODE mode — task-16.1 SoT only validated in real mode)"
 fi
 
-echo "  [27/28] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
+echo "  [27/30] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
 if [ "${COMPOSE_PROD_SMOKE:-0}" = "1" ]; then
   if ! command -v docker >/dev/null 2>&1; then
     echo "FAIL: COMPOSE_PROD_SMOKE=1 but docker not on PATH" >&2
@@ -585,7 +593,7 @@ fi
 # body POST falls back to pin=true (v0.7-v0.9 backward compat path).
 # =====================================================================
 
-echo "  [28/28] task-17.1 MemoryItem.is_pinned Pin RPC roundtrip (REAL mode + sqlite3)"
+echo "  [28/30] task-17.1 MemoryItem.is_pinned Pin RPC roundtrip (REAL mode + sqlite3)"
 if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
   # The seed.sql from step 13 already created mem-seed-1; step 16 pinned it via
   # empty-body POST (backward-compat path that defaults to pin=true). After
@@ -629,6 +637,50 @@ if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
   echo "    → empty-body POST → is_pinned=true (v0.7-v0.9 backward compat) ✅"
 else
   echo "    SKIP ($MODE mode or sqlite3 unavailable — task-17.1 wire roundtrip validated via Rust + Go unit tests)"
+fi
+
+# ----------- v9 (Phase 19) — task-19.4 semantic-retrieval wiring -----------
+echo "  [29/30] task-19.3 POST /v1/search?semantic=true (add-only query param; response still nested {result, trace})"
+if [ "$MODE" = "real" ]; then
+  # task-19.3 added proto SearchRequest.semantic + the daemon REST + Rust gRPC semantic branch.
+  # console-api-serve decodes the JSON body only and does not yet forward the ?semantic=true query
+  # param, so this step asserts the add-only param does NOT break the existing 22-endpoint contract —
+  # the response is still well-formed {result, trace}. It does NOT claim the semantic retrieval path
+  # engaged through console-api (that is exercised by the CLI in step 30; console-api forwarding is a
+  # task-19.5 follow-up — see task-19.4 §10). ADR-013: no recall assertion here.
+  sem_body=$(curl -sf -X POST "$BASE/v1/search?semantic=true" \
+    -H 'Content-Type: application/json' \
+    -d "{\"query\":\"contextforge\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"agent_scope\":\"session\"}") \
+    || { echo "FAIL: POST /v1/search?semantic=true did not return 2xx" >&2; exit 1; }
+  echo "$sem_body" | grep -q '"result"' \
+    && echo "$sem_body" | grep -q '"trace"' \
+    || { echo "FAIL: semantic search not nested {result, trace}: $sem_body" >&2; exit 1; }
+  echo "    → ?semantic=true preserved the {result, trace} contract (add-only, non-breaking) ✅"
+else
+  echo "    SKIP ($MODE mode — semantic REST path validated via Go/Rust unit tests; needs the real daemon)"
+fi
+
+echo "  [30/30] task-19.4 contextforge eval run --semantic (dual-path BM25 + semantic report + recall gate)"
+if [ "$MODE" = "real" ]; then
+  # $GO_BIN built at [real][3/4]. `eval run --semantic` spawns a transient core per query
+  # (searchViaDaemon) and issues BM25 + semantic passes, summarizing via task-18.8 SummarizeHybrid +
+  # MeetsRecallGate. ADR-013: assert the dual-path report SHAPE + gate line + exit 0 ONLY — real
+  # SemanticRecall@K numbers come from task-19.5 (the transient index is empty, so recall is not meaningful).
+  if eval_out=$("$GO_BIN" eval run --semantic --collection=default 2>"$STAGING/eval.err"); then
+    echo "$eval_out" | grep -q '^total=' \
+      && echo "$eval_out" | grep -q 'semantic_recall_at_10=' \
+      && echo "$eval_out" | grep -q '^gate=' \
+      || { echo "FAIL: eval --semantic missing dual-path/gate lines:" >&2; echo "$eval_out" >&2; exit 1; }
+    echo "    → eval run --semantic produced dual-path report + gate line (recall numbers deferred to task-19.5) ✅"
+  else
+    echo "FAIL: eval run --semantic exited non-zero" >&2
+    cat "$STAGING/eval.err" >&2
+    echo "---- core.log ----" >&2; tail -30 "$STAGING/core.log" 2>/dev/null || true
+    echo "---- api.log ----" >&2; tail -30 "$STAGING/api.log" 2>/dev/null || true
+    exit 1
+  fi
+else
+  echo "    SKIP ($MODE mode — eval --semantic needs the real daemon search backend)"
 fi
 
 echo
