@@ -252,6 +252,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Done | 1 | `../ContextForge-wt-is-pinned-amendment` |
 | 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Done | 9 | `../ContextForge-wt-vector-backend-selection`（v0.11.0 closeout 缩范围：AC1/2/5/6 met；AC3 partial=ADR-023 Proposed；AC4 deferred=生产集成 [SPEC-OWNER:phase-future.vector-retrieval-integration]）。**→ Phase 19 (v0.12.0) 解除**：AC3 ADR-023 ratify Accepted（task-19.6）+ AC4 生产集成 live（task-19.2/19.3/19.5）；记录于 ADR-023 Amendment，Phase 18 spec 正文未溯改（D5） |
 | 19 | `vector-retrieval-integration` | `docs/specs/phases/phase-19-vector-retrieval-integration.md` | Done | 7 | master（v0.12.0：端到端语义检索 live + ADR-023 ratify Accepted。解 Phase 18 AC3/AC4 + [SPEC-OWNER:phase-future.vector-retrieval-integration] **已解除**；real recall @10=0.9333≥0.70（task-19.5），默认构建 0-dep deterministic+brute-force 语义路径，real fastembed provider feature-gated） |
+| 20 | `semantic-retrieval-throughline` | `docs/specs/phases/phase-20-semantic-retrieval-throughline.md` | Draft | 0 | master（v0.13.0 规划：贯通 console-api `?semantic=true` + 经 Retriever 真实召回；闭合 v0.12.0 evidence §3b 两条 caveat。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.1） |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -337,6 +338,9 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 19.5 | core/examples/phase19_real_recall.rs（feature-gated real fastembed 谐波）+ test/fixtures/eval/dogfood-embeddings.jsonl（40 行 dim-384 real 语料）+ docs/spikes/phase-19-real-recall.md（真实 SemanticRecall@5=0.83/@10=0.93 gate PASS + top1/MRR 区分度 + per-category）+ bench fixture 测试 | docs/specs/tasks/task-19.5-real-recall-eval.md | Done | Phase19 #5（real provider R1 未触发；balanced corpus 修正 artifact 后可区分真实召回；@10=0.9333≥0.70 喂 19.6 ratify；ADR-013 数据源诚实声明 real-run）| master |
 | 19.6 | ADR-023 Proposed→**Accepted**（据 task-19.5 真实 recall@10=0.9333≥0.70 exact-cosine）+ ADR-006 A1 Proposed/provisional→**Active**（A1.4 ratification 注）+ ADR-008 add-only embedding crate（fastembed feature-gated）+ 记 Phase 18 §6 AC3/AC4 在 Phase 19 解决（不溯改 Phase 18 spec，D5）| docs/specs/tasks/task-19.6-adr-023-ratify.md | Done | Phase19 #6（dep 19.5；全 add-only 不改既有 ADR 正文；据真实非合成数据 ratify，ADR-013 守线；实现默认 backend = 0-dep brute-force exact 经 D5）| master |
 | 19.7 | Phase 19 closeout（端到端语义检索 ship，路径 A）+ v0.12.0 release docs（README/RELEASE_NOTES/evidence/artifacts）+ phase-19 §6 AC1-6 [x] + Status Done + adapter Phase 0→7/forward-ref 解除 + tag（用户授权 push @ `dcbe09b`，release.yml run 26685041851 success，ghcr v0.12.0+latest @ sha256:6f0ae8…d2990）+ backfill | docs/specs/tasks/task-19.7-closeout-v0.12.0.md | Done | Phase19 #7（dep 19.1-19.6；v0.12.0 = 端到端语义检索 live + ADR-023 Accepted；tag 经用户授权已 push + 镜像已发布）| master |
+| 20.1 | internal/contractv1 SearchRequest.Semantic（add-only）+ internal/consoleapi/handlers.go handleSearch ?semantic=true OR-merge + grpcclient 透传 pb.SearchRequest.Semantic | docs/specs/tasks/task-20.1-console-api-semantic-forward.md | Draft | Phase20 #1（首项；闭合 task-19.4 §10 console-api 未转发 caveat；仿 internal/daemon/rest.go 参考实现；0 Rust/proto delta） | master |
+| 20.2 | core/examples/phase20_recall_via_retriever.rs 经生产 Retriever::search_semantic 热路径跑真实召回 + docs/spikes/phase-20-recall-via-retriever.md（与 task-19.5 旁路 example 口径对比）| docs/specs/tasks/task-20.2-real-recall-via-retriever.md | Draft | Phase20 #2（dep 19.2 热路径；可与 20.1 并行，Go vs Rust 写路径不相交；real 数值本地复跑，ADR-013）| master |
+| 20.3 | scripts/console_smoke.sh v10 console-api ?semantic=true 真实语义断言 + v0.13.0 release docs + ADR-024 ratify + phase-20 §6 闭合 + adapter | docs/specs/tasks/task-20.3-closeout-v0.13.0.md | Draft | Phase20 #3（dep 20.1+20.2；tag push 经用户授权；承 task-19.7 closeout 模式）| master |
 
 ## ADR 索引
 
@@ -368,6 +372,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
 | 022 | memory-is-pinned-field-amendment | Accepted | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
 | 023 | vector-backend-default | Accepted | docs/decisions/adr-023-vector-backend-default.md |
+| 024 | console-api-semantic-forward | Proposed | docs/decisions/adr-024-console-api-semantic-forward.md |
 
 ## BDD Feature 索引
 
@@ -400,6 +405,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 16.1 / 16.2 / 16.3 / 16.4 | test/features/phase-16-v0.9.0-backlog-completion.feature |
 | 17.1 | test/features/phase-17-is-pinned-amendment.feature |
 | 19.1 / 19.2 / 19.3 / 19.5 | test/features/phase-19-vector-retrieval-integration.feature |
+| 20.1 / 20.2 / 20.3 | test/features/phase-20-semantic-retrieval-throughline.feature |
 
 ---
 
