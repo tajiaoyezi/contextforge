@@ -7,6 +7,19 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.11.0
+
+🧭 **v0.11.0 vector-backend-selection** — ships the **vector retrieval backend infrastructure + a data-driven backend selection** (Phase 18): the `Vector{Backend,Indexer,Searcher}` trait abstraction, a deterministic spike harness, **four real-data backend spikes** (sqlite-vec / qdrant / lancedb / hnsw) measured on one Linux host, the **ADR-023** default-backend decision (**Proposed**), and a `SemanticRecall@K` eval metric + gate.
+
+- **Infrastructure + selection milestone — not live semantic search.** Production semantic retrieval and the ADR-023 ratification are **deferred to a follow-on phase**: the spike deliberately used deterministic seed vectors to avoid an ONNX/embedding dependency, so there is no real-distribution recall yet (all four backends score 1.0 on synthetic data — non-discriminating). The default backend wiring + an embedding provider are tracked under `[SPEC-OWNER:phase-future.vector-retrieval-integration]` (ADR-023 D6).
+- **Default build is unchanged & dependency-free.** The `vector-*` features ship **off by default** — the default build is BM25-only (`NoopVectorBackend`), 0 new dependencies. Enabling a backend is a build-time feature choice.
+- **Four backends, real Linux 5-dim data** (n=100k): sqlite-vec (lightest, ADR-002 SQLite-aligned, exact), hnsw (pure-Rust, builds everywhere, but 28 s graph build + 180 MB at scale), qdrant (external server ANN), lancedb (embedded columnar, fastest writes). Comparison: `docs/spikes/phase-18-comparison.md`.
+- **ADR-023 (Proposed)** — tiered, feature-gated: D1 sqlite-vec recommended embedded default (provisional), D2 hnsw cross-platform fallback, D3 qdrant scale-out, D4 lancedb embedded-columnar, D5 default build ships none.
+- **`SemanticRecall@K` eval gate** (ADR-006 Amendment A1) — metric + `MeetsRecallGate` (BM25 Top5≥0.75 / Top10≥0.85 always; SemanticRecall@10≥0.70 when the vector path is evaluated). Live values await the embedding provider.
+- **ADR-014 cross-validation gate — 9th activation** across PRs #133/#134/#135/#136/#137 + this closeout.
+
+详 `RELEASE_NOTES.md` v0.11.0 段 + [Phase 18 spec](docs/specs/phases/phase-18-vector-backend-selection.md) + [ADR-023](docs/decisions/adr-023-vector-backend-default.md) + [comparison](docs/spikes/phase-18-comparison.md)。
+
 ## What's new in v0.10.0
 
 🎉 **v0.10.0 is-pinned-amendment** — closes the final ContextForge-Console PR #91/#93 backlog item (P2 #6 `MemoryItem.is_pinned`). Backlog is now **11/11 = 100% closed** 🎊. First successful activation of the ADR-015 D5 字段冻结 amendment path via ADR-022.

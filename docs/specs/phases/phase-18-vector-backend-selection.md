@@ -167,12 +167,14 @@ v0.11.0 ship 后 ContextForge 自带**向量召回 trait 抽象层** + **1 个 s
 
 **阶段级验收标准（C1 集成兜底门强制；每条 AC 含 ADR-014 D3 verified by 显式 owner）**：
 
-- [ ] **AC1**：vector retrieval trait 抽象层 ship — `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait 落地 `core/src/retriever/vector/`（mod.rs + traits.rs + noop.rs），含 `NoopVectorBackend` 占位实现 ≥3 unit test PASS + 既有 BM25 检索不退化（`cargo test --workspace` 0 failed）— verified by task-18.1 §6 AC1-3（`core/src/retriever/vector/traits.rs` + `core/src/retriever/vector/tests.rs`） + phase-smoke step 1
-- [ ] **AC2**：spike harness 跑通 4 backend × 5 维 — 合成 100k chunk + ContextForge dogfood 双数据集；recall@5/10 + P95 + RSS + cold-start + 索引重建耗时 5 维测量；4 backend 各 1 次完整跑通 evidence 落 `docs/spikes/phase-18-{sqlite-vec,qdrant-embedded,lancedb,hnsw}.md` — verified by task-18.2 §6 AC1-2（harness 实现）+ task-18.3/4/5/6 §6 AC1 各（backend spike evidence）+ phase-smoke step 2
+- [x] **AC1**：vector retrieval trait 抽象层 ship — `VectorBackend` / `VectorIndexer` / `VectorSearcher` 三 trait 落地 `core/src/retriever/vector/`（mod.rs + traits.rs + noop.rs），含 `NoopVectorBackend` no-op 缺省实现 ≥3 unit test PASS + 既有 BM25 检索不退化（`cargo test --workspace` 0 failed）— verified by task-18.1 §6 AC1-3（`core/src/retriever/vector/traits.rs` + `core/src/retriever/vector/tests.rs`） + phase-smoke step 1
+- [x] **AC2**：spike harness 跑通 4 backend × 5 维 — 合成 100k chunk + ContextForge dogfood 双数据集；recall@5/10 + P95 + RSS + cold-start + 索引重建耗时 5 维测量；4 backend 各 1 次完整跑通 evidence 落 `docs/spikes/phase-18-{sqlite-vec,qdrant-embedded,lancedb,hnsw}.md` — verified by task-18.2 §6 AC1-2（harness 实现）+ task-18.3/4/5/6 §6 AC1 各（backend spike evidence）+ phase-smoke step 2
 - [ ] **AC3**：spike 决策落 ADR-023 — Status: Proposed → Accepted at closeout PR；含 4 backend trade-off matrix（5 维实测对比表）+ 选定的默认 backend 名称 + 排除理由 + 反对意见预期 + 必要时 ADR-002/006/008 amendment 段 — verified by task-18.7 §6 AC1-2 + closeout PR diff 含 ADR-023 + ADR amendment 行变更
+  - **⚠️ Phase 18 closeout 实况（partial — 未达 Accepted）**：ADR-023 已落地（4 backend 5 维 trade-off matrix + 分层选型 D1-D6 + comparison 文档），但 **Status 保持 `Proposed`，非 `Accepted`**——合成种子向量上 4 路 recall 均 1.0（不可区分，`docs/spikes/phase-18-comparison.md`），无真实分布召回数据,按 ADR-013 不诚实 ratify。`Proposed → Accepted` ratify 后置 [SPEC-OWNER:phase-future.vector-retrieval-integration]（需真实 embedding provider + 生产向量召回复测）。
 - [ ] **AC4**：默认 backend 集成实现 + retriever 端集成 + smoke v9 — `core/src/retriever/mod.rs` default `Some(<chosen>)` wiring；smoke v9 30-step（既有 28 step Phase 16/17 不退化 + step 29-30 加入 vector search roundtrip via `/v1/search?semantic=true`）全 PASS — verified by task-18.9 §6 AC1（smoke v9 实现）+ task-18.7 §6 AC3（default wiring） + phase-smoke step 3
-- [ ] **AC5**：eval harness 语义召回评测纳入 — `internal/eval/eval.go` 加 `SemanticRecall@K` 指标 (K=5,10) + CLI `--semantic` flag default true when vector backend configured + recall gate 含 SemanticRecall@10 ≥ 70% D6 阈值 — verified by task-18.8 §6 AC1-2（eval.go 实现 + CLI flag） + phase-smoke step 4
-- [ ] **AC6**：ADR-014 cross-validation gate 全套通过（第九次激活）— D1 mapping table (Phase §6 6 条 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 owner + D4 主 agent 自治补丁 + D5 历史 Phase 1-17 不溯改 — verified by task-18.9 closeout PR body 含 D1 mapping 表 + D2 lint 输出段 + D3 § 6 AC 全含 `verified by ...` + D5 git diff 仅触新加文件
+  - **⛔ Phase 18 closeout 实况（deferred — 后置后继 phase）**：默认 backend 生产 retriever 热路径集成 + smoke v9 `/v1/search?semantic=true` **本 Phase 未实现**——需真实 embedding provider（`[SPEC-DEFER:phase-future.embedding-provider-full]`，本 Phase spike 用确定性种子向量规避 ONNX）+ 生产向量召回 wiring（ADR-023 D6）。task-18.1 已留 `Retriever::with_vector_searcher(Arc<dyn VectorSearcher>)` seam。整体后置 [SPEC-OWNER:phase-future.vector-retrieval-integration]。
+- [x] **AC5**：eval harness 语义召回评测纳入 — `internal/eval/eval.go` 加 `SemanticRecall@K` 指标 (K=5,10) + CLI `--semantic` flag default true when vector backend configured + recall gate 含 SemanticRecall@10 ≥ 70% D6 阈值 — verified by task-18.8 §6 AC1-2（eval.go 实现 + CLI flag） + phase-smoke step 4
+- [x] **AC6**：ADR-014 cross-validation gate 全套通过（第九次激活）— D1 mapping table (Phase §6 6 条 ↔ Task §6 AC) + D2 lint `scripts/spec_drift_lint.sh --touched origin/master` 0 unannotated hits + D3 verified-by 显式 owner + D4 主 agent 自治补丁 + D5 历史 Phase 1-17 不溯改 — verified by task-18.9 closeout PR body 含 D1 mapping 表 + D2 lint 输出段 + D3 § 6 AC 全含 `verified by ...` + D5 git diff 仅触新加文件
 
 **端到端 smoke**：
 
@@ -230,12 +232,14 @@ step 1-4 是 task-18.9 phase smoke 入口；step 5-6 是 closeout PR gate。
 
 ## 8. Definition of Done
 
-- 9 task spec（18.1-18.9）顶部 `**Status**: Done`
-- §6 阶段级 AC1-6 全 `[x]`
+> **⚠️ Phase 18 closeout 缩范围声明（2026-05-30，用户授权「切 v0.11.0 诚实缩范围」）**：Phase 18 作为**向量 backend spike + 选型里程碑**收口。§6 **AC1/AC2/AC5/AC6 达成**；**AC3 partial**（ADR-023 落地为 `Proposed`，4 backend trade-off matrix 齐全，但合成 recall 不可区分故未 ratify 到 `Accepted`）；**AC4 deferred**（默认 backend 生产 retriever 集成 + smoke v9 语义搜索后置——本 Phase spike 显式用确定性种子向量规避 ONNX,无 embedding provider）。AC3 ratify + AC4 集成 → 后继 [SPEC-OWNER:phase-future.vector-retrieval-integration]（需真实 embedding provider）。按 ADR-013 不把 AC3/AC4 标 `[x]`、不把 ADR-023 翻 `Accepted`。下列 DoD 项据此诚实勾选。
+
+- [x] 9 task spec（18.1-18.9）顶部 `**Status**: Done`
+- 部分 §6 阶段级 AC：AC1/2/5/6 `[x]`；AC3 partial（ADR Proposed）；AC4 deferred（生产集成后置）
 - 端到端 smoke 6 step 全 PASS（cargo test / spike harness / smoke v9 / eval semantic / D2 lint / release smoke）
 - **ADR**：
-  - ADR-023 `Status: Proposed → Accepted`（spike 决策落地）
-  - 必要时 ADR-002 / ADR-006 / ADR-008 amendment 段已 ship
+  - ADR-023 `Status: Proposed`（spike 决策落地 + 分层选型；`→ Accepted` ratify 后置,见缩范围声明）
+  - [x] ADR-006 Amendment A1（SemanticRecall@K gate，task-18.8 ship）；ADR-002/008 无需 amendment
 - **PRD**：
   - `§Open Questions O2` 标 `[x] Resolved by Phase 18 closeout`
   - `§Implementation Phases` 加 Phase 18 段落

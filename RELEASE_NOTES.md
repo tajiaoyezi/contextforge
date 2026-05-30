@@ -1,5 +1,62 @@
 # ContextForge Release Notes
 
+## v0.11.0 (2026-05-30) — vector-backend-selection (infra + spike + ADR-023 Proposed)
+
+### 摘要
+
+v0.11.0 minor release: ships the **vector retrieval backend infrastructure + a data-driven backend selection** (Phase 18). It delivers the vector trait abstraction, a deterministic spike harness, **four real-data backend spikes measured on one Linux host**, the ADR-023 default-backend decision (**Proposed**), and the `SemanticRecall@K` eval metric + gate.
+
+**Honest scope (read this)**: this is an **infrastructure + selection milestone**, *not* live semantic search. Production semantic retrieval and the ADR-023 ratification are **deferred** — the Phase 18 spike deliberately used deterministic seed vectors to avoid an ONNX/embedding dependency, so there is no real-distribution recall yet (all four backends score recall 1.0 on synthetic data — non-discriminating). Wiring a chosen backend into the production retriever + an embedding provider is a follow-on phase (`[SPEC-OWNER:phase-future.vector-retrieval-integration]`, ADR-023 D6). The `vector-*` features ship **off by default** — the default build is BM25-only and dependency-free.
+
+### What shipped (Phase 18, tasks 18.1–18.9)
+
+| task | delivery | PR |
+|---|---|---|
+| 18.1 | `Vector{Backend,Indexer,Searcher}` trait abstraction + `NoopVectorBackend` + retriever seam | #128 (+#129 review) |
+| 18.2 | `bench/` spike harness — deterministic corpus + 5-dim measure + runner | #130 |
+| 18.3 | **sqlite-vec** backend (`vec0`, stable 0.1.9) | #133 |
+| 18.4 | **qdrant** backend (qdrant-client gRPC → local server) | #134 |
+| 18.5 | **lancedb** backend (embedded Lance + Arrow) | #135 |
+| 18.6 | **hnsw** backend (instant-distance, pure Rust) | #131 |
+| 18.7 | **ADR-023 (Proposed)** default-backend decision + 4-backend comparison | #136 |
+| 18.8 | `internal/eval` **SemanticRecall@K** metric + recall gate + ADR-006 Amendment A1 | #137 |
+| 18.9 | Phase 18 closeout (honest scope) + v0.11.0 release docs | this PR |
+
+### 4-backend comparison (real Linux data, n=100000 / dim=64)
+
+| backend | recall@5/10 | P95 (ms) | index RSS (MB) | cold-start | model |
+|---|---|---|---|---|---|
+| sqlite-vec | 1.0 / 1.0 | 3.198 | 90.7 | 760 ms | embedded + disk, exact |
+| hnsw | 1.0 / 1.0 | 0.871 | 180.0 | 28.4 s | in-mem ANN, pure Rust |
+| qdrant | 1.0 / 1.0 | 0.947 | 91.6 (+~166 server) | 385 ms | external server ANN |
+| lancedb | 1.0 / 1.0 | 10.893 | 90.8 | 50 ms | embedded + disk, flat |
+
+recall is non-discriminating on synthetic vectors → the selection is driven by ContextForge's architecture (local-first, single-binary, SQLite-based per ADR-002, cross-platform incl. Windows MSVC), not recall. Full analysis: `docs/spikes/phase-18-comparison.md`.
+
+### ADR-023 (Proposed) — tiered, feature-gated, default build BM25-only
+
+- **D1** sqlite-vec = recommended embedded default (Linux prod, ADR-002-aligned) — **provisional** pending real-embedding recall.
+- **D2** hnsw = cross-platform/dev fallback (pure Rust; but 28 s build + 180 MB at 100k → not the prod default at scale).
+- **D3** qdrant = hosted/scale-out. **D4** lancedb = embedded-columnar alternative. **D5** default build ships no backend.
+
+### Deferred to a follow-on phase (`[SPEC-OWNER:phase-future.vector-retrieval-integration]`)
+
+- ADR-023 `Proposed → Accepted` ratification (needs real-embedding recall).
+- Default backend wired into the production retriever hot path + smoke v9 `/v1/search?semantic=true`.
+- An embedding provider (`[SPEC-DEFER:phase-future.embedding-provider-full]`).
+
+### ADR-014 cross-validation gate — 9th activation
+
+D1 mapping table + D2 spec-drift lint 0 hits + D3 verified-by + D4 main-agent autonomy + D5 no Phase 1–17 spec edits, across PRs #133/#134/#135/#136/#137 + this closeout. Each PR: default `cargo test --workspace` 0 failed + `go test ./...` ok + CI three-gate green before autonomous merge.
+
+### Upgrade path (v0.10.0 → v0.11.0)
+
+No migration, no breaking change. The `vector-*` features are off by default; the default build is byte-for-byte BM25-only behavior (NoopVectorBackend). Enabling a backend is a build-time feature choice (sqlite-vec needs Linux/gcc; lancedb needs protoc; qdrant needs a running server). `docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.11.0` after the tag push.
+
+### Rollback path
+
+`git tag -d v0.11.0` + delete the GitHub release; the closeout is documentation + feature-gated code, so reverting is a no-op for the default build. No DB or schema change to undo.
+
 ## v0.10.0 (2026-05-28) — is-pinned-amendment (Console PR #91/#93 backlog 11/11 = 100% closed)
 
 ### 摘要
