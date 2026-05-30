@@ -75,6 +75,11 @@ base64 = "0.22"
 # task-18.6 spike: instant-distance — pure-Rust HNSW approximate nearest-neighbour, gated behind
 # the vector-hnsw feature. Optional — default build unaffected (0 new dep at default features).
 instant-distance = { version = "0.6", optional = true }
+# task-18.3 spike: sqlite-vec — SQLite `vec0` KNN extension (asg017/sqlite-vec), gated behind the
+# vector-sqlite feature. Stable 0.1.9 pinned (0.1.10-alpha.4 ships an incomplete C amalgamation —
+# missing sqlite-vec-diskann.c). Compiles via gcc on Linux x86_64 (P0); registered into rusqlite's
+# bundled SQLite via sqlite3_auto_extension. Optional — default build unaffected (0 new dep).
+sqlite-vec = { version = "=0.1.9", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -85,7 +90,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"]
 [features]
 default = []
 vector-spike = []
-vector-sqlite = []
+vector-sqlite = ["dep:sqlite-vec"]
 vector-qdrant = []
 vector-lancedb = []
 vector-hnsw = ["dep:instant-distance"]
