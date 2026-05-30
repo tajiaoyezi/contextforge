@@ -1,6 +1,6 @@
 # Phase 20 · semantic-retrieval-throughline
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 把 Phase 19（v0.12.0）落地的**语义检索能力**从「opt-in + 仅 CLI / 仅 `internal/daemon/rest.go` REST surface」**贯通到 console-api（`internal/consoleapi`）的 `/v1/search`**，并让真实召回评测**经生产 `Retriever` 热路径**跑通（而非 v0.12.0 的独立 `core/examples/phase19_real_recall.rs` 谐波）。这是 `docs/releases/v0.12.0-evidence.md` §3b 与 `docs/specs/tasks/task-19.4-smoke-v9.md` §10 已**诚实记录**的两条 caveat 的闭环。v0.13.0 收口。对应 `docs/roadmap.md` §3.1。
 >
@@ -87,11 +87,11 @@ v0.13.0 ship 后，ContextForge 的语义检索从「v0.12.0 仅经 CLI `eval ru
 
 **阶段级验收标准（每条 AC 含 ADR-014 D3 verified by 显式 owner；Draft 阶段未勾选，实施后逐条置 `[x]`）**：
 
-- [ ] **AC1**：`contractv1.SearchRequest` add-only `Semantic` + `handleSearch` 转发 `?semantic=true` / body → gRPC `SearchRequest.Semantic` + grpcclient 透传；`{result, trace}` 响应 shape + 22-endpoint conformance 不破坏 — verified by task-20.1 §6 AC1-3 + phase-smoke step 1
-- [ ] **AC2**：真实召回评测经生产 `Retriever::search_semantic` 热路径跑通；deterministic provider wiring 可断言，real fastembed 召回数值本地复跑记录（禁伪造，ADR-013）— verified by task-20.2 §6 AC1-2 + phase-smoke step 2
-- [ ] **AC3**：smoke v10 console-api `/v1/search?semantic=true` 真实语义断言（非仅保形）+ 既有 step 不退化 — verified by task-20.3 §6 AC1 + phase-smoke step 3
-- [ ] **AC4**：v0.13.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-024 据实测 ratify 或记录 + phase §6 闭合 — verified by task-20.3 §6 AC2-3
-- [ ] **AC5**：ADR-014 cross-validation gate 全套通过（第十一次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-19 不溯改 — verified by task-20.3 closeout PR body
+- [x] **AC1**：`contractv1.SearchRequest` add-only `Semantic` + `handleSearch` 转发 `?semantic=true` / body → gRPC `SearchRequest.Semantic` + grpcclient 透传；`{result, trace}` 响应 shape + 22-endpoint conformance 不破坏 — verified by task-20.1 §6 AC1-3 + phase-smoke step 1
+- [x] **AC2**：真实召回评测经生产 `Retriever::search_semantic` 热路径跑通；deterministic provider wiring 可断言，real fastembed 召回数值本地复跑记录（禁伪造，ADR-013）— verified by task-20.2 §6 AC1-2 + phase-smoke step 2
+- [x] **AC3**：smoke v10 console-api `/v1/search?semantic=true` 真实语义断言（非仅保形）+ 既有 step 不退化 — verified by task-20.3 §6 AC1 + phase-smoke step 3
+- [x] **AC4**：v0.13.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-024 据实测 ratify 或记录 + phase §6 闭合 — verified by task-20.3 §6 AC2-3
+- [x] **AC5**：ADR-014 cross-validation gate 全套通过（第十一次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-19 不溯改 — verified by task-20.3 closeout PR body
 
 **端到端 smoke（C1 集成兜底）**：(1) console-api `/v1/search?semantic=true` 转发 roundtrip；(2) 真实召回经 `Retriever::search_semantic`；(3) smoke v10 console-api 语义断言全 PASS。
 

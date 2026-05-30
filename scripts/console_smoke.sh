@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 19 task-19.4 semantic-search amendment smoke (v9).
+# scripts/console_smoke.sh — Phase 20 task-20.3 console-api semantic smoke (v10).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -31,6 +31,13 @@
 # (BM25 + semantic) report shape + recall-gate line. Per ADR-013 neither step
 # asserts a recall threshold — real SemanticRecall@K numbers come from task-19.5;
 # these steps only prove the semantic path is wired end-to-end.
+#
+# v10 (Phase 20) upgrades step 29 — task-20.1 made console-api forward ?semantic=true
+# to the gRPC SearchService.Query semantic branch, so step 29 now asserts the semantic
+# path actually engaged (the trace's candidate_generation_steps reports the vector path),
+# not only that the add-only param preserves the {result, trace} contract. Per ADR-013
+# still no recall-threshold assertion (deterministic provider proves dispatch, not recall;
+# real recall via the Retriever hot path is task-20.2 / docs/spikes/phase-20-recall-via-retriever.md).
 #
 # Modes (selected by env):
 #
@@ -640,14 +647,15 @@ else
 fi
 
 # ----------- v9 (Phase 19) — task-19.4 semantic-retrieval wiring -----------
-echo "  [29/30] task-19.3 POST /v1/search?semantic=true (add-only query param; response still nested {result, trace})"
+echo "  [29/30] task-20.1 POST /v1/search?semantic=true (console-api forwards → gRPC semantic branch engages)"
 if [ "$MODE" = "real" ]; then
-  # task-19.3 added proto SearchRequest.semantic + the daemon REST + Rust gRPC semantic branch.
-  # console-api-serve decodes the JSON body only and does not yet forward the ?semantic=true query
-  # param, so this step asserts the add-only param does NOT break the existing 22-endpoint contract —
-  # the response is still well-formed {result, trace}. It does NOT claim the semantic retrieval path
-  # engaged through console-api (that is exercised by the CLI in step 30; console-api forwarding is a
-  # task-19.5 follow-up — see task-19.4 §10). ADR-013: no recall assertion here.
+  # task-20.1: console-api handleSearch now OR-merges ?semantic=true into the gRPC SearchRequest.Semantic
+  # (contractv1 add-only field + grpcclient passthrough), and the Rust SearchService.Query semantic
+  # branch (DeterministicEmbeddingProvider + 0-dep BruteForceVectorBackend) reports the vector path in
+  # the trace's candidate_generation_steps. So this step asserts BOTH the {result, trace} contract is
+  # preserved (add-only, non-breaking) AND that the semantic path actually engaged through console-api.
+  # ADR-013: deterministic provider proves dispatch, NOT recall — no recall-threshold assertion (real
+  # recall via the Retriever hot path is task-20.2 / docs/spikes/phase-20-recall-via-retriever.md).
   sem_body=$(curl -sf -X POST "$BASE/v1/search?semantic=true" \
     -H 'Content-Type: application/json' \
     -d "{\"query\":\"contextforge\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"agent_scope\":\"session\"}") \
@@ -655,7 +663,9 @@ if [ "$MODE" = "real" ]; then
   echo "$sem_body" | grep -q '"result"' \
     && echo "$sem_body" | grep -q '"trace"' \
     || { echo "FAIL: semantic search not nested {result, trace}: $sem_body" >&2; exit 1; }
-  echo "    → ?semantic=true preserved the {result, trace} contract (add-only, non-breaking) ✅"
+  echo "$sem_body" | grep -q 'vector-bruteforce' \
+    || { echo "FAIL: ?semantic=true did not engage the vector path through console-api (trace: $sem_body)" >&2; exit 1; }
+  echo "    → ?semantic=true forwarded + vector path engaged (trace candidate_generation_steps=vector-bruteforce) ✅"
 else
   echo "    SKIP ($MODE mode — semantic REST path validated via Go/Rust unit tests; needs the real daemon)"
 fi

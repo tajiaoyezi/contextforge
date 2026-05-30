@@ -38,3 +38,24 @@ func TestTask194_AC4_SmokeV9SyntaxAndSteps(t *testing.T) {
 		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
 	}
 }
+
+// TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
+// real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
+// step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),
+// proving the semantic branch actually engaged through console-api (not only that the add-only param
+// is non-breaking). ADR-013: still no recall-threshold assertion in the smoke.
+func TestTask203_SmokeV10SemanticEngagementAssertion(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v10") {
+		t.Fatalf("console_smoke.sh missing v10 header (task-20.3 closeout)")
+	}
+	// The v10 step-29 semantic-engagement assertion greps the trace for the vector path.
+	if !strings.Contains(body, "vector-bruteforce") {
+		t.Fatalf("smoke v10 step 29 must assert the vector path engaged (grep candidate_generation_steps=vector-bruteforce)")
+	}
+}
