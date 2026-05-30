@@ -250,7 +250,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 15 | `console-functional-gap-closure` | `docs/specs/phases/phase-15-console-functional-gap-closure.md` | Done | 6 | `../ContextForge-wt-console-functional-gap-closure` |
 | 16 | `v0.9.0-backlog-completion` | `docs/specs/phases/phase-16-v0.9.0-backlog-completion.md` | Done | 4 | `../ContextForge-wt-v0.9.0-backlog-completion` |
 | 17 | `is-pinned-amendment` | `docs/specs/phases/phase-17-is-pinned-amendment.md` | Done | 1 | `../ContextForge-wt-is-pinned-amendment` |
-| 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Ready | 6 | `../ContextForge-wt-vector-backend-selection` |
+| 18 | `vector-backend-selection` | `docs/specs/phases/phase-18-vector-backend-selection.md` | Done | 9 | `../ContextForge-wt-vector-backend-selection`（v0.11.0 closeout 缩范围：AC1/2/5/6 met；AC3 partial=ADR-023 Proposed；AC4 deferred=生产集成 [SPEC-OWNER:phase-future.vector-retrieval-integration]） |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -328,6 +328,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 18.5 | core/src/retriever/vector/lance_db.rs LanceDbBackend (lancedb 0.30 embedded Lance + Arrow RecordBatch + 自带 tokio runtime block_on) + vector-lancedb feature + bench 注册表接入 + 5 维 evidence（Linux 实测 recall@5/10=1.0 P95 1.551ms idle/index RSS 30.5/50.9MB cold-start 7.4ms） | docs/specs/tasks/task-18.5-spike-lancedb.md | Done | Phase18 #6（Linux 实测真实数据；嵌入式 is_local=true 磁盘持久化列式；最重进程内 RSS + 最快写入；build 需 protoc）| `../ContextForge-wt-vector-backend-selection` |
 | 18.7 | 4 路 backend 5 维横向对比（n=5000+100000）+ ADR-023 默认 backend 选型（Proposed，分层 D1-D6）+ comparison 文档 + hnsw evidence 补 Linux RSS/100k + known_backends unused_mut 清理 | docs/specs/tasks/task-18.7-decision-adr023.md | Done | Phase18 #7（合成 recall 不可区分 → 架构驱动选型：D1 sqlite-vec 嵌入式默认 provisional / D2 hnsw 跨平台 fallback / D3 qdrant scale-out / D4 lancedb 列式；ratify 待 task-18.8 真实 embedding recall）| `../ContextForge-wt-vector-backend-selection` |
 | 18.8 | internal/eval SemanticRecall@K 度量 + Report semantic 字段 + SummarizeHybrid 双路 + MeetsRecallGate（BM25 恒检 + SemanticRecall@10≥0.70 仅 semantic 时检）+ 4 单测 + ADR-006 add-only Amendment A1 | docs/specs/tasks/task-18.8-eval-semantic-recall.md | Done | Phase18 #8（度量+门禁+单测落地；live 语义召回值 + ratify 待真实 embedding provider [SPEC-OWNER:phase-future.vector-retrieval-integration]）| `../ContextForge-wt-vector-backend-selection` |
+| 18.9 | Phase 18 closeout（诚实缩范围）+ v0.11.0 release docs（README + RELEASE_NOTES + evidence + artifacts）+ phase-18 §6/§8 诚实状态（AC1/2/5/6 met / AC3 partial / AC4 deferred）+ v0.11.0 tag | docs/specs/tasks/task-18.9-release-v0.11.0-closeout.md | Done | Phase18 #9（v0.11.0 = 向量 backend 基础设施+选型里程碑；生产语义搜索 + ADR ratify 后置；用户授权切版）| `../ContextForge-wt-vector-backend-selection` |
 
 ## ADR 索引
 
