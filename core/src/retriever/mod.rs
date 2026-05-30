@@ -1537,4 +1537,58 @@ mod tests {
         // Empty query → empty (no panic).
         assert!(retr.search_semantic("   ", 5).expect("empty query").is_empty());
     }
+
+    // TEST-20.2 — real recall flows through the PRODUCTION Retriever::search_semantic hot path on
+    // the **default-available 0-dep BruteForceVectorBackend** (ADR-023 D5 implemented default), not
+    // only the hnsw-feature backend (test_19_2) or a standalone backend (task-19.5). This closes the
+    // default-build coverage gap: the same path console-api / CLI use in the default build. Deterministic
+    // embeddings prove the hot-path wiring + file-level hit; real recall numbers are the feature-gated
+    // `phase20_recall_via_retriever` example + docs/spikes/phase-20-recall-via-retriever.md (ADR-013).
+    #[test]
+    fn test_20_2_recall_via_retriever_brute_force_default_build() {
+        use crate::embedding::DeterministicEmbeddingProvider;
+        use crate::retriever::vector::BruteForceVectorBackend;
+
+        let (_src, data, coll) = build_fixture(
+            "recall_via_retriever",
+            &[
+                ("config.md", "where is the config loader and default data dir"),
+                ("daemon.md", "how the daemon restarts after a crash"),
+            ],
+        );
+        let base = Retriever::open(&data, &coll).expect("open base");
+        let pick = |q: &str| -> (String, String) {
+            let r = base
+                .search(&SearchOptions {
+                    query: q.into(),
+                    top_k: 1,
+                    filters: SearchFilters::default(),
+                    explain: false,
+                })
+                .expect("bm25");
+            assert!(!r.is_empty(), "fixture should yield a hit for {q}");
+            (r[0].chunk_id.clone(), r[0].content.clone())
+        };
+        let items = vec![pick("config"), pick("daemon")];
+
+        let backend = Arc::new(BruteForceVectorBackend::new());
+        let retr = Retriever::open(&data, &coll)
+            .expect("open wired")
+            .with_embedder(Arc::new(DeterministicEmbeddingProvider::default()))
+            .with_vector_searcher(backend.clone());
+        retr.index_chunks_semantic(backend.as_ref(), &items)
+            .expect("index_chunks_semantic");
+
+        // Query with the first chunk's exact text → its own deterministic vector → nearest = itself,
+        // through the production Retriever hot path on the default brute-force backend.
+        let (target_id, target_text) = &items[0];
+        let results = retr.search_semantic(target_text, 5).expect("search_semantic");
+        assert!(!results.is_empty(), "semantic search via Retriever should hit");
+        assert_eq!(
+            &results[0].chunk_id, target_id,
+            "exact-text query hits its own chunk through Retriever (brute-force default)"
+        );
+        assert_eq!(results[0].retrieval_method, "vector");
+        assert!(!results[0].provenance.is_empty(), "provenance floor ≥1 on the vector path");
+    }
 }
