@@ -1,5 +1,55 @@
 # ContextForge Release Notes
 
+## v0.13.0 (2026-05-31) — semantic-retrieval-throughline (语义检索贯通 console-api + 经 Retriever 真实召回 + ADR-024 ratified)
+
+### 摘要
+
+v0.13.0 minor release: carries the Phase 19 (v0.12.0) semantic path the last mile (Phase 20). It now engages **end-to-end through console-api** — `POST /v1/search?semantic=true` (or body `semantic`) routes through Go `handleSearch` → `grpcclient` → `console_data_plane` gRPC `SearchService.Query` semantic dispatch (Rust `SearchServer::query`, mirroring the core `CoreService` `server.rs`) → ranked vector hits — and real recall is now measured **through the production `Retriever::search_semantic` hot path** instead of the v0.12.0 standalone example. This closes the two caveats v0.12.0 honestly recorded (`docs/releases/v0.12.0-evidence.md` §3b / task-19.4 §10).
+
+**Honest scope (read this)**: semantic retrieval is still **opt-in** — default retrieval stays BM25. The **default build is unchanged and dependency-free**: its semantic path (incl. via console-api) uses the **0-dependency `DeterministicEmbeddingProvider` + `BruteForceVectorBackend`** (proves wiring, not model quality). The **real** embedding provider (`FastEmbedProvider`, `all-MiniLM-L6-v2`) is behind the `embedding-fastembed` feature; the real recall numbers below were measured with it. The new `console_data_plane SearchRequest.semantic` field is **add-only** — no breaking contract bump.
+
+### What shipped (Phase 20, tasks 20.1–20.3)
+
+| task | delivery | PR |
+|---|---|---|
+| 20.1 | `console_data_plane.proto` `SearchRequest` add-only `bool semantic = 7` (buf regen) + Rust `SearchServer::query` semantic dispatch (mirrors core `CoreService` `server.rs`, `DeterministicEmbeddingProvider` + 0-dep `BruteForceVectorBackend`) + Go `contractv1.SearchRequest.Semantic` + `handleSearch` `?semantic=true` OR-merge + `grpcclient` passthrough | #155 |
+| 20.2 | real recall through the production `Retriever::search_semantic` hot path (real fastembed) + deterministic `test_20_2` hot-path wiring + `docs/spikes/phase-20-recall-via-retriever.md` | #156 |
+| 20.3 | Phase 20 closeout + smoke v10 step 29 console-api real semantic assertion + v0.13.0 release docs + ADR-024 ratify | this PR |
+
+### Real-embedding recall, through the production Retriever (resolves the v0.12.0 example caveat)
+
+Real `FastEmbedProvider` (`all-MiniLM-L6-v2`, dim 384) over real ContextForge text, exact cosine, routed through the production `Retriever::search_semantic` hot path (real scanner + chunker → **175 production chunks**; `docs/spikes/phase-20-recall-via-retriever.md`):
+
+| metric | task-20.2 (production Retriever, 175 chunks) | task-19.5 (standalone, 40 capped chunks) baseline |
+|---|---|---|
+| SemanticRecall@5 | **0.9667** (29/30) | 0.8333 |
+| SemanticRecall@10 | **1.0000** (30/30) | 0.9333 |
+| top-1 accuracy | **0.7333** | 0.60 |
+| MRR | **0.8367** | 0.70 |
+| ADR-006 A1 gate (≥ 0.70) | **PASS** | PASS |
+
+**Honest inflation caveat (ADR-013)**: @10 = 1.0 is **partly file-level chunk-count inflation** — the uncapped production chunker yields many chunks per file (175 across 11 files), making "any chunk from the expected file in top-K" mechanically easier; this is the same artifact task-19.5 deliberately suppressed with `MAX_CHUNKS_PER_FILE`. But the discriminating metrics rule out pure inflation: top-1 (0.7333) and MRR (0.8367) are not chunk-count-inflated and are **higher** than task-19.5's 0.60 / 0.70 — the production path genuinely ranks the right file first more often. The two numbers are **not directly comparable** (different corpora + chunking); both clear the gate. task-20.2 is the **representative** measurement (production pipeline), task-19.5 the **controlled** discrimination floor. Deterministic embeddings prove plumbing, not recall — every real number here is a real fastembed run, no synthetic/fabricated figures.
+
+### Upgrade path
+
+- Drop-in: default build behavior is unchanged (BM25-only retrieval, 0 new dependency). No migration.
+- To use the semantic path via console-api: send `?semantic=true` on `POST /v1/search` (now forwarded end-to-end), or run `contextforge eval run --semantic`. The default-build semantic path uses the deterministic provider; for real-model semantic search build/deploy with `--features embedding-fastembed`.
+- Proto: `console_data_plane SearchRequest.semantic` (7) is **add-only** — existing clients are unaffected (Console Contract v1 shape unchanged, 22-endpoint conformance + proto-freeze guard PASS, unset → BM25). **No breaking contract bump.**
+
+### Rollback path
+
+`git tag -d v0.13.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.12.0 (BM25-only + 0-dep deterministic semantic path), so a rollback is non-breaking.
+
+### Contract
+
+Console Contract v1 unchanged in shape; the new `console_data_plane SearchRequest.semantic` field is add-only and defaults to BM25 behavior when unset.
+
+### ADR
+
+**ADR-024 console-api-semantic-forward → Accepted** — ratified on task-20.1's real landing (Go contractv1/handleSearch/grpcclient tests + Rust `SearchServer::query` dispatch test `test_20_1` prove it; not synthetic, ADR-013). It records the `console_data_plane` add-only `semantic` field + the console-api↔daemon semantic-alignment口径 (mirroring the ADR-015/022 add-only pattern). **ADR-014 cross-validation gate — 11th activation**.
+
+详 [Phase 20 spec](docs/specs/phases/phase-20-semantic-retrieval-throughline.md) + [ADR-024](docs/decisions/adr-024-console-api-semantic-forward.md) + [v0.13.0 evidence](docs/releases/v0.13.0-evidence.md) + [v0.13.0 artifacts](docs/releases/v0.13.0-artifacts.md) + [real recall evidence](docs/spikes/phase-20-recall-via-retriever.md)。
+
 ## v0.12.0 (2026-05-30) — vector-retrieval-integration (end-to-end semantic search + ADR-023 ratified)
 
 ### 摘要

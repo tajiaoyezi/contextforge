@@ -1,6 +1,6 @@
 # ADR `024`: `console-api-semantic-forward`
 
-**Status**: Proposed (2026-05-30; Phase 20 task-20.1 起草。落地 + smoke v10 真实语义断言后于 task-20.3 据真实非合成验证 ratify Proposed→Accepted，ADR-013。)
+**Status**: Accepted (2026-05-31; ratified in Phase 20 task-20.3 closeout on task-20.1's real landing — see the **Amendment / Ratification** section below. Originally Proposed 2026-05-30.)
 **Category**: 控制面 / Console Contract v1 / 语义检索通路
 **Date**: 2026-05-30
 **Decided By**: 主 agent (ADR-012 自治)；tajiaoyezi ratification at v0.13.0 closeout
@@ -43,3 +43,33 @@ console-api 的 `/v1/search` 采用 **与 `internal/daemon/rest.go` 一致的 ad
 - **Negative / open**: 控制面两条 `/v1/search` surface 并存（ADR-016 既有事实），语义转发逻辑需两处保持一致——以「OR-merge 语义与 daemon REST 一致」约束收敛，测试双覆盖。
 - **Ratification**: 本 ADR **Proposed**。task-20.1 落地 + task-20.3 smoke v10 console-api `/v1/search?semantic=true` 真实语义断言（response `retrieval_method` 语义标记 + `vector_score` provenance）通过后，于 v0.13.0 closeout 据真实非合成验证 ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）。
 - **Follow-ups**: Console UI 语义 explain 面板 `[SPEC-OWNER:phase-future.console-semantic-explain]`（跨仓库 Console 领域）；真实召回经 Retriever 热路径 `[SPEC-DEFER:phase-future.real-recall-via-retriever]`（task-20.2）。
+
+## Amendment / Ratification (2026-05-31, Phase 20 task-20.3 closeout)
+
+> Add-only ratification. The Context / Decision (D1–D4) above are **unchanged**; this section records
+> the real implementation basis and **corrects one Consequences claim** (add-only, not a rewrite).
+
+**Implementation correction (ADR-013 honesty)**: the original Consequences "Positive" bullet claimed
+"0 Rust delta, 0 proto delta（复用 field 7）". That was written before task-20.1 implementation, which
+**discovered spec-drift**: console-api rides the **`console_data_plane/v1`** proto, **separate** from the
+core `contextforge/v1` proto that task-19.3's `semantic = 7` lives on. The real implementation is therefore:
+
+- **proto**: `console_data_plane SearchRequest` add-only **`bool semantic = 7`** (its own field 7; buf regen).
+- **Rust**: `core/src/data_plane/search.rs::SearchServer::query` gained a semantic dispatch branch mirroring
+  core `CoreService.search` (`server.rs`) — `DeterministicEmbeddingProvider` + 0-dep `BruteForceVectorBackend`
+  + `enumerate_chunks`/`index_chunks_semantic`/`search_semantic`. **Not** 0 Rust/proto delta.
+- **Go**: `contractv1.SearchRequest.Semantic` + `handleSearch` OR-merge + `grpcclient` passthrough (the only
+  part the original body got right).
+
+D1–D4's intent (add-only field, query/body OR-merge, grpcclient passthrough, unchanged `{result, trace}`
+shape + 22-endpoint conformance) all hold; only the "0 delta" footnote was wrong. Full drift record:
+`docs/specs/tasks/task-20.1-console-api-semantic-forward.md` §10.
+
+**Ratification basis (real, non-synthetic — ADR-013)**: `Proposed → Accepted`. Verified by task-20.1
+(#155, merged green): `core/src/data_plane/search.rs::test_20_1_query_semantic_dispatches_vector_path`
+(semantic dispatch returns `retrieval_method="vector"`) + Go `TestTask201_*` (contractv1 round-trip +
+`handleSearch` `?semantic=true`/body OR-merge + grpcclient passthrough to `pb.SearchRequest.Semantic`) +
+smoke v10 step 29 (task-20.3) asserting the vector path engaged through console-api. Deterministic
+embeddings prove the dispatch plumbing; real recall through this path is task-20.2
+(`docs/spikes/phase-20-recall-via-retriever.md`, real fastembed). The 22-endpoint conformance + proto-freeze
+guards remained green (response shape unchanged; only an add-only request field).
