@@ -24,6 +24,8 @@ pub mod server;
 
 // task-1.3 (AC4): Phase 2+ data-plane module placeholders (compile, no logic).
 pub mod chunker;
+// task-19.1 (Phase 19): embedding provider abstraction (deterministic default + feature-gated real).
+pub mod embedding;
 pub mod indexer;
 pub mod memoryops;
 pub mod parser;
