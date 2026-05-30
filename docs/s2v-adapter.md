@@ -255,6 +255,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 20 | `semantic-retrieval-throughline` | `docs/specs/phases/phase-20-semantic-retrieval-throughline.md` | Draft | 0 | master（v0.13.0 规划：贯通 console-api `?semantic=true` + 经 Retriever 真实召回；闭合 v0.12.0 evidence §3b 两条 caveat。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.1） |
 | 21 | `retrieval-quality` | `docs/specs/phases/phase-21-retrieval-quality.md` | Draft | 0 | master（v0.14.0 规划：hybrid scoring（BM25+向量分数融合）+ reranker（cross-encoder）；hybrid+确定性管道 CI 可验证，real cross-encoder 真实质量如实 defer。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.2） |
 | 22 | `embedding-provider-completion` | `docs/specs/phases/phase-22-embedding-provider-completion.md` | Draft | 0 | master（v0.15.0 规划：把 Phase 19 deterministic 缺省 + 单一 fastembed real provider 扩成完整 provider 层 — 配置选择 + dim 协商 + embedding 缓存 + 远程 OpenAI/Cohere 骨架 + health 远程探针。Stage 0 规划阶段，4 task Draft；远程真实联调/密钥/召回质量如实 defer（ADR-013）；见 `docs/roadmap.md` §3.3） |
+| 23 | `vector-persistence-and-cross-platform` | `docs/specs/phases/phase-23-vector-persistence-and-cross-platform.md` | Draft | 0 | master（v0.16.0 规划：hnsw 图持久化往返 + rebuild-on-load + sqlite-vec Windows MSVC 跨平台调查（落地或诚实 stop-condition）+ 向量增量索引评估；推进 ADR-023 Follow-ups 三 marker（hnsw-graph-persistence / sqlite-vec-cross-platform / vector-incremental-index）。Stage 0 规划阶段，3 task Draft；见 `docs/roadmap.md` §3.4） |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -350,6 +351,9 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 22.2 | core/src/embedding/cache.rs `CachingEmbeddingProvider`（content-hash Sha256(text)→embedding 缓存装饰器；内存缺省 + 可选 SQLite 持久化承 ADR-002）+ 确定性命中/失效单测（计数 wrapper 断言底层跳过）| docs/specs/tasks/task-22.2-embedding-cache.md | Draft | Phase22 #2（dep 22.1 工厂；可与 22.3 并行 cache.rs vs remote_provider.rs 写路径不相交；sha2/rusqlite/base64 已 direct dep 0 新 dep）| master |
 | 22.3 | core/src/embedding/remote_provider.rs `RemoteEmbeddingProvider`（OpenAI/Cohere HTTP，embedding-remote feature-gated，rustls 承 fastembed 口径）+ build_request_body/parse_response 纯函数 + 契约级确定性测试（请求构造/响应解析/错误路径，不打真实网络）+ Cargo.toml embedding-remote feature | docs/specs/tasks/task-22.3-remote-provider-skeleton.md | Draft | Phase22 #3（dep 22.1 工厂 remote 分支；可与 22.2 并行；默认构建 0 网络 dep 承 ADR-004/ADR-008 D5；真实联调+密钥 🔴 如实 defer，§8 R1 stop-condition，ADR-013）| master |
 | 22.4 | core/src/health.rs probe_embed 远程可达性探针（opt-in，config-only 缺省承 ADR-020 D1）+ scripts/console_smoke.sh v12（配置选择+缓存命中确定性断言）+ v0.15.0 release docs + ADR-027 ratify + phase-22 §6 闭合 + adapter | docs/specs/tasks/task-22.4-closeout-v0.15.0.md | Draft | Phase22 #4（dep 22.1+22.2+22.3 全 Done；承 task-19.7 closeout 模式；tag push 经用户授权；远程探针真实命中 [SPEC-DEFER:phase-future.embed-remote-probe] 如实 defer）| master |
+| 23.1 | core/src/retriever/vector/hnsw.rs HnswBackend 图序列化/反序列化到磁盘（VectorIndexConfig.persistence_path 既有字段首次消费）+ rebuild-on-load fallback + feature vector-hnsw 序列化往返 roundtrip 测试 | docs/specs/tasks/task-23.1-hnsw-graph-persistence.md | Draft | Phase23 #1（dep task-18.6 HnswBackend + task-18.1 persistence_path；可与 23.2 并行，hnsw.rs vs sqlite_vec.rs/Cargo.toml 写路径不相交；管道 🟢 / feature 真实持久化往返 🟡）| master |
+| 23.2 | core/Cargo.toml vector-sqlite + core/src/retriever/vector/sqlite_vec.rs Windows MSVC 可构建路径调查（bundled amalgamation / 预编译扩展 / 替代绑定三路径）+ docs/spikes/phase-23-sqlite-vec-cross-platform.md（落地或诚实文档化 stop-condition，禁伪造跨平台通过）| docs/specs/tasks/task-23.2-sqlite-vec-cross-platform.md | Draft | Phase23 #2（dep task-18.3 SqliteVecBackend Linux gcc 凭据；🔴 受阻平台调查类；结论=落地或 stop-condition；受阻不阻塞 23.1/23.3）| master |
+| 23.3 | 向量增量索引评估（最小实现或如实延后 [SPEC-DEFER:phase-future.vector-incremental-index]）+ scripts/console_smoke.sh v13 向量持久化/跨平台 smoke + v0.16.0 release docs + ADR-028 ratify + ADR-023/008 add-only Amendment + phase-23 §6 闭合 + adapter | docs/specs/tasks/task-23.3-closeout-v0.16.0.md | Draft | Phase23 #3（dep 23.1+23.2 全 Done；tag push 经用户授权；承 task-19.7/18.9 closeout 模式）| master |
 
 ## ADR 索引
 
@@ -385,6 +389,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 025 | hybrid-scoring-fusion | Proposed | docs/decisions/adr-025-hybrid-scoring-fusion.md |
 | 026 | reranker-provider | Proposed | docs/decisions/adr-026-reranker-provider.md |
 | 027 | embedding-provider-abstraction | Proposed | docs/decisions/adr-027-embedding-provider-abstraction.md |
+| 028 | vector-persistence-strategy | Proposed | docs/decisions/adr-028-vector-persistence-strategy.md |
 
 ## BDD Feature 索引
 
@@ -420,6 +425,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 20.1 / 20.2 / 20.3 | test/features/phase-20-semantic-retrieval-throughline.feature |
 | 21.1 / 21.2 / 21.3 | test/features/phase-21-retrieval-quality.feature |
 | 22.1 / 22.2 / 22.3 / 22.4 | test/features/phase-22-embedding-provider-completion.feature |
+| 23.1 / 23.2 / 23.3 | test/features/phase-23-vector-persistence-and-cross-platform.feature |
 
 ---
 
