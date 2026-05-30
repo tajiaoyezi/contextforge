@@ -17,6 +17,9 @@ pub mod sqlite_vec;
 #[cfg(feature = "vector-qdrant")]
 pub mod qdrant;
 
+#[cfg(feature = "vector-lancedb")]
+pub mod lance_db;
+
 #[cfg(test)]
 mod tests;
 
@@ -32,3 +35,6 @@ pub use sqlite_vec::SqliteVecBackend;
 
 #[cfg(feature = "vector-qdrant")]
 pub use qdrant::QdrantBackend;
+
+#[cfg(feature = "vector-lancedb")]
+pub use lance_db::LanceDbBackend;

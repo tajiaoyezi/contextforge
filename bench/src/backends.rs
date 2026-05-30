@@ -38,7 +38,13 @@ pub fn run_named(
             queries,
             dim,
         )?)),
-        // task-18.5 adds: "lancedb" (cfg-gated).
+        #[cfg(feature = "vector-lancedb")]
+        "lancedb" => Ok(Some(run(
+            &contextforge_core::retriever::vector::LanceDbBackend::new()?,
+            corpus,
+            queries,
+            dim,
+        )?)),
         _ => Ok(None),
     }
 }
@@ -52,5 +58,7 @@ pub fn known_backends() -> Vec<&'static str> {
     v.push("sqlite-vec");
     #[cfg(feature = "vector-qdrant")]
     v.push("qdrant");
+    #[cfg(feature = "vector-lancedb")]
+    v.push("lancedb");
     v
 }

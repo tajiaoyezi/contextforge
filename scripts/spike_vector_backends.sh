@@ -17,9 +17,12 @@ FEATURES="${4:-vector-hnsw,vector-sqlite}"
 
 mkdir -p docs/spikes
 
-# task-18.5 extends this list with "lancedb". "qdrant" (task-18.4) is intentionally omitted: it
-# needs a running Qdrant server (gRPC 6334) + the vector-qdrant feature, so run it on demand:
-#   cargo run --release -p contextforge-bench --features vector-qdrant -- --backend qdrant ...
+# "qdrant" (task-18.4) + "lancedb" (task-18.5) are intentionally omitted from the default list:
+#   - qdrant needs a running Qdrant server (gRPC 6334) + the vector-qdrant feature
+#   - lancedb needs protoc at build time + the vector-lancedb feature
+# run them on demand, e.g.:
+#   cargo run --release -p contextforge-bench --features vector-qdrant  -- --backend qdrant  ...
+#   PROTOC=/path/to/protoc cargo run --release -p contextforge-bench --features vector-lancedb -- --backend lancedb ...
 BACKENDS=("noop" "sqlite-vec" "hnsw")
 
 for b in "${BACKENDS[@]}"; do

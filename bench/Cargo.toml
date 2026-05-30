@@ -21,3 +21,5 @@ vector-hnsw = ["contextforge-core/vector-hnsw"]
 vector-sqlite = ["contextforge-core/vector-sqlite"]
 # task-18.4: enable the qdrant backend (pulls contextforge-core's vector-qdrant → qdrant-client).
 vector-qdrant = ["contextforge-core/vector-qdrant"]
+# task-18.5: enable the lancedb backend (pulls contextforge-core's vector-lancedb → lancedb).
+vector-lancedb = ["contextforge-core/vector-lancedb"]
