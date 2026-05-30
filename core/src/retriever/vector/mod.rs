@@ -14,6 +14,9 @@ pub mod hnsw;
 #[cfg(feature = "vector-sqlite")]
 pub mod sqlite_vec;
 
+#[cfg(feature = "vector-qdrant")]
+pub mod qdrant;
+
 #[cfg(test)]
 mod tests;
 
@@ -26,3 +29,6 @@ pub use hnsw::HnswBackend;
 
 #[cfg(feature = "vector-sqlite")]
 pub use sqlite_vec::SqliteVecBackend;
+
+#[cfg(feature = "vector-qdrant")]
+pub use qdrant::QdrantBackend;

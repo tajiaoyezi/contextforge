@@ -80,6 +80,10 @@ instant-distance = { version = "0.6", optional = true }
 # missing sqlite-vec-diskann.c). Compiles via gcc on Linux x86_64 (P0); registered into rusqlite's
 # bundled SQLite via sqlite3_auto_extension. Optional — default build unaffected (0 new dep).
 sqlite-vec = { version = "=0.1.9", optional = true }
+# task-18.4 spike: qdrant-client — gRPC client to an external Qdrant server, gated behind the
+# vector-qdrant feature. Async client bridged to the sync trait via an owned tokio runtime. Pulls
+# tonic/prost (already in-tree) + transitive deps; optional — default build unaffected (0 new dep).
+qdrant-client = { version = "1.18", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -91,7 +95,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"]
 default = []
 vector-spike = []
 vector-sqlite = ["dep:sqlite-vec"]
-vector-qdrant = []
+vector-qdrant = ["dep:qdrant-client"]
 vector-lancedb = []
 vector-hnsw = ["dep:instant-distance"]
 

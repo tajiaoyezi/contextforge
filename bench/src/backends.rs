@@ -31,27 +31,26 @@ pub fn run_named(
             queries,
             dim,
         )?)),
-        // task-18.4-18.5 add: "qdrant" | "lancedb" (cfg-gated).
+        #[cfg(feature = "vector-qdrant")]
+        "qdrant" => Ok(Some(run(
+            &contextforge_core::retriever::vector::QdrantBackend::new()?,
+            corpus,
+            queries,
+            dim,
+        )?)),
+        // task-18.5 adds: "lancedb" (cfg-gated).
         _ => Ok(None),
     }
 }
 
-/// Backend names this harness can currently run.
-pub fn known_backends() -> &'static [&'static str] {
-    #[cfg(all(feature = "vector-hnsw", feature = "vector-sqlite"))]
-    {
-        &["noop", "hnsw", "sqlite-vec"]
-    }
-    #[cfg(all(feature = "vector-hnsw", not(feature = "vector-sqlite")))]
-    {
-        &["noop", "hnsw"]
-    }
-    #[cfg(all(feature = "vector-sqlite", not(feature = "vector-hnsw")))]
-    {
-        &["noop", "sqlite-vec"]
-    }
-    #[cfg(all(not(feature = "vector-hnsw"), not(feature = "vector-sqlite")))]
-    {
-        &["noop"]
-    }
+/// Backend names this harness can currently run (depends on which `vector-*` features are enabled).
+pub fn known_backends() -> Vec<&'static str> {
+    let mut v = vec!["noop"];
+    #[cfg(feature = "vector-hnsw")]
+    v.push("hnsw");
+    #[cfg(feature = "vector-sqlite")]
+    v.push("sqlite-vec");
+    #[cfg(feature = "vector-qdrant")]
+    v.push("qdrant");
+    v
 }
