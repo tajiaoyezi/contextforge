@@ -91,6 +91,12 @@ qdrant-client = { version = "1.18", optional = true }
 lancedb = { version = "0.30", optional = true }
 arrow-array = { version = "58", optional = true }
 futures = { version = "0.3", optional = true }
+# task-19.1 spike: fastembed-rs — real embedding provider (ort/ONNX, all-MiniLM-L6-v2, dim 384),
+# gated behind the embedding-fastembed feature. Built with rustls (hf-hub-rustls-tls) so it needs no
+# system OpenSSL/pkg-config; ort-download-binaries fetches the ONNX runtime. Model lazy-downloaded on
+# first embed. Optional — default build unaffected (0 new dep; DeterministicEmbeddingProvider is the
+# model-free default).
+fastembed = { version = "4", default-features = false, features = ["ort-download-binaries", "hf-hub-rustls-tls"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -104,6 +110,9 @@ vector-spike = []
 vector-sqlite = ["dep:sqlite-vec"]
 vector-qdrant = ["dep:qdrant-client"]
 vector-lancedb = ["dep:lancedb", "dep:arrow-array", "dep:futures"]
+# task-19.1: real embedding provider (fastembed-rs). Off by default — default build uses the
+# model-free DeterministicEmbeddingProvider (0 new dep).
+embedding-fastembed = ["dep:fastembed"]
 vector-hnsw = ["dep:instant-distance"]
 
 [build-dependencies]

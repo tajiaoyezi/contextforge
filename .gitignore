@@ -46,3 +46,6 @@ docs/playbooks/
 
 # Claude Code local session state (cron / scheduled wakeups / etc.) — local only.
 .claude/
+
+# task-19.1: fastembed model cache (created when running the embedding-fastembed feature)
+.fastembed_cache/
