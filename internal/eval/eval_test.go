@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -292,5 +293,124 @@ func TestTask213_AC1_RecallGateHybridReranked(t *testing.T) {
 	// not evaluated → no extra checks (byte-equivalent to the BM25-only gate).
 	if ok, _ := MeetsRecallGate(Report{Top5StrongRate: 0.8, Top10StrongRate: 0.9}); !ok {
 		t.Fatal("gate should pass when hybrid/reranked not evaluated")
+	}
+}
+
+// ---- task-24.2: golden dataset 校验器 + 代码/CJK golden 扩充 ----
+
+func validBaseQuestions() []Question {
+	return []Question{
+		{Query: "build_tantivy_schema", ExpectedFilePath: "core/src/indexer/mod.rs", Category: "code-symbol"},
+		{Query: "RetrieverConfig", ExpectedFilePath: "core/src/retriever/mod.rs", Category: "code-symbol"},
+		{Query: "单驱动", ExpectedFilePath: "AGENTS.md", Category: "cjk"},
+	}
+}
+
+// TEST-24.2.1 / AC1: 校验器 schema 良构 + 覆盖（良构过；不良 schema + 悬空 expected 被拒）。
+func TestTask242_AC1_ValidatorSchemaAndCoverage(t *testing.T) {
+	if err := ValidateGoldenSemantic(BuiltinGoldenQuestions()); err != nil {
+		t.Fatalf("builtin should pass ValidateGoldenSemantic: %v", err)
+	}
+	if err := ValidateGoldenSemantic(validBaseQuestions()); err != nil {
+		t.Fatalf("valid base should pass: %v", err)
+	}
+	// 未知 category 被拒
+	bad := validBaseQuestions()
+	bad[0].Category = "nonexistent-category"
+	if err := ValidateGoldenSemantic(bad); err == nil {
+		t.Fatal("unknown category should be rejected")
+	}
+	// line_range start>end 被拒
+	bad = validBaseQuestions()
+	bad[0].ExpectedLineRange = LineRange{Start: 40, End: 10}
+	if err := ValidateGoldenSemantic(bad); err == nil {
+		t.Fatal("line_range start>end should be rejected")
+	}
+	// 悬空 expected（file 与 chunk 皆空）被拒
+	bad = validBaseQuestions()
+	bad[0].ExpectedFilePath = ""
+	bad[0].ExpectedChunkID = ""
+	if err := ValidateGoldenSemantic(bad); err == nil {
+		t.Fatal("dangling expected (no file / no chunk) should be rejected")
+	}
+	// 空 query 被拒
+	bad = validBaseQuestions()
+	bad[0].Query = "   "
+	if err := ValidateGoldenSemantic(bad); err == nil {
+		t.Fatal("empty query should be rejected")
+	}
+}
+
+// TEST-24.2.2 / AC2: 重复检测（同 query / 同 (query,expected) 对被拒）+ 既有 ValidateDataset/roundtrip 不退化。
+func TestTask242_AC2_DuplicateDetectionAndNoRegression(t *testing.T) {
+	// 同 query 文本重复被拒
+	dupQuery := append(validBaseQuestions(), Question{
+		Query: "build_tantivy_schema", ExpectedFilePath: "core/src/parser/mod.rs", Category: "code-symbol",
+	})
+	if err := ValidateGoldenSemantic(dupQuery); err == nil {
+		t.Fatal("duplicate query text should be rejected")
+	}
+	// 同 (query, expected) 对重复被拒（chunk 维度）
+	dupPair := []Question{
+		{Query: "x", ExpectedChunkID: "chunk-a", Category: "code-symbol"},
+		{Query: "x", ExpectedChunkID: "chunk-a", Category: "code-symbol"},
+	}
+	if err := ValidateGoldenSemantic(dupPair); err == nil {
+		t.Fatal("duplicate (query, expected) pair should be rejected")
+	}
+	// 既有 ValidateDataset + 30 题 builtin 不退化
+	if err := ValidateDataset(BuiltinGoldenQuestions()); err != nil {
+		t.Fatalf("ValidateDataset(builtin) regressed: %v", err)
+	}
+	// JSONL roundtrip 不退化
+	path := filepath.Join(t.TempDir(), "rt.jsonl")
+	if err := WriteJSONL(path, BuiltinGoldenQuestions()); err != nil {
+		t.Fatalf("WriteJSONL: %v", err)
+	}
+	loaded, err := LoadJSONL(path)
+	if err != nil || len(loaded) != 30 {
+		t.Fatalf("roundtrip regressed: err=%v len=%d", err, len(loaded))
+	}
+}
+
+// TEST-24.2.3 / AC3: golden-semantic.jsonl 含代码符号 + CJK case，路径真实，过校验器。
+func TestTask242_AC3_GoldenSemanticDatasetCodeAndCJK(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-semantic.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	if len(qs) == 0 {
+		t.Fatal("golden-semantic.jsonl is empty")
+	}
+	if err := ValidateGoldenSemantic(qs); err != nil {
+		t.Fatalf("golden-semantic should pass ValidateGoldenSemantic: %v", err)
+	}
+	cats := map[string]int{}
+	for _, q := range qs {
+		cats[q.Category]++
+	}
+	if cats["code-symbol"] == 0 {
+		t.Fatal("golden-semantic must contain code-symbol query case")
+	}
+	if cats["cjk"] == 0 {
+		t.Fatal("golden-semantic must contain cjk query case")
+	}
+	// query/expected 指向真实源码（路径经核实存在，ADR-013 grounded）
+	for _, q := range qs {
+		if q.ExpectedFilePath == "" {
+			continue
+		}
+		p := filepath.Join("../..", q.ExpectedFilePath)
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected_file_path %q does not exist (query %q): %v", q.ExpectedFilePath, q.Query, err)
+		}
+	}
+}
+
+// TEST-24.2.4 / AC4: ADR-006 gate 阈值不变（本 task 加固标尺不改阈值）。
+func TestTask242_AC4_GateThresholdsUnchanged(t *testing.T) {
+	if GateTop5StrongMin != 0.75 || GateTop10StrongMin != 0.85 || GateSemanticRecall10Min != 0.70 {
+		t.Fatalf("gate thresholds changed: %v / %v / %v", GateTop5StrongMin, GateTop10StrongMin, GateSemanticRecall10Min)
 	}
 }

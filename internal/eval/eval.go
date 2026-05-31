@@ -208,6 +208,12 @@ func ValidateDataset(questions []Question) error {
 	return nil
 }
 
+// ValidateGoldenSemantic is the task-24.2 add-only strict validator (GREEN 实现).
+func ValidateGoldenSemantic(questions []Question) error {
+	// RED stub: 不做任何校验
+	return nil
+}
+
 func LoadJSONL(path string) ([]Question, error) {
 	f, err := os.Open(path)
 	if err != nil {
