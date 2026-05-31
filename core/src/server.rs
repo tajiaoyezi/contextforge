@@ -290,6 +290,41 @@ impl ContextService for CoreService {
             }
         }
 
+        // task-21.1: hybrid path (opt-in via SearchRequest.hybrid). RRF-fuses the BM25 and vector
+        // result lists (core/src/retriever/fusion.rs). Wires the same model-free
+        // DeterministicEmbeddingProvider + 0-dep BruteForceVectorBackend as the semantic path, builds
+        // the on-demand index, then fuses. Results carry retrieval_method "hybrid" + hybrid_score (the
+        // RRF score). Deterministic embeddings prove the fusion wiring, not recall quality (real recall
+        // driving the ADR-025 ratify is task-21.3; ADR-013).
+        if req.hybrid {
+            let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
+            let embedder = Arc::new(DeterministicEmbeddingProvider::default());
+            let backend = Arc::new(BruteForceVectorBackend::new());
+            let wired = retriever
+                .with_embedder(embedder)
+                .with_vector_searcher(backend.clone());
+            let items = wired
+                .enumerate_chunks()
+                .map_err(|e| Status::internal(format!("hybrid enumerate: {}", e)))?;
+            wired
+                .index_chunks_semantic(backend.as_ref(), &items)
+                .map_err(|e| Status::internal(format!("hybrid index: {}", e)))?;
+            let results = wired
+                .search_hybrid(&req.query, top_k)
+                .map_err(|e| Status::internal(format!("hybrid search: {}", e)))?;
+            let proto_results = results
+                .iter()
+                .map(|r| {
+                    let mut pr = search_result_to_proto(r);
+                    pr.hybrid_score = r.score as f32;
+                    pr
+                })
+                .collect();
+            return Ok(Response::new(SearchResponse {
+                results: proto_results,
+            }));
+        }
+
         // task-19.3: semantic path (opt-in via SearchRequest.semantic). Wire the model-free
         // DeterministicEmbeddingProvider + the 0-dep BruteForceVectorBackend, build an in-memory
         // index from this collection's chunks on demand (no persistence yet —
@@ -395,6 +430,8 @@ fn search_result_to_proto(r: &SearchResult) -> RetrievalResult {
         // task-19.3 add-only: BM25 path leaves these at proto3 defaults; the semantic path overrides.
         vector_score: 0.0,
         embedding_provider: String::new(),
+        // task-21.1 add-only: BM25/vector paths leave this 0; the hybrid path overrides with the RRF score.
+        hybrid_score: 0.0,
     }
 }
 
@@ -687,6 +724,7 @@ mod tests {
             filters: None,
             explain: true,
             semantic: false,
+            hybrid: false,
         };
         let resp = svc.search(Request::new(req)).await.expect("search ok");
         let inner = resp.into_inner();
@@ -739,6 +777,7 @@ mod tests {
             filters: None,
             explain: false,
             semantic: true,
+            hybrid: false,
         };
         let inner = svc
             .search(Request::new(req))
@@ -757,6 +796,45 @@ mod tests {
         assert!(!top.provenance.is_empty(), "AC3 provenance floor still holds on the vector path");
     }
 
+    // ---- TEST-21.1.2 — hybrid=true dispatches the RRF fusion path ----
+    // search_hybrid RRF-fuses BM25 + the (deterministic) vector path; results carry retrieval_method
+    // "hybrid" + hybrid_score (the fused RRF score). Deterministic embeddings prove the fusion
+    // dispatch/plumbing, not recall quality (real recall driving ADR-025 ratify is task-21.3; ADR-013).
+    #[tokio::test]
+    async fn test_21_1_hybrid_dispatches_fusion_path() {
+        let (data, coll) = build_fixture(
+            "hybrid-dispatch",
+            &[
+                ("a.md", "where is the config loader and default data dir"),
+                ("b.md", "how the daemon restarts after a crash"),
+            ],
+        );
+        let svc = CoreService::new(data);
+        let req = SearchRequest {
+            query: "where is the config loader and default data dir".into(),
+            collections: vec![coll],
+            agent_scope: vec![],
+            top_k: 5,
+            filters: None,
+            explain: false,
+            semantic: false,
+            hybrid: true,
+        };
+        let inner = svc
+            .search(Request::new(req))
+            .await
+            .expect("hybrid search ok")
+            .into_inner();
+        assert!(!inner.results.is_empty(), "hybrid path should return hits");
+        let top = &inner.results[0];
+        assert_eq!(top.retrieval_method, "hybrid", "hybrid hits use the hybrid method");
+        assert!(
+            top.hybrid_score > 0.0,
+            "hybrid_score is the positive RRF score, got {}",
+            top.hybrid_score
+        );
+    }
+
     // ---- TEST-6.1.1b — collections 为空 → InvalidArgument ----
     #[tokio::test]
     async fn test_6_1_1_empty_collections_returns_invalid_argument() {
@@ -769,6 +847,7 @@ mod tests {
             filters: None,
             explain: false,
             semantic: false,
+            hybrid: false,
         };
         let err = svc.search(Request::new(req)).await.unwrap_err();
         assert_eq!(
@@ -792,6 +871,7 @@ mod tests {
             filters: None,
             explain: false,
             semantic: false,
+            hybrid: false,
         };
         let err = svc.search(Request::new(req)).await.unwrap_err();
         assert_eq!(
@@ -857,6 +937,7 @@ mod tests {
                 filters: None,
                 explain: false,
             semantic: false,
+            hybrid: false,
             }))
             .await
             .expect("fast-path search ok");
@@ -903,6 +984,7 @@ mod tests {
                 filters: None,
                 explain: false,
             semantic: false,
+            hybrid: false,
             }))
             .await
             .expect("fallback search ok (BM25 won't crash even if 0 hits)");
