@@ -1,0 +1,11 @@
+{"query":"build_tantivy_schema","expected_file_path":"core/src/indexer/mod.rs","expected_line_range":{"start":0,"end":0},"category":"code-symbol","notes":"snake_case identifier — exercises task-24.1 code-symbol split (build/tantivy/schema)"}
+{"query":"tantivy_search","expected_file_path":"core/src/indexer/mod.rs","expected_line_range":{"start":0,"end":0},"category":"code-symbol","notes":"snake_case identifier — exercises code-symbol split"}
+{"query":"RetrieverConfig","expected_file_path":"core/src/retriever/mod.rs","expected_line_range":{"start":0,"end":0},"category":"code-symbol","notes":"PascalCase identifier — exercises camelCase boundary split (retriever/config)"}
+{"query":"open_with_config","expected_file_path":"core/src/retriever/mod.rs","expected_line_range":{"start":0,"end":0},"category":"code-symbol","notes":"snake_case identifier — exercises code-symbol split"}
+{"query":"BuiltinGoldenQuestions","expected_file_path":"internal/eval/eval.go","expected_line_range":{"start":0,"end":0},"category":"code-symbol","notes":"PascalCase identifier — exercises camelCase boundary split"}
+{"query":"json.Unmarshal","expected_file_path":"internal/eval/eval.go","expected_line_range":{"start":0,"end":0},"category":"code-symbol","notes":"dotted.path identifier — exercises dotted-path split (json/Unmarshal)"}
+{"query":"单驱动","expected_file_path":"AGENTS.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram (单驱/驱动)"}
+{"query":"向后兼容","expected_file_path":"core/src/indexer/mod.rs","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram (向后/后兼/兼容)"}
+{"query":"治理自治","expected_file_path":"AGENTS.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram"}
+{"query":"语义检索","expected_file_path":"docs/decisions/adr-024-console-api-semantic-forward.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram"}
+{"query":"禁伪造","expected_file_path":"docs/decisions/adr-025-hybrid-scoring-fusion.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram"}

@@ -208,6 +208,77 @@ func ValidateDataset(questions []Question) error {
 	return nil
 }
 
+// knownCategories is the add-only set of allowed question categories: the v0.1
+// builtin six (BuiltinGoldenQuestions / ValidateDataset) plus task-24.2's
+// code-symbol / cjk categories for the semantic golden dataset.
+var knownCategories = map[string]bool{
+	"config-location":     true,
+	"error-reproduction":  true,
+	"historical-decision": true,
+	"log-troubleshooting": true,
+	"agent-memory-rule":   true,
+	"code-location":       true,
+	"code-symbol":         true, // task-24.2: code-identifier queries (exercise code/CJK tokenizer split)
+	"cjk":                 true, // task-24.2: CJK queries (exercise CJK bigram)
+}
+
+// ValidateGoldenSemantic is the task-24.2 add-only strict validator for golden
+// datasets. It is independent of ValidateDataset (which enforces the >=30 /
+// >=6-category builtin shape): this checks schema well-formedness, duplicates,
+// and answer coverage so dirty data cannot silently pollute recall denominators.
+// It is count-agnostic, so it passes on both BuiltinGoldenQuestions and smaller
+// annotated golden sets like test/fixtures/eval/golden-semantic.jsonl.
+func ValidateGoldenSemantic(questions []Question) error {
+	if len(questions) == 0 {
+		return fmt.Errorf("golden dataset is empty")
+	}
+	seenQuery := map[string]int{}
+	seenPair := map[string]int{}
+	for i, q := range questions {
+		query := strings.TrimSpace(q.Query)
+		if query == "" {
+			return fmt.Errorf("question %d: query is required", i)
+		}
+		// schema 良构：category 非空且在已知集
+		if strings.TrimSpace(q.Category) == "" {
+			return fmt.Errorf("question %d (%q): category is required", i, query)
+		}
+		if !knownCategories[q.Category] {
+			return fmt.Errorf("question %d (%q): unknown category %q (add-only known set)", i, query, q.Category)
+		}
+		// 覆盖：无悬空 expected（file 或 chunk 至少一项非空）
+		file := strings.TrimSpace(q.ExpectedFilePath)
+		chunk := strings.TrimSpace(q.ExpectedChunkID)
+		if file == "" && chunk == "" {
+			return fmt.Errorf("question %d (%q): expected_file_path or expected_chunk_id is required (dangling expected)", i, query)
+		}
+		// schema 良构：line_range 合理（>=0，且非整文件 0/0 时 start<=end）
+		if q.ExpectedLineRange.Start < 0 || q.ExpectedLineRange.End < 0 {
+			return fmt.Errorf("question %d (%q): expected_line_range bounds must be >=0", i, query)
+		}
+		if q.ExpectedLineRange.End != 0 && q.ExpectedLineRange.Start > q.ExpectedLineRange.End {
+			return fmt.Errorf("question %d (%q): expected_line_range start %d > end %d",
+				i, query, q.ExpectedLineRange.Start, q.ExpectedLineRange.End)
+		}
+		// 重复检测：同 query 文本
+		if prev, ok := seenQuery[query]; ok {
+			return fmt.Errorf("question %d (%q): duplicate query text (first seen at question %d)", i, query, prev)
+		}
+		seenQuery[query] = i
+		// 重复检测：同 (query, expected) 对（target 取 file，缺则 chunk）
+		target := file
+		if target == "" {
+			target = chunk
+		}
+		pairKey := query + "\x00" + target
+		if prev, ok := seenPair[pairKey]; ok {
+			return fmt.Errorf("question %d (%q): duplicate (query, expected) pair (first seen at question %d)", i, query, prev)
+		}
+		seenPair[pairKey] = i
+	}
+	return nil
+}
+
 func LoadJSONL(path string) ([]Question, error) {
 	f, err := os.Open(path)
 	if err != nil {
