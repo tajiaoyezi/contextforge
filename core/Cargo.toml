@@ -113,6 +113,10 @@ vector-lancedb = ["dep:lancedb", "dep:arrow-array", "dep:futures"]
 # task-19.1: real embedding provider (fastembed-rs). Off by default — default build uses the
 # model-free DeterministicEmbeddingProvider (0 new dep).
 embedding-fastembed = ["dep:fastembed"]
+# task-21.2: real cross-encoder reranker (fastembed-rs TextRerank, BGE-reranker-base). Off by
+# default — reuses the already-present optional `fastembed` dep (0 NEW crate; default build
+# unaffected, no Cargo.lock change). The model-free IdentityReranker is the default-build reranker.
+reranker-fastembed = ["dep:fastembed"]
 vector-hnsw = ["dep:instant-distance"]
 
 [build-dependencies]

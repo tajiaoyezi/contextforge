@@ -26,6 +26,8 @@ use thiserror::Error;
 use crate::chunker::Provenance;
 // task-19.1 / task-19.2: embedding provider for semantic retrieval wiring.
 use crate::embedding::EmbeddingProvider;
+// task-21.2: reranker seam — opt-in re-ordering of the semantic/hybrid top-k.
+use crate::rerank::Reranker;
 
 // ---- task-18.1: vector retrieval trait re-exports ----
 pub mod fusion;
@@ -60,6 +62,9 @@ pub struct Retriever {
     // task-19.2: optional embedding provider (default None; pairs with vector_searcher for the
     // semantic path). Both None → BM25-only hot path unchanged.
     embedder: Option<Arc<dyn EmbeddingProvider>>,
+    // task-21.2: optional reranker (default None; Some re-orders the semantic/hybrid top-k after
+    // assembly). None → search_semantic/search_hybrid return unchanged (backward compat).
+    reranker: Option<Arc<dyn Reranker>>,
 }
 
 #[derive(Error, Debug)]
@@ -279,6 +284,7 @@ impl Retriever {
             config,
             vector_searcher: None, // task-18.1: default None (BM25-only)
             embedder: None,        // task-19.2: default None (BM25-only)
+            reranker: None,        // task-21.2: default None (no rerank)
         })
     }
 
@@ -590,6 +596,26 @@ impl Retriever {
         self
     }
 
+    /// task-21.2: builder method to wire in a reranker. When set, `search_semantic` / `search_hybrid`
+    /// re-order their assembled top-k through it before returning. When unset (`None`), both paths
+    /// return their native order unchanged (backward compatible — mirrors `with_embedder`).
+    pub fn with_reranker(mut self, reranker: Arc<dyn Reranker>) -> Self {
+        self.reranker = Some(reranker);
+        self
+    }
+
+    /// task-21.2: apply the wired reranker (if any) to an assembled result list. `None` reranker →
+    /// returns `results` unchanged (the seam is opt-in). A reranker error is surfaced as
+    /// `RetrieverError::InvalidConfig` (consistent with the embedding/vector error mapping above).
+    fn apply_rerank(&self, query: &str, results: Vec<SearchResult>) -> Result<Vec<SearchResult>, RetrieverError> {
+        match &self.reranker {
+            Some(r) => r
+                .rerank(query, &results)
+                .map_err(|e| RetrieverError::InvalidConfig(format!("rerank: {e}"))),
+            None => Ok(results),
+        }
+    }
+
     /// task-19.2: embed a batch of `(chunk_id, text)` and build the vector index via `indexer`
     /// (full-reindex semantics, task-18.1). A no-op `Ok(())` when no embedder is wired — the
     /// BM25-only path indexes nothing on the vector side. The caller passes the concrete backend so
@@ -644,6 +670,18 @@ impl Retriever {
         query: &str,
         top_k: usize,
     ) -> Result<Vec<SearchResult>, RetrieverError> {
+        let results = self.search_semantic_raw(query, top_k)?;
+        // task-21.2: opt-in rerank of the assembled top-k (None reranker → unchanged).
+        self.apply_rerank(query, results)
+    }
+
+    /// task-21.2: raw (pre-rerank) semantic results. `search_hybrid` fuses these directly so the
+    /// reranker applies once on the *fused* top-k, not on the vector component before fusion.
+    fn search_semantic_raw(
+        &self,
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>, RetrieverError> {
         let (embedder, searcher) = match (&self.embedder, &self.vector_searcher) {
             (Some(e), Some(s)) => (e, s),
             _ => return Ok(vec![]),
@@ -686,8 +724,11 @@ impl Retriever {
             explain: false,
         };
         let bm25 = self.search(&opts)?;
-        let vector = self.search_semantic(query, top_k)?;
-        Ok(crate::retriever::fusion::fuse(&bm25, &vector, top_k))
+        // task-21.2: raw (pre-rerank) vector results so the fusion ranks reflect retrieval, not
+        // rerank; the reranker (if any) applies once on the fused top-k below.
+        let vector = self.search_semantic_raw(query, top_k)?;
+        let fused = crate::retriever::fusion::fuse(&bm25, &vector, top_k);
+        self.apply_rerank(query, fused)
     }
 
     /// task-19.2: assemble a 12-field `SearchResult` from a vector hit's chunk_id via SQLite +
@@ -1611,5 +1652,91 @@ mod tests {
         );
         assert_eq!(results[0].retrieval_method, "vector");
         assert!(!results[0].provenance.is_empty(), "provenance floor ≥1 on the vector path");
+    }
+
+    // TEST-21.2.2 / AC2 — with_reranker seam: when a reranker is wired, search_semantic AND
+    // search_hybrid re-order their assembled top-k through it (observable via the identity
+    // provenance marker in `reason`). When NO reranker is wired (None), search_semantic returns its
+    // native order with no marker — backward compatible. Uses the default-build 0-dep
+    // BruteForceVectorBackend + DeterministicEmbeddingProvider so the seam is CI-verifiable.
+    #[test]
+    fn test_21_2_2_with_reranker_seam_applies_and_none_unchanged() {
+        use crate::embedding::DeterministicEmbeddingProvider;
+        use crate::rerank::{IdentityReranker, IDENTITY_RERANK_REASON};
+        use crate::retriever::vector::BruteForceVectorBackend;
+
+        let (_src, data, coll) = build_fixture(
+            "rerank_seam",
+            &[
+                ("config.md", "where is the config loader and default data dir"),
+                ("daemon.md", "how the daemon restarts after a crash"),
+            ],
+        );
+        let base = Retriever::open(&data, &coll).expect("open base");
+        let pick = |q: &str| -> (String, String) {
+            let r = base
+                .search(&SearchOptions {
+                    query: q.into(),
+                    top_k: 1,
+                    filters: SearchFilters::default(),
+                    explain: false,
+                })
+                .expect("bm25");
+            assert!(!r.is_empty(), "fixture should yield a hit for {q}");
+            (r[0].chunk_id.clone(), r[0].content.clone())
+        };
+        let items = vec![pick("config"), pick("daemon")];
+        let (_, target_text) = &items[0];
+
+        // ---- None reranker (backward compat): native order, NO rerank marker ----
+        let backend_none = Arc::new(BruteForceVectorBackend::new());
+        let retr_none = Retriever::open(&data, &coll)
+            .expect("open none")
+            .with_embedder(Arc::new(DeterministicEmbeddingProvider::default()))
+            .with_vector_searcher(backend_none.clone());
+        retr_none
+            .index_chunks_semantic(backend_none.as_ref(), &items)
+            .expect("index none");
+        let none_results = retr_none.search_semantic(target_text, 5).expect("semantic none");
+        assert!(!none_results.is_empty(), "semantic should hit");
+        assert!(
+            none_results.iter().all(|r| !r.reason.contains(IDENTITY_RERANK_REASON)),
+            "None reranker → no rerank marker (backward compat)"
+        );
+        assert!(none_results.iter().all(|r| r.retrieval_method == "vector"));
+
+        // ---- Some(IdentityReranker): seam applies — marker present + score-desc order ----
+        let backend = Arc::new(BruteForceVectorBackend::new());
+        let retr = Retriever::open(&data, &coll)
+            .expect("open wired")
+            .with_embedder(Arc::new(DeterministicEmbeddingProvider::default()))
+            .with_vector_searcher(backend.clone())
+            .with_reranker(Arc::new(IdentityReranker::new()));
+        retr.index_chunks_semantic(backend.as_ref(), &items)
+            .expect("index wired");
+
+        let sem = retr.search_semantic(target_text, 5).expect("semantic wired");
+        assert!(!sem.is_empty(), "semantic should hit");
+        assert!(
+            sem.iter().all(|r| r.reason.contains(IDENTITY_RERANK_REASON)),
+            "Some reranker → every result carries the rerank provenance marker (seam applied)"
+        );
+        for w in sem.windows(2) {
+            assert!(w[0].score >= w[1].score, "reranked order is score desc");
+        }
+        // Rerank drops no candidate relative to the None path (same set of chunk_ids).
+        let mut none_ids: Vec<String> = none_results.iter().map(|r| r.chunk_id.clone()).collect();
+        let mut some_ids: Vec<String> = sem.iter().map(|r| r.chunk_id.clone()).collect();
+        none_ids.sort();
+        some_ids.sort();
+        assert_eq!(none_ids, some_ids, "rerank drops no candidate");
+
+        // hybrid path also re-orders through the seam (marker present on the fused top-k).
+        let hyb = retr.search_hybrid(target_text, 5).expect("hybrid wired");
+        assert!(!hyb.is_empty(), "hybrid should hit");
+        assert!(
+            hyb.iter().all(|r| r.reason.contains(IDENTITY_RERANK_REASON)),
+            "hybrid top-k re-ordered through reranker seam"
+        );
     }
 }

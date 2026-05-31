@@ -29,6 +29,8 @@ pub mod embedding;
 pub mod indexer;
 pub mod memoryops;
 pub mod parser;
+// task-21.2 (Phase 21): reranker abstraction (deterministic IdentityReranker default + feature-gated real cross-encoder).
+pub mod rerank;
 pub mod retriever;
 pub mod scanner;
 
