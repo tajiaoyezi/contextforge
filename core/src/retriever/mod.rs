@@ -708,10 +708,12 @@ impl Retriever {
         Ok(results)
     }
 
-    /// task-21.1: hybrid retrieval — RRF fusion of the BM25 (`search`) and vector (`search_semantic`)
-    /// result lists. Requires the same embedder + vector-backend wiring as `search_semantic`; if that
-    /// wiring is absent the vector component is empty and fusion degrades to BM25-only (still labelled
-    /// `retrieval_method = "hybrid"`). Independent of `search()` / `search_semantic()` — opt-in.
+    /// task-21.1: hybrid retrieval — RRF fusion of the BM25 (`search`) and vector
+    /// (`search_semantic_raw`, pre-rerank) result lists. Requires the same embedder + vector-backend
+    /// wiring as `search_semantic`; if that wiring is absent the vector component is empty and fusion
+    /// degrades to BM25-only (still labelled `retrieval_method = "hybrid"`). task-21.2: a wired
+    /// reranker applies once on the fused top-k (the vector component is fused raw, so fusion ranks
+    /// reflect retrieval, not rerank). Opt-in; independent of `search()` / `search_semantic()`.
     pub fn search_hybrid(
         &self,
         query: &str,
@@ -1654,6 +1656,25 @@ mod tests {
         assert!(!results[0].provenance.is_empty(), "provenance floor ≥1 on the vector path");
     }
 
+    // Test-only reranker that reverses its input — used to prove the seam's OUTPUT ORDER is
+    // determined by the reranker (not the native backend order); a no-op seam could not reverse it.
+    #[derive(Debug)]
+    struct ReverseReranker;
+    impl crate::rerank::Reranker for ReverseReranker {
+        fn rerank(
+            &self,
+            _query: &str,
+            candidates: &[SearchResult],
+        ) -> Result<Vec<SearchResult>, crate::rerank::RerankError> {
+            let mut out = candidates.to_vec();
+            out.reverse();
+            Ok(out)
+        }
+        fn name(&self) -> &'static str {
+            "reverse-test"
+        }
+    }
+
     // TEST-21.2.2 / AC2 — with_reranker seam: when a reranker is wired, search_semantic AND
     // search_hybrid re-order their assembled top-k through it (observable via the identity
     // provenance marker in `reason`). When NO reranker is wired (None), search_semantic returns its
@@ -1737,6 +1758,29 @@ mod tests {
         assert!(
             hyb.iter().all(|r| r.reason.contains(IDENTITY_RERANK_REASON)),
             "hybrid top-k re-ordered through reranker seam"
+        );
+
+        // The seam's OUTPUT ORDER is determined by the reranker, not the native backend order: a
+        // reranker that reverses its input makes search_semantic return the reverse of the None-path
+        // (native) order. A no-op seam (or a dropped sort) could not produce a reversed order, so this
+        // distinguishes "reranker actually re-ordered" from "happened to match the native order".
+        let backend_rev = Arc::new(BruteForceVectorBackend::new());
+        let retr_rev = Retriever::open(&data, &coll)
+            .expect("open rev")
+            .with_embedder(Arc::new(DeterministicEmbeddingProvider::default()))
+            .with_vector_searcher(backend_rev.clone())
+            .with_reranker(Arc::new(ReverseReranker));
+        retr_rev
+            .index_chunks_semantic(backend_rev.as_ref(), &items)
+            .expect("index rev");
+        let rev = retr_rev.search_semantic(target_text, 5).expect("semantic rev");
+        assert!(rev.len() >= 2, "need ≥2 hits to observe a reversal");
+        let rev_ids: Vec<String> = rev.iter().map(|r| r.chunk_id.clone()).collect();
+        let mut expected_rev: Vec<String> = none_results.iter().map(|r| r.chunk_id.clone()).collect();
+        expected_rev.reverse();
+        assert_eq!(
+            rev_ids, expected_rev,
+            "reranker determines seam output order (reverse reranker → reversed native order)"
         );
     }
 }

@@ -134,7 +134,9 @@ bash scripts/spec_drift_lint.sh --touched origin/master
   - `4435159` docs(spec): Status Draft → In Progress
   - `c1d1256` test(rerank): TEST-21.2.1/21.2.2 RED + Reranker trait/RerankError + IdentityReranker 骨架 + seam
   - `7d98f4a` feat(rerank): IdentityReranker 确定性重排 + CrossEncoderReranker（feature-gated）GREEN
-  - （本提交）docs(spec): 回填 §10 + Status → Done
+  - `a64e83d` docs(spec): 回填 §10 + Status → Done + phase-21 reranker spike
+  - `b194513` docs(adapter): 标记 task-21.2 为 Done
+  - （本提交）test(rerank): adversarial review 跟进 — 强化 TEST-21.2.2 seam 序断言（ReverseReranker）+ trait/hybrid doc 修订
 - **设计取舍（实施期定）**：
   - (1) **reranker crate = 复用既有 `fastembed` optional dep**（add-only feature `reranker-fastembed`，0 新 crate、Cargo.lock 无变更）——fastembed v4.9.1 自带 `TextRerank` cross-encoder API，无需引新 crate，故不触发 R7 needs-dep（仅加 `[features]` 行）。
   - (2) **`IdentityReranker` 重排规则**：按候选既有 `score` 降序 + `chunk_id` 升序稳定 tie-break（仿 `fusion.rs`），不丢/不改候选内容，`reason` 标注 `reranked:identity` 让重排来源可观测（ADR-026 D2）。`SearchResult` 无 `hybrid_score` 字段（task-21.1 把融合分写进 `score`），故评分取 `score`。
@@ -145,5 +147,6 @@ bash scripts/spec_drift_lint.sh --touched origin/master
   - real run `cargo test -p contextforge-core --features reranker-fastembed test_21_2_3 -- --nocapture`：**1 passed**（393.67s，真实 BGE-reranker-base 下载+ONNX 推理，Windows MSVC 2026-05-31）——real cross-encoder 正确按 query 相关性重排（bamboo 文档高于无关文档），score 降序 + 来源标注（详 `docs/spikes/phase-21-reranker.md`，ADR-013 real-run 数据源声明）（AC3）。
   - `go test ./...`：24 包 ok，0 failed（本 PR 零 Go delta）（AC4）。
   - D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master`：0 未标注命中（AC5）。
+  - adversarial 多维 review（correctness / spec-adr / compat-honesty / reuse）：0 critical/major；4 minor/nit 全部跟进——TEST-21.2.2 加 `ReverseReranker` 断言「seam 输出序由 reranker 决定」（闭合「序回归不可检」gap）+ `search_hybrid` doc 改引 `search_semantic_raw` + `Reranker::name()` doc 软化为「may surface」。
 - **剩余风险 / 未做项**：real cross-encoder 的 top-1/MRR 定量提升数值 + ADR-026 Proposed→Accepted ratify 由收口承接 [SPEC-OWNER:task-21.3-closeout-v0.14.0]；受阻平台真实质量复跑 [SPEC-DEFER:phase-future.reranker-real-quality]（本 task 未触发——模型已在 Windows MSVC 构建+运行）。
 - **下游 task 影响**：task-21.3 消费本 task 的 `Reranker` / `with_reranker` seam + spike 真实运行结果做 eval reranked 列 + ADR-026 ratify；console-api `?rerank=true` 转发 [SPEC-DEFER:phase-future.console-api-rerank-forward]。

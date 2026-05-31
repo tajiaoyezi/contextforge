@@ -29,7 +29,7 @@ pub trait Reranker: Send + Sync + Debug {
         candidates: &[SearchResult],
     ) -> Result<Vec<SearchResult>, RerankError>;
 
-    /// Provider identity (provenance — feeds the reranked-result `reason` annotation).
+    /// Provider identity (provenance). Implementations may surface it in the reranked-result `reason`.
     fn name(&self) -> &'static str;
 }
 
