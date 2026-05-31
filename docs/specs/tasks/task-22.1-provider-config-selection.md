@@ -1,6 +1,6 @@
 # Task `22.1`: `provider-config-selection — internal/config 加 add-only [embedding] 配置（provider/dim）+ core/src/embedding 工厂按配置选择 provider（deterministic/fastembed/remote）+ dim 协商校验 + core/src/server.rs 语义路径改用工厂`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P0
 **Owner**: 主 agent（ADR-012 自治）
@@ -74,23 +74,23 @@ Phase 19（v0.12.0）落地 `EmbeddingProvider` trait（`core/src/embedding/trai
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: `internal/config.Config` 加 add-only `Embedding EmbeddingConfig{Provider, Dim}`，TOML `[embedding]` 段 round-trip 正确（含 / 不含段均合法，缺省 `Provider=""` / `Dim=0`，既有 `[remote]` / `[[collections]]` 段不受影响）— verified by **TEST-22.1.1**
-- [ ] **AC2**: `select_provider("deterministic", 0)` 与 `select_provider("", 0)` 均返回 `DeterministicEmbeddingProvider`（`name()=="deterministic-sha256"`，`dim()==384`）；与 Phase 19 `DeterministicEmbeddingProvider::default()` 行为等价 — verified by **TEST-22.1.2**
-- [ ] **AC3**: dim 协商 — `select_provider("deterministic", 128)` 返回 dim=128 的 provider（无 mismatch）；`select_provider("deterministic", 0)` 用 `DEFAULT_DIM`（不触发 mismatch）；构造 provider `dim()` 与请求 dim 不一致的场景返回 `EmbeddingError::DimMismatch{expected, got}`（不静默）— verified by **TEST-22.1.3**
-- [ ] **AC4**: `select_provider("remote", ...)` 与未知 provider name 返回明确 `EmbeddingError`（不 panic、不 silent fallback）；`"fastembed"` 在未编入 feature 时返回明确 feature-未启用 `EmbeddingError` — verified by **TEST-22.1.4**
-- [ ] **AC5**: `core/src/server.rs` 语义路径改用 `select_provider` 后，缺省 `("deterministic", 0)` 下既有语义检索（`?semantic=true`）行为不退化 — verified by **TEST-22.1.5** + §10 实测
-- [ ] **AC6**: 既有不退化 — `go test ./...` + `cargo test --workspace` 全 PASS；D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-22.1.6** + §10 记录
+- [x] **AC1**: `internal/config.Config` 加 add-only `Embedding EmbeddingConfig{Provider, Dim}`，TOML `[embedding]` 段 round-trip 正确（含 / 不含段均合法，缺省 `Provider=""` / `Dim=0`，既有 `[remote]` / `[[collections]]` 段不受影响）— verified by **TEST-22.1.1**
+- [x] **AC2**: `select_provider("deterministic", 0)` 与 `select_provider("", 0)` 均返回 `DeterministicEmbeddingProvider`（`name()=="deterministic-sha256"`，`dim()==384`）；与 Phase 19 `DeterministicEmbeddingProvider::default()` 行为等价 — verified by **TEST-22.1.2**
+- [x] **AC3**: dim 协商 — `select_provider("deterministic", 128)` 返回 dim=128 的 provider（无 mismatch）；`select_provider("deterministic", 0)` 用 `DEFAULT_DIM`（不触发 mismatch）；构造 provider `dim()` 与请求 dim 不一致的场景返回 `EmbeddingError::DimMismatch{expected, got}`（不静默）— verified by **TEST-22.1.3**（默认构建 `negotiate_dim(384,128)` + feature 构建 `select_provider("fastembed",128)` 双路）
+- [x] **AC4**: `select_provider("remote", ...)` 与未知 provider name 返回明确 `EmbeddingError`（不 panic、不 silent fallback）；`"fastembed"` 在未编入 feature 时返回明确 feature-未启用 `EmbeddingError` — verified by **TEST-22.1.4**
+- [x] **AC5**: `core/src/server.rs` 语义路径改用 `select_provider` 后，缺省 `("deterministic", 0)` 下既有语义检索（`?semantic=true`）行为不退化 — verified by **TEST-22.1.5** + §10 实测（既有 `test_19_3_semantic_dispatches_vector_path` 复跑守护）
+- [x] **AC6**: 既有不退化 — `go test ./...` + `cargo test --workspace` 全 PASS；D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-22.1.6** + §10 记录
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-22.1.1 | `[embedding]` 配置 TOML round-trip（含/缺省 + 既有段不受影响） | `internal/config/config_test.go` | Planned |
-| TEST-22.1.2 | `select_provider("deterministic"/"" )` 返确定性 provider（name/dim） | `core/src/embedding/tests.rs` | Planned |
-| TEST-22.1.3 | dim 协商：指定 dim 生效 / dim=0 用默认 / mismatch 返 `DimMismatch` | `core/src/embedding/tests.rs` | Planned |
-| TEST-22.1.4 | `"remote"` / 未知 name / fastembed-未启用 返明确 `EmbeddingError` | `core/src/embedding/tests.rs` | Planned |
-| TEST-22.1.5 | `server.rs` 语义路径改用工厂后缺省行为不退化 | `core/src/server.rs` `#[cfg(test)]` 或 `core/tests/` | Planned |
-| TEST-22.1.6 | `go test ./...` + `cargo test --workspace` 0 failed + D2 lint 0 未标注命中 | 全 Go + 全 Rust + `scripts/spec_drift_lint.sh` | Planned |
+| TEST-22.1.1 | `[embedding]` 配置 TOML round-trip（含/缺省 + 既有段不受影响） | `internal/config/config_test.go` | Done |
+| TEST-22.1.2 | `select_provider("deterministic"/"" )` 返确定性 provider（name/dim） | `core/src/embedding/tests.rs` | Done |
+| TEST-22.1.3 | dim 协商：指定 dim 生效 / dim=0 用默认 / mismatch 返 `DimMismatch` | `core/src/embedding/tests.rs` | Done |
+| TEST-22.1.4 | `"remote"` / 未知 name / fastembed-未启用 返明确 `EmbeddingError` | `core/src/embedding/tests.rs` | Done |
+| TEST-22.1.5 | `server.rs` 语义路径改用工厂后缺省行为不退化 | `core/src/server.rs` `#[cfg(test)]` 或 `core/tests/` | Done |
+| TEST-22.1.6 | `go test ./...` + `cargo test --workspace` 0 failed + D2 lint 0 未标注命中 | 全 Go + 全 Rust + `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -121,4 +121,31 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按以下 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 结果 / 设计取舍 / 剩余风险 + 下游影响。
+- **完成日期**: 2026-05-31。
+
+- **改动文件**:
+  - `internal/config/config.go` — `Config` 加 add-only `Embedding EmbeddingConfig{Provider,Dim}`；新增 `EmbeddingConfig` struct；`encodeTOML` 加 `[embedding]` 段（`provider` 走 `tomlQuote`、`dim` 走 `strconv.Itoa`）；`decodeTOML` 加 `[embedding]` section 分派；新增 `assignEmbedding`（`dim` 走 `strconv.Atoi`）。
+  - `internal/config/config_test.go` — TEST-22.1.1（含段保真 + 既有 `[remote]`/`[[collections]]` 不受影响 / 不含段向后兼容）。
+  - `core/src/embedding/factory.rs`（新增）— `select_provider(name, dim)` + `pub(crate) negotiate_dim`。
+  - `core/src/embedding/mod.rs` — `pub mod factory` + `pub use factory::select_provider`。
+  - `core/src/embedding/tests.rs` — TEST-22.1.2/3/4（默认构建 4 测 + feature 构建 1 测）。
+  - `core/src/server.rs` — 语义路径 embedder 改 `select_provider("deterministic",0)`；移除随之 unused 的 `EmbeddingProvider` import；TEST-22.1.5（`#[cfg(test)]`）。
+
+- **commit 列表**: `42571bf`（RED：测试）→ `3b92b05`（GREEN：impl）→ 本 docs 提交（§6/§7/§10 + Status Done）。
+
+- **§9 Verification 结果**（实测，ADR-013）:
+  - `go vet ./internal/...` 净；`go test ./internal/config/ -run TestTask221 -v` 两子测 PASS；`go test ./...` exit 0（全模块 ok）。
+  - `cargo test --workspace` exit 0（core lib 159 tests，含 `test_22_1_2/3/4` + `server::tests::test_22_1_5`）。
+  - feature 构建 `cargo test --features embedding-fastembed -p contextforge-core test_22_1_4`：`test_22_1_4_fastembed_feature_select_and_mismatch` PASS（network-free——仅读 `dim()`，未触发模型下载）。
+  - D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master`：PR 触及行 0 未标注命中（CI spec-lint gate 为权威；本机以 scoped touched 直查复核）。
+
+- **设计取舍**:
+  - `select_provider("deterministic",0)` ≡ `DeterministicEmbeddingProvider::default()`（`new(DEFAULT_DIM)`）逐字节等价——server 缺省语义路径行为不变（TEST-22.1.2 字节等价断言 + TEST-22.1.5 跨调用稳定 + 既有 19.3 复跑三重守护）。
+  - dim 协商抽出 `negotiate_dim(provider_dim, requested)` 小函数，使「冲突 → DimMismatch」逻辑在**默认构建**即可单测（确定性 provider 恒 honor 请求 dim，故 mismatch 只能由 fixed-dim provider 触发；`negotiate_dim` 直测 + feature 下 fastembed 384-mismatch 端到端双覆盖）。
+  - 仅改语义路径（task 范围）；hybrid 路径 embedder 仍硬编码 `DeterministicEmbeddingProvider::default()`（task-21.x 范围，本 task 不动，surgical）。
+  - `EmbeddingProvider` import 移除：embedder 由具体类型 `Arc<DeterministicEmbeddingProvider>` 变 trait object `Arc<dyn EmbeddingProvider>` 后，`.name()` 经 vtable 调度无需 trait 在 scope。
+
+- **剩余风险 + 下游影响**:
+  - server 尚未把 `[embedding]` 配置 plumb 到调用点（缺省硬编码 `("deterministic",0)`）——真正「配置驱动 provider」的 wiring 由 task-22.4 closeout（探针）与后续按需接入；本 task 落地的是工厂 seam 本身（ADR-027 D1 向后兼容前提下）。
+  - `"remote"` 分支当前返回明确 Err（骨架由 task-22.3 落地）；`"fastembed"` 默认构建明确 feature-未启用 Err。
+  - 下游：task-22.2 将以 `CachingEmbeddingProvider` 包裹工厂选出的 provider；task-22.3 落 `"remote"` 分支骨架；task-22.4 加 health 探针 + smoke v12 + v0.15.0 closeout（含 ADR-027 ratify）。
