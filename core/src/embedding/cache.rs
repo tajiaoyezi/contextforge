@@ -1,0 +1,210 @@
+//! task-22.2: content-hash embedding cache decorator (Phase 22 embedding-provider-completion).
+//!
+//! `CachingEmbeddingProvider` wraps any `Arc<dyn EmbeddingProvider>` and is itself an
+//! `EmbeddingProvider`, so it drops transparently into `Retriever::with_embedder` / the task-22.1
+//! factory. The cache key is `Sha256(text)` hex (same hash as `deterministic.rs` — 0 new dep): same
+//! text ⇒ same key ⇒ hit (skips the inner provider); changed text ⇒ different key ⇒ miss (= implicit
+//! invalidation). Memory (`HashMap`) is the L1 default; an optional SQLite file (ADR-002 layered,
+//! `rusqlite` bundled) is the L2 persistence opt-in. Cache entries are scoped by `(provider, dim)`
+//! so a cache file is never mis-read across providers.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+use rusqlite::Connection;
+use sha2::{Digest, Sha256};
+
+use crate::embedding::traits::{EmbeddingError, EmbeddingProvider};
+
+/// Embedding provider decorator that caches `Sha256(text) → embedding`.
+pub struct CachingEmbeddingProvider {
+    inner: Arc<dyn EmbeddingProvider>,
+    mem: Mutex<HashMap<String, Vec<f32>>>,
+    store: Option<Mutex<Connection>>,
+}
+
+impl std::fmt::Debug for CachingEmbeddingProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "CachingEmbeddingProvider {{ inner: {:?}, persistent: {} }}",
+            self.inner,
+            self.store.is_some()
+        )
+    }
+}
+
+impl CachingEmbeddingProvider {
+    /// Wrap `inner` with an in-memory cache (no persistence).
+    pub fn new(inner: Arc<dyn EmbeddingProvider>) -> Self {
+        Self {
+            inner,
+            mem: Mutex::new(HashMap::new()),
+            store: None,
+        }
+    }
+
+    /// Wrap `inner` with an in-memory L1 cache backed by a SQLite file at `path` (L2 persistence,
+    /// ADR-002 layered; add-only `embedding_cache` table, does not touch existing schema).
+    pub fn with_sqlite(
+        inner: Arc<dyn EmbeddingProvider>,
+        path: impl AsRef<Path>,
+    ) -> Result<Self, EmbeddingError> {
+        let conn = Connection::open(path).map_err(to_backend_err)?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS embedding_cache (\
+                content_hash TEXT NOT NULL, \
+                provider TEXT NOT NULL, \
+                dim INTEGER NOT NULL, \
+                vector BLOB NOT NULL, \
+                PRIMARY KEY (content_hash, provider)\
+            )",
+            [],
+        )
+        .map_err(to_backend_err)?;
+        Ok(Self {
+            inner,
+            mem: Mutex::new(HashMap::new()),
+            store: Some(Mutex::new(conn)),
+        })
+    }
+
+    fn key(text: &str) -> String {
+        let digest = Sha256::digest(text.as_bytes());
+        let mut s = String::with_capacity(64);
+        for b in digest {
+            use std::fmt::Write;
+            let _ = write!(s, "{:02x}", b);
+        }
+        s
+    }
+}
+
+fn to_backend_err<E: std::error::Error + Send + Sync + 'static>(e: E) -> EmbeddingError {
+    EmbeddingError::Backend { source: Box::new(e) }
+}
+
+impl EmbeddingProvider for CachingEmbeddingProvider {
+    fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        // task-22.2 RED: passthrough stub — no caching yet (GREEN implements L1/L2 read-through).
+        self.inner.embed(texts)
+    }
+
+    fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn name(&self) -> &'static str {
+        "cached"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::embedding::deterministic::DeterministicEmbeddingProvider;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Test double: counts inner `embed` invocations and total texts embedded, delegating the actual
+    /// vectors to a deterministic provider (so cache hits can be asserted by observing the counters).
+    #[derive(Debug)]
+    struct CountingProvider {
+        inner: DeterministicEmbeddingProvider,
+        embedded: AtomicUsize,
+    }
+    impl CountingProvider {
+        fn new(dim: usize) -> Self {
+            Self {
+                inner: DeterministicEmbeddingProvider::new(dim),
+                embedded: AtomicUsize::new(0),
+            }
+        }
+        fn embedded(&self) -> usize {
+            self.embedded.load(Ordering::SeqCst)
+        }
+    }
+    impl EmbeddingProvider for CountingProvider {
+        fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+            self.embedded.fetch_add(texts.len(), Ordering::SeqCst);
+            self.inner.embed(texts)
+        }
+        fn dim(&self) -> usize {
+            self.inner.dim()
+        }
+        fn name(&self) -> &'static str {
+            "counting-deterministic"
+        }
+    }
+
+    fn s(v: &str) -> String {
+        v.to_string()
+    }
+
+    // TEST-22.2.1 — AC1: same text → 2nd embed hits cache (inner not re-invoked) + bytes identical.
+    #[test]
+    fn test_22_2_1_hit_skips_inner_and_bytes_identical() {
+        let counter = Arc::new(CountingProvider::new(384));
+        let cache = CachingEmbeddingProvider::new(counter.clone());
+        let t = vec![s("where is the config loader")];
+        let first = cache.embed(&t).unwrap();
+        let second = cache.embed(&t).unwrap();
+        assert_eq!(first, second, "cache hit must return byte-identical vectors");
+        assert_eq!(
+            counter.embedded(),
+            1,
+            "2nd embed must hit cache — inner embedded only the 1 unique text"
+        );
+        let direct = DeterministicEmbeddingProvider::new(384).embed(&t).unwrap();
+        assert_eq!(first, direct, "cached vector equals the inner provider's direct embed");
+    }
+
+    // TEST-22.2.2 — AC2: invalidation — new text misses; batch with mixed hit/miss only embeds the
+    // misses, and results stay in input order.
+    #[test]
+    fn test_22_2_2_miss_on_new_text_and_batch_order() {
+        let counter = Arc::new(CountingProvider::new(384));
+        let cache = CachingEmbeddingProvider::new(counter.clone());
+        let a = cache.embed(&[s("alpha")]).unwrap();
+        assert_eq!(counter.embedded(), 1);
+        // batch: "alpha" is cached, "beta" is new — only "beta" should reach the inner provider.
+        let batch = cache.embed(&[s("alpha"), s("beta")]).unwrap();
+        assert_eq!(counter.embedded(), 2, "only the new text 'beta' is embedded by inner");
+        assert_eq!(batch.len(), 2);
+        assert_eq!(batch[0], a[0], "batch[0] is the cached 'alpha' vector, in order");
+        let beta_direct = DeterministicEmbeddingProvider::new(384).embed(&[s("beta")]).unwrap();
+        assert_eq!(batch[1], beta_direct[0], "batch[1] is the freshly-embedded 'beta', in order");
+    }
+
+    // TEST-22.2.3 — AC3: SQLite persistence round-trip — a fresh provider over the same file reads
+    // back the cached vector (inner 0 calls); the default (memory) provider does not persist.
+    #[test]
+    fn test_22_2_3_sqlite_roundtrip_and_memory_default_no_persist() {
+        let dir = std::env::temp_dir().join(format!("cf-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("embcache.sqlite");
+
+        let counter1 = Arc::new(CountingProvider::new(384));
+        let cache1 = CachingEmbeddingProvider::with_sqlite(counter1.clone(), &db).unwrap();
+        let want = cache1.embed(&[s("persist me")]).unwrap();
+        assert_eq!(counter1.embedded(), 1);
+
+        // fresh provider, same file: must read back from SQLite without touching inner.
+        let counter2 = Arc::new(CountingProvider::new(384));
+        let cache2 = CachingEmbeddingProvider::with_sqlite(counter2.clone(), &db).unwrap();
+        let got = cache2.embed(&[s("persist me")]).unwrap();
+        assert_eq!(got, want, "SQLite-persisted vector reads back identically");
+        assert_eq!(counter2.embedded(), 0, "persisted hit must not call the inner provider");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // TEST-22.2.4 — AC4: dim()/name() passthrough + usable as Arc<dyn EmbeddingProvider>.
+    #[test]
+    fn test_22_2_4_passthrough_and_trait_object() {
+        let counter = Arc::new(CountingProvider::new(256));
+        let cache: Arc<dyn EmbeddingProvider> = Arc::new(CachingEmbeddingProvider::new(counter));
+        assert_eq!(cache.dim(), 256, "dim() passes through the inner provider");
+        assert_eq!(cache.name(), "cached", "name() carries the cached provenance");
+    }
+}
