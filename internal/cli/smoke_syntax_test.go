@@ -112,6 +112,42 @@ func TestTask233_SmokeV13VectorPersistenceStatusStep(t *testing.T) {
 	}
 }
 
+// TEST-24.3.1 / AC1: smoke v14 adds step 33 (task-24.3 closeout) — documents that the opt-in code/CJK
+// tokenizer (task-24.1) + the eval golden-dataset validator + code/CJK golden 扩充 (task-24.2) are verified
+// at the Rust indexer + Go eval layers (TEST-24.1.* / TEST-24.2.*), not the console-api hot path. The step
+// asserts the default build is intact. ADR-013: feature/config-layer verification, no faked console path.
+func TestTask243_SmokeV14TokenizerEvalHardeningStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v14") {
+		t.Fatalf("console_smoke.sh missing v14 header (task-24.3 closeout)")
+	}
+	for _, marker := range []string{"[33/33]", "code/CJK tokenizer", "TEST-24.1.", "TEST-24.2."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v14 step 33 must document tokenizer / eval hardening status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13 block intact, denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[32/32]", "[31/32]", "[30/32]", "vector persistence", "--hybrid"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v14 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
 // real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
 // step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),
