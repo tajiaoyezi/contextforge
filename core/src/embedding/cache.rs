@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
 use crate::embedding::traits::{EmbeddingError, EmbeddingProvider};
@@ -79,16 +79,104 @@ impl CachingEmbeddingProvider {
         }
         s
     }
+
+    /// L2 read: a persisted vector for `key`, scoped to the inner provider's (name, dim) so a cache
+    /// file is never mis-read across providers. `None` = miss.
+    fn sqlite_get(&self, conn: &Connection, key: &str) -> Result<Option<Vec<f32>>, EmbeddingError> {
+        let blob: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT vector FROM embedding_cache WHERE content_hash=?1 AND provider=?2 AND dim=?3",
+                rusqlite::params![key, self.inner.name(), self.inner.dim() as i64],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()
+            .map_err(to_backend_err)?;
+        Ok(blob.map(|b| bytes_to_vec(&b)))
+    }
+
+    /// L2 write-through for `key` → `v`, scoped to the inner provider's (name, dim).
+    fn sqlite_put(&self, conn: &Connection, key: &str, v: &[f32]) -> Result<(), EmbeddingError> {
+        conn.execute(
+            "INSERT OR REPLACE INTO embedding_cache (content_hash, provider, dim, vector) \
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![key, self.inner.name(), self.inner.dim() as i64, vec_to_bytes(v)],
+        )
+        .map_err(to_backend_err)?;
+        Ok(())
+    }
 }
 
 fn to_backend_err<E: std::error::Error + Send + Sync + 'static>(e: E) -> EmbeddingError {
     EmbeddingError::Backend { source: Box::new(e) }
 }
 
+/// f32 vector → little-endian byte BLOB (exact round-trip, no precision loss).
+fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
+    let mut b = Vec::with_capacity(v.len() * 4);
+    for x in v {
+        b.extend_from_slice(&x.to_le_bytes());
+    }
+    b
+}
+
+/// Little-endian byte BLOB → f32 vector (inverse of `vec_to_bytes`).
+fn bytes_to_vec(b: &[u8]) -> Vec<f32> {
+    b.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
+}
+
 impl EmbeddingProvider for CachingEmbeddingProvider {
     fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-        // task-22.2 RED: passthrough stub — no caching yet (GREEN implements L1/L2 read-through).
-        self.inner.embed(texts)
+        let mut out: Vec<Option<Vec<f32>>> = vec![None; texts.len()];
+        let mut miss_idx: Vec<usize> = Vec::new();
+
+        // L1: memory cache.
+        {
+            let mem = self.mem.lock().unwrap();
+            for (i, t) in texts.iter().enumerate() {
+                if let Some(v) = mem.get(&Self::key(t)) {
+                    out[i] = Some(v.clone());
+                } else {
+                    miss_idx.push(i);
+                }
+            }
+        }
+
+        // L2: SQLite (for L1 misses); promote hits into L1.
+        if let Some(store) = &self.store {
+            let conn = store.lock().unwrap();
+            let mut still_miss = Vec::new();
+            for &i in &miss_idx {
+                let k = Self::key(&texts[i]);
+                match self.sqlite_get(&conn, &k)? {
+                    Some(v) => {
+                        self.mem.lock().unwrap().insert(k, v.clone());
+                        out[i] = Some(v);
+                    }
+                    None => still_miss.push(i),
+                }
+            }
+            miss_idx = still_miss;
+        }
+
+        // Inner provider for the remaining misses; write-through to L1 (+ L2 if persistent).
+        if !miss_idx.is_empty() {
+            let miss_texts: Vec<String> = miss_idx.iter().map(|&i| texts[i].clone()).collect();
+            let embedded = self.inner.embed(&miss_texts)?;
+            for (j, &i) in miss_idx.iter().enumerate() {
+                let v = &embedded[j];
+                let k = Self::key(&texts[i]);
+                self.mem.lock().unwrap().insert(k.clone(), v.clone());
+                if let Some(store) = &self.store {
+                    let conn = store.lock().unwrap();
+                    self.sqlite_put(&conn, &k, v)?;
+                }
+                out[i] = Some(v.clone());
+            }
+        }
+
+        Ok(out.into_iter().map(|o| o.expect("every slot filled")).collect())
     }
 
     fn dim(&self) -> usize {
