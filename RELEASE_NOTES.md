@@ -1,5 +1,34 @@
 # ContextForge Release Notes
 
+## v0.16.0 (2026-05-31) — vector-persistence-and-cross-platform (hnsw 持久化 + sqlite-vec MSVC + ADR-028 ratified)
+
+### 摘要
+
+v0.16.0 minor release (Phase 23): makes the feature-gated vector backends **persistent + cross-platform** — **hnsw graph persistence** (`HnswBackend::save`/`load` to `VectorIndexConfig.persistence_path` + rebuild-on-load fallback, `vector-hnsw`), a **sqlite-vec Windows MSVC** investigation that **resolved the Phase 18 MSVC-build-blocked stop-condition** (real `cargo build` + run on `x86_64-pc-windows-msvc`), and a **vector incremental-index evaluation** (brute-force / sqlite-vec support row-level append; hnsw full-rebuild deferred).
+
+**Honest scope (read this)**: the **default build stays local, 0-vector-dependency, and BM25-baseline-unchanged** — all persistence/cross-platform capability is behind the `vector-hnsw` / `vector-sqlite` features (ADR-023 D5). **This is a backend-layer release with no recall numbers.** The persisted graph is **not** wired into the `server.rs` semantic hot path yet (still rebuilds on demand — a future release). sqlite-vec MSVC evidence is from a single dev box (rustc 1.95.0); CI does not build the feature by default — honestly recorded (ADR-013), not faked.
+
+### What shipped (Phase 23, tasks 23.1–23.3)
+
+| task | delivery | PR |
+|---|---|---|
+| 23.1 | `core/src/retriever/vector/hnsw.rs` `HnswBackend::save`/`load` (path B: serialize `(normalized embedding, chunk_id)` inputs + load-rebuild; absent/corrupt/version-mismatch → rebuild-on-load) + `open` wires `persistence_path` — 0 new dep | #168 |
+| 23.2 | sqlite-vec Windows MSVC investigation → 🟢 path (a) bundled amalgamation builds + runs on `x86_64-pc-windows-msvc` (resolves Phase 18 MSVC-blocked) + contract tests + `docs/spikes/phase-23-sqlite-vec-cross-platform.md` — 0 source/Cargo.toml change | #169 |
+| 23.3 | Phase 23 closeout: incremental-index eval (brute-force/sqlite-vec row-level append; hnsw deferred) + smoke v13 step 32 + v0.16.0 release docs + ADR-028 ratify + ADR-023 add-only Amendment | this PR |
+
+### ADR-028 ratified (Proposed → Accepted) + ADR-023 Amendment
+
+**ADR-028 vector-persistence-strategy** ratified on the **real non-synthetic** verification of D1–D4: D1 hnsw persistence (path B roundtrip 3/3 PASS), D2 sqlite-vec MSVC (real build + run, resolves Phase 18 stop-condition), D3 incremental index (brute-force/sqlite-vec append; hnsw deferred), D4 default 0-vector-dep unchanged. **ADR-023** gets an add-only Amendment: its "hnsw rebuild-on-restart" disqualifier is resolved (task-23.1) and "sqlite-vec MSVC-blocked / dev-prod parity imperfect" is narrowed (task-23.2) — D1–D6 正文 not retro-edited (ADR-014 D5).
+
+### Upgrade path
+
+- Drop-in: default build behavior unchanged (BM25 + 0-vector-dep). No migration. `VectorIndexConfig.persistence_path` (existing field) is first consumed by `HnswBackend::open` (`None` → in-memory, byte-equivalent).
+- Vector persistence (hnsw `save`/`load`) + sqlite-vec cross-platform are feature-gated (`vector-hnsw` / `vector-sqlite`) + explicit opt-in (not in the default image).
+
+### Rollback path
+
+`git tag -d v0.16.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.15.0 (BM25 + 0-dep deterministic semantic/hybrid path), so a rollback is non-breaking.
+
 ## v0.15.0 (2026-05-31) — embedding-provider-completion (provider 配置选择 + 缓存 + 远程骨架 + ADR-027 ratified)
 
 ### 摘要

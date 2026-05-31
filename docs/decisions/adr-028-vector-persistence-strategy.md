@@ -1,6 +1,6 @@
 # ADR `028`: `vector-persistence-strategy`
 
-**Status**: Proposed (2026-05-30; Phase 23 task-23.1/23.2 起草。落地 + hnsw 真实持久化往返 + sqlite-vec 真实跨平台构建结果后于 task-23.3 据真实非合成验证 ratify Proposed→Accepted，ADR-013。)
+**Status**: Accepted (2026-05-30 Proposed；2026-05-31 task-23.3 据 task-23.1/23.2 真实非合成验证 ratify Proposed→Accepted，ADR-013。D1 hnsw 持久化路径 B 往返 3/3 PASS + D2 sqlite-vec 真实在 Windows MSVC 构建+运行通过（解除 Phase 18 stop-condition）+ D3 brute-force/sqlite-vec 行级增量追加（hnsw 增量延后）+ D4 默认 0-vector-dep 不变；sqlite-vec 单机/CI caveat + hnsw 增量延后如实记录。见 §Ratification Amendment。)
 **Category**: 数据平面 / 向量检索 / 持久化 + 跨平台
 **Date**: 2026-05-30
 **Decided By**: 主 agent (ADR-012 自治)；tajiaoyezi ratification at v0.16.0 closeout
@@ -49,3 +49,14 @@ sqlite-vec Windows MSVC 经 task-23.2 真实调查三路径：(a) bundled C amal
 - **Negative / open**: hnsw 持久化路径取决于 `instant-distance` 序列化面（路径 A vs B 取舍待 task-23.1 核实）；sqlite-vec Windows MSVC 可能经调查仍受阻（D2 受阻态如实记录，dev 用 hnsw fallback）；向量增量索引在建图类 backend 受 crate 限制可能延后。
 - **Ratification**: 本 ADR **Proposed**。task-23.1 真实持久化往返（index→save→重载→search 命中等价）+ task-23.2 真实跨平台构建结果（落地或 stop-condition）通过后，于 v0.16.0 closeout（task-23.3）据真实非合成验证 ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）；某维度受阻则据「已达维度 ratify + 受阻维度如实记录」处理，不强 ratify。
 - **Follow-ups**: ADR-023 D2「rebuild-on-restart」前提经 hnsw 持久化解除（add-only Amendment 记录，不溯改 ADR-023 正文 D1-D6，D5）；sqlite-vec on-disk 编码细化 `[SPEC-DEFER:phase-future.sqlite-vec-on-disk]`；向量增量索引完整化 `[SPEC-DEFER:phase-future.vector-incremental-index]`；若 D2 落地替代绑定则 ADR-008 add-only 记依赖变更。
+
+## Ratification Amendment (v0.16.0 / task-23.3, 2026-05-31)
+
+本 ADR 于 v0.16.0 closeout 据 task-23.1/23.2 的**真实非合成验证** ratify **Proposed → Accepted**（ADR-013：禁据合成 / 伪造 ratify）。D1–D4 各项的真实验证依据：
+
+- **D1（hnsw 图持久化）**：`cargo test --features vector-hnsw ... retriever::vector::hnsw` 3/3 PASS——路径 B（持久化 `(normalized embedding, chunk_id)` 输入集 + load 重建）index→save→新实例 load→search 命中**等价 chunk_id 序**（证 `instant-distance Builder` 确定性）；absent/corrupt/version 不匹配 → `Ok(false)` rebuild-on-load（不 panic 不静默）；`persistence_path: None` 纯内存等价。**真实往返验证**（task-23.1，TEST-23.1.1-3）。选路径 B 而非路径 A：0 新 dep（`serde`/`serde_json` 已 direct）+ 仍消除冷启动重 embed 成本。
+- **D2（sqlite-vec 跨平台）**：`x86_64-pc-windows-msvc`（rustc 1.95.0）`cargo build --features vector-sqlite` exit 0 + 契约测试 2/2 PASS（vec0 注册 / KNN / dim mismatch）——**真实构建 + 运行通过**，**解除** Phase 18 task-18.3 的「Windows MSVC build blocked」stop-condition（工具链演进；0 源码/Cargo.toml 改动，维持 `=0.1.9` pin）。**诚实 caveat**：单台 MSVC dev box 真实凭据，CI 默认不构建该 feature，跨 CI MSVC 非持续守护（task-23.2，spike §3）。
+- **D3（向量增量索引）**：`cargo test ... retriever::vector::brute_force` TEST-23.3.1 PASS——brute-force（默认 0-dep）+ sqlite-vec `vec0` 支持行级**追加**（`index_batch` 累积，非全量 reindex）；hnsw（`instant-distance` 全量建图）无增量插入 + 单 chunk DELETE 仍全量 → **如实延后** `[SPEC-DEFER:phase-future.vector-incremental-index]`。
+- **D4（默认构建不变）**：默认 `cargo test --workspace` 0 vector dep、BM25 baseline 行为不变；持久化/跨平台/增量全部 feature-gated（ADR-023 D5）；不改 task-18.1 三 trait 签名。
+
+ratify 范围 = 向量持久化 + 跨平台 + 增量**策略**（D1-D4 经真实 cargo build/test 验证）；持久化图接进 server.rs 语义热路径 + hnsw 原生序列化（路径 A）+ sqlite-vec 跨 CI 持续守护属后续。证据见 `docs/releases/v0.16.0-evidence.md` §3。

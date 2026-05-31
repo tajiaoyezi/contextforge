@@ -1,6 +1,6 @@
 # Phase 23 · vector-persistence-and-cross-platform
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 解决 Phase 18/19 向量检索落地后两块向量持久化 / 跨平台技术债：**hnsw 图持久化**（避免重启重建——Phase 18 task-18.6 实测 100k 图构建 28.4s，`docs/spikes/phase-18-hnsw.md` / `adr-023:55-60`）与 **sqlite-vec Windows MSVC 跨平台**（`adr-023:101` / `docs/spikes/phase-18-sqlite-vec.md` / `docs/releases/v0.11.0-evidence.md`）；并评估**向量增量索引**（承 Phase 18/19 默认全量 reindex，`phase-19` §2）。v0.16.0 收口。对应 `docs/roadmap.md` §3.4。
 >
@@ -90,11 +90,11 @@ v0.16.0 ship 后，ContextForge 的向量检索具备**持久化能力的 hnsw f
 
 **阶段级验收标准（每条 AC 含 ADR-014 D3 verified by 显式 owner；Draft 阶段未勾选，实施后逐条置 `[x]`）**：
 
-- [ ] **AC1**：`vector-hnsw` feature 下 `HnswBackend` 图序列化到磁盘 + 反序列化加载 + 加载失败 rebuild-on-load fallback；序列化往返在 feature `cargo test` 可断言（index→save→重载→search 命中等价），默认构建 0 新依赖不退化 — verified by task-23.1 §6 AC1-3 + phase-smoke step 1
-- [ ] **AC2**：sqlite-vec Windows MSVC 跨平台调查给出真实结论——可构建路径落地并 MSVC 构建通过，或确证受阻时诚实文档化 stop-condition（承 Phase 18 既有凭据，禁伪造跨平台通过，ADR-013）— verified by task-23.2 §6 AC1-2 + phase-smoke step 2
-- [ ] **AC3**：向量增量索引评估完成——最小增量实现 deterministic 单测可断言，或确证依赖未明时如实延后并文档化评估口径（`[SPEC-DEFER:phase-future.vector-incremental-index]`）— verified by task-23.3 §6 AC1 + phase-smoke step 3
-- [ ] **AC4**：v0.16.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-028 据真实非合成结果 ratify 或记录维持 + phase §6 闭合 — verified by task-23.3 §6 AC2-3
-- [ ] **AC5**：ADR-014 cross-validation gate 全套通过（第十四次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-22 不溯改 — verified by task-23.3 closeout PR body
+- [x] **AC1**：`vector-hnsw` feature 下 `HnswBackend` 图序列化到磁盘 + 反序列化加载 + 加载失败 rebuild-on-load fallback；序列化往返在 feature `cargo test` 可断言（index→save→重载→search 命中等价），默认构建 0 新依赖不退化 — verified by task-23.1 §6 AC1-3 + phase-smoke step 1
+- [x] **AC2**：sqlite-vec Windows MSVC 跨平台调查给出真实结论——可构建路径落地并 MSVC 构建通过，或确证受阻时诚实文档化 stop-condition（承 Phase 18 既有凭据，禁伪造跨平台通过，ADR-013）— verified by task-23.2 §6 AC1-2 + phase-smoke step 2
+- [x] **AC3**：向量增量索引评估完成——最小增量实现 deterministic 单测可断言，或确证依赖未明时如实延后并文档化评估口径（`[SPEC-DEFER:phase-future.vector-incremental-index]`）— verified by task-23.3 §6 AC1 + phase-smoke step 3
+- [x] **AC4**：v0.16.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-028 据真实非合成结果 ratify 或记录维持 + phase §6 闭合 — verified by task-23.3 §6 AC2-3
+- [x] **AC5**：ADR-014 cross-validation gate 全套通过（第十四次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-22 不溯改 — verified by task-23.3 closeout PR body
 
 **端到端 smoke（C1 集成兜底）**：(1) `vector-hnsw` feature 下 hnsw 图持久化往返 roundtrip；(2) sqlite-vec 跨平台调查结论（构建通过 / 受阻如实标）；(3) 向量增量索引评估结论（最小实现 smoke 或如实延后）全 PASS。
 

@@ -7,6 +7,24 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.16.0
+
+🗄️ **v0.16.0 vector-persistence-and-cross-platform** — makes the feature-gated vector backends **persistent + cross-platform**: **hnsw graph persistence** (`save`/`load` + rebuild-on-load fallback), a **sqlite-vec Windows MSVC** investigation that **resolved the Phase 18 MSVC-build-blocked stop-condition** (real build + run on `x86_64-pc-windows-msvc`), and a **vector incremental-index evaluation** (brute-force / sqlite-vec row-level append). The **default build stays 0-vector-dependency, BM25-baseline**.
+
+- **Local-first, default unchanged.** Persistence/cross-platform live behind `vector-hnsw` / `vector-sqlite` features (ADR-023 D5); the default build is 0-vector-dep BM25 baseline. **No proto change** — `VectorIndexConfig.persistence_path` (existing field) is first consumed this release.
+- **hnsw graph persistence** (task-23.1): `HnswBackend::save`/`load` round-trips the index (path B: persist inputs + rebuild-on-load), eliminating the cold-start re-embed. **0 new dependency.**
+- **sqlite-vec now builds on Windows MSVC** (task-23.2): real `cargo build --features vector-sqlite` + contract tests pass on `x86_64-pc-windows-msvc` (rustc 1.95.0), resolving the Phase 18 stop-condition. Honest caveat: single dev box, CI doesn't build the feature by default (ADR-013).
+- **This is a backend-layer release with no recall numbers**; persisted graphs are not yet wired into the semantic hot path (future release). **ADR-028 vector-persistence-strategy → Accepted** + **ADR-023 add-only Amendment**. **ADR-014 cross-validation gate — 14th activation**.
+
+```bash
+# hnsw graph persistence round-trip (feature-gated)
+cargo test --features vector-hnsw -p contextforge-core retriever::vector::hnsw
+# sqlite-vec — now builds + runs on Windows MSVC (and Linux gcc)
+cargo test --features vector-sqlite -p contextforge-core retriever::vector::sqlite_vec
+```
+
+详 `RELEASE_NOTES.md` v0.16.0 段 + [Phase 23 spec](docs/specs/phases/phase-23-vector-persistence-and-cross-platform.md) + [ADR-028](docs/decisions/adr-028-vector-persistence-strategy.md) + [sqlite-vec cross-platform spike](docs/spikes/phase-23-sqlite-vec-cross-platform.md)。
+
 ## What's new in v0.15.0
 
 🧩 **v0.15.0 embedding-provider-completion** — grows the embedding layer from "hardcoded deterministic default + a single feature-gated fastembed provider" into a **configurable provider layer**: a `select_provider` factory (deterministic / fastembed / remote) with **dim negotiation** (`DimMismatch`, no silent resize), a **content-hash embedding cache** (memory L1 + optional SQLite L2), and a **feature-gated remote provider skeleton** (OpenAI/Cohere HTTP). The **default build stays local, model-free, and 0-network-dep**.

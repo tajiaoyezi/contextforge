@@ -136,3 +136,12 @@ latency / RSS / cold-start evidence, which this recall result does not disturb.
 (production vector-retrieval integration, was deferred) is resolved by task-19.2 (default backend wired
 into `Retriever`) + task-19.3 (`/v1/search?semantic=true` → core gRPC semantic path) + task-19.5 (real
 recall measured through that path).
+
+## Amendment (Phase 23 / v0.16.0, 2026-05-31 — add-only, D1–D6 正文不溯改)
+
+Phase 23（ADR-028 vector-persistence-strategy）以 add-only 方式推进本 ADR 的两个 Follow-up，**不溯改 D1–D6 / Consequences / Follow-ups 正文**（ADR-014 D5）：
+
+- **D2 hnsw「in-memory-only / rebuild-on-restart」前提 → 解除**：task-23.1 让 `HnswBackend` 在 `vector-hnsw` feature 下支持 `save`/`load` 图持久化（路径 B：序列化 `(normalized embedding, chunk_id)` 输入集 + load 重建）+ rebuild-on-load fallback（`cargo test --features vector-hnsw` 3/3 PASS）。原 D2 把 hnsw 列为「rebuild on restart」的 disqualifying 项之一现已不成立——hnsw 可作中等语料持久部署 fallback（仍需重建图但消除冷启动 SQLite 枚举 + 重 embed 成本）。
+- **D1「sqlite-vec Windows-MSVC-build-blocked / dev-prod parity imperfect」→ 缩小**：task-23.2 真实调查确证 sqlite-vec 0.1.9 在 `x86_64-pc-windows-msvc`（rustc 1.95.0）`cargo build --features vector-sqlite` + 契约测试**真实构建+运行通过**（解除 Phase 18 task-18.3 的 MSVC-blocked stop-condition；工具链演进，0 源码改动）。原 Consequences「the recommended default (sqlite-vec) does not build on the Windows dev box」在本机已不成立。**诚实 caveat**：单台 MSVC dev box 真实凭据，CI 默认不构建该 feature，跨 CI MSVC 持续守护属后续（`docs/spikes/phase-23-sqlite-vec-cross-platform.md`）。
+
+依赖变更：task-23.1 路径 B（`serde`/`serde_json` 已 direct）+ task-23.2 路径 (a)（维持 `sqlite-vec = "=0.1.9"`）均 **0 新 dep** → 无 ADR-008 依赖变更 Amendment。详见 ADR-028 + `docs/releases/v0.16.0-evidence.md`。
