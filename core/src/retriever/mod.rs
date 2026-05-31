@@ -28,6 +28,7 @@ use crate::chunker::Provenance;
 use crate::embedding::EmbeddingProvider;
 
 // ---- task-18.1: vector retrieval trait re-exports ----
+pub mod fusion;
 pub mod vector;
 pub use vector::{VectorBackend, VectorSearcher, NoopVectorBackend};
 // task-19.2: internal imports for the semantic index/search wiring.
@@ -667,6 +668,26 @@ impl Retriever {
             }
         }
         Ok(results)
+    }
+
+    /// task-21.1: hybrid retrieval — RRF fusion of the BM25 (`search`) and vector (`search_semantic`)
+    /// result lists. Requires the same embedder + vector-backend wiring as `search_semantic`; if that
+    /// wiring is absent the vector component is empty and fusion degrades to BM25-only (still labelled
+    /// `retrieval_method = "hybrid"`). Independent of `search()` / `search_semantic()` — opt-in.
+    pub fn search_hybrid(
+        &self,
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>, RetrieverError> {
+        let opts = SearchOptions {
+            query: query.to_string(),
+            top_k,
+            filters: SearchFilters::default(),
+            explain: false,
+        };
+        let bm25 = self.search(&opts)?;
+        let vector = self.search_semantic(query, top_k)?;
+        Ok(crate::retriever::fusion::fuse(&bm25, &vector, top_k))
     }
 
     /// task-19.2: assemble a 12-field `SearchResult` from a vector hit's chunk_id via SQLite +

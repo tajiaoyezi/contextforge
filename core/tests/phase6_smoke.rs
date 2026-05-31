@@ -113,6 +113,7 @@ async fn phase_6_search_grpc_end_to_end_smoke() {
             filters: None,
             explain: true,
             semantic: false,
+            hybrid: false,
         })
         .await
         .expect("AC5: gRPC Search 调用应 Ok");

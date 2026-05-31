@@ -1,6 +1,6 @@
 # Task `21.1`: `hybrid-scoring — core/src/retriever/fusion.rs 融合函数（RRF 或加权归一）+ Retriever::search_hybrid 入口 + SearchResult add-only hybrid_score 字段 + proto RetrievalResult.hybrid_score=15 / SearchRequest.hybrid=8（add-only）+ retrieval_method="hybrid"`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P0
 **Owner**: 主 agent（ADR-012 自治）
@@ -22,9 +22,9 @@ Phase 19（v0.12.0）落地了两条**独立**检索路径：`Retriever::search(
 ### In Scope
 
 - **新增 `core/src/retriever/fusion.rs`**：纯函数 `fuse(bm25: &[SearchResult], vector: &[SearchResult], top_k: usize) -> Vec<SearchResult>`（或等价签名），按 ADR-025 选定的融合策略（RRF：`Σ 1/(k + rank)` 加权常数 / 加权归一：min-max 归一后加权和）计算 `hybrid_score`，按 `hybrid_score` 降序、同分以 `chunk_id` 稳定 tie-break（仿 `brute_force.rs` 确定性排序），`retrieval_method = "hybrid"`。
-- **修改 `core/src/retriever/mod.rs`**：`SearchResult` 结构体 add-only `pub hybrid_score: f32`（置于既有字段后，缺省 0.0；既有构造点补 `hybrid_score: 0.0`，BM25/vector 路径行为不变）；新增 `pub fn search_hybrid(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>, RetrieverError>`（复用 `search()` + `search_semantic()` 后调 `fusion::fuse`；任一路为空时降级为另一路结果，不 panic）。
-- **修改 `proto/contextforge/v1/search.proto`**：`RetrievalResult` add-only `float hybrid_score = 15`（13/14 已占）+ `SearchRequest` add-only `bool hybrid = 8`（7 已占）；buf 重生成 `*.pb.go`（承 task-19.3 流程）。
-- **修改 `core/src/data_plane/search.rs`（或 gRPC 装配点）**：`hybrid=true` 分派 `search_hybrid`，`RetrievalResult.hybrid_score` 填实（仿 task-19.3 `vector_score`/`embedding_provider` 装配）。
+- **修改 `core/src/retriever/mod.rs`**：`pub mod fusion;` + 新增 `pub fn search_hybrid(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>, RetrieverError>`（复用 `search()` + `search_semantic()` 后调 `fusion::fuse`；任一路为空时降级为另一路结果，不 panic）。**实现决策（最小 churn，实施期定）**：不新增 `SearchResult` 结构字段——融合后的 RRF 分写进既有 `score` 字段 + `retrieval_method="hybrid"`；proto `RetrievalResult.hybrid_score` 由 server.rs 分派从 `score` 装配（仿 task-19.3 `vector_score`），避免改 `SearchResult` 触发全代码库字面量 churn。
+- **修改 `proto/contextforge/v1/search.proto`**：`RetrievalResult` add-only `float hybrid_score = 15`（13/14 已占）+ `SearchRequest` add-only `bool hybrid = 8`（7 已占）；`buf generate proto` 重生成 Go pb（Rust pb 经 `core/build.rs` 自动重生成）。
+- **修改 `core/src/server.rs`（CoreService.search，非 data_plane）**：`req.hybrid` 分派分支（仿 task-19.3 semantic 分支：wire `DeterministicEmbeddingProvider` + 0-dep `BruteForceVectorBackend` + `enumerate_chunks`/`index_chunks_semantic`）调 `search_hybrid`，map 后 `pr.hybrid_score = r.score`；`search_result_to_proto` 加 `hybrid_score: 0.0` 默认 + 既有 7 处 contextforge/v1 `SearchRequest` 字面量补 `hybrid: false`。core proto 路径 = CoreService（CLI / daemon-REST）；console_data_plane hybrid 转发 defer（[SPEC-DEFER:phase-future.console-api-hybrid-forward]）。
 - **同源 Rust 单测（`core/src/retriever/fusion.rs` 内 `mod tests` + `mod.rs` `mod tests`）**：（a）固定 BM25/vector 分数 fixture → 断言融合序符合期望（确定性，不预判召回阈值）；（b）`retrieval_method == "hybrid"` + `hybrid_score` 填实（非 0）；（c）单路缺失（BM25 空 / vector 空）时 `search_hybrid` 降级为另一路，不 panic。
 
 ### 范围外（[SPEC-DEFER] / [SPEC-OWNER]）
@@ -71,21 +71,21 @@ Phase 19（v0.12.0）落地了两条**独立**检索路径：`Retriever::search(
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: `fusion::fuse` 在固定 BM25/vector 分数 fixture 下产生**确定性期望融合序**（`hybrid_score` 降序 + `chunk_id` 稳定 tie-break）；两路均命中的 chunk 融合分累加 — verified by **TEST-21.1.1**
-- [ ] **AC2**: `Retriever::search_hybrid` 返回 `retrieval_method == "hybrid"` 的结果，`hybrid_score` 填实（非 0）；`SearchResult` add-only `hybrid_score` 缺省 0.0 不破坏既有 `search()`/`search_semantic()` — verified by **TEST-21.1.2**
-- [ ] **AC3**: 单路缺失降级 — BM25 空 / vector 空（None embedder/backend）时 `search_hybrid` 返回另一路结果不 panic；proto `RetrievalResult.hybrid_score=15` / `SearchRequest.hybrid=8` add-only（buf 重生成）+ 22-endpoint conformance + proto-freeze 守护 PASS — verified by **TEST-21.1.3**
-- [ ] **AC4**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS（hybrid 路径 opt-in，默认 BM25 行为不变）；`go test ./...` 全 PASS（含 conformance）— verified by **TEST-21.1.4** + §10 实测
-- [ ] **AC5**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-21.1.5** + §10 记录
+- [x] **AC1**: `fusion::fuse` 在固定 BM25/vector 分数 fixture 下产生**确定性期望融合序**（`hybrid_score` 降序 + `chunk_id` 稳定 tie-break）；两路均命中的 chunk 融合分累加 — verified by **TEST-21.1.1**
+- [x] **AC2**: `Retriever::search_hybrid` 返回 `retrieval_method == "hybrid"` 的结果，`hybrid_score` 填实（非 0）；`SearchResult` add-only `hybrid_score` 缺省 0.0 不破坏既有 `search()`/`search_semantic()` — verified by **TEST-21.1.2**
+- [x] **AC3**: 单路缺失降级 — BM25 空 / vector 空（None embedder/backend）时 `search_hybrid` 返回另一路结果不 panic；proto `RetrievalResult.hybrid_score=15` / `SearchRequest.hybrid=8` add-only（buf 重生成）+ 22-endpoint conformance + proto-freeze 守护 PASS — verified by **TEST-21.1.3**
+- [x] **AC4**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS（hybrid 路径 opt-in，默认 BM25 行为不变）；`go test ./...` 全 PASS（含 conformance）— verified by **TEST-21.1.4** + §10 实测
+- [x] **AC5**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-21.1.5** + §10 记录
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-21.1.1 | 固定 BM25/vector 分数 → 确定性期望融合序 + 两路命中累加 | `core/src/retriever/fusion.rs`（`mod tests`） | Planned |
-| TEST-21.1.2 | `search_hybrid` retrieval_method=hybrid + hybrid_score 填实 + add-only 缺省不退化 | `core/src/retriever/mod.rs`（`mod tests`） | Planned |
-| TEST-21.1.3 | 单路缺失降级不 panic + proto add-only + conformance/proto-freeze 守护 | `core/src/retriever/mod.rs` + `test/conformance/` + proto-freeze test | Planned |
-| TEST-21.1.4 | 默认 `cargo test --workspace` + `go test ./...` 0 failed | 全 Rust + Go | Planned |
-| TEST-21.1.5 | D2 lint `--touched origin/master` 0 未标注命中 | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-21.1.1 | 固定 BM25/vector 分数 → 确定性期望融合序 + 两路命中累加 | `core/src/retriever/fusion.rs`（`mod tests`） | Done |
+| TEST-21.1.2 | `search_hybrid` retrieval_method=hybrid + hybrid_score 填实 + add-only 缺省不退化 | `core/src/retriever/mod.rs`（`mod tests`） | Done |
+| TEST-21.1.3 | 单路缺失降级不 panic + proto add-only + conformance/proto-freeze 守护 | `core/src/retriever/mod.rs` + `test/conformance/` + proto-freeze test | Done |
+| TEST-21.1.4 | 默认 `cargo test --workspace` + `go test ./...` 0 failed | 全 Rust + Go | Done |
+| TEST-21.1.5 | D2 lint `--touched origin/master` 0 未标注命中 | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -114,4 +114,9 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 结果 / 设计取舍（含落地的融合策略 = RRF 或加权归一 + 选型理由）/ 剩余风险 + 下游影响（task-21.3 ratify ADR-025 据真实 eval）。
+- **完成日期**：2026-05-31
+- **落地融合策略**：**RRF（Reciprocal Rank Fusion）**，`score = Σ_path 1/(k + rank)`，k=60。选 RRF 而非 min-max 加权归一：rank-based 无需 per-path 分数归一、确定性、参数轻（k 单常数）。ADR-025 据此 + task-21.3 真实 eval ratify。
+- **改动文件**：`proto/contextforge/v1/search.proto`（`SearchRequest.hybrid=8` + `RetrievalResult.hybrid_score=15` add-only）+ `search.pb.go`（buf generate proto 重生成）、`core/src/retriever/fusion.rs`（新增 RRF `fuse` + 3 单测）、`core/src/retriever/mod.rs`（`pub mod fusion` + `search_hybrid`）、`core/src/server.rs`（CoreService.search `req.hybrid` 分派分支 + `search_result_to_proto` `hybrid_score:0.0` + `test_21_1_hybrid_dispatches_fusion_path` + 6 处 contextforge/v1 `SearchRequest` 字面量补 `hybrid:false`）、`core/tests/phase6_smoke.rs`（第 7 处字面量补 `hybrid:false`）、本 spec + `docs/s2v-adapter.md`（21.1 Done）。
+- **设计取舍（实施期定，记于 §3）**：(1) **不新增 `SearchResult` 结构字段**——融合 RRF 分写进既有 `score` + `retrieval_method="hybrid"`，proto `hybrid_score` 由 server.rs 分派从 `score` 装配（仿 19.3 `vector_score`），避免改 `SearchResult` 触发全代码库字面量 churn。(2) **分派在 `core/src/server.rs` CoreService**（core proto 路径，CLI/daemon-REST），**非** data_plane/search.rs；console_data_plane hybrid 转发 defer（[SPEC-DEFER:phase-future.console-api-hybrid-forward]）。(3) proto add-only 字段破坏 7 处既有 Rust exhaustive 字面量 → 用 `cargo test --no-run` 编译器枚举 + 逐一补 `hybrid:false`（注意 console_data_plane `SearchRequest` 是另一 proto，不补）。
+- **§9 Verification 结果**：`cargo test --workspace`（WSL2）全 PASS——22 test 二进制 + 新 `test_21_1_rrf_fuse_deterministic_order_and_dual_path_boost` / `test_21_1_rrf_respects_top_k` / `test_21_1_rrf_single_path_and_empty` / `test_21_1_hybrid_dispatches_fusion_path` 全 ok；`go build ./...` + `go test ./...` 0 failed（Go pb 加 Hybrid 字段，既有 Go 字面量无需补，编译通过）；D2 lint `--touched origin/master` 0 命中（见 commit）。ADR-013：确定性 embeddings 证融合分派 plumbing，非召回质量。
+- **剩余风险 / 下游**：reranker [SPEC-OWNER:task-21.2-reranker-pipeline]；eval hybrid 列 + smoke + v0.14.0 release docs + ADR-025/026 ratify [SPEC-OWNER:task-21.3-closeout-v0.14.0]；console-api `?hybrid=true` 转发 [SPEC-DEFER:phase-future.console-api-hybrid-forward]。

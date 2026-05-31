@@ -16,6 +16,7 @@ message SearchFilters {
 
 // SearchRequest — POST /v1/search request (PRD §REST/MCP 草案).
 // task-19.3 add-only: semantic = 7 (request the semantic path; default false → BM25).
+// task-21.1 add-only: hybrid = 8 (request BM25+vector RRF fusion; default false → BM25).
 message SearchRequest {
   string query = 1;
   repeated string collections = 2;
@@ -24,6 +25,7 @@ message SearchRequest {
   SearchFilters filters = 5;
   bool explain = 6;
   bool semantic = 7;
+  bool hybrid = 8;
 }
 
 // RetrievalResult — explainable result returned to CLI / REST / MCP.
@@ -45,6 +47,8 @@ message RetrievalResult {
   repeated Provenance provenance = 12;
   float vector_score = 13;
   string embedding_provider = 14;
+  // task-21.1 add-only: hybrid_score = 15 (RRF fused score; 0 for BM25/vector-only hits).
+  float hybrid_score = 15;
 }
 
 // SearchResponse — POST /v1/search response (PRD §REST/MCP 草案).
