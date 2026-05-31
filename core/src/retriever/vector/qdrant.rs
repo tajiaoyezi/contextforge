@@ -17,7 +17,8 @@ use qdrant_client::{Payload, Qdrant};
 
 use crate::retriever::vector::traits::{VectorBackend, VectorIndexer, VectorSearcher};
 use crate::retriever::vector::types::{
-    ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorScore,
+    ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorMetric,
+    VectorScore,
 };
 
 const UPSERT_BATCH: usize = 1000;
@@ -52,6 +53,89 @@ impl QdrantBackend {
             collection: Mutex::new("spike".to_string()),
             dim: Mutex::new(0),
         })
+    }
+}
+
+// ---- task-25.1: qdrant 生命周期契约层（连接配置 + health-probe + ensure-create 决策）----
+
+/// 连接配置（url / 连接 timeout / 可选 api-key / 可选 TLS）。
+#[derive(Debug, Clone)]
+pub struct QdrantConnConfig {
+    pub url: String,
+    pub timeout: Option<std::time::Duration>,
+    pub api_key: Option<String>,
+    pub tls: bool,
+}
+
+impl QdrantConnConfig {
+    /// 从环境构造（`QDRANT_URL` 既有 + 可选 `QDRANT_API_KEY`；TLS 由 url scheme 推断）。
+    pub fn from_env() -> Self {
+        let url =
+            std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6334".to_string());
+        let api_key = std::env::var("QDRANT_API_KEY").ok().filter(|s| !s.trim().is_empty());
+        let tls = url.starts_with("https://");
+        Self { url, timeout: None, api_key, tls }
+    }
+
+    /// 纯函数校验（不连 server）：url 非空 / dim>0 / collection 名非空 / metric 受支持。
+    pub fn validate(&self, want: &VectorIndexConfig) -> Result<(), VectorError> {
+        todo!("task-25.1 GREEN")
+    }
+}
+
+/// health-probe 结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QdrantHealth {
+    Ready,
+    Unreachable,
+}
+
+/// 从 live collection 抽出的描述（dim + metric），用于 ensure-create 决策。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CollectionDesc {
+    pub dim: usize,
+    pub metric: VectorMetric,
+}
+
+/// ensure-create 决策（替代 spike 无脑 drop+create）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnsureAction {
+    Reuse,
+    Create,
+    Error,
+}
+
+/// 纯函数：给定既有 collection 描述与期望配置，决定 reuse / create / error（不连 server）。
+pub fn decide_ensure(existing: Option<CollectionDesc>, want: &VectorIndexConfig) -> EnsureAction {
+    todo!("task-25.1 GREEN")
+}
+
+impl QdrantBackend {
+    /// 从连接配置构造（health 探活 / 显式连接参数；client 懒连接，不在此打 server）。
+    pub fn connect(conn: &QdrantConnConfig) -> Result<Self, VectorError> {
+        let mut builder = Qdrant::from_url(&conn.url);
+        builder = builder.api_key(conn.api_key.clone());
+        if let Some(t) = conn.timeout {
+            builder = builder.timeout(t);
+        }
+        builder = builder.skip_compatibility_check();
+        let client = builder.build().map_err(to_backend_err)?;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(to_backend_err)?;
+        Ok(Self {
+            client,
+            rt,
+            id_map: Mutex::new(Vec::new()),
+            collection: Mutex::new("spike".to_string()),
+            dim: Mutex::new(0),
+        })
+    }
+
+    /// health-probe：live 返 Ready，无 server 返 Unreachable（不 panic、不静默成功）。
+    pub fn health(&self) -> QdrantHealth {
+        todo!("task-25.1 GREEN")
     }
 }
 
@@ -200,5 +284,92 @@ impl VectorSearcher for QdrantBackend {
 
     fn is_indexed(&self) -> bool {
         !self.id_map.lock().unwrap().is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn cfg(dim: usize, coll: &str) -> VectorIndexConfig {
+        VectorIndexConfig {
+            dim,
+            metric: VectorMetric::Cosine,
+            persistence_path: None,
+            collection_id: coll.to_string(),
+        }
+    }
+
+    // ---- TEST-25.1.1 (AC1) — 连接配置校验（纯函数，不连 server）----
+    #[test]
+    fn test_25_1_1_conn_config_validate() {
+        let conn = QdrantConnConfig {
+            url: "http://localhost:6334".to_string(),
+            timeout: None,
+            api_key: None,
+            tls: false,
+        };
+        assert!(conn.validate(&cfg(384, "c")).is_ok(), "合法配置应 Ok");
+        // url 空
+        let mut bad = conn.clone();
+        bad.url = "".to_string();
+        assert!(bad.validate(&cfg(384, "c")).is_err(), "url 空应 Err");
+        // dim=0
+        assert!(conn.validate(&cfg(0, "c")).is_err(), "dim=0 应 Err");
+        // collection 名空
+        assert!(conn.validate(&cfg(384, "")).is_err(), "collection 名空应 Err");
+    }
+
+    // ---- TEST-25.1.2 (AC2) — health-probe 无 server 返 Unreachable（不 panic）----
+    #[test]
+    fn test_25_1_2_health_unreachable_no_server() {
+        let conn = QdrantConnConfig {
+            url: "http://127.0.0.1:59999".to_string(), // 无 server 监听
+            timeout: Some(Duration::from_secs(2)),
+            api_key: None,
+            tls: false,
+        };
+        let be = QdrantBackend::connect(&conn).expect("connect 建 client（懒连接）");
+        assert_eq!(be.health(), QdrantHealth::Unreachable, "无 server 应返 Unreachable");
+    }
+
+    // ---- TEST-25.1.3 (AC3) — ensure-create 决策三分支（纯函数，喂构造 desc）----
+    #[test]
+    fn test_25_1_3_decide_ensure_three_branches() {
+        let want = cfg(384, "c");
+        assert_eq!(decide_ensure(None, &want), EnsureAction::Create, "不存在 → Create");
+        assert_eq!(
+            decide_ensure(Some(CollectionDesc { dim: 384, metric: VectorMetric::Cosine }), &want),
+            EnsureAction::Reuse,
+            "存在且 dim/metric 匹配 → Reuse"
+        );
+        assert_eq!(
+            decide_ensure(Some(CollectionDesc { dim: 256, metric: VectorMetric::Cosine }), &want),
+            EnsureAction::Error,
+            "存在但 dim 不匹配 → Error"
+        );
+        assert_eq!(
+            decide_ensure(Some(CollectionDesc { dim: 384, metric: VectorMetric::L2 }), &want),
+            EnsureAction::Error,
+            "存在但 metric 不匹配 → Error"
+        );
+    }
+
+    // ---- TEST-25.1.4 (AC4) — 不破坏三 trait 签名（trait object 构造）----
+    #[test]
+    fn test_25_1_4_trait_objects_construct() {
+        let conn = QdrantConnConfig {
+            url: "http://127.0.0.1:59999".to_string(),
+            timeout: Some(Duration::from_millis(500)),
+            api_key: None,
+            tls: false,
+        };
+        let be = QdrantBackend::connect(&conn).unwrap();
+        let _b: &dyn VectorBackend = &be;
+        let _i: &dyn VectorIndexer = &be;
+        let _s: &dyn VectorSearcher = &be;
+        assert_eq!(be.name(), "qdrant");
+        assert!(!be.is_local(), "qdrant 是外部 server，is_local()==false");
     }
 }
