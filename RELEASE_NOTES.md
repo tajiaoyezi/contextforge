@@ -1,5 +1,34 @@
 # ContextForge Release Notes
 
+## v0.17.0 (2026-05-31) — code-and-cjk-tokenizer-and-eval-hardening (opt-in tokenizer + eval 校验器 + ADR-029 ratified)
+
+### 摘要
+
+v0.17.0 minor release (Phase 24): adds an **opt-in code/CJK tokenizer** and a **hardened eval ruler**. The Tantivy `content` field can now split code symbols (`camelCase`→`camel`+`case` keeping the original token, `snake_case`/`dotted.path`/`kebab-case`) and tokenize CJK text into bigrams (`配置加载`→`配置`/`置加`/`加载`) — opt-in via `RetrieverConfig.tokenizer="code_cjk"`. The eval golden dataset gains an independent validator (`ValidateGoldenSemantic`: schema well-formedness + duplicate detection + answer coverage) and a code/CJK-annotated `golden-semantic.jsonl`. A **real before/after recall delta** (default **0.9091 → code/CJK 1.0000**, +0.0909) is measured through the production `Retriever` BM25 path.
+
+**Honest scope (read this)**: the **default build is unchanged** — 0 new dependency (pure std tokenizer), default tokenization unchanged (existing collections are not silently invalidated), eval gate thresholds unchanged. The tokenizer is **opt-in via config (not a feature flag)**; **adopting it requires a re-index** (it changes the inverted terms). The +0.0909 delta is on a **small dataset (11 queries / 12 files)**, driven by one real CJK-bigram case (`语义检索`); the other 10 queries are parity (full-symbol/full-phrase queries match in both analyzers). The tokenizer's sub-token discrimination is proven deterministically by the task-24.1 unit tests (not extrapolated). The **rust-native-eval-runner is honestly deferred** after a real evaluation (the Go harness stays the single source of truth). All recorded per ADR-013 (no faked numbers).
+
+### What shipped (Phase 24, tasks 24.1–24.3)
+
+| task | delivery | PR |
+|---|---|---|
+| 24.1 | `core/src/indexer/mod.rs` opt-in code/CJK `TextAnalyzer` (`CodeCjkTokenizer`: camelCase/snake_case/dotted.path/kebab-case split + 保留原 token + CJK bigram, pure std) + `build_tantivy_schema(tokenizer)` opt-in branch + `open_with_tokenizer` + retriever symmetric registration — 0 new dep, default tokenization unchanged | #173 |
+| 24.2 | `internal/eval/eval.go` `ValidateGoldenSemantic` (add-only: schema + duplicate + coverage; `knownCategories` += code-symbol/cjk) + `test/fixtures/eval/golden-semantic.jsonl` (11 questions, code-symbol + CJK → real files) — zero Rust delta, gate thresholds unchanged | #174 |
+| 24.3 | Phase 24 closeout: real before/after recall delta (`phase24_tokenizer_recall` example, +0.0909) + rust-native-eval-runner eval (honestly deferred) + smoke v14 step 33 + v0.17.0 release docs + ADR-029 ratify | this PR |
+
+### ADR-029 ratified (Proposed → Accepted)
+
+**ADR-029 code-and-cjk-tokenizer-and-eval-hardening** ratified on the **real non-synthetic** verification of D1–D3/D5: D1 code/CJK tokenizer (TEST-24.1.1-4 + real recall delta +0.0909), D2 eval validator (TEST-24.2.1-2), D3 code/CJK golden 扩充 (TEST-24.2.3), D5 default unchanged (0 new dep + default tokenization + gate thresholds). **D4 rust-native-eval-runner honestly deferred** (`[SPEC-DEFER:phase-future.rust-native-eval-runner]`) — not faked as implemented. **ADR-006** (recall gate thresholds) and **ADR-008** (library selection) need **no amendment** (gate unchanged; tokenizer is std-only, 0 new dep). **ADR-014 — 15th activation.**
+
+### Upgrade path
+
+- Drop-in: default build behavior unchanged (default tokenization + BM25 baseline + eval gate thresholds). No forced migration. The eval `ValidateGoldenSemantic` is add-only (existing `ValidateDataset` callers unaffected).
+- The code/CJK tokenizer is opt-in via `RetrieverConfig.tokenizer="code_cjk"`. **Adopting opt-in requires a re-index of existing collections** (it changes the `content` inverted terms; the old index still works with the default analyzer but does not get code/CJK sub-token hits).
+
+### Rollback path
+
+`git tag -d v0.17.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.16.0 (default tokenization + BM25 + 0-dep), so a rollback is non-breaking (the opt-in tokenizer is not enabled by default).
+
 ## v0.16.0 (2026-05-31) — vector-persistence-and-cross-platform (hnsw 持久化 + sqlite-vec MSVC + ADR-028 ratified)
 
 ### 摘要

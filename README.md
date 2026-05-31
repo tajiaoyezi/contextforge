@@ -7,6 +7,24 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.17.0
+
+🔤 **v0.17.0 code-and-cjk-tokenizer-and-eval-hardening** — adds an **opt-in code/CJK tokenizer** and a **hardened eval ruler**. The `content` field can split `camelCase`/`snake_case`/`dotted.path`/`kebab-case` into sub-tokens (keeping the original token) and tokenize CJK text into bigrams; the eval golden dataset gains an independent validator + code/CJK query cases. The **default build stays 0-new-dep, default-tokenization-unchanged, eval-gate-threshold-unchanged**.
+
+- **Opt-in, default unchanged.** The tokenizer is opt-in via `RetrieverConfig.tokenizer="code_cjk"` (config, **not a feature flag** — pure std, in the default build). Default tokenization is unchanged so existing collections are not silently invalidated; **adopting opt-in requires a re-index** (it changes the inverted terms). Index/query stay symmetric (both register the same analyzer).
+- **code/CJK tokenizer** (task-24.1): `camelCase`→`camel`+`case` (+ original), `snake_case`/`dotted.path`/`kebab-case` sub-words, CJK bigram (`配置加载`→`配置`/`置加`/`加载`). **0 new dependency.**
+- **eval hardening** (task-24.2): `ValidateGoldenSemantic` (schema well-formedness + duplicate detection + answer coverage, add-only) + `test/fixtures/eval/golden-semantic.jsonl` (code-symbol + CJK queries → real files).
+- **Real before/after recall delta** (task-24.3): default **0.9091 → code/CJK 1.0000 (+0.0909)** over the task-24.2 golden (BM25 file-level), driven by a real CJK-bigram win; rust-native-eval-runner **honestly deferred**. **ADR-029 → Accepted**. **ADR-014 cross-validation gate — 15th activation**.
+
+```bash
+# opt-in code/CJK tokenizer split + CJK bigram (default build)
+cargo test -p contextforge-core --lib indexer::tests::test_24_1
+# real before/after recall delta over the golden-semantic dataset
+cargo run -p contextforge-core --example phase24_tokenizer_recall
+```
+
+详 `RELEASE_NOTES.md` v0.17.0 段 + [Phase 24 spec](docs/specs/phases/phase-24-retrieval-tokenizer-and-eval-hardening.md) + [ADR-029](docs/decisions/adr-029-code-and-cjk-tokenizer-and-eval-hardening.md) + [tokenizer recall spike](docs/spikes/phase-24-tokenizer-recall.md)。
+
 ## What's new in v0.16.0
 
 🗄️ **v0.16.0 vector-persistence-and-cross-platform** — makes the feature-gated vector backends **persistent + cross-platform**: **hnsw graph persistence** (`save`/`load` + rebuild-on-load fallback), a **sqlite-vec Windows MSVC** investigation that **resolved the Phase 18 MSVC-build-blocked stop-condition** (real build + run on `x86_64-pc-windows-msvc`), and a **vector incremental-index evaluation** (brute-force / sqlite-vec row-level append). The **default build stays 0-vector-dependency, BM25-baseline**.

@@ -1,6 +1,6 @@
 # Task `24.3`: `closeout-v0.17.0 — task-24.1 tokenizer over task-24.2 扩充 golden 的真实 before/after recall delta（ADR-013 real 数据，受阻诚实延后）+ core/src/eval/runner.rs rust-native-eval-runner 评估（promote 最小 runner 或诚实延后 [SPEC-DEFER:phase-future.rust-native-eval-runner]）+ scripts/console_smoke.sh v14 step + v0.17.0 release docs（README/RELEASE_NOTES/evidence/artifacts）+ ADR-029 据真实结果 ratify + ADR-006/008 add-only Amendment + phase-24 §6 闭合 + adapter`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -81,21 +81,21 @@ task-24.1 已让 `core/src/indexer/mod.rs` 在 opt-in 时对 `content` 字段用
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: tokenizer 真实 before/after recall delta 实测 + runner 评估 — `docs/spikes/phase-24-tokenizer-recall.md` 记 task-24.1 tokenizer（default vs opt-in）over task-24.2 扩充 golden 的真实 before/after recall@5/10 delta（数据源 / 语料规模 / per-query 分解 / gate 对照，ADR-013 真实非合成；小语料 delta 不显著则如实记录）；`core/src/eval/runner.rs` rust-native-eval-runner promote 最小 runner（+ deterministic 单测）或诚实延后 `[SPEC-DEFER:phase-future.rust-native-eval-runner]` + 文档化评估口径；`scripts/console_smoke.sh` v14 通过 `bash -n`（exit 0）+ tokenizer/eval 加固 smoke 断言 + 既有 step 不退化 — verified by **TEST-24.3.1**
-- [ ] **AC2**: v0.17.0 release docs 齐备（`docs/releases/v0.17.0-{evidence,artifacts}.md` + `README.md` v0.17 段 + `RELEASE_NOTES.md` v0.17.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback（含 tokenizer opt-in re-index 含义）/ §tag-backfill 待回填段 — verified by **TEST-24.3.2**
-- [ ] **AC3**: ADR-029 据 task-24.1/24.2 + recall delta + runner 评估真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）；ADR-006/008 add-only Amendment 记推进结果（不溯改正文，gate 阈值不变）；phase-24 §6 AC1-6 全 `[x]` + Status `Draft → Done`；adapter Phase 24 `Draft → Done` + Tasks `0 → 3` + ADR-029 索引 + roadmap §4 四 marker 推进注 — verified by **TEST-24.3.3**
-- [ ] **AC4**: 既有不退化 — 默认 `cargo test --workspace` + `go test ./...` 全 PASS；opt-in tokenizer（task-24.1）+ eval 校验器（task-24.2）+ runner（若 promote）单测不退化；默认 tokenization + eval gate 阈值不变 — verified by **TEST-24.3.4** + §10
-- [ ] **AC5**: ADR-014 D1-D5 第十五次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-23 不溯改）— verified by **TEST-24.3.5** + 本 closeout PR body
+- [x] **AC1**: tokenizer 真实 before/after recall delta 实测 + runner 评估 — `docs/spikes/phase-24-tokenizer-recall.md` 记 task-24.1 tokenizer（default vs opt-in）over task-24.2 扩充 golden 的真实 before/after recall@5/10 delta（数据源 / 语料规模 / per-query 分解 / gate 对照，ADR-013 真实非合成；小语料 delta 不显著则如实记录）；`core/src/eval/runner.rs` rust-native-eval-runner promote 最小 runner（+ deterministic 单测）或诚实延后 `[SPEC-DEFER:phase-future.rust-native-eval-runner]` + 文档化评估口径；`scripts/console_smoke.sh` v14 通过 `bash -n`（exit 0）+ tokenizer/eval 加固 smoke 断言 + 既有 step 不退化 — verified by **TEST-24.3.1**
+- [x] **AC2**: v0.17.0 release docs 齐备（`docs/releases/v0.17.0-{evidence,artifacts}.md` + `README.md` v0.17 段 + `RELEASE_NOTES.md` v0.17.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback（含 tokenizer opt-in re-index 含义）/ §tag-backfill 待回填段 — verified by **TEST-24.3.2**
+- [x] **AC3**: ADR-029 据 task-24.1/24.2 + recall delta + runner 评估真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）；ADR-006/008 add-only Amendment 记推进结果（不溯改正文，gate 阈值不变）；phase-24 §6 AC1-6 全 `[x]` + Status `Draft → Done`；adapter Phase 24 `Draft → Done` + Tasks `0 → 3` + ADR-029 索引 + roadmap §4 四 marker 推进注 — verified by **TEST-24.3.3**
+- [x] **AC4**: 既有不退化 — 默认 `cargo test --workspace` + `go test ./...` 全 PASS；opt-in tokenizer（task-24.1）+ eval 校验器（task-24.2）+ runner（若 promote）单测不退化；默认 tokenization + eval gate 阈值不变 — verified by **TEST-24.3.4** + §10
+- [x] **AC5**: ADR-014 D1-D5 第十五次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-23 不溯改）— verified by **TEST-24.3.5** + 本 closeout PR body
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-24.3.1 | tokenizer before/after recall delta + runner 评估（promote/延后）+ smoke v14 `bash -n` + tokenizer/eval 断言 | `docs/spikes/phase-24-tokenizer-recall.md` + `core/src/eval/runner.rs` + `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Planned |
-| TEST-24.3.2 | v0.17.0 release docs 齐备 + 结构校验（含 re-index 含义） | `docs/releases/v0.17.0-*.md` + README + RELEASE_NOTES | Planned |
-| TEST-24.3.3 | ADR-029 ratify + ADR-006/008 Amendment + phase-24 闭合 + adapter | `docs/decisions/adr-029-*.md` + phase-24 spec + s2v-adapter | Planned |
-| TEST-24.3.4 | 默认 `cargo test --workspace` + `go test ./...` + 上游单测不退化 0 failed | 全 Rust + Go | Planned |
-| TEST-24.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Planned |
+| TEST-24.3.1 | tokenizer before/after recall delta + runner 评估（promote/延后）+ smoke v14 `bash -n` + tokenizer/eval 断言 | `docs/spikes/phase-24-tokenizer-recall.md` + `core/src/eval/runner.rs` + `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Done |
+| TEST-24.3.2 | v0.17.0 release docs 齐备 + 结构校验（含 re-index 含义） | `docs/releases/v0.17.0-*.md` + README + RELEASE_NOTES | Done |
+| TEST-24.3.3 | ADR-029 ratify + ADR-006/008 Amendment + phase-24 闭合 + adapter | `docs/decisions/adr-029-*.md` + phase-24 spec + s2v-adapter | Done |
+| TEST-24.3.4 | 默认 `cargo test --workspace` + `go test ./...` + 上游单测不退化 0 failed | 全 Rust + Go | Done |
+| TEST-24.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Done |
 
 ## 8. Risks
 
@@ -133,4 +133,24 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 实测结果（ADR-013 真实非合成；含 tokenizer before/after recall delta 数 + runner 评估结论 + smoke v14 step 33）/ 设计取舍（recall delta 记录 vs 延后 + runner promote vs 延后 + ADR-029 ratify 维度 + ADR-006/008 Amendment + tag push 自治授权口径）/ 剩余风险 + 下游影响（CJK 真正分词器 / tokenizer 默认开启 + 索引迁移 / rust-native-eval-runner 若延后续 backlog / tag+release backfill）。
+- **完成日期**: 2026-05-31
+- **改动文件**:
+  - `core/examples/phase24_tokenizer_recall.rs`（新增）— default-build BM25 recall 例程（default vs code_cjk over task-24.2 golden）
+  - `docs/spikes/phase-24-tokenizer-recall.md`（新增）— 真实 before/after recall delta + per-query + 机制 + runner 评估结论
+  - `core/src/eval/runner.rs`（修改）— rust-native-eval-runner 评估结论（诚实延后）文档化
+  - `scripts/console_smoke.sh`（修改）— v14 header + step 33（tokenizer/eval 层验证 + 默认构建 intact）
+  - `internal/cli/smoke_syntax_test.go`（修改）— 新增 `TestTask243_SmokeV14TokenizerEvalHardeningStep`（add-only，未改 Phase 23 test）
+  - `docs/decisions/adr-029-code-and-cjk-tokenizer-and-eval-hardening.md`（修改）— Proposed→Accepted + Ratification D1-D5 真实依据
+  - `docs/releases/v0.17.0-evidence.md` + `docs/releases/v0.17.0-artifacts.md`（新增）
+  - `README.md` v0.17 段 + `RELEASE_NOTES.md` v0.17.0 段（修改）
+  - `docs/specs/phases/phase-24-*.md`（§6 AC1-6 [x] + Status Done）+ `docs/s2v-adapter.md`（Phase 24 Done/Tasks 3 + 24.1-24.3 Done + ADR-029 Accepted）+ `docs/roadmap.md` §4 四 marker 推进记录
+- **commit 列表**:
+  - `1855baf` feat(eval): task-24.3 真实 tokenizer recall delta 量测 + smoke v14 step33 + runner 评估延后
+  - （本 commit）docs: v0.17.0 closeout — ADR-029 ratify + release docs + phase-24 §6 闭合 + adapter + §10
+- **§9 Verification 结果**（ADR-013 真实非合成，本机）:
+  - unit-test: `cargo test --workspace` 0 failed（core lib 含 TEST-24.1.* + 例程编译）；`go test ./...` 0 FAIL（含 TEST-24.2.* + TEST-24.3.1 smoke 语法门 + TEST-23.3.1 v13 不退化）
+  - integration: `cargo run -p contextforge-core --example phase24_tokenizer_recall` → recall@5/10/top1/mrr default 0.9091 → code_cjk 1.0000（**delta +0.0909**，CJK `语义检索` bigram 命中驱动；per-query 见 spike）
+  - build: ✅ `bash -n scripts/console_smoke.sh` exit 0（smoke v14 step 33）；默认构建 0 新 dep
+  - lint: ✅ `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及 docs/specs 行 0 未标注命中（CI spec-lint gate + 本机 scoped 复核；cygwin 全量慢以 CI 为权威）
+- **剩余风险 / 未做项**: recall delta 小语料（11 query / 12 file，承 task-19.5 §10），+0.0909 由单一 CJK case 驱动、其余 parity，sub-token 判别力由 TEST-24.1.4 确定性背书（不外推为总体召回声明，ADR-013）；rust-native-eval-runner 据真实评估**诚实延后** `[SPEC-DEFER:phase-future.rust-native-eval-runner]`（Go harness 续单一事实源，理由见 spike §4 + runner.rs）；CJK 真正分词器 `[SPEC-DEFER:phase-future.cjk-true-segmenter]` + tokenizer 默认开启 + 索引迁移 `[SPEC-DEFER:phase-future.tokenizer-default-on]` 续 backlog。v0.17.0 tag/run/digest 经 post-tag-push backfill PR 填实（release docs §7 待 backfill 回填）。
+- **下游 task 影响**: 无（Phase 24 收口）。下一版本 v0.18.0 / Phase 25（production-vector-backend）。tag push 在 closeout PR 合入后由主 agent 据本次无人值守 goal 授权自主执行（ADR-012，承 v0.13-v0.16 release 流）。

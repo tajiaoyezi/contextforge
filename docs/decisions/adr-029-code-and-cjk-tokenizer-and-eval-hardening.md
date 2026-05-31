@@ -1,6 +1,6 @@
 # ADR `029`: `code-and-cjk-tokenizer-and-eval-hardening`
 
-**Status**: Proposed (2026-05-31 起草；v0.17.0 closeout（task-24.3）据 task-24.1/24.2 真实非合成验证 ratify Proposed→Accepted，ADR-013：真实 before/after recall delta + rust-native-eval-runner 真实评估结论；某维度受阻则据「已达维度 ratify + 受阻维度如实记录」处理，不强 ratify。见 §Ratification 占位段。)
+**Status**: Accepted (2026-05-31 起草 + 同日 v0.17.0 closeout（task-24.3）据 task-24.1/24.2 + 真实 before/after recall delta + rust-native-eval-runner 真实评估结论 ratify Proposed→Accepted，ADR-013 真实非合成。D1-D5 真实依据见 §Ratification。)
 **Category**: 检索质量 / 分词 / eval 加固
 **Date**: 2026-05-31
 **Decided By**: 主 agent (ADR-012 自治)；tajiaoyezi ratification at v0.17.0 closeout
@@ -53,14 +53,14 @@ tokenizer opt-in（D1）/ 校验器（D2）/ 数据集扩充（D3）/ runner 评
 - **Ratification**: 本 ADR **Proposed**。task-24.1 真实 tokenizer 分词单测（代码/CJK 输入拆分正确）+ task-24.2 真实校验器单测 + 扩充数据集 + task-24.3 真实 before/after recall delta（tokenizer over 扩充 golden）+ rust-native-eval-runner 真实评估结论通过后，于 v0.17.0 closeout（task-24.3）据真实非合成验证 ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）；某维度受阻（如 recall delta 因小语料不显著 / runner 经评估延后）则据「已达维度 ratify + 受阻维度如实记录」处理，不强 ratify。
 - **Follow-ups**: CJK 真正分词器（替 bigram）的精度优化 `[SPEC-DEFER:phase-future.cjk-true-segmenter]`；tokenizer 默认开启（从 opt-in 转 default + 索引迁移工具）`[SPEC-DEFER:phase-future.tokenizer-default-on]`；rust-native-eval-runner 若 D4 评估延后则续 `[SPEC-DEFER:phase-future.rust-native-eval-runner]`（roadmap §4）；golden 数据集 case_results 子表 `[SPEC-DEFER:phase-future.case-results-subtable]`（roadmap §4）。
 
-## Ratification (v0.17.0 / task-24.3, 待回填)
+## Ratification (v0.17.0 / task-24.3 — Accepted 2026-05-31)
 
-本 ADR 计划于 v0.17.0 closeout 据 task-24.1/24.2 的真实非合成验证 ratify **Proposed → Accepted**（ADR-013：禁据合成 / 伪造 ratify）。D1–D5 各项的真实验证依据由 task-24.3 据实回填（实施完成时填实，Draft 阶段不预填）：
+本 ADR 于 v0.17.0 closeout（task-24.3）据 task-24.1/24.2 + 真实 before/after recall delta + rust-native-eval-runner 真实评估结论 ratify **Proposed → Accepted**（ADR-013：真实非合成）。D1–D5 真实验证依据：
 
-- **D1（code/CJK tokenizer）**：`cargo test --features <tokenizer-feature> ... indexer` tokenizer 分词单测对代码符号 / CJK 输入拆分正确 + opt-in 时 `content` 走自定义 analyzer / 默认 tokenization 不变；real before/after recall delta（task-24.3 据扩充 golden 跑）。
-- **D2（eval 数据集校验器）**：`go test ./internal/eval/...` 校验器对良构数据集过 / 脏数据（重复 / 悬空 expected / schema 不良）被拒；既有 `ValidateDataset` + 30 题 builtin 不退化。
-- **D3（golden 数据集扩充）**：扩充数据集含代码符号 + CJK query case 过 D2 校验器 + exercise D1 tokenizer。
-- **D4（rust-native-eval-runner）**：真实评估结论（promote 最小 runner + 单测，或诚实延后 `[SPEC-DEFER:phase-future.rust-native-eval-runner]` + 文档化评估口径）。
-- **D5（默认构建不变）**：默认 `cargo test --workspace` + `go test ./...` 0 新 dep、默认 tokenization + eval gate 阈值不变。
+- **D1（code/CJK tokenizer）— ✅ 已达**：`cargo test -p contextforge-core --lib indexer::tests::test_24_1` 4 passed（TEST-24.1.1-4：camelCase/snake_case/dotted.path/kebab-case 拆子词 + 保留原 token + CJK bigram 确定性 token-stream 断言；opt-in `content` 走自定义 analyzer；默认 tokenization 不变）。**修订口径**：tokenizer 为 **opt-in via `RetrieverConfig.tokenizer="code_cjk"`（config，非 feature-gate）**，默认构建即含（0 新 dep，纯 std），不需 `--features`。真实 before/after recall delta（task-24.3，BM25 file-level over task-24.2 golden）= **+0.0909**（default 0.9091 → code/CJK 1.0000），由真实 CJK bigram 命中（`语义检索`）驱动；sub-token 判别力由 TEST-24.1.4 确定性背书。证据 `docs/spikes/phase-24-tokenizer-recall.md`。
+- **D2（eval 数据集校验器）— ✅ 已达**：`go test ./internal/eval/...` ok（TEST-24.2.1-4：`ValidateGoldenSemantic` 对良构过 / 脏数据（重复 query / 重复 (query,expected) 对 / 悬空 expected / 未知 category / line_range start>end）被拒；既有 `ValidateDataset` + 30 题 builtin + JSONL roundtrip 不退化，add-only）。
+- **D3（golden 数据集扩充）— ✅ 已达**：`test/fixtures/eval/golden-semantic.jsonl` 11 题（6 `code-symbol` + 5 `cjk`，query→真实文件路径经核实），过 D2 校验器，exercise D1 tokenizer（TEST-24.2.3）。
+- **D4（rust-native-eval-runner）— 🟡 诚实延后**：真实评估结论 = **延后** `[SPEC-DEFER:phase-future.rust-native-eval-runner]`。Go harness（`internal/eval/eval.go`）仍是召回口径单一事实源（task-14.1），Rust-native runner 会跨语言重复 `SemanticRecallAtK`/gate 逻辑 → drift 风险且无现消费方；ad-hoc Rust 召回量测由 `core/examples/phase24_tokenizer_recall.rs` 覆盖。placeholder + marker 保留，理由见 spike §4 + `core/src/eval/runner.rs`（ADR-013：不伪造已实现）。
+- **D5（默认构建不变）— ✅ 已达**：`cargo test --workspace` + `go test ./...` 0 failed；0 新 dep（`core/Cargo.toml` 未改，纯 std tokenizer）；默认 tokenization 不变（既有索引不失效）；eval gate 阈值（`GateTop5StrongMin=0.75` / `GateTop10StrongMin=0.85` / `GateSemanticRecall10Min=0.70`）不变（TEST-24.2.4 守护）。
 
-ratify 范围 = code/CJK tokenizer + eval 加固**策略**（D1-D5 经真实 cargo build/test + recall 度量验证）；tokenizer 默认开启 + 索引迁移 + CJK 真正分词器属后续。证据见 `docs/releases/v0.17.0-evidence.md`（待 task-24.3 产出）。
+ratify 范围 = code/CJK tokenizer + eval 加固**策略**（D1-D3/D5 经真实 cargo/go test + recall 度量验证；D4 经真实评估诚实延后）。tokenizer 默认开启 + 索引迁移 [SPEC-DEFER:phase-future.tokenizer-default-on] + CJK 真正分词器 [SPEC-DEFER:phase-future.cjk-true-segmenter] + rust-native-eval-runner [SPEC-DEFER:phase-future.rust-native-eval-runner] 属后续。ADR-006（gate 阈值不变）/ ADR-008（tokenizer std-only，无依赖变更）无需 amendment。证据见 `docs/releases/v0.17.0-evidence.md` + `docs/spikes/phase-24-tokenizer-recall.md`。
