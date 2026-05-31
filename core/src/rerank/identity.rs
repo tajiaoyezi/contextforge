@@ -28,10 +28,26 @@ impl Reranker for IdentityReranker {
     fn rerank(
         &self,
         _query: &str,
-        _candidates: &[SearchResult],
+        candidates: &[SearchResult],
     ) -> Result<Vec<SearchResult>, RerankError> {
-        // RED skeleton (task-21.2): real deterministic re-order lands in GREEN.
-        unimplemented!("task-21.2 GREEN: IdentityReranker::rerank")
+        let mut out: Vec<SearchResult> = candidates.to_vec();
+        // Annotate provenance (ADR-026 D2) — does not change candidate content/score/identity.
+        for r in out.iter_mut() {
+            r.reason = if r.reason.is_empty() {
+                IDENTITY_RERANK_REASON.to_string()
+            } else {
+                format!("{IDENTITY_RERANK_REASON}; {}", r.reason)
+            };
+        }
+        // Deterministic order: existing relevance score desc, chunk_id asc as a stable tie-break
+        // (matches the fusion.rs convention). No model, no candidate dropped.
+        out.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.chunk_id.cmp(&b.chunk_id))
+        });
+        Ok(out)
     }
 
     fn name(&self) -> &'static str {
