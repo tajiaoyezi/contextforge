@@ -1,6 +1,6 @@
 # Task `22.2`: `embedding-cache — core/src/embedding/cache.rs CachingEmbeddingProvider（content-hash Sha256(text)→embedding 缓存；内存缺省 + 可选 SQLite 持久化承 ADR-002）+ 确定性命中/失效单测`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -73,21 +73,21 @@ Phase 19 的 `EmbeddingProvider`（`core/src/embedding/traits.rs:13`）每次 `e
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: `CachingEmbeddingProvider` 包裹 `DeterministicEmbeddingProvider`：相同 text 第二次 `embed` 命中缓存、底层 `embed` 不再被调（计数 wrapper 断言底层调用次数）；返回向量与底层直接 embed 逐字节相同 — verified by **TEST-22.2.1**
-- [ ] **AC2**: 失效语义 — 不同 text（不同 `Sha256` hash）未命中、底层被调；批量 `embed` 混合命中 / 未命中时仅对未命中 text 调底层，结果按输入顺序正确组装 — verified by **TEST-22.2.2**
-- [ ] **AC3**: SQLite 持久化往返（可选）— 给定路径写入缓存后，新建 `CachingEmbeddingProvider::with_sqlite` 从同一文件读回命中（底层 0 调用）；缺省（无路径）内存缓存不落盘 — verified by **TEST-22.2.3**
-- [ ] **AC4**: `dim()` / `name()` 透传底层（`dim()==inner.dim()`，`name()` 携 `"cached"` provenance 标识）；缓存装饰器可作 `Arc<dyn EmbeddingProvider>` 接入 `Retriever::with_embedder` — verified by **TEST-22.2.4**
-- [ ] **AC5**: 既有不退化 — `cargo test --workspace` 全 PASS（含既有 embedding / retriever 测试）；`go test ./...` 不受影响（本 PR 零 Go delta）；D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-22.2.5** + §10 记录
+- [x] **AC1**: `CachingEmbeddingProvider` 包裹 `DeterministicEmbeddingProvider`：相同 text 第二次 `embed` 命中缓存、底层 `embed` 不再被调（计数 wrapper 断言底层调用次数）；返回向量与底层直接 embed 逐字节相同 — verified by **TEST-22.2.1**
+- [x] **AC2**: 失效语义 — 不同 text（不同 `Sha256` hash）未命中、底层被调；批量 `embed` 混合命中 / 未命中时仅对未命中 text 调底层，结果按输入顺序正确组装 — verified by **TEST-22.2.2**
+- [x] **AC3**: SQLite 持久化往返（可选）— 给定路径写入缓存后，新建 `CachingEmbeddingProvider::with_sqlite` 从同一文件读回命中（底层 0 调用）；缺省（无路径）内存缓存不落盘 — verified by **TEST-22.2.3**
+- [x] **AC4**: `dim()` / `name()` 透传底层（`dim()==inner.dim()`，`name()` 携 `"cached"` provenance 标识）；缓存装饰器可作 `Arc<dyn EmbeddingProvider>` 接入 `Retriever::with_embedder` — verified by **TEST-22.2.4**
+- [x] **AC5**: 既有不退化 — `cargo test --workspace` 全 PASS（含既有 embedding / retriever 测试）；`go test ./...` 不受影响（本 PR 零 Go delta）；D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-22.2.5** + §10 记录
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-22.2.1 | 相同 text 命中缓存 + 底层不再被调 + 向量逐字节相同 | `core/src/embedding/cache.rs` `#[cfg(test)]` 或 `core/src/embedding/tests.rs` | Planned |
-| TEST-22.2.2 | 失效语义：不同 text 未命中 + 批量混合命中顺序正确 | `core/src/embedding/cache.rs` `#[cfg(test)]` | Planned |
-| TEST-22.2.3 | SQLite 持久化往返命中 + 缺省内存不落盘 | `core/src/embedding/cache.rs` `#[cfg(test)]` | Planned |
-| TEST-22.2.4 | `dim()`/`name()` 透传 + 可作 `Arc<dyn EmbeddingProvider>` 接入 | `core/src/embedding/cache.rs` `#[cfg(test)]` | Planned |
-| TEST-22.2.5 | `cargo test --workspace` 0 failed + D2 lint 0 未标注命中 | 全 Rust + `scripts/spec_drift_lint.sh` | Planned |
+| TEST-22.2.1 | 相同 text 命中缓存 + 底层不再被调 + 向量逐字节相同 | `core/src/embedding/cache.rs` `#[cfg(test)]` 或 `core/src/embedding/tests.rs` | Done |
+| TEST-22.2.2 | 失效语义：不同 text 未命中 + 批量混合命中顺序正确 | `core/src/embedding/cache.rs` `#[cfg(test)]` | Done |
+| TEST-22.2.3 | SQLite 持久化往返命中 + 缺省内存不落盘 | `core/src/embedding/cache.rs` `#[cfg(test)]` | Done |
+| TEST-22.2.4 | `dim()`/`name()` 透传 + 可作 `Arc<dyn EmbeddingProvider>` 接入 | `core/src/embedding/cache.rs` `#[cfg(test)]` | Done |
+| TEST-22.2.5 | `cargo test --workspace` 0 failed + D2 lint 0 未标注命中 | 全 Rust + `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -115,4 +115,29 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按以下 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 结果 / 设计取舍 / 剩余风险 + 下游影响。
+- **完成日期**: 2026-05-31。
+
+- **改动文件**:
+  - `core/src/embedding/cache.rs`（新增）— `CachingEmbeddingProvider`（`inner: Arc<dyn EmbeddingProvider>` + `mem: Mutex<HashMap>` + `store: Option<Mutex<Connection>>`）；`new` / `with_sqlite`；`embed` L1 内存 → L2 SQLite → inner 三级 read-through；`sqlite_get`/`sqlite_put`（scoped by `(content_hash, provider, dim)`）；`vec_to_bytes`/`bytes_to_vec`（f32 LE 字节 BLOB 精确往返）；4 个 `#[cfg(test)]` 测试 + `CountingProvider` 计数替身。
+  - `core/src/embedding/mod.rs` — `pub mod cache` + `pub use cache::CachingEmbeddingProvider`。
+
+- **commit 列表**: `a619e9b`（RED：cache.rs 无缓存 passthrough 实现 + 测试，3 failed/1 passed）→ `f1ebe2c`（GREEN：L1/L2 read-through impl，4/4 PASS）→ 本 docs 提交。
+
+- **§9 Verification 结果**（实测，ADR-013）:
+  - `cargo test -p contextforge-core embedding::cache`：4/4 PASS（TEST-22.2.1 命中跳底层+字节同 / 22.2.2 失效+批量顺序 / 22.2.3 SQLite 往返 inner 0 调用+内存缺省不落盘 / 22.2.4 透传+trait object）。
+  - `cargo test --workspace` exit 0（无新 warning；仅既有 `JobStore` unused import，非本 task）。
+  - `go test ./...` 本 PR 零 Go delta（CI go-test gate 复核）。
+  - D2 lint `--touched origin/master`：scoped touched 0 未标注命中（CI spec-lint gate 权威）。
+
+- **设计取舍**:
+  - 缓存 key = `Sha256(text)` hex（复用 `deterministic.rs` 同 hash，0 新 dep）；同文 → 同 key → 命中，文本变更 → 不同 key → 未命中（= 隐式失效，无需显式 invalidate）。
+  - SQLite PK 用 `(content_hash, provider)` 复合 + 读时按 `(content_hash, provider, dim)` 过滤——比 spec §3「PK content_hash」illustrative schema 更稳（防跨 provider 误读同 content）；spec §3「如」措辞表明 schema 为示例。
+  - L1 内存 + L2 SQLite 两级：SQLite 命中提升入 L1；锁序一致（持 store 时才取 mem，write-through 先取放 mem 再取 store，二者不同时持有 → 无死锁）。
+  - 向量以 `f32::to_le_bytes` 裸 BLOB 存（逐字节精确往返），不经 base64（更省 + 无精度损失）。
+  - 无淘汰策略（小语料够用）；LRU / 容量上限 `[SPEC-DEFER:phase-future.cache-lru]` / `[SPEC-DEFER:phase-future.cache-cap-configurable]` 后续版本。
+
+- **剩余风险 + 下游影响**:
+  - 内存缓存无上限——长跑进程可能增长（§3 范围外，LRU defer）。
+  - SQLite 缓存文件与所包裹 provider 的 `(name, dim)` 绑定（读时过滤）；混用多 provider 同文件不会误读但会各存各的。
+  - real / 远程 provider 的真实缓存命中率不在本 task 数值化（用确定性 identity 实现断言命中/失效逻辑，ADR-013）。
+  - 下游：task-22.3 远程 provider 可被本缓存正交包裹；task-22.4 smoke v12 断言缓存命中可观测 + closeout。
