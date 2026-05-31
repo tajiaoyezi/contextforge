@@ -244,6 +244,10 @@ impl Retriever {
         }
         let sqlite = Connection::open(&sqlite_path)?;
         let tantivy_index = Index::open_in_dir(&tantivy_dir)?;
+        // task-24.1：注册 code/CJK analyzer，保 index/query 分词对称（opt-in collection 的
+        // content 字段绑 "code_cjk"，QueryParser::for_index 据 schema 字段名解析 analyzer；
+        // 默认 collection 无字段引用此名 → 无副作用）.
+        crate::indexer::register_code_cjk(&tantivy_index);
         let tantivy_reader = tantivy_index
             .reader_builder()
             .reload_policy(tantivy::ReloadPolicy::OnCommitWithDelay)
