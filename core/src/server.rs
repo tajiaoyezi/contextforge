@@ -26,7 +26,7 @@ use crate::pb::{
     HealthRequest, HealthResponse, IndexProgress, IndexRequest, Provenance as PbProvenance,
     RetrievalResult, SearchRequest, SearchResponse,
 };
-use crate::embedding::{DeterministicEmbeddingProvider, EmbeddingProvider};
+use crate::embedding::{select_provider, DeterministicEmbeddingProvider};
 use crate::retriever::vector::BruteForceVectorBackend;
 use crate::retriever::{
     is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
@@ -333,7 +333,11 @@ impl ContextService for CoreService {
         // prove the wiring, not recall (real recall is task-19.5; ADR-013).
         if req.semantic {
             let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
-            let embedder = Arc::new(DeterministicEmbeddingProvider::default());
+            // task-22.1: provider now comes from the factory. No embedding config is plumbed to the
+            // server yet, so default args ("deterministic", 0) — byte-equivalent to the Phase 19
+            // hardcoded DeterministicEmbeddingProvider::default() (TEST-22.1.2/22.1.5).
+            let embedder = select_provider("deterministic", 0)
+                .map_err(|e| Status::internal(format!("semantic embedder: {}", e)))?;
             let backend = Arc::new(BruteForceVectorBackend::new());
             let wired = retriever
                 .with_embedder(embedder.clone())

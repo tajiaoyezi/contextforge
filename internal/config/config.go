@@ -36,6 +36,7 @@ type Config struct {
 	AllowDenylistOverride bool               // AC3: explicit confirmation to override default denylist (default false)
 	Collections           []CollectionConfig // AC3: allowlist path import model
 	Remote                RemoteProviderConfig
+	Embedding             EmbeddingConfig // task-22.1: add-only embedding provider selection
 }
 
 // CollectionConfig is one indexed collection's allowlist import scope.
@@ -51,6 +52,15 @@ type RemoteProviderConfig struct {
 	Enabled  bool
 	Provider string
 	Endpoint string
+}
+
+// EmbeddingConfig selects which embedding provider the Rust core builds (task-22.1).
+// Provider "" / "deterministic" → the model-free default; "fastembed" / "remote" are
+// feature-gated in the core (ADR-004 local-first). Dim 0 → the provider's default dim
+// (384). Add-only; absent [embedding] section ⇒ zero value ⇒ deterministic default.
+type EmbeddingConfig struct {
+	Provider string // "" | "deterministic" | "fastembed" | "remote"
+	Dim      int    // 0 ⇒ provider default (DEFAULT_DIM 384)
 }
 
 // DefaultRootDir returns the default data root (~/.contextforge).
@@ -181,6 +191,9 @@ func encodeTOML(c Config) string {
 	fmt.Fprintf(&b, "enabled = %s\n", strconv.FormatBool(c.Remote.Enabled))
 	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Remote.Provider))
 	fmt.Fprintf(&b, "endpoint = %s\n", tomlQuote(c.Remote.Endpoint))
+	b.WriteString("\n[embedding]\n")
+	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Embedding.Provider))
+	fmt.Fprintf(&b, "dim = %s\n", strconv.Itoa(c.Embedding.Dim))
 	for _, col := range c.Collections {
 		b.WriteString("\n[[collections]]\n")
 		fmt.Fprintf(&b, "id = %s\n", tomlQuote(col.ID))
@@ -202,6 +215,9 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 		switch {
 		case line == "[remote]":
 			section = "remote"
+			continue
+		case line == "[embedding]":
+			section = "embedding"
 			continue
 		case line == "[[collections]]":
 			section = "collections"
@@ -226,6 +242,10 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 			}
 		case "remote":
 			if err := assignRemote(&c.Remote, key, raw); err != nil {
+				return Config{}, err
+			}
+		case "embedding":
+			if err := assignEmbedding(&c.Embedding, key, raw); err != nil {
 				return Config{}, err
 			}
 		case "collections":
@@ -295,6 +315,24 @@ func assignRemote(r *RemoteProviderConfig, key, raw string) error {
 			return err
 		}
 		r.Endpoint = s
+	}
+	return nil
+}
+
+func assignEmbedding(e *EmbeddingConfig, key, raw string) error {
+	switch key {
+	case "provider":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		e.Provider = s
+	case "dim":
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("embedding.dim: %w", err)
+		}
+		e.Dim = n
 	}
 	return nil
 }
