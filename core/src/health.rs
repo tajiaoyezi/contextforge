@@ -179,6 +179,14 @@ impl HealthChecker {
 
     fn probe_embed(&self) -> ComponentResult {
         let start = Instant::now();
+        // task-22.4: opt-in remote reachability probe — feature-gated (embedding-remote) AND
+        // explicitly enabled (CONTEXTFORGE_EMBED_REMOTE_PROBE). The default build / CI never compiles
+        // this branch and never hits the network (ADR-004 local-first; ADR-013 — real remote
+        // reachability is deferred, [SPEC-DEFER:phase-future.embed-remote-probe]).
+        #[cfg(feature = "embedding-remote")]
+        if std::env::var("CONTEXTFORGE_EMBED_REMOTE_PROBE").is_ok() {
+            return self.probe_embed_remote(start);
+        }
         // ADR-020 D1: config-only check; we do NOT call the remote provider
         // (rate-limit / secret-exposure risk). Sources checked, in priority:
         //   1. CONTEXTFORGE_EMBED_PROVIDER env var
@@ -209,6 +217,45 @@ impl HealthChecker {
                 "embed provider not configured (set CONTEXTFORGE_EMBED_PROVIDER or [embed] in config.toml)"
                     .into(),
             ),
+        }
+    }
+
+    /// task-22.4: opt-in remote reachability probe (feature `embedding-remote`). Any HTTP response —
+    /// including 4xx, since the endpoint answered — counts as reachable; only a transport error is
+    /// Degraded. Never compiled in the default build (ADR-004). Real reachability against a live
+    /// provider is deferred — CI has no endpoint/keys ([SPEC-DEFER:phase-future.embed-remote-probe],
+    /// ADR-013).
+    #[cfg(feature = "embedding-remote")]
+    fn probe_embed_remote(&self, start: Instant) -> ComponentResult {
+        let endpoint = std::env::var("CONTEXTFORGE_REMOTE_ENDPOINT").unwrap_or_default();
+        if endpoint.is_empty() {
+            return ComponentResult {
+                name: "embed",
+                status: HealthStatus::Degraded,
+                latency_ms: start.elapsed().as_millis() as i64,
+                error_reason: Some(
+                    "remote embed probe opt-in but CONTEXTFORGE_REMOTE_ENDPOINT unset".into(),
+                ),
+            };
+        }
+        let reachable = match ureq::head(&endpoint).timeout(Duration::from_secs(3)).call() {
+            Ok(_) => true,
+            Err(ureq::Error::Status(_, _)) => true, // endpoint answered (e.g. 401/404) → reachable
+            Err(_) => false,
+        };
+        ComponentResult {
+            name: "embed",
+            status: if reachable {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Degraded
+            },
+            latency_ms: start.elapsed().as_millis() as i64,
+            error_reason: if reachable {
+                None
+            } else {
+                Some("remote embed endpoint unreachable".into())
+            },
         }
     }
 
@@ -504,5 +551,32 @@ mod tests {
             .expect("embed component present");
         assert_eq!(embed.status, HealthStatus::Healthy);
         std::env::remove_var("CONTEXTFORGE_EMBED_PROVIDER");
+    }
+
+    // TEST-22.4.1 — AC1: in the default build the remote-probe opt-in env var is inert (the
+    // feature-gated branch is not compiled), so probe_embed stays config-only — ADR-020 D1 behavior
+    // unchanged + ADR-004 default-no-network. Real remote reachability is feature+network-gated and
+    // deferred (ADR-013). Gated to the default build: under embedding-remote the opt-in would route
+    // to probe_embed_remote (which needs a live endpoint), so this config-only assertion only holds
+    // when the feature is off.
+    #[cfg(not(feature = "embedding-remote"))]
+    #[test]
+    fn test_22_4_1_remote_probe_optin_inert_in_default_build() {
+        let _g = EMBED_ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("CONTEXTFORGE_EMBED_REMOTE_PROBE", "1");
+        std::env::remove_var("CONTEXTFORGE_EMBED_PROVIDER");
+        let degraded = fresh_checker().check_all();
+        let e1 = degraded.components.iter().find(|c| c.name == "embed").unwrap();
+        assert_eq!(
+            e1.status,
+            HealthStatus::Degraded,
+            "default build must ignore the remote-probe opt-in (config-only)"
+        );
+        std::env::set_var("CONTEXTFORGE_EMBED_PROVIDER", "openai");
+        let healthy = fresh_checker().check_all();
+        let e2 = healthy.components.iter().find(|c| c.name == "embed").unwrap();
+        assert_eq!(e2.status, HealthStatus::Healthy, "config-only Healthy with opt-in still inert");
+        std::env::remove_var("CONTEXTFORGE_EMBED_PROVIDER");
+        std::env::remove_var("CONTEXTFORGE_EMBED_REMOTE_PROBE");
     }
 }

@@ -7,6 +7,27 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.15.0
+
+🧩 **v0.15.0 embedding-provider-completion** — grows the embedding layer from "hardcoded deterministic default + a single feature-gated fastembed provider" into a **configurable provider layer**: a `select_provider` factory (deterministic / fastembed / remote) with **dim negotiation** (`DimMismatch`, no silent resize), a **content-hash embedding cache** (memory L1 + optional SQLite L2), and a **feature-gated remote provider skeleton** (OpenAI/Cohere HTTP). The **default build stays local, model-free, and 0-network-dep**.
+
+- **Local-first, non-negotiable.** Default is the deterministic identity provider — 0 model / 0 network dependency. `fastembed` (real model) and `remote` (OpenAI/Cohere) are **feature-gated + explicit opt-in** (ADR-004); API keys are read from the environment and never logged.
+- **Add-only `[embedding]` config, no breaking bump.** `internal/config` gains an add-only `[embedding]`(provider/dim) section (existing `[remote]`/`[[collections]]` unaffected); `contextforge init` now emits it. No proto change.
+- **Embedding cache + remote skeleton verified at the unit/contract layer** (no network in tests). **This is a provider-layer release with no recall numbers** — real remote-network 联调 / keys / recall quality + the real remote health probe are honestly **deferred** (ADR-013; CI has no credentials).
+- **ADR-027 embedding-provider-abstraction → Accepted**, ratified on the real non-synthetic verification of D1–D5 (config/factory/dim/cache/contract/local-first). **ADR-014 cross-validation gate — 13th activation**.
+
+```bash
+# init now scaffolds an add-only [embedding] section (provider/dim) alongside [remote]
+contextforge init --root ~/.contextforge
+
+# remote provider skeleton (feature-gated; contract-tested with fixtures, no real network)
+cargo test --features embedding-remote -p contextforge-core embedding::remote_provider
+```
+
+(The remote provider is opted into via `[embedding] provider="remote"` + the `embedding-remote` feature + env API key; the default build never pulls a network client or hits the network.)
+
+详 `RELEASE_NOTES.md` v0.15.0 段 + [Phase 22 spec](docs/specs/phases/phase-22-embedding-provider-completion.md) + [ADR-027](docs/decisions/adr-027-embedding-provider-abstraction.md) + [v0.15.0 evidence](docs/releases/v0.15.0-evidence.md)。
+
 ## What's new in v0.14.0
 
 🎯 **v0.14.0 retrieval-quality** — adds two **opt-in** ranking-quality enhancements on top of the BM25 + semantic dual paths: **hybrid scoring** (RRF fusion of the word-level + vector scores) and a **reranker pipeline** (deterministic default + feature-gated real cross-encoder). The **default build is unchanged and dependency-free** — still BM25 baseline, 0 new crate.

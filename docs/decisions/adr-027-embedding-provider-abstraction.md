@@ -1,6 +1,6 @@
 # ADR `027`: `embedding-provider-abstraction`
 
-**Status**: Proposed (2026-05-30; Phase 22 task-22.1 起草。落地 + smoke v12 + 远程契约测试通过后于 task-22.4 据真实非合成验证 ratify Proposed→Accepted，ADR-013。远程 provider 真实网络联调 / 召回质量如实 defer，受阻不伪造 ratify。)
+**Status**: Accepted (2026-05-30 Proposed；2026-05-31 task-22.4 据 task-22.1/22.2/22.3 真实非合成验证 ratify Proposed→Accepted，ADR-013。D1-D5 抽象经真实 Go config round-trip + Rust factory/dim/cache 单测 + 远程契约测试（fixture，不打网络）+ 默认 0 网络 dep 验证；远程 provider 真实网络联调 / 召回质量 + health 远程探针真实命中如实 defer，受阻不伪造 ratify。见 §Ratification Amendment。)
 **Category**: 数据面 / embedding provider 层 / 本地优先
 **Date**: 2026-05-30
 **Decided By**: 主 agent (ADR-012 自治)；tajiaoyezi ratification at v0.15.0 closeout
@@ -52,3 +52,15 @@ embedding 层的缺省与默认构建恒为本地、无网络、无模型 dep：
 - **Negative / open**: provider 矩阵变大（确定性 / fastembed / 远程 × 缓存包装），配置组合需测试覆盖；远程 provider 真实可达性 / 召回质量 CI 不可验证（需密钥 + 网络），契约骨架与真实行为间存在验证缺口。
 - **Ratification**: 本 ADR **Proposed**。task-22.1（配置 + 工厂 + dim 协商）/ task-22.2（缓存）/ task-22.3（远程骨架契约测试）落地 + task-22.4 smoke v12 通过后，于 v0.15.0 closeout 据真实非合成验证 ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）。远程 provider 真实网络联调 / 真实召回质量按 `[SPEC-DEFER:phase-future.embedding-provider-remote]` 如实 defer，受阻则文档化 stop-condition、不据无网络环境伪造 ratify。
 - **Follow-ups**: 缓存淘汰策略（LRU / 容量上限）`[SPEC-DEFER:phase-future.cache-lru]`（roadmap §4 长尾）；远程 provider 真实联调 + 密钥管理 `[SPEC-DEFER:phase-future.embedding-provider-remote]`；health 远程探针真实命中 `[SPEC-DEFER:phase-future.embed-remote-probe]`（task-22.4）；rust-native eval runner 真实远程召回 `[SPEC-DEFER:phase-future.rust-native-eval-runner]`（roadmap §4）。
+
+## Ratification Amendment (v0.15.0 / task-22.4, 2026-05-31)
+
+本 ADR 于 v0.15.0 closeout 据 task-22.1/22.2/22.3 的**真实非合成验证** ratify **Proposed → Accepted**（ADR-013：禁据合成 / 无网络伪造 ratify）。D1–D5 各项的真实验证依据：
+
+- **D1（配置选择 + 工厂）**：`go test ./internal/config/ -run TestTask221` `[embedding]` TOML round-trip PASS（含/不含段 + 既有 `[remote]`/`[[collections]]` 不受影响）；`cargo test embedding::tests` `select_provider("deterministic"/"")` 等价 Phase 19 `default()`（字节相同 embed）+ `server.rs` 语义路径走工厂后 `test_22_1_5` + 既有 `test_19_3` 仍 PASS。**真实验证、向后兼容**。
+- **D2（dim 协商）**：`negotiate_dim(384,128)` → `DimMismatch{expected:128,got:384}`（默认构建单测）+ feature 构建 `select_provider("fastembed",128)` → `DimMismatch`（network-free，仅读 `dim()`）。**不静默截断/pad，真实验证**。
+- **D3（content-hash 缓存）**：`cargo test embedding::cache` 4/4 PASS（命中跳底层计数断言 + 字节相同 / 失效 + 批量顺序 / SQLite 往返 inner 0 调用 + 内存缺省不落盘）。**确定性真实验证**。
+- **D4（远程骨架，feature-gated）**：`cargo test --features embedding-remote embedding::remote_provider` 4/4 PASS（`build_request_body` / `parse_response` / 错误路径 / factory 分支，全 fixture，**不打真实网络**）；ureq 2.12.1 Windows MSVC 编译通过。**契约真实验证**。
+- **D5（本地优先红线）**：默认构建 `cargo tree -p contextforge-core | grep ureq` **空** + deterministic 缺省 → 0 网络 / 0 模型 dep；`probe_embed` 默认 config-only（`TEST-22.4.1` 守 opt-in inert）。**红线真实守护**。
+
+**如实 defer（ADR-013，未据无网络伪造 ratify）**：远程 provider 真实网络联调 / 真实 API 密钥 / 真实召回质量 `[SPEC-DEFER:phase-future.embedding-provider-remote]` + health 远程探针真实命中 `[SPEC-DEFER:phase-future.embed-remote-probe]`——CI / 无人值守环境无密钥 + 无网络，骨架 + 契约测试达标即视抽象层验证通过，真实命中**未**标、不伪造。ratify 范围 = provider **抽象层**（配置选择 / dim 协商 / 缓存 / 远程骨架 / 本地优先），不含远程真实集成质量。证据见 `docs/releases/v0.15.0-evidence.md` §3。

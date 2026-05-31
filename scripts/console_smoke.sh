@@ -49,6 +49,14 @@
 # (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); the console-api ?hybrid/?rerank
 # REST forward stays [SPEC-DEFER:phase-future.console-api-hybrid-forward].
 #
+# v12 (Phase 22) adds step 31 — task-22.4 closeout. `contextforge init` now scaffolds an add-only
+# [embedding] config section (provider/dim, task-22.1) alongside the existing [remote] section; step
+# 31 asserts the real config codec emits it without disturbing [remote]. The embedding cache
+# (task-22.2) + remote provider skeleton (task-22.3) are verified at the unit/contract layer
+# (TEST-22.2.* / TEST-22.3.*) — they are not console-hot-path-wired in v0.15, and the remote path
+# never hits the network here (ADR-013 — real remote 联调 / recall deferred,
+# [SPEC-DEFER:phase-future.embedding-provider-remote]).
+#
 # Modes (selected by env):
 #
 #   Default (REAL mode):  spawn contextforge-core + console-api-serve;
@@ -417,7 +425,7 @@ code404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/eval-runs/eval-does-
 # v8 (Phase 17) — step 28 appended for task-17.1 is_pinned wire roundtrip.
 # =====================================================================
 
-echo "  [21/30] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
+echo "  [21/31] task-15.3 GET /v1/stats/chunks (returns {total, today_delta})"
 stats_body=$(curl -sf "$BASE/v1/stats/chunks") \
   || { echo "FAIL: GET stats/chunks" >&2; exit 1; }
 echo "$stats_body" | grep -q '"total"' \
@@ -426,7 +434,7 @@ echo "$stats_body" | grep -q '"today_delta"' \
   || { echo "FAIL: stats response missing today_delta" >&2; exit 1; }
 echo "    → stats response shape ok"
 
-echo "  [22/30] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
+echo "  [22/31] task-15.4 GET /v1/eval-runs (list returns []EvalRun)"
 list_body=$(curl -sf "$BASE/v1/eval-runs?limit=10") \
   || { echo "FAIL: GET eval-runs list" >&2; exit 1; }
 case "$list_body" in
@@ -444,7 +452,7 @@ filter_body=$(curl -sf "$BASE/v1/eval-runs?status=cancelled&limit=5") \
   || { echo "FAIL: GET eval-runs?status=cancelled" >&2; exit 1; }
 case "$filter_body" in [*]) echo "    → status filter returns array" ;; esac
 
-echo "  [23/30] task-15.5 GET /v1/queries (history; default limit 20)"
+echo "  [23/31] task-15.5 GET /v1/queries (history; default limit 20)"
 queries_body=$(curl -sf "$BASE/v1/queries") \
   || { echo "FAIL: GET queries" >&2; exit 1; }
 case "$queries_body" in
@@ -457,7 +465,7 @@ case "$queries_body" in
     ;;
 esac
 
-echo "  [24/30] task-15.6 GET /v1/health?detailed=true (5 components)"
+echo "  [24/31] task-15.6 GET /v1/health?detailed=true (5 components)"
 detail_body=$(curl -sf "$BASE/v1/health?detailed=true") \
   || { echo "FAIL: GET health?detailed=true" >&2; exit 1; }
 for name in db index embed retriever eval; do
@@ -477,7 +485,7 @@ echo "    → default /v1/health stays binary ✅"
 # v7 (Phase 16) — 3 new steps for task-16.1 / 16.2 / 16.4.
 # =====================================================================
 
-echo "  [25/30] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
+echo "  [25/31] task-16.2 GET /v1/observability/events?wait=2s (real long-poll timing)"
 # REAL mode: assert wait truly blocks ≥ 1.5s when no event is pending (vs. v0.8
 # batch-poll path which returned immediately). LOCAL_ONLY / docker: sleep
 # fallback per task-16.2 memstore — also blocks min(wait, 1s).
@@ -508,7 +516,7 @@ case "$MODE" in
     ;;
 esac
 
-echo "  [26/30] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
+echo "  [26/31] task-16.1 TraceStore SQLite restart roundtrip (REAL mode only)"
 if [ "$MODE" = "real" ]; then
   # 3 more searches to seed TraceStore (already had 1 from step 8).
   for i in 1 2 3; do
@@ -565,7 +573,7 @@ else
   echo "    SKIP ($MODE mode — task-16.1 SoT only validated in real mode)"
 fi
 
-echo "  [27/30] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
+echo "  [27/31] task-16.4 compose-prod stack health (gated COMPOSE_PROD_SMOKE=1)"
 if [ "${COMPOSE_PROD_SMOKE:-0}" = "1" ]; then
   if ! command -v docker >/dev/null 2>&1; then
     echo "FAIL: COMPOSE_PROD_SMOKE=1 but docker not on PATH" >&2
@@ -610,7 +618,7 @@ fi
 # body POST falls back to pin=true (v0.7-v0.9 backward compat path).
 # =====================================================================
 
-echo "  [28/30] task-17.1 MemoryItem.is_pinned Pin RPC roundtrip (REAL mode + sqlite3)"
+echo "  [28/31] task-17.1 MemoryItem.is_pinned Pin RPC roundtrip (REAL mode + sqlite3)"
 if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
   # The seed.sql from step 13 already created mem-seed-1; step 16 pinned it via
   # empty-body POST (backward-compat path that defaults to pin=true). After
@@ -657,7 +665,7 @@ else
 fi
 
 # ----------- v9 (Phase 19) — task-19.4 semantic-retrieval wiring -----------
-echo "  [29/30] task-20.1 POST /v1/search?semantic=true (console-api forwards → gRPC semantic branch engages)"
+echo "  [29/31] task-20.1 POST /v1/search?semantic=true (console-api forwards → gRPC semantic branch engages)"
 if [ "$MODE" = "real" ]; then
   # task-20.1: console-api handleSearch now OR-merges ?semantic=true into the gRPC SearchRequest.Semantic
   # (contractv1 add-only field + grpcclient passthrough), and the Rust SearchService.Query semantic
@@ -680,7 +688,7 @@ else
   echo "    SKIP ($MODE mode — semantic REST path validated via Go/Rust unit tests; needs the real daemon)"
 fi
 
-echo "  [30/30] task-21.3 contextforge eval run --semantic --hybrid --rerank (multi-path BM25 + semantic + hybrid + reranked report + gate)"
+echo "  [30/31] task-21.3 contextforge eval run --semantic --hybrid --rerank (multi-path BM25 + semantic + hybrid + reranked report + gate)"
 if [ "$MODE" = "real" ]; then
   # $GO_BIN built at [real][3/4]. v11 (task-21.3): `eval run --semantic --hybrid --rerank` spawns a
   # transient core per query (searchViaDaemon) and issues BM25 + semantic (req.Semantic) + hybrid
@@ -708,6 +716,31 @@ if [ "$MODE" = "real" ]; then
   fi
 else
   echo "    SKIP ($MODE mode — eval multi-path needs the real daemon search backend)"
+fi
+
+echo "  [31/31] task-22.4 contextforge init emits add-only [embedding] config section (provider-config-selection, task-22.1)"
+# v12 (task-22.4): the add-only [embedding] section (task-22.1) must round-trip through the real
+# config codec. `init --root` scaffolds config.toml; assert it now carries [embedding] (with a `dim`
+# key, unique to that section) without disturbing the existing [remote] section. Runs in every mode
+# ($GO_BIN built in both real/local). Cache hit (task-22.2) + remote provider (task-22.3) are verified
+# at the unit/contract layer (TEST-22.2.* / TEST-22.3.*) — not console-hot-path-wired in v0.15, and the
+# remote path never hits the network here (ADR-013 — real remote 联调/recall deferred).
+EMBED_CFG_DIR="$STAGING/cf-embed-cfg"
+if "$GO_BIN" init --root "$EMBED_CFG_DIR" >"$STAGING/init.out" 2>&1; then
+  CFG_FILE="$EMBED_CFG_DIR/config.toml"
+  if grep -q '^\[embedding\]' "$CFG_FILE" \
+     && grep -q '^dim = ' "$CFG_FILE" \
+     && grep -q '^\[remote\]' "$CFG_FILE"; then
+    echo "    → init config.toml carries add-only [embedding] section (dim key) + intact [remote] ✅"
+  else
+    echo "FAIL: init config.toml missing [embedding] section (task-22.1 codec):" >&2
+    cat "$CFG_FILE" >&2
+    exit 1
+  fi
+else
+  echo "FAIL: contextforge init --root failed" >&2
+  cat "$STAGING/init.out" >&2
+  exit 1
 fi
 
 echo
