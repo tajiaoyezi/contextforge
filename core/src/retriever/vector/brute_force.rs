@@ -121,3 +121,33 @@ impl VectorSearcher for BruteForceVectorBackend {
         !self.rows.lock().unwrap().is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mk(id: &str, emb: Vec<f32>) -> VectorChunk {
+        VectorChunk { chunk_id: ChunkId(id.into()), embedding: emb, metadata: None }
+    }
+
+    // TEST-23.3.1 — AC1: vector incremental index evaluation. The default-build, 0-dep brute-force
+    // backend supports single-chunk INCREMENTAL append: `index_batch` accumulates rows (no full
+    // reindex / clear), so a later batch is searchable alongside earlier ones. (sqlite-vec `vec0`
+    // appends similarly via row-level INSERT.) The graph-building backend (hnsw / instant-distance)
+    // is full-rebuild-only and incremental insert is deferred [SPEC-DEFER:phase-future.vector-incremental-index].
+    #[test]
+    fn test_23_3_1_incremental_append_no_reindex() {
+        let backend = BruteForceVectorBackend::new();
+        backend.index_batch(&[mk("a", vec![1.0, 0.0, 0.0, 0.0])]).unwrap();
+        assert_eq!(backend.search(&[1.0, 0.0, 0.0, 0.0], 5, None).unwrap().len(), 1);
+
+        // incremental: a second single-chunk batch is appended, not a full reindex — both remain.
+        backend.index_batch(&[mk("b", vec![0.0, 1.0, 0.0, 0.0])]).unwrap();
+        let hits = backend.search(&[1.0, 0.0, 0.0, 0.0], 5, None).unwrap();
+        assert_eq!(hits.len(), 2, "incremental append keeps the earlier chunk (no reindex)");
+        assert_eq!(hits[0].chunk_id.0, "a", "nearest is still the original 'a'");
+        // the newly-appended 'b' is searchable in the same index.
+        let near_b = backend.search(&[0.0, 1.0, 0.0, 0.0], 1, None).unwrap();
+        assert_eq!(near_b[0].chunk_id.0, "b", "the incrementally-appended 'b' is searchable");
+    }
+}

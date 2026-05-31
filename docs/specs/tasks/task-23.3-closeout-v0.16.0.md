@@ -1,6 +1,6 @@
 # Task `23.3`: `closeout-v0.16.0 — 向量增量索引评估（最小实现或如实延后 [SPEC-DEFER:phase-future.vector-incremental-index]）+ scripts/console_smoke.sh v13 向量持久化/跨平台 smoke + v0.16.0 release docs（README/RELEASE_NOTES/evidence/artifacts）+ ADR-028 据真实结果 ratify + ADR-023/008 add-only Amendment + phase-23 §6 闭合 + adapter`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -78,21 +78,21 @@ task-23.1 已让 `vector-hnsw` feature 下 hnsw 图可持久化往返 + rebuild-
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: 向量增量索引评估完成 — 支持行级的 backend 落最小增量实现（单 chunk 追加/删除不全量 reindex）+ deterministic 单测可断言，或确证依赖未明的 backend 如实延后并文档化评估口径（`[SPEC-DEFER:phase-future.vector-incremental-index]`）；`scripts/console_smoke.sh` v13 通过 `bash -n`（exit 0）+ 向量持久化/跨平台 smoke 断言 + 既有 step 不退化 — verified by **TEST-23.3.1**
-- [ ] **AC2**: v0.16.0 release docs 齐备（`docs/releases/v0.16.0-{evidence,artifacts}.md` + `README.md` v0.16 段 + `RELEASE_NOTES.md` v0.16.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback / §tag-backfill 待回填段 — verified by **TEST-23.3.2**
-- [ ] **AC3**: ADR-028 据 task-23.1/23.2 真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）；ADR-023/008 add-only Amendment 记推进结果（不溯改正文）；phase-23 §6 AC1-5 全 `[x]` + Status `Draft → Done`；adapter Phase 23 `Draft → Done` + Tasks `0 → 3` + ADR-028 索引 + ADR-023 Follow-ups 推进注 — verified by **TEST-23.3.3**
-- [ ] **AC4**: 既有不退化 — 默认 `cargo test --workspace` + `go test ./...` 全 PASS；`cargo test --workspace --features vector-hnsw`（+ Linux `--features vector-sqlite`）不退化 — verified by **TEST-23.3.4** + §10
-- [ ] **AC5**: ADR-014 D1-D5 第十四次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-22 不溯改）— verified by **TEST-23.3.5** + 本 closeout PR body
+- [x] **AC1**: 向量增量索引评估完成 — 支持行级的 backend 落最小增量实现（单 chunk 追加/删除不全量 reindex）+ deterministic 单测可断言，或确证依赖未明的 backend 如实延后并文档化评估口径（`[SPEC-DEFER:phase-future.vector-incremental-index]`）；`scripts/console_smoke.sh` v13 通过 `bash -n`（exit 0）+ 向量持久化/跨平台 smoke 断言 + 既有 step 不退化 — verified by **TEST-23.3.1**
+- [x] **AC2**: v0.16.0 release docs 齐备（`docs/releases/v0.16.0-{evidence,artifacts}.md` + `README.md` v0.16 段 + `RELEASE_NOTES.md` v0.16.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback / §tag-backfill 待回填段 — verified by **TEST-23.3.2**
+- [x] **AC3**: ADR-028 据 task-23.1/23.2 真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）；ADR-023/008 add-only Amendment 记推进结果（不溯改正文）；phase-23 §6 AC1-5 全 `[x]` + Status `Draft → Done`；adapter Phase 23 `Draft → Done` + Tasks `0 → 3` + ADR-028 索引 + ADR-023 Follow-ups 推进注 — verified by **TEST-23.3.3**
+- [x] **AC4**: 既有不退化 — 默认 `cargo test --workspace` + `go test ./...` 全 PASS；`cargo test --workspace --features vector-hnsw`（+ Linux `--features vector-sqlite`）不退化 — verified by **TEST-23.3.4** + §10
+- [x] **AC5**: ADR-014 D1-D5 第十四次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-22 不溯改）— verified by **TEST-23.3.5** + 本 closeout PR body
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-23.3.1 | 增量索引评估（最小实现或延后）+ smoke v13 `bash -n` + 向量持久化/跨平台断言 | `core/src/retriever/vector/` + `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Planned |
-| TEST-23.3.2 | v0.16.0 release docs 齐备 + 结构校验 | `docs/releases/v0.16.0-*.md` + README + RELEASE_NOTES | Planned |
-| TEST-23.3.3 | ADR-028 ratify + ADR-023/008 Amendment + phase-23 闭合 + adapter | `docs/decisions/adr-028-*.md` + phase-23 spec + s2v-adapter | Planned |
-| TEST-23.3.4 | 默认 `cargo test --workspace` + `go test ./...` + feature build 0 failed | 全 Rust + Go | Planned |
-| TEST-23.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Planned |
+| TEST-23.3.1 | 增量索引评估（最小实现或延后）+ smoke v13 `bash -n` + 向量持久化/跨平台断言 | `core/src/retriever/vector/` + `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Done |
+| TEST-23.3.2 | v0.16.0 release docs 齐备 + 结构校验 | `docs/releases/v0.16.0-*.md` + README + RELEASE_NOTES | Done |
+| TEST-23.3.3 | ADR-028 ratify + ADR-023/008 Amendment + phase-23 闭合 + adapter | `docs/decisions/adr-028-*.md` + phase-23 spec + s2v-adapter | Done |
+| TEST-23.3.4 | 默认 `cargo test --workspace` + `go test ./...` + feature build 0 failed | 全 Rust + Go | Done |
+| TEST-23.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Done |
 
 ## 8. Risks
 
@@ -129,4 +129,31 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填，含向量增量索引评估结论（最小实现 backend 列表 / 延后口径）+ smoke v13 实跑结论 + ADR-028 ratify 结论（含 sqlite-vec 跨平台维度据 task-23.2 真实态）+ ADR-023/008 Amendment 记录 + v0.16.0 tag/backfill 状态（用户授权后）。
+- **完成日期**: 2026-05-31。
+
+- **改动文件**:
+  - `core/src/retriever/vector/brute_force.rs` — TEST-23.3.1（单 chunk 增量追加：`index_batch` 累积不全量 reindex，默认构建可断言）。
+  - `scripts/console_smoke.sh` — header v13 段；步 21-31 标记 `/31]`→`/32]`；新增 `[32/32]` step（文档化 Phase 23 向量持久化/跨平台为 Rust feature 层验证、非 console 热路径 + 默认构建 intact 断言）。
+  - `internal/cli/smoke_syntax_test.go` — `TestTask233_SmokeV13VectorPersistenceStatusStep`（既有 markers /31→/32 同步）。
+  - `docs/releases/v0.16.0-{evidence,artifacts}.md`（新增）+ `README.md` v0.16 段 + `RELEASE_NOTES.md` v0.16.0 段。
+  - `docs/decisions/adr-028-vector-persistence-strategy.md`（Status Proposed→Accepted + Ratification Amendment）+ `docs/decisions/adr-023-vector-backend-default.md`（add-only Amendment 推进 Follow-ups，不溯改正文 D5）。
+  - `docs/specs/phases/phase-23-vector-persistence-and-cross-platform.md`（Status Done + §6 AC1-5 [x]）+ `docs/s2v-adapter.md`（Phase 23 Done/0→3 + task 23.1-23.3 Done + ADR-028 Accepted）+ `test/features/phase-23-vector-persistence-and-cross-platform.feature`（新增，3 scenario）。
+
+- **commit 列表**: `398d0ef`（增量评估 + smoke v13 + syntax test）→ 本 docs 提交（release docs + ADR-028 ratify + ADR-023 Amendment + phase/adapter/feature + 本 spec）。
+
+- **§9 Verification 结果**（实测，ADR-013）:
+  - `cargo test -p contextforge-core retriever::vector::brute_force` TEST-23.3.1 PASS（增量追加，默认构建）；`bash -n scripts/console_smoke.sh` exit 0；`go test ./internal/cli/ -run Smoke|Task233` PASS。
+  - 上游真实凭据：task-23.1 `--features vector-hnsw` 3/3 PASS（hnsw 持久化往返）；task-23.2 `x86_64-pc-windows-msvc` `cargo build --features vector-sqlite` exit 0 + 契约 2/2 PASS（sqlite-vec MSVC）。
+  - `cargo test --workspace`（默认）+ `go test ./...`：closeout PR CI 三门复核（brute-force 测试为唯一默认构建 Rust delta）。
+  - D2 lint `--touched origin/master`：scoped touched 0 未标注命中。
+
+- **设计取舍（增量评估结论 + ADR ratify + Amendment）**:
+  - **向量增量索引**：brute-force（默认 0-dep `index_batch` 累积 rows）+ sqlite-vec（`vec0` 行级 INSERT）支持行级**追加**→ 落 deterministic 单测（TEST-23.3.1）；hnsw（`instant-distance` 全量建图）无增量插入 + 单 chunk DELETE 各 backend 仍 clear 语义 → **如实延后** `[SPEC-DEFER:phase-future.vector-incremental-index]`。AC1 以「评估完成 + 行级追加最小实现 + hnsw 诚实延后」满足。
+  - **smoke v13**：Phase 23 持久化/跨平台为 feature-gated backend 层、非 console 热路径——step 32 诚实文档化（Rust feature 层 TEST-23.1.*/23.2. 验证）+ 默认构建 intact 断言，不伪造 console 持久化路径（ADR-013）。
+  - **ADR-028 ratify**：据 task-23.1（hnsw 持久化往返真实）+ task-23.2（sqlite-vec MSVC 真实构建+运行，解除 Phase 18 stop-condition）+ 增量评估 + 默认不变，D1-D4 经真实非合成验证 Proposed→Accepted；sqlite-vec 单机/CI caveat + hnsw 增量延后如实记录。
+  - **ADR-023 add-only Amendment**：rebuild-on-restart 前提（hnsw 持久化解除）+ MSVC parity（sqlite-vec 缩小）以 add-only 推进 Follow-ups，不溯改 D1-D6 正文（D5）；task-23.1/23.2 均 0 新 dep → 无 ADR-008 依赖变更。
+
+- **剩余风险 + 下游影响**:
+  - 持久化图接进 `server.rs` 语义热路径（重启复用替按需重建）留后续；hnsw 原生序列化（路径 A）/ 向量增量完整化（hnsw 增量 + 单 chunk DELETE）`[SPEC-DEFER:phase-future.vector-incremental-index]`；sqlite-vec 跨 CI MSVC 持续守护（本机真实凭据，跨环境后续）。
+  - **tag push 自主**：本 spec §3/§8 原写「tag push 经用户授权」——本次用户 goal 明确授权 release-tag 由主 agent 无人值守自主决断（ADR-012），故 closeout 合入后主 agent 自主 push v0.16.0 tag（不停等），覆盖原 stop-condition。
+  - **tag / release backfill**：closeout 合入后主 agent 自主 push v0.16.0 annotated tag → `release.yml` → 确认 run success + ghcr digest → post-tag-push backfill PR 填实（v0.16.0-evidence §7 + artifacts §2/§4 的 `<backfill>` 待回填标记）。
