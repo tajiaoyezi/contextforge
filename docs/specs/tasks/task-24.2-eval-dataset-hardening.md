@@ -1,6 +1,6 @@
 # Task `24.2`: `eval-dataset-hardening — internal/eval/eval.go golden 数据集独立校验器（schema 良构 + 重复检测 + query/answer 覆盖）+ test/fixtures/eval/golden-semantic.jsonl 扩充 annotated query（含代码符号 + CJK query case，exercise task-24.1 tokenizer）+ deterministic 校验单测`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -76,21 +76,21 @@
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: 数据集校验器 schema 良构 + 覆盖 — 校验器对良构数据集（`BuiltinGoldenQuestions` + 扩充 golden）过；对 schema 不良（category 不在已知集 / line_range start>end）+ 悬空 expected（expected_file_path 与 expected_chunk_id 皆空）被拒报错 — verified by **TEST-24.2.1**
-- [ ] **AC2**: 重复检测 — 校验器对同一 `query` 文本重复 + 同一 `(query, expected)` 对重复识别报错；既有 `ValidateDataset` + 30 题 builtin + JSONL roundtrip（`TestTask81_*`）不退化（add-only）— verified by **TEST-24.2.2**
-- [ ] **AC3**: 代码/CJK golden 扩充 — `test/fixtures/eval/golden-semantic.jsonl` 经 `LoadJSONL` 载入含代码符号 query case（camelCase/snake_case/dotted.path 标识符，exercise task-24.1 tokenizer 代码符号拆分）+ CJK query case（exercise CJK bigram）；query/expected 指向真实源码（路径经核实）；过新校验器 — verified by **TEST-24.2.3**
-- [ ] **AC4**: 既有不退化 — `go test ./internal/eval/...` 全 PASS（含既有 `TestTask81_*` / `TestTask188_*` / `TestTask213_*`）；`go test ./...` 全 PASS；recall 度量函数签名 + gate 阈值不变（ADR-006）；本 PR 零 Rust delta（`cargo test --workspace` 不受影响）— verified by **TEST-24.2.4** + §10 实测
-- [ ] **AC5**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-24.2.5** + §10 记录
+- [x] **AC1**: 数据集校验器 schema 良构 + 覆盖 — 校验器对良构数据集（`BuiltinGoldenQuestions` + 扩充 golden）过；对 schema 不良（category 不在已知集 / line_range start>end）+ 悬空 expected（expected_file_path 与 expected_chunk_id 皆空）被拒报错 — verified by **TEST-24.2.1**
+- [x] **AC2**: 重复检测 — 校验器对同一 `query` 文本重复 + 同一 `(query, expected)` 对重复识别报错；既有 `ValidateDataset` + 30 题 builtin + JSONL roundtrip（`TestTask81_*`）不退化（add-only）— verified by **TEST-24.2.2**
+- [x] **AC3**: 代码/CJK golden 扩充 — `test/fixtures/eval/golden-semantic.jsonl` 经 `LoadJSONL` 载入含代码符号 query case（camelCase/snake_case/dotted.path 标识符，exercise task-24.1 tokenizer 代码符号拆分）+ CJK query case（exercise CJK bigram）；query/expected 指向真实源码（路径经核实）；过新校验器 — verified by **TEST-24.2.3**
+- [x] **AC4**: 既有不退化 — `go test ./internal/eval/...` 全 PASS（含既有 `TestTask81_*` / `TestTask188_*` / `TestTask213_*`）；`go test ./...` 全 PASS；recall 度量函数签名 + gate 阈值不变（ADR-006）；本 PR 零 Rust delta（`cargo test --workspace` 不受影响）— verified by **TEST-24.2.4** + §10 实测
+- [x] **AC5**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-24.2.5** + §10 记录
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-24.2.1 | 校验器 schema 良构 + 覆盖（良构过 / 不良 + 悬空被拒） | `internal/eval/eval.go` + `internal/eval/eval_test.go` | Planned |
-| TEST-24.2.2 | 重复检测（同 query / 同 (query,expected) 对被拒）+ 既有 ValidateDataset 不退化 | `internal/eval/eval.go` + `internal/eval/eval_test.go` | Planned |
-| TEST-24.2.3 | golden-semantic.jsonl 含代码符号 + CJK query case + 路径真实 + 过校验 | `test/fixtures/eval/golden-semantic.jsonl` + `internal/eval/eval_test.go` | Planned |
-| TEST-24.2.4 | `go test ./...` 全 PASS + 度量签名/gate 阈值不变 + 零 Rust delta | 全 Go | Planned |
-| TEST-24.2.5 | D2 lint `--touched origin/master` 0 未标注命中 | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-24.2.1 | 校验器 schema 良构 + 覆盖（良构过 / 不良 + 悬空被拒） | `internal/eval/eval.go` + `internal/eval/eval_test.go` | Done |
+| TEST-24.2.2 | 重复检测（同 query / 同 (query,expected) 对被拒）+ 既有 ValidateDataset 不退化 | `internal/eval/eval.go` + `internal/eval/eval_test.go` | Done |
+| TEST-24.2.3 | golden-semantic.jsonl 含代码符号 + CJK query case + 路径真实 + 过校验 | `test/fixtures/eval/golden-semantic.jsonl` + `internal/eval/eval_test.go` | Done |
+| TEST-24.2.4 | `go test ./...` 全 PASS + 度量签名/gate 阈值不变 + 零 Rust delta | 全 Go | Done |
+| TEST-24.2.5 | D2 lint `--touched origin/master` 0 未标注命中 | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -119,4 +119,19 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 实测结果（ADR-013 真实非合成；含校验器单测 + 扩充 golden 路径核实）/ 设计取舍（校验器 add-only vs 改 ValidateDataset + 代码/CJK query case 选取 + category 集扩充口径 + 不产 recall 数字的边界）/ 剩余风险 + 下游影响（task-24.3 据 task-24.1 tokenizer over 本扩充 golden 实测真实 recall delta / case_results 子表与 CJK 真正分词器口径延后项）。
+- **完成日期**: 2026-05-31
+- **改动文件**:
+  - `internal/eval/eval.go`（修改）— 新增 `ValidateGoldenSemantic`（add-only 独立校验器：schema 良构 + 重复检测 + 覆盖）+ `knownCategories`（既有 6 类 add-only 加 `code-symbol` / `cjk`）；既有 `ValidateDataset` 语义未动
+  - `internal/eval/eval_test.go`（修改）— 新增 TEST-24.2.1~24.2.4（校验器良构过 / 脏数据被拒 / golden-semantic 代码+CJK 路径真实 / gate 阈值不变）+ `validBaseQuestions` helper
+  - `test/fixtures/eval/golden-semantic.jsonl`（新增）— 11 题（6 code-symbol：`build_tantivy_schema`/`tantivy_search`/`RetrieverConfig`/`open_with_config`/`BuiltinGoldenQuestions`/`json.Unmarshal` + 5 cjk：单驱动/向后兼容/治理自治/语义检索/禁伪造），每条 query→真实源码文件（路径经核实存在）
+- **commit 列表**:
+  - `55c07c1` test(eval): TEST-24.2.1~24.2.4 RED + golden-semantic.jsonl 代码/CJK 扩充
+  - `500592f` feat(eval): ValidateGoldenSemantic 校验器（schema 良构 + 重复检测 + 覆盖），通过 TEST-24.2.1~24.2.4
+  - （本 commit）docs(spec): 回填 task-24.2 §10 + Status → Done
+- **§9 Verification 结果**（ADR-013 真实非合成，本机）:
+  - unit-test: `go test ./internal/eval/...` ok（含既有 `TestTask81_*` / `TestTask188_*` / `TestTask213_*` + 新 4 测试，0 failed）；`go test ./...` 0 FAIL / 0 panic（一次 rerun 后稳定绿；首跑一处 known flake 复跑即绿）
+  - build: ✅ `go vet ./internal/eval/...` 干净 + `gofmt -l` 0 文件
+  - integration: `cargo test --workspace` 0 failed（零 Rust delta — 本 PR 不含 Rust 改动；gate 阈值常量 `GateTop5StrongMin`/`GateTop10StrongMin`/`GateSemanticRecall10Min` 不变，ADR-006）
+  - lint: ✅ `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及 docs/specs 行 0 未标注命中（本机 scoped 复核 + CI spec-lint gate）
+- **剩余风险 / 未做项**: golden-semantic.jsonl 为小语料（11 题，承 task-19.5 §10 小语料 caveat），真实 before/after recall delta 不在本 task 产出（ADR-013，在 task-24.3 据 task-24.1 tokenizer over 本数据集实测）；校验器为独立函数，未强制接入 recall harness 默认路径（add-only，避免改 `ValidateDataset` 现有调用方）。CJK 真正分词器口径 [SPEC-DEFER:phase-future.cjk-true-segmenter]、case_results 子表 [SPEC-DEFER:phase-future.case-results-subtable] 续 backlog。
+- **下游 task 影响**: task-24.3（据 task-24.1 tokenizer over 本扩充 golden 实测真实 before/after recall delta + console_smoke v14 + v0.17.0 closeout + ADR-029 ratify）。本 PR 零 Rust delta，与 task-24.1 写路径不相交（Go vs Rust），二者已分别合入。
