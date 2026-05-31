@@ -6,6 +6,7 @@
 
 pub mod traits;
 pub mod deterministic;
+pub mod cache;
 pub mod factory;
 
 #[cfg(feature = "embedding-fastembed")]
@@ -14,6 +15,7 @@ pub mod fastembed_provider;
 #[cfg(test)]
 mod tests;
 
+pub use cache::CachingEmbeddingProvider;
 pub use deterministic::{DeterministicEmbeddingProvider, DEFAULT_DIM};
 pub use factory::select_provider;
 pub use traits::{EmbeddingError, EmbeddingProvider};
