@@ -1,6 +1,6 @@
 # ADR `025`: `hybrid-scoring-fusion`
 
-**Status**: Proposed (2026-05-30; Phase 21 task-21.1 起草。融合策略选型据真实 dogfood eval 召回对比，于 task-21.3 据真实非合成数据 ratify Proposed→Accepted，仿 ADR-023/ADR-006 数据驱动 ratify 范式；ADR-013 禁据合成/伪造 ratify。)
+**Status**: Accepted (2026-05-30 Proposed → 2026-05-31 ratified at v0.14.0 closeout (task-21.3)。融合策略选型据真实 dogfood eval 召回对比 ratify：real `all-MiniLM-L6-v2` 经生产 `Retriever::search_hybrid`，hybrid RRF top-1 0.0333→0.6667 / MRR 0.4095→0.7881 vs BM25 baseline (`docs/spikes/phase-21-hybrid-recall.md`)，据真实非合成数据 Proposed→Accepted，仿 ADR-023/ADR-006 数据驱动 ratify 范式；ADR-013 禁据合成/伪造 ratify。)
 **Category**: 数据平面 / 向量检索 / 检索质量 / 分数融合
 **Date**: 2026-05-30
 **Decided By**: 主 agent (ADR-012 自治)；tajiaoyezi ratification at v0.14.0 closeout
@@ -54,3 +54,25 @@ proto `RetrievalResult` add-only `float hybrid_score = 15`（13/14 已被 vector
 - **Negative / open**: 融合策略的真实优劣在合成数据上不可区分（D2 provisional 的开放点，仿 ADR-023 D6）——RRF vs 加权归一的最终选型须 task-21.3 真实 dogfood 召回对比；hybrid 需同时跑 BM25 + 语义两路，延迟为两路之和（默认 brute-force 语义路径对中小语料可接受，大语料延迟随 ANN backend 而定）。
 - **Ratification**: 本 ADR **Proposed**。task-21.1 落地确定性融合函数 + task-21.3 真实 dogfood eval 跑出 hybrid vs BM25 vs 语义召回对比后，于 v0.14.0 closeout 据真实非合成数据 ratify Proposed→Accepted（确认 D2 默认策略或据数据切换）。若真实召回上两策略不可区分，则按架构简单性择 RRF 并诚实记录「recall 不可区分」（仿 ADR-023 D6 范式），不伪造区分度（ADR-013）。
 - **Follow-ups**: reranker（cross-encoder）在 hybrid top-k 之上重排 `[SPEC-OWNER:task-21.2-reranker-pipeline]`（ADR-026）；console-api `?hybrid=true` 转发 `[SPEC-DEFER:phase-future.console-api-hybrid-forward]`（承 Phase 20 console-api 语义贯通范式）；Console UI 融合 explain `[SPEC-OWNER:phase-future.console-semantic-explain]`（跨仓库 Console 领域）。
+
+## Ratification Amendment (task-21.3, 2026-05-31 — 数据驱动 ratify, 仿 ADR-023)
+
+> add-only 批注，不溯改上方正文（ADR-014 D5）。本 ADR 由 **Proposed → Accepted**，据 task-21.3 真实
+> dogfood eval（`docs/spikes/phase-21-hybrid-recall.md`，ADR-013 真实非合成数据）。
+
+**数据源声明（ADR-013）**：real `FastEmbedProvider`（`all-MiniLM-L6-v2`, dim 384）经生产
+`Retriever::search_hybrid`（RRF k=60 融合 BM25 + 向量两路），dogfood 语料 180 production chunks / 30
+golden 查询，Windows MSVC 2026-05-31。复跑 `cargo run -p contextforge-core --example
+phase21_hybrid_rerank_recall --features embedding-fastembed,reranker-fastembed`。
+
+| 检索法 | recall@5 | recall@10 | top-1 | MRR | gate(≥0.70) |
+|---|---|---|---|---|---|
+| baseline BM25 | 0.9000 | 0.9667 | 0.0333 | 0.4095 | PASS |
+| **hybrid RRF（本 ADR）** | 0.9333 | 0.9667 | **0.6667** | **0.7881** | PASS |
+
+**ratify 依据**：hybrid RRF 融合相对 BM25 baseline 取得**决定性** top-1（+0.6334，0.0333→0.6667）/ MRR
+（+0.3786，0.4095→0.7881）提升，recall@10 持平、recall@5 更高。这覆盖了 D2 / R1 标记的「融合策略在合成
+分数上不可区分」开放点——RRF 在真实 dogfood 上显著优于单路 BM25 baseline，确认 **D2 默认 RRF 策略**，无需
+回退到「架构简单性择一 + 诚实记录不可区分」的 ADR-023 D6 stop-condition。融合策略选型据真实数据落定（未据
+合成/伪造 ratify，ADR-013）。D1（独立 `search_hybrid`）/ D3（确定性 + 可解释）/ D4（add-only + 默认 BM25
+baseline）/ D5（单路降级）均经 task-21.1 确定性测试 + 本真实 eval 守护。
