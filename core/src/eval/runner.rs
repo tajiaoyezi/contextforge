@@ -9,6 +9,15 @@
 //! This type exists for future-compat: when v1.x adopts a Rust-native runner
 //! (`[SPEC-DEFER:phase-future.rust-native-eval-runner]`), it will own the
 //! tokio::spawn_blocking + harness invocation here.
+//!
+//! task-24.3 (Phase 24) re-evaluated promoting this placeholder to a real Rust-native runner
+//! and **honestly deferred** it (`[SPEC-DEFER:phase-future.rust-native-eval-runner]`): the Go
+//! harness (`internal/eval/eval.go`) stays the single source of truth for the recall 口径
+//! (task-14.1's deliberate choice), and a Rust-native runner would duplicate `SemanticRecallAtK`
+//! / gate logic across two languages → drift risk with no current consumer. Ad-hoc Rust recall
+//! measurement (when a spike needs it, e.g. the task-24.3 tokenizer before/after delta) is covered
+//! by `core/examples/phase24_tokenizer_recall.rs` without a permanent runner. ADR-013: not faked
+//! as implemented. See docs/spikes/phase-24-tokenizer-recall.md §runner-evaluation.
 
 use std::sync::Arc;
 

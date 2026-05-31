@@ -1,6 +1,6 @@
 # Phase 24 · retrieval-tokenizer-and-eval-hardening
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 解决两块直接影响核心代码检索用例可信度的检索质量债：**`content` 字段代码/CJK 分词偏弱**（`core/src/indexer/mod.rs:148` 用默认 `TEXT` analyzer，对 camelCase / snake_case / dotted.path / kebab-case / CJK 切分弱，`docs/roadmap.md` §4 marker `cjk-and-code-tokenizer`，承 `phase-19` §2）与 **eval 标尺未加固**（`internal/eval/eval.go::ValidateDataset` 仅基本校验、golden 数据集无代码/CJK case、`core/src/eval/runner.rs` 为 placeholder，`docs/roadmap.md` §4 三 marker `eval-dataset-validation` / `semantic-golden-dataset` / `rust-native-eval-runner`）。eval 是度量召回的标尺，加固它让召回声明可信。v0.17.0 收口。对应 `docs/roadmap.md` §4。
 >
@@ -93,12 +93,12 @@ v0.17.0 ship 后，ContextForge 的全文检索具备 **opt-in 的代码/CJK 感
 
 **阶段级验收标准（每条 AC 含 ADR-014 D3 verified by 显式 owner；Draft 阶段未勾选，实施后逐条置 `[x]`）**：
 
-- [ ] **AC1**：`core/src/indexer/mod.rs` 注册自定义 code/CJK `TextAnalyzer`，opt-in 时 `content` 按 camelCase→camel+case / snake_case / dotted.path / kebab-case（保留原 token）+ CJK bigram 分词；默认 tokenization 不变（既有索引不失效，re-index 含义文档化）；deterministic 单测断言代表性代码/CJK 输入拆分正确；默认构建 0 新 dep 不退化 — verified by task-24.1 §6 AC1-4 + phase-smoke step 1
-- [ ] **AC2**：eval golden 数据集独立校验器落地——schema 良构 + 重复检测（同 query / 同 (query,expected) 对）+ query/answer 覆盖（无悬空 expected）；deterministic 单测断言良构数据集过 / 脏数据被拒；既有 `ValidateDataset` + 30 题 builtin + JSONL roundtrip 不退化 — verified by task-24.2 §6 AC1-2 + phase-smoke step 2
-- [ ] **AC3**：semantic-golden-dataset 扩充 annotated query 含代码符号 query case + CJK query case（exercise AC1 tokenizer），过 AC2 校验器；deterministic 校验断言 — verified by task-24.2 §6 AC3 + phase-smoke step 2
-- [ ] **AC4**：tokenizer 真实 before/after recall delta（task-24.1 tokenizer over task-24.2 扩充 golden）实测产出（ADR-013 真实非合成，受阻则诚实延后）+ rust-native-eval-runner 真实评估结论（promote 最小 runner + 单测，或诚实延后 `[SPEC-DEFER:phase-future.rust-native-eval-runner]` + 文档化评估口径）— verified by task-24.3 §6 AC1 + phase-smoke step 3
-- [ ] **AC5**：v0.17.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ console_smoke v14 step + ADR-029 据真实非合成结果 ratify 或记录维持 + phase §6 闭合 — verified by task-24.3 §6 AC2-3
-- [ ] **AC6**：ADR-014 cross-validation gate 全套通过（第十五次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-23 不溯改 — verified by task-24.3 closeout PR body
+- [x] **AC1**：`core/src/indexer/mod.rs` 注册自定义 code/CJK `TextAnalyzer`，opt-in 时 `content` 按 camelCase→camel+case / snake_case / dotted.path / kebab-case（保留原 token）+ CJK bigram 分词；默认 tokenization 不变（既有索引不失效，re-index 含义文档化）；deterministic 单测断言代表性代码/CJK 输入拆分正确；默认构建 0 新 dep 不退化 — verified by task-24.1 §6 AC1-4 + phase-smoke step 1
+- [x] **AC2**：eval golden 数据集独立校验器落地——schema 良构 + 重复检测（同 query / 同 (query,expected) 对）+ query/answer 覆盖（无悬空 expected）；deterministic 单测断言良构数据集过 / 脏数据被拒；既有 `ValidateDataset` + 30 题 builtin + JSONL roundtrip 不退化 — verified by task-24.2 §6 AC1-2 + phase-smoke step 2
+- [x] **AC3**：semantic-golden-dataset 扩充 annotated query 含代码符号 query case + CJK query case（exercise AC1 tokenizer），过 AC2 校验器；deterministic 校验断言 — verified by task-24.2 §6 AC3 + phase-smoke step 2
+- [x] **AC4**：tokenizer 真实 before/after recall delta（task-24.1 tokenizer over task-24.2 扩充 golden）实测产出（ADR-013 真实非合成，受阻则诚实延后）+ rust-native-eval-runner 真实评估结论（promote 最小 runner + 单测，或诚实延后 `[SPEC-DEFER:phase-future.rust-native-eval-runner]` + 文档化评估口径）— verified by task-24.3 §6 AC1 + phase-smoke step 3
+- [x] **AC5**：v0.17.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ console_smoke v14 step + ADR-029 据真实非合成结果 ratify 或记录维持 + phase §6 闭合 — verified by task-24.3 §6 AC2-3
+- [x] **AC6**：ADR-014 cross-validation gate 全套通过（第十五次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-23 不溯改 — verified by task-24.3 closeout PR body
 
 **端到端 smoke（C1 集成兜底）**：(1) opt-in 下 code/CJK tokenizer 分词正确（feature/config 下代码符号 + CJK 拆分 smoke 或如实标 feature 层验证）；(2) eval 数据集校验器对扩充 golden（含代码/CJK case）通过 + 脏数据被拒；(3) tokenizer recall delta 实测结论 + runner 评估结论（promote 或如实延后）全 PASS。
 

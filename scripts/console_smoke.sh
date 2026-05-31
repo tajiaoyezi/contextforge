@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 21 task-21.3 retrieval-quality smoke (v11; was Phase 20 v10).
+# scripts/console_smoke.sh — Phase 24 task-24.3 retrieval-tokenizer-and-eval-hardening smoke (v14; was Phase 23 v13).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -65,6 +65,17 @@
 # (ADR-023 D5); the server.rs semantic hot path still rebuilds on demand (persisted-graph hot-path
 # wiring is a future release). Step 32 asserts the default build is intact (no console surface change
 # this phase — ADR-013: feature-layer verification, not faked console persistence).
+#
+# v14 (Phase 24) adds step 33 — task-24.3 closeout. The opt-in code/CJK tokenizer (task-24.1,
+# camelCase/snake_case/dotted.path/kebab-case split + CJK bigram, TEST-24.1.1-4) and the eval
+# golden-dataset validator + code/CJK golden 扩充 (task-24.2, ValidateGoldenSemantic +
+# test/fixtures/eval/golden-semantic.jsonl, TEST-24.2.1-4) live at the Rust indexer + Go eval layers,
+# NOT the console-api hot path. The tokenizer is opt-in via RetrieverConfig.tokenizer="code_cjk" (default
+# tokenization unchanged, 既有索引不失效; opt-in needs re-index to adopt). Real before/after recall delta
+# over the task-24.2 golden = +0.0909 (default 0.9091 → code/CJK 1.0000), driven by a real CJK bigram win
+# (docs/spikes/phase-24-tokenizer-recall.md, ADR-013 — no faked numbers). The rust-native-eval-runner stays
+# a placeholder (evaluated + honestly deferred, [SPEC-DEFER:phase-future.rust-native-eval-runner]). Step 33
+# asserts the default build is intact (ADR-013: feature/config-layer verification, not a faked console path).
 #
 # Modes (selected by env):
 #
@@ -765,6 +776,21 @@ if "$GO_BIN" init --root "$STAGING/cf-v16-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build intact; hnsw persistence (TEST-23.1.*) + sqlite-vec MSVC (TEST-23.2.*) feature-layer verified ✅"
 else
   echo "FAIL: contextforge init failed in v13 step 32" >&2
+  exit 1
+fi
+
+echo "  [33/33] task-24.3 code/CJK tokenizer + eval hardening status (Phase 24 — Rust indexer + Go eval layer verified)"
+# v14 (task-24.3): Phase 24 (retrieval tokenizer + eval hardening) lives at the Rust indexer + Go eval
+# layers, not the console-api hot path. The opt-in code/CJK TextAnalyzer (task-24.1, TEST-24.1.1-4) binds
+# the content field only when RetrieverConfig.tokenizer="code_cjk" (default tokenization unchanged; opt-in
+# needs re-index); the eval golden-dataset validator + code/CJK golden 扩充 (task-24.2, TEST-24.2.1-4) are
+# Go-side. Real before/after recall delta over the task-24.2 golden = +0.0909 (default 0.9091 → code/CJK
+# 1.0000; docs/spikes/phase-24-tokenizer-recall.md, ADR-013 — real run, no faked numbers). This step
+# asserts the default build is intact (init scaffold succeeds; no console surface change this phase).
+if "$GO_BIN" init --root "$STAGING/cf-v17-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v17-cfg/config.toml" ]; then
+  echo "    → default build intact; code/CJK tokenizer (TEST-24.1.*) + eval validator (TEST-24.2.*) layer-verified; recall delta +0.0909 ✅"
+else
+  echo "FAIL: contextforge init failed in v14 step 33" >&2
   exit 1
 fi
 
