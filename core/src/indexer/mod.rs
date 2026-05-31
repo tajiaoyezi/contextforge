@@ -19,7 +19,11 @@ use std::time::SystemTime;
 use rusqlite::{params, Connection};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
-use tantivy::schema::{Field, Schema, Value, FAST, INDEXED, STORED, STRING, TEXT};
+use tantivy::schema::{
+    Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, FAST, INDEXED, STORED,
+    STRING, TEXT,
+};
+use tantivy::tokenizer::{LowerCaser, RemoveLongFilter, TextAnalyzer, Token, TokenStream, Tokenizer};
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy, TantivyDocument, Term};
 use thiserror::Error;
 
@@ -142,10 +146,21 @@ CREATE TABLE IF NOT EXISTS provenance (
 );
 "#;
 
-fn build_tantivy_schema() -> (Schema, [Field; 6]) {
+fn build_tantivy_schema(tokenizer_name: &str) -> (Schema, [Field; 6]) {
     let mut sb = Schema::builder();
     let chunk_id = sb.add_text_field("chunk_id", STRING | STORED);
-    let content = sb.add_text_field("content", TEXT | STORED);
+    // task-24.1：opt-in 时 content 绑自定义 code/CJK analyzer；其余（含 "default"）维持
+    // `TEXT | STORED`（向后兼容）。opt-in 的索引选项与 `TEXT` 等价（WithFreqsAndPositions
+    // + fieldnorms + stored），仅 tokenizer 名不同 → 不改字段集 / 字段类型，只改 analyzer 绑定。
+    let content = if tokenizer_name == CODE_CJK_TOKENIZER {
+        let indexing = TextFieldIndexing::default()
+            .set_tokenizer(tokenizer_name)
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions);
+        let opts = TextOptions::default().set_indexing_options(indexing).set_stored();
+        sb.add_text_field("content", opts)
+    } else {
+        sb.add_text_field("content", TEXT | STORED)
+    };
     let file_path = sb.add_text_field("file_path", STRING | STORED);
     let language = sb.add_text_field("language", STRING | STORED);
     let line_start = sb.add_i64_field("line_start", STORED | INDEXED | FAST);
@@ -154,6 +169,211 @@ fn build_tantivy_schema() -> (Schema, [Field; 6]) {
         sb.build(),
         [chunk_id, content, file_path, language, line_start, line_end],
     )
+}
+
+// ---- task-24.1: 自定义 code/CJK aware tokenizer ----
+//
+// 设计（spec §5.2）：自定义 `TextAnalyzer` = CodeCjkTokenizer（代码符号拆分 + 保留原 token
+// + CJK bigram）+ RemoveLongFilter(40) + LowerCaser（与 Tantivy "default" 的 filter 链一致，
+// 仅替换底层 tokenizer）。opt-in 时绑 `content`，默认时维持 `TEXT`。0 新 dep（纯 std）。
+
+/// Tantivy 默认 analyzer 名（`TEXT` 字段恒用此名）— opt-in 之外维持现状.
+pub(crate) const DEFAULT_TOKENIZER: &str = "default";
+/// 自定义 code/CJK analyzer 注册名 — opt-in 时 `content` 字段绑此名.
+pub(crate) const CODE_CJK_TOKENIZER: &str = "code_cjk";
+
+/// 判定 char 是否属于按 bigram 切分的 CJK / CJK-adjacent 表意区段（无空格分隔的脚本）.
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x3400..=0x4DBF      // CJK Unified Ideographs Ext A
+        | 0x4E00..=0x9FFF    // CJK Unified Ideographs
+        | 0xF900..=0xFAFF    // CJK Compatibility Ideographs
+        | 0x3040..=0x309F    // Hiragana
+        | 0x30A0..=0x30FF    // Katakana
+        | 0xAC00..=0xD7AF    // Hangul Syllables
+        | 0x20000..=0x2A6DF  // CJK Unified Ideographs Ext B
+    )
+}
+
+/// 代码标识符 char：字母数字（非 CJK）或子词分隔符 `_ . -`.
+fn is_code_char(c: char) -> bool {
+    (c.is_alphanumeric() && !is_cjk(c)) || matches!(c, '_' | '.' | '-')
+}
+
+fn push_token(out: &mut Vec<Token>, pos: &mut usize, text: &str, from: usize, to: usize) {
+    out.push(Token {
+        offset_from: from,
+        offset_to: to,
+        position: *pos,
+        text: text.to_string(),
+        position_length: 1,
+    });
+    *pos += 1;
+}
+
+/// delimiter-free 段按 camelCase 边界切分，返回段内相对 byte range 列表.
+/// 边界：lower/digit→upper（`camelCase`）；acronym 尾（`HTMLParser`→`HTML`/`Parser`）。
+fn camel_ranges(word: &str) -> Vec<(usize, usize)> {
+    let cv: Vec<(usize, char)> = word.char_indices().collect();
+    let n = cv.len();
+    let mut ranges = Vec::new();
+    if n == 0 {
+        return ranges;
+    }
+    let mut start = 0usize; // index into cv
+    for i in 1..n {
+        let prev = cv[i - 1].1;
+        let cur = cv[i].1;
+        let boundary = (!prev.is_uppercase() && cur.is_uppercase())
+            || (prev.is_uppercase()
+                && cur.is_uppercase()
+                && i + 1 < n
+                && cv[i + 1].1.is_lowercase());
+        if boundary {
+            ranges.push((cv[start].0, cv[i].0));
+            start = i;
+        }
+    }
+    ranges.push((cv[start].0, word.len()));
+    ranges
+}
+
+/// 在某 delimiter-free word 上拆 camelCase 子词，push 到 out（跳过空 / 与整段相同的子词）.
+fn emit_word_subwords(
+    word: &str,
+    word_base: usize,
+    seg: &str,
+    pos: &mut usize,
+    out: &mut Vec<Token>,
+) {
+    for (cs, ce) in camel_ranges(word) {
+        let sub = &word[cs..ce];
+        if sub.is_empty() || sub == seg {
+            continue;
+        }
+        push_token(out, pos, sub, word_base + cs, word_base + ce);
+    }
+}
+
+/// 一个 code 段（alnum + `_ . -`）：保留原 token + 拆 `_ . -` + 拆 camelCase 子词.
+fn emit_code_segment(seg: &str, base: usize, pos: &mut usize, out: &mut Vec<Token>) {
+    if !seg.chars().any(|c| c.is_alphanumeric()) {
+        return; // 纯分隔符段（如 "..."）不产 token
+    }
+    // 保留原 token（整段，原样查询不退化）
+    push_token(out, pos, seg, base, base + seg.len());
+    // 拆 `_ . -` → word，再拆 camelCase
+    let mut word_start: Option<usize> = None;
+    for (b, c) in seg.char_indices() {
+        if matches!(c, '_' | '.' | '-') {
+            if let Some(ws) = word_start.take() {
+                emit_word_subwords(&seg[ws..b], base + ws, seg, pos, out);
+            }
+        } else if word_start.is_none() {
+            word_start = Some(b);
+        }
+    }
+    if let Some(ws) = word_start.take() {
+        emit_word_subwords(&seg[ws..], base + ws, seg, pos, out);
+    }
+}
+
+/// 把输入文本切成 code/CJK 感知的 token 序（确定性；offset/position 真实可用于 phrase 查询）.
+fn tokenize_code_cjk(text: &str) -> Vec<Token> {
+    let mut out = Vec::new();
+    let mut pos = 0usize;
+    let cv: Vec<(usize, char)> = text.char_indices().collect();
+    let n = cv.len();
+    let mut i = 0usize;
+    while i < n {
+        let (bstart, c) = cv[i];
+        if is_cjk(c) {
+            // CJK run → bigram（单字 → unigram）
+            let mut j = i;
+            while j < n && is_cjk(cv[j].1) {
+                j += 1;
+            }
+            let run = &cv[i..j];
+            if run.len() == 1 {
+                let (bs, ch) = run[0];
+                push_token(&mut out, &mut pos, &ch.to_string(), bs, bs + ch.len_utf8());
+            } else {
+                for k in 0..run.len() - 1 {
+                    let (bs, ch0) = run[k];
+                    let (b1, ch1) = run[k + 1];
+                    let s: String = [ch0, ch1].iter().collect();
+                    push_token(&mut out, &mut pos, &s, bs, b1 + ch1.len_utf8());
+                }
+            }
+            i = j;
+        } else if is_code_char(c) {
+            let mut j = i;
+            while j < n && is_code_char(cv[j].1) {
+                j += 1;
+            }
+            let seg_end = if j < n { cv[j].0 } else { text.len() };
+            emit_code_segment(&text[bstart..seg_end], bstart, &mut pos, &mut out);
+            i = j;
+        } else {
+            i += 1; // 分隔符（空白 / 标点）跳过
+        }
+    }
+    out
+}
+
+/// 自定义 code/CJK tokenizer（产 owned `Vec<Token>`，token stream 不借用输入文本）.
+#[derive(Clone, Default)]
+pub(crate) struct CodeCjkTokenizer;
+
+pub(crate) struct CodeCjkTokenStream {
+    tokens: Vec<Token>,
+    idx: usize,
+    token: Token,
+}
+
+impl Tokenizer for CodeCjkTokenizer {
+    type TokenStream<'a> = CodeCjkTokenStream;
+    fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
+        CodeCjkTokenStream {
+            tokens: tokenize_code_cjk(text),
+            idx: 0,
+            token: Token::default(),
+        }
+    }
+}
+
+impl TokenStream for CodeCjkTokenStream {
+    fn advance(&mut self) -> bool {
+        if self.idx < self.tokens.len() {
+            self.token = self.tokens[self.idx].clone();
+            self.idx += 1;
+            true
+        } else {
+            false
+        }
+    }
+    fn token(&self) -> &Token {
+        &self.token
+    }
+    fn token_mut(&mut self) -> &mut Token {
+        &mut self.token
+    }
+}
+
+/// 构建自定义 code/CJK `TextAnalyzer`（CodeCjkTokenizer + RemoveLongFilter(40) + LowerCaser）.
+pub(crate) fn build_code_cjk_analyzer() -> TextAnalyzer {
+    TextAnalyzer::builder(CodeCjkTokenizer)
+        .filter(RemoveLongFilter::limit(40))
+        .filter(LowerCaser)
+        .build()
+}
+
+/// 在 index 的 tokenizer manager 上注册 code/CJK analyzer（名 = `CODE_CJK_TOKENIZER`）.
+/// 默认模式下无字段引用此名 → 无副作用；opt-in 模式下保 index/query 分词对称.
+pub(crate) fn register_code_cjk(index: &Index) {
+    index
+        .tokenizers()
+        .register(CODE_CJK_TOKENIZER, build_code_cjk_analyzer());
 }
 
 // FIX-2 (PR #24 reviewer): 名实不符 — 实际返回 unix epoch seconds (decimal string),
@@ -182,8 +402,22 @@ fn lang_hint_from_path(p: &Path) -> &'static str {
 }
 
 impl IndexSession {
-    /// 打开（或创建）索引会话；建 SQLite schema + 打开/创建 Tantivy index + 持久化 IndexWriter.
+    /// 打开（或创建）默认 tokenizer 的索引会话（向后兼容入口）.
     pub fn open(data_dir: &Path, collection_id: &str) -> Result<Self, IndexError> {
+        Self::open_with_tokenizer(data_dir, collection_id, DEFAULT_TOKENIZER)
+    }
+
+    /// 打开（或创建）索引会话；建 SQLite schema + 打开/创建 Tantivy index + 持久化 IndexWriter.
+    ///
+    /// task-24.1：`tokenizer == CODE_CJK_TOKENIZER` 时**新建** collection 的 `content` 字段绑
+    /// 自定义 code/CJK analyzer（opt-in）；其余值（含 `"default"`）维持 `TEXT` 默认 analyzer
+    /// （向后兼容，既有索引不失效）。opt-in 改倒排词项 → 既有 collection 须 **re-index** 才生效
+    /// （旧索引仍可用默认 analyzer 检索，但不享受代码/CJK 子词命中）。
+    pub fn open_with_tokenizer(
+        data_dir: &Path,
+        collection_id: &str,
+        tokenizer: &str,
+    ) -> Result<Self, IndexError> {
         let coll_dir = data_dir.join("collections").join(collection_id);
         fs::create_dir_all(&coll_dir)?;
         let sqlite_path = coll_dir.join("metadata.sqlite");
@@ -196,7 +430,7 @@ impl IndexSession {
         sqlite.execute_batch("PRAGMA foreign_keys = ON;")?;
         sqlite.execute_batch(SQL_SCHEMA)?;
 
-        let (schema, fields) = build_tantivy_schema();
+        let (schema, fields) = build_tantivy_schema(tokenizer);
         // 用 meta.json 存在与否判断 — tantivy::Index::exists 需要 Directory trait + 错误转换繁琐
         let meta = tantivy_dir.join("meta.json");
         let index = if meta.exists() {
@@ -204,6 +438,8 @@ impl IndexSession {
         } else {
             Index::create_in_dir(&tantivy_dir, schema.clone())?
         };
+        // index/query 对称：注册 code/CJK analyzer（默认模式下无字段引用 → 无副作用）.
+        register_code_cjk(&index);
         let writer: IndexWriter = index.writer(TANTIVY_WRITER_BUDGET)?;
 
         Ok(Self {
@@ -761,6 +997,129 @@ mod tests {
             old_hits.is_empty(),
             "AC4: 旧 token 应从索引删除, 但命中 {} 个",
             old_hits.len()
+        );
+    }
+
+    // ---- task-24.1: code/CJK tokenizer tests ----
+
+    fn tok_texts(analyzer: &mut tantivy::tokenizer::TextAnalyzer, s: &str) -> Vec<String> {
+        use tantivy::tokenizer::TokenStream;
+        let mut ts = analyzer.token_stream(s);
+        let mut out = Vec::new();
+        while ts.advance() {
+            out.push(ts.token().text.clone());
+        }
+        out
+    }
+
+    fn content_tokenizer_name(schema: &tantivy::schema::Schema) -> String {
+        use tantivy::schema::FieldType;
+        let f = schema.get_field("content").unwrap();
+        match schema.get_field_entry(f).field_type() {
+            FieldType::Str(opts) => opts
+                .get_indexing_options()
+                .map(|i| i.tokenizer().to_string())
+                .unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    fn write_one_doc(sess: &mut IndexSession, body: &str) {
+        let src = temp_root("tok-src");
+        fs::write(src.join("doc.md"), format!("# Doc\n{}\n", body)).unwrap();
+        sess.index_path(&src, &make_scan_options(), &ChunkPolicy::default(), vec![])
+            .unwrap();
+    }
+
+    // ---- TEST-24.1.1 (AC1) — 代码符号拆分 + 保留原 token ----
+    #[test]
+    fn test_24_1_1_code_symbol_split_preserves_original() {
+        let mut a = build_code_cjk_analyzer();
+        assert_eq!(tok_texts(&mut a, "camelCase"), vec!["camelcase", "camel", "case"]);
+        assert_eq!(
+            tok_texts(&mut a, "getUserById"),
+            vec!["getuserbyid", "get", "user", "by", "id"]
+        );
+        assert_eq!(tok_texts(&mut a, "user_id"), vec!["user_id", "user", "id"]);
+        assert_eq!(
+            tok_texts(&mut a, "pkg.module.func"),
+            vec!["pkg.module.func", "pkg", "module", "func"]
+        );
+        assert_eq!(
+            tok_texts(&mut a, "kebab-case-name"),
+            vec!["kebab-case-name", "kebab", "case", "name"]
+        );
+        // 单词无分隔/无 camel 边界 → 不产生重复子 token
+        assert_eq!(tok_texts(&mut a, "config"), vec!["config"]);
+    }
+
+    // ---- TEST-24.1.2 (AC2) — CJK bigram + 混合输入 ----
+    #[test]
+    fn test_24_1_2_cjk_bigram_and_mixed() {
+        let mut a = build_code_cjk_analyzer();
+        assert_eq!(tok_texts(&mut a, "配置加载"), vec!["配置", "置加", "加载"]);
+        // 混合：非 CJK 段走代码符号切分，CJK 段走 bigram
+        assert_eq!(
+            tok_texts(&mut a, "getConfig配置"),
+            vec!["getconfig", "get", "config", "配置"]
+        );
+        // 单 CJK 字 → unigram
+        assert_eq!(tok_texts(&mut a, "中"), vec!["中"]);
+    }
+
+    // ---- TEST-24.1.3 (AC3) — 默认 tokenization 不变 + schema 字段集不变 ----
+    #[test]
+    fn test_24_1_3_default_tokenization_unchanged() {
+        use tantivy::tokenizer::TokenizerManager;
+        // 默认 analyzer：camelCase 整体一个（小写）token，CJK 连续段整体一个 token
+        let mut def = TokenizerManager::default()
+            .get(DEFAULT_TOKENIZER)
+            .expect("default analyzer");
+        assert_eq!(tok_texts(&mut def, "getUserById"), vec!["getuserbyid"]);
+        assert_eq!(tok_texts(&mut def, "配置加载"), vec!["配置加载"]);
+
+        // 默认模式 IndexSession：content 字段 tokenizer == "default"，6 字段 schema 不变
+        let data_dir = temp_root("tok-default");
+        let sess = IndexSession::open(&data_dir, "c").unwrap();
+        let schema = sess.tantivy_index.schema();
+        for f in ["chunk_id", "content", "file_path", "language", "line_start", "line_end"] {
+            assert!(schema.get_field(f).is_ok(), "schema 应含字段 {f}");
+        }
+        assert_eq!(content_tokenizer_name(&schema), DEFAULT_TOKENIZER);
+    }
+
+    // ---- TEST-24.1.4 (AC4) — index/query 对称 + opt-in 子词命中（默认 miss）----
+    #[test]
+    fn test_24_1_4_optin_subword_and_cjk_hit_roundtrip() {
+        // opt-in：camelCase 拆词 → "user" 命中；CJK bigram → "置加" 命中
+        let data_dir = temp_root("tok-optin");
+        let mut sess =
+            IndexSession::open_with_tokenizer(&data_dir, "c", CODE_CJK_TOKENIZER).unwrap();
+        write_one_doc(&mut sess, "fn getUserById() 配置加载");
+        sess.commit().unwrap();
+        let schema = sess.tantivy_index.schema();
+        assert_eq!(content_tokenizer_name(&schema), CODE_CJK_TOKENIZER);
+        assert!(
+            !sess.tantivy_search("user", 10).unwrap().is_empty(),
+            "opt-in: camel 子词 'user' 应命中"
+        );
+        assert!(
+            !sess.tantivy_search("置加", 10).unwrap().is_empty(),
+            "opt-in: CJK bigram '置加' 应命中"
+        );
+
+        // 默认模式：同内容 → camel 不拆、CJK 整体 → 子词 miss（向后兼容基线）
+        let data_dir2 = temp_root("tok-default-miss");
+        let mut sess2 = IndexSession::open(&data_dir2, "c").unwrap();
+        write_one_doc(&mut sess2, "fn getUserById() 配置加载");
+        sess2.commit().unwrap();
+        assert!(
+            sess2.tantivy_search("user", 10).unwrap().is_empty(),
+            "default: camel 子词 'user' 不应命中"
+        );
+        assert!(
+            sess2.tantivy_search("置加", 10).unwrap().is_empty(),
+            "default: CJK bigram '置加' 不应命中"
         );
     }
 }

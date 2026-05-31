@@ -1,6 +1,6 @@
 # Task `24.1`: `code-and-cjk-tokenizer — core/src/indexer/mod.rs 注册自定义 code/CJK TextAnalyzer，opt-in（config）时 content 字段按 camelCase/snake_case/dotted.path/kebab-case 拆分（保留原 token）+ CJK bigram 分词；默认 tokenization 不变（向后兼容，既有索引不失效）+ deterministic 分词单测`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -74,23 +74,23 @@
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: opt-in 下自定义 analyzer 代码符号拆分 — `camelCase` / `getUserById` / `user_id` / `pkg.module.func` / `kebab-case-name` 经自定义 analyzer 拆出预期子 token 集（camel→camel+case 等）**且保留原 token**（确定性 token stream 断言）— verified by **TEST-24.1.1**
-- [ ] **AC2**: opt-in 下 CJK bigram — `配置加载` 等 CJK 输入经自定义 analyzer 拆出预期 bigram 序（`配置`/`置加`/`加载`）；非 CJK 段走代码符号/空白切分（混合输入正确）— verified by **TEST-24.1.2**
-- [ ] **AC3**: 默认 tokenization 不变（向后兼容）— 未 opt-in（默认 tokenizer）时 `content` 索引/检索与现状等价（既有 `tantivy_search` 命中不退化）；自定义 analyzer 不改 task-2.4 5 字段 schema 结构 — verified by **TEST-24.1.3**
-- [ ] **AC4**: index/query 对称 + opt-in 命中 — opt-in 时 index 侧 analyzer 名 = query 侧 tokenizer 名（`RetrieverConfig.tokenizer` 接入点）；opt-in 索引后代码符号子词查询（如 `getuserbyid` 查 `getUserById` 内容）命中（确定性，单 doc 索引→查询）— verified by **TEST-24.1.4**
-- [ ] **AC5**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS + 0 新依赖（std-only / Tantivy 自带组合，无 Cargo.toml dep 变更则无 R7）；`go test ./...` 不受影响（本 PR 零 Go delta）— verified by **TEST-24.1.5** + §10 实测
-- [ ] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-24.1.6** + §10 记录
+- [x] **AC1**: opt-in 下自定义 analyzer 代码符号拆分 — `camelCase` / `getUserById` / `user_id` / `pkg.module.func` / `kebab-case-name` 经自定义 analyzer 拆出预期子 token 集（camel→camel+case 等）**且保留原 token**（确定性 token stream 断言）— verified by **TEST-24.1.1**
+- [x] **AC2**: opt-in 下 CJK bigram — `配置加载` 等 CJK 输入经自定义 analyzer 拆出预期 bigram 序（`配置`/`置加`/`加载`）；非 CJK 段走代码符号/空白切分（混合输入正确）— verified by **TEST-24.1.2**
+- [x] **AC3**: 默认 tokenization 不变（向后兼容）— 未 opt-in（默认 tokenizer）时 `content` 索引/检索与现状等价（既有 `tantivy_search` 命中不退化）；自定义 analyzer 不改 task-2.4 5 字段 schema 结构 — verified by **TEST-24.1.3**
+- [x] **AC4**: index/query 对称 + opt-in 命中 — opt-in 时 index 侧 analyzer 名 = query 侧 tokenizer 名（`RetrieverConfig.tokenizer` 接入点）；opt-in 索引后代码符号子词查询（如 `getuserbyid` 查 `getUserById` 内容）命中（确定性，单 doc 索引→查询）— verified by **TEST-24.1.4**
+- [x] **AC5**: 既有不退化 — 默认 `cargo test --workspace` 全 PASS + 0 新依赖（std-only / Tantivy 自带组合，无 Cargo.toml dep 变更则无 R7）；`go test ./...` 不受影响（本 PR 零 Go delta）— verified by **TEST-24.1.5** + §10 实测
+- [x] **AC6**: ADR-014 D2 lint — `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-24.1.6** + §10 记录
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-24.1.1 | 代码符号拆分 camelCase/snake_case/dotted.path/kebab-case + 保留原 token | `core/src/indexer/mod.rs`（`mod tests`）或 `core/tests/` | Planned |
-| TEST-24.1.2 | CJK bigram 分词（`配置加载`→bigram 序）+ 混合输入正确 | `core/src/indexer/mod.rs`（`mod tests`）或 `core/tests/` | Planned |
-| TEST-24.1.3 | 默认 tokenization 不变（未 opt-in 既有 tantivy_search 命中不退化）+ schema 结构不变 | `core/src/indexer/mod.rs`（`mod tests`） | Planned |
-| TEST-24.1.4 | index/query 对称 + opt-in 代码符号子词查询命中（单 doc roundtrip） | `core/src/indexer/mod.rs`（`mod tests`）或 `core/tests/` | Planned |
-| TEST-24.1.5 | 默认 `cargo test --workspace` 0 failed + 0 新依赖 + 零 Go delta | 全 Rust | Planned |
-| TEST-24.1.6 | D2 lint `--touched origin/master` 0 未标注命中 | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-24.1.1 | 代码符号拆分 camelCase/snake_case/dotted.path/kebab-case + 保留原 token | `core/src/indexer/mod.rs`（`mod tests`）或 `core/tests/` | Done |
+| TEST-24.1.2 | CJK bigram 分词（`配置加载`→bigram 序）+ 混合输入正确 | `core/src/indexer/mod.rs`（`mod tests`）或 `core/tests/` | Done |
+| TEST-24.1.3 | 默认 tokenization 不变（未 opt-in 既有 tantivy_search 命中不退化）+ schema 结构不变 | `core/src/indexer/mod.rs`（`mod tests`） | Done |
+| TEST-24.1.4 | index/query 对称 + opt-in 代码符号子词查询命中（单 doc roundtrip） | `core/src/indexer/mod.rs`（`mod tests`）或 `core/tests/` | Done |
+| TEST-24.1.5 | 默认 `cargo test --workspace` 0 failed + 0 新依赖 + 零 Go delta | 全 Rust | Done |
+| TEST-24.1.6 | D2 lint `--touched origin/master` 0 未标注命中 | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -121,4 +121,18 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 实测结果（ADR-013 真实非合成）/ 设计取舍（analyzer 组合 + std-only vs 依赖 + opt-in 向后兼容 + Tantivy 0.26 自定义 analyzer 注册面核实结论）/ 剩余风险 + 下游影响（task-24.2 扩充 golden exercise 本 tokenizer / task-24.3 据本 tokenizer 实测 recall delta + CJK 真正分词器与 tokenizer 默认开启延后项）。
+- **完成日期**: 2026-05-31
+- **改动文件**:
+  - `core/src/indexer/mod.rs`（修改）— 新增 `CodeCjkTokenizer` / `CodeCjkTokenStream` + `tokenize_code_cjk` / `camel_ranges` / `emit_code_segment` / `is_cjk` / `is_code_char` 等纯 std 分词函数；`build_code_cjk_analyzer`（CodeCjkTokenizer + RemoveLongFilter(40) + LowerCaser）；`register_code_cjk`；`build_tantivy_schema(tokenizer_name)` opt-in 分支；`IndexSession::open` 委派 `open_with_tokenizer`；常量 `DEFAULT_TOKENIZER` / `CODE_CJK_TOKENIZER`；新增 4 个同源单测
+  - `core/src/retriever/mod.rs`（修改）— `open_with_config` 在 `Index::open_in_dir` 后注册 code/CJK analyzer，保 index/query 分词对称
+- **commit 列表**:
+  - `70012f4` test(indexer): TEST-24.1.1~24.1.4 RED — code/CJK tokenizer 分词 + opt-in 命中 + 默认不变
+  - `4195e16` feat(indexer): code/CJK TextAnalyzer + opt-in content 绑定，通过 TEST-24.1.1~24.1.4
+  - （本 commit）docs(spec): 回填 task-24.1 §10 + Status → Done
+- **§9 Verification 结果**（ADR-013 真实非合成，本机 Windows MSVC）:
+  - unit-test: `cargo test --workspace` 全绿（core lib 169 passed / 0 failed，含 4 个新单测；workspace 各 crate test suite 全 0 failed）；`cargo test -p contextforge-core --lib indexer::tests::test_24_1` 4 passed / 0 failed（RED→GREEN 已复核：RED 时 3 failed）
+  - integration: `go test ./...` 0 FAIL / 0 panic（本 PR 零 Go delta）
+  - build: ✅ `cargo test --workspace` 编译通过，0 新依赖（`core/Cargo.toml` 未改 — 纯 std bigram + Tantivy 自带 RemoveLongFilter/LowerCaser 组合）
+  - lint: ✅ `bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（D2；详 §10 记录）
+- **剩余风险 / 未做项**: opt-in 切换改倒排词项，既有 collection 须 re-index 才生效（默认模式不受影响、不被动失效，re-index 含义已在 §5.2 + 本 §10 文档化）；CJK 用 bigram 务实起步（真正词典/统计分词 [SPEC-DEFER:phase-future.cjk-true-segmenter]）；tokenizer 默认开启 + 既有索引迁移工具 [SPEC-DEFER:phase-future.tokenizer-default-on]。tokenizer 真实 before/after recall delta 不在本 task 预判（ADR-013），在 task-24.3 据 task-24.2 扩充 golden 实测。
+- **下游 task 影响**: task-24.2（扩充 golden-semantic.jsonl 含代码符号 / CJK case，exercise 本 tokenizer）；task-24.3（据本 tokenizer over task-24.2 数据集实测真实 recall delta + console_smoke v14 + v0.17.0 closeout）。`RetrieverConfig.tokenizer` 接入点（恒 `"default"`）现首次据其名注册同名 analyzer（opt-in 传 `"code_cjk"`）。
