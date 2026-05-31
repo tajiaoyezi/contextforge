@@ -71,8 +71,20 @@ impl HnswBackend {
     /// Rebuilding the graph from these inputs on load is deterministic and avoids the cold-start
     /// SQLite-enumerate + re-embed cost.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), VectorError> {
-        // task-23.1 RED: stub — GREEN serializes `pending` to `path`.
-        let _ = path;
+        let persisted = {
+            let pending = self.pending.lock().unwrap();
+            PersistedHnsw {
+                version: PERSIST_VERSION,
+                entries: pending.clone(),
+            }
+        };
+        let bytes = serde_json::to_vec(&persisted)
+            .map_err(|e| VectorError::Backend { source: Box::new(e) })?;
+        if let Some(parent) = path.as_ref().parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| VectorError::Backend { source: Box::new(e) })?;
+        }
+        std::fs::write(path, bytes).map_err(|e| VectorError::Backend { source: Box::new(e) })?;
         Ok(())
     }
 
@@ -81,9 +93,23 @@ impl HnswBackend {
     /// corrupt, signalling the caller to rebuild from scratch (rebuild-on-load fallback — never
     /// panics, never silently reports success on a bad file).
     pub fn load(&self, path: impl AsRef<Path>) -> Result<bool, VectorError> {
-        // task-23.1 RED: stub — always signals rebuild-on-load (GREEN deserializes + flushes).
-        let _ = path;
-        Ok(false)
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(_) => return Ok(false), // absent → rebuild-on-load
+        };
+        let persisted: PersistedHnsw = match serde_json::from_slice(&bytes) {
+            Ok(p) => p,
+            Err(_) => return Ok(false), // corrupt → rebuild-on-load
+        };
+        if persisted.version != PERSIST_VERSION {
+            return Ok(false); // version-incompatible → rebuild-on-load
+        }
+        {
+            let mut pending = self.pending.lock().unwrap();
+            *pending = persisted.entries;
+        }
+        self.flush()?; // rebuild the graph from the restored inputs
+        Ok(true)
     }
 }
 
