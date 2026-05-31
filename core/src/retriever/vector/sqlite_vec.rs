@@ -192,3 +192,55 @@ impl VectorSearcher for SqliteVecBackend {
         !self.id_map.lock().unwrap().is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::retriever::vector::types::{VectorChunk, VectorMetric};
+
+    fn mk(id: &str, emb: Vec<f32>) -> VectorChunk {
+        VectorChunk { chunk_id: ChunkId(id.into()), embedding: emb, metadata: None }
+    }
+
+    fn cfg(dim: usize) -> VectorIndexConfig {
+        VectorIndexConfig {
+            dim,
+            metric: VectorMetric::Cosine,
+            persistence_path: None,
+            collection_id: "t".into(),
+        }
+    }
+
+    // TEST-23.2.3 — AC3: the sqlite-vec backend contract holds (vec0 register → open → index → KNN
+    // search returns the nearest chunk_id). Running this under `--features vector-sqlite` on Windows
+    // MSVC is the real cross-platform evidence (task-23.2 §6 AC1/AC2; ADR-013 — a real build+run,
+    // not a faked cross-platform pass).
+    #[test]
+    fn test_23_2_3_open_index_search_contract() {
+        let backend = SqliteVecBackend::new().expect("vec0 extension registers");
+        backend.open(cfg(4)).unwrap();
+        backend
+            .index_batch(&[
+                mk("a", vec![1.0, 0.0, 0.0, 0.0]),
+                mk("b", vec![0.0, 1.0, 0.0, 0.0]),
+                mk("c", vec![0.0, 0.0, 1.0, 0.0]),
+            ])
+            .unwrap();
+        let hits = backend.search(&[0.9, 0.1, 0.0, 0.0], 1, None).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].chunk_id.0, "a", "nearest neighbour of a query near 'a' is 'a'");
+        assert!(backend.is_indexed());
+    }
+
+    // TEST-23.2.3 — AC3: dim mismatch is an explicit DimMismatch error (not silent / panic).
+    #[test]
+    fn test_23_2_3_dim_mismatch_error() {
+        let backend = SqliteVecBackend::new().expect("vec0 extension registers");
+        backend.open(cfg(4)).unwrap();
+        let err = backend.index_batch(&[mk("bad", vec![1.0, 2.0, 3.0])]).unwrap_err();
+        assert!(
+            matches!(err, VectorError::DimMismatch { expected: 4, got: 3 }),
+            "expected DimMismatch{{4,3}}, got {err:?}"
+        );
+    }
+}
