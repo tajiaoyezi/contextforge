@@ -1,6 +1,6 @@
 # Task `22.3`: `remote-provider-skeleton — core/src/embedding/remote_provider.rs RemoteEmbeddingProvider（OpenAI/Cohere 风格 HTTP，embedding-remote feature-gated）+ 契约级确定性测试（请求构造/响应解析/错误路径，不打真实网络）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -79,21 +79,21 @@ Phase 19 的真实 embedding 只有本地 `FastEmbedProvider`（ONNX，`embeddin
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: `build_request_body(model, texts, dim)` 对给定 model / texts / dim 构造期望 OpenAI/Cohere 风格 JSON（`model` / `input` / 可选 `dimensions` 字段正确）— verified by **TEST-22.3.1**
-- [ ] **AC2**: `parse_response(fixture_json)` 对固定 fixture 响应解析出期望向量（条数 / 维度 / 顺序与 fixture 一致）；向量值与 fixture 逐字节对应 — verified by **TEST-22.3.2**
-- [ ] **AC3**: 错误路径 — malformed JSON / 空 `data` / 缺 `embedding` 字段 → `parse_response` 返回明确 `EmbeddingError`（不 panic）；HTTP 错误映射到 `EmbeddingError::Backend` / `Other` — verified by **TEST-22.3.3**
-- [ ] **AC4**: feature-gated 与本地优先 — 默认构建（无 `embedding-remote`）不编入 `remote_provider.rs` 且 0 网络 dep；`embedding-remote` feature 下工厂 `"remote"` 分支返回 `RemoteEmbeddingProvider`；`name()` 携 `"remote-<provider>"` provenance；`dim()` 返配置 dim — verified by **TEST-22.3.4**
-- [ ] **AC5**: 既有不退化 + 真实联调如实 defer — 默认构建 `cargo test --workspace` + `go test ./...` 全 PASS；`embedding-remote` feature 下契约测试全 PASS（无网络）；真实网络联调 / 密钥 / 真实召回质量按 ADR-013 如实记录 defer（§8 R1 stop-condition），不伪造真实命中；D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-22.3.5** + §10 记录
+- [x] **AC1**: `build_request_body(model, texts, dim)` 对给定 model / texts / dim 构造期望 OpenAI/Cohere 风格 JSON（`model` / `input` / 可选 `dimensions` 字段正确）— verified by **TEST-22.3.1**
+- [x] **AC2**: `parse_response(fixture_json)` 对固定 fixture 响应解析出期望向量（条数 / 维度 / 顺序与 fixture 一致）；向量值与 fixture 逐字节对应 — verified by **TEST-22.3.2**
+- [x] **AC3**: 错误路径 — malformed JSON / 空 `data` / 缺 `embedding` 字段 → `parse_response` 返回明确 `EmbeddingError`（不 panic）；HTTP 错误映射到 `EmbeddingError::Backend` / `Other` — verified by **TEST-22.3.3**
+- [x] **AC4**: feature-gated 与本地优先 — 默认构建（无 `embedding-remote`）不编入 `remote_provider.rs` 且 0 网络 dep；`embedding-remote` feature 下工厂 `"remote"` 分支返回 `RemoteEmbeddingProvider`；`name()` 携 `"remote-<provider>"` provenance；`dim()` 返配置 dim — verified by **TEST-22.3.4**
+- [x] **AC5**: 既有不退化 + 真实联调如实 defer — 默认构建 `cargo test --workspace` + `go test ./...` 全 PASS；`embedding-remote` feature 下契约测试全 PASS（无网络）；真实网络联调 / 密钥 / 真实召回质量按 ADR-013 如实记录 defer（§8 R1 stop-condition），不伪造真实命中；D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-22.3.5** + §10 记录
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-22.3.1 | `build_request_body` 构造期望请求 JSON（model/input/dimensions） | `core/src/embedding/remote_provider.rs` `#[cfg(all(test, feature="embedding-remote"))]` | Planned |
-| TEST-22.3.2 | `parse_response` 解析 fixture 响应出期望向量（条数/维度/顺序） | `core/src/embedding/remote_provider.rs` `#[cfg(...)]` | Planned |
-| TEST-22.3.3 | 错误路径：malformed/空 data/缺字段 → 明确 `EmbeddingError` | `core/src/embedding/remote_provider.rs` `#[cfg(...)]` | Planned |
-| TEST-22.3.4 | feature-gated 编入 + 工厂 `"remote"` 分支 + name/dim | `core/src/embedding/{remote_provider,factory}.rs` | Planned |
-| TEST-22.3.5 | 默认构建 0 网络 dep 不退化 + feature 下契约测试 PASS + 真实联调 defer 记录 + D2 lint | 全 Rust + `scripts/spec_drift_lint.sh` + §10 | Planned |
+| TEST-22.3.1 | `build_request_body` 构造期望请求 JSON（model/input/dimensions） | `core/src/embedding/remote_provider.rs` `#[cfg(all(test, feature="embedding-remote"))]` | Done |
+| TEST-22.3.2 | `parse_response` 解析 fixture 响应出期望向量（条数/维度/顺序） | `core/src/embedding/remote_provider.rs` `#[cfg(...)]` | Done |
+| TEST-22.3.3 | 错误路径：malformed/空 data/缺字段 → 明确 `EmbeddingError` | `core/src/embedding/remote_provider.rs` `#[cfg(...)]` | Done |
+| TEST-22.3.4 | feature-gated 编入 + 工厂 `"remote"` 分支 + name/dim | `core/src/embedding/{remote_provider,factory}.rs` | Done |
+| TEST-22.3.5 | 默认构建 0 网络 dep 不退化 + feature 下契约测试 PASS + 真实联调 defer 记录 + D2 lint | 全 Rust + `scripts/spec_drift_lint.sh` + §10 | Done |
 
 ## 8. Risks
 
@@ -125,4 +125,29 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按以下 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 结果 / 设计取舍 / 剩余风险 + 下游影响（含 R1 stop-condition：远程真实联调 / 密钥 / 召回质量是否如实 defer，ADR-013）。
+- **完成日期**: 2026-05-31。
+
+- **改动文件**:
+  - `core/src/embedding/remote_provider.rs`（新增，`#[cfg(feature="embedding-remote")]`）— `RemoteEmbeddingProvider`（endpoint/model/dim/api_key/name；Debug 不打印 api_key）；纯函数 `build_request_body`（OpenAI 风格 model/input/dimensions）/ `parse_response`（data[].embedding → 有序 Vec<Vec<f32>>，错误路径明确 Err）；`impl EmbeddingProvider`（embed 经 ureq POST，错误映射 Backend）；4 个契约测试 `#[cfg(test)]`。
+  - `core/src/embedding/mod.rs` — feature-gated `pub mod remote_provider` + re-export。
+  - `core/src/embedding/factory.rs` — `"remote"` 分支：feature 下从 env（endpoint/model/provider/api_key）构造 `RemoteEmbeddingProvider`、否则明确 feature-未启用 `Err`。
+  - `core/Cargo.toml` + `Cargo.lock` — `embedding-remote` feature + `ureq 2.12.1` optional dep（R7 chore）。
+
+- **commit 列表**: `273f528`（RED：骨架 + 测试，pure fns 无缓存实现，2 failed/2 passed）→ `adc6db3`（GREEN：build_request_body + parse_response，4/4 PASS）→ 本 docs 提交。
+
+- **§9 Verification 结果**（实测，ADR-013）:
+  - 默认构建 `cargo test --workspace` exit 0；`cargo tree -p contextforge-core | grep ureq` 空 → 默认 0 网络 dep（ADR-004 本地优先）。
+  - feature 构建 `cargo test --features embedding-remote -p contextforge-core embedding::remote_provider` 4/4 PASS（TEST-22.3.1 请求构造 / 22.3.2 fixture 解析有序 / 22.3.3 错误路径 / 22.3.4 name+dim+factory）；ureq 2.12.1 在本 Windows MSVC 成功编译。
+  - `go test ./...` 本 PR 零 Go delta（CI go-test gate 复核）。
+  - D2 lint `--touched origin/master`：scoped touched 0 未标注命中（CI spec-lint gate 权威）。
+
+- **设计取舍**:
+  - 请求构造 / 响应解析拆纯函数 → 契约测试无网络可严格断言（ADR-013 deterministic 可验证）。
+  - HTTP client 选 `ureq`（同步，匹配同步 `EmbeddingProvider` trait，免 tokio 运行时桥）+ rustls（承 ADR-008 D5，避 OpenSSL）；相较 reqwest+blocking 更轻（少 transitive）。R7 dep chore 已 §10 disclosed + Cargo.toml 注释（包名/版本/用途/替代方案）。
+  - 工厂 `"remote"` 从 env 读 endpoint/model/api_key（配置 plumbing 同 22.1 server 缺省，留后续按需接入）；api_key 不入日志、不入 fixture（PRD 安全基线 + ADR-004 opt-in）。
+  - name() 用静态字面（"remote-openai"/"remote-cohere"，match provider 选）满足 `&'static str` 约束 + "remote-<provider>" provenance。
+
+- **剩余风险 + 下游影响（含 R1 stop-condition — ADR-013 诚实 defer）**:
+  - **远程真实网络联调 / 真实 API 密钥 / 真实召回质量如实 defer** `[SPEC-DEFER:phase-future.embedding-provider-remote]`：CI / 无人值守环境无 OpenAI/Cohere 密钥 + 无网络，本 task **不打真实网络**、**不**伪造真实响应或召回数值（ADR-013）。契约测试（fixture，纯函数）跑通即视骨架达标 — **未**标真实命中。这是 §8 R1 设计内的诚实 stop-condition，非失败。
+  - OpenAI 风格为主骨架；Cohere 等 schema 差异以 `provider` 配置分派 / 后续 add-only 扩充。
+  - 下游：task-22.4 health 远程可达性探针（feature/opt-in）+ smoke v12 + closeout；远程 provider 可被 task-22.2 `CachingEmbeddingProvider` 正交包裹。

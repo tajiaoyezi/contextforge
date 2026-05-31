@@ -47,9 +47,30 @@ pub fn select_provider(
             }
         }
         "remote" => {
-            return Err(EmbeddingError::Other(
-                "embedding provider 'remote' is not yet wired (skeleton lands in task-22.3)".into(),
-            ));
+            #[cfg(feature = "embedding-remote")]
+            {
+                // endpoint / model / provider / api_key from env (config plumbing is a follow-up;
+                // api_key is read here and never logged — PRD security baseline / ADR-004 opt-in).
+                let endpoint = std::env::var("CONTEXTFORGE_REMOTE_ENDPOINT").unwrap_or_default();
+                let model = std::env::var("CONTEXTFORGE_REMOTE_MODEL")
+                    .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+                let provider = std::env::var("CONTEXTFORGE_REMOTE_PROVIDER")
+                    .unwrap_or_else(|_| "openai".to_string());
+                let api_key = std::env::var("CONTEXTFORGE_REMOTE_API_KEY").ok();
+                Arc::new(crate::embedding::remote_provider::RemoteEmbeddingProvider::new(
+                    endpoint,
+                    model,
+                    if dim == 0 { DEFAULT_DIM } else { dim },
+                    &provider,
+                    api_key,
+                ))
+            }
+            #[cfg(not(feature = "embedding-remote"))]
+            {
+                return Err(EmbeddingError::Other(
+                    "embedding provider 'remote' requires the embedding-remote feature".into(),
+                ));
+            }
         }
         other => {
             return Err(EmbeddingError::Other(format!(

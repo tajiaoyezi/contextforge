@@ -12,6 +12,9 @@ pub mod factory;
 #[cfg(feature = "embedding-fastembed")]
 pub mod fastembed_provider;
 
+#[cfg(feature = "embedding-remote")]
+pub mod remote_provider;
+
 #[cfg(test)]
 mod tests;
 
@@ -22,3 +25,6 @@ pub use traits::{EmbeddingError, EmbeddingProvider};
 
 #[cfg(feature = "embedding-fastembed")]
 pub use fastembed_provider::FastEmbedProvider;
+
+#[cfg(feature = "embedding-remote")]
+pub use remote_provider::RemoteEmbeddingProvider;

@@ -97,6 +97,14 @@ futures = { version = "0.3", optional = true }
 # first embed. Optional — default build unaffected (0 new dep; DeterministicEmbeddingProvider is the
 # model-free default).
 fastembed = { version = "4", default-features = false, features = ["ort-download-binaries", "hf-hub-rustls-tls"], optional = true }
+# task-22.3 (R7 NEEDS-DEP — main-agent chore, §10-disclosed): ureq — minimal synchronous HTTP client
+# for the RemoteEmbeddingProvider (OpenAI/Cohere embedding endpoints), gated behind the
+# embedding-remote feature. Chosen over reqwest: ureq is synchronous (matches the sync EmbeddingProvider
+# trait — no tokio runtime bridge) and lighter (fewer transitive crates). Default features use rustls
+# (NOT native-tls/OpenSSL — consistent with fastembed's hf-hub-rustls-tls, ADR-008 D5). Optional —
+# default build pulls 0 network dep (ADR-004 local-first). Alternatives weighed: reqwest+blocking+
+# rustls (heavier, pulls tokio/hyper); hand-rolled hyper (more code). Precise pin in Cargo.lock (R7).
+ureq = { version = "2", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -117,6 +125,10 @@ embedding-fastembed = ["dep:fastembed"]
 # default — reuses the already-present optional `fastembed` dep (0 NEW crate; default build
 # unaffected, no Cargo.lock change). The model-free IdentityReranker is the default-build reranker.
 reranker-fastembed = ["dep:fastembed"]
+# task-22.3: remote embedding provider skeleton (OpenAI/Cohere HTTP). Off by default — default build
+# pulls 0 network dep (ADR-004 local-first); contract tests run under this feature with fixtures (no
+# real network; real联调/keys/recall deferred per ADR-013).
+embedding-remote = ["dep:ureq"]
 vector-hnsw = ["dep:instant-distance"]
 
 [build-dependencies]
