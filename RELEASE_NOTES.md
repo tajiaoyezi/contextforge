@@ -1,5 +1,35 @@
 # ContextForge Release Notes
 
+## v0.15.0 (2026-05-31) — embedding-provider-completion (provider 配置选择 + 缓存 + 远程骨架 + ADR-027 ratified)
+
+### 摘要
+
+v0.15.0 minor release (Phase 22): grows the Phase 19 embedding layer ("hardcoded `DeterministicEmbeddingProvider` default + a single feature-gated `FastEmbedProvider`") into a **configurable provider layer** — a runtime `select_provider` factory (deterministic / fastembed / remote) with **dim negotiation** (`DimMismatch`, no silent truncate/pad), a **content-hash embedding cache** (`CachingEmbeddingProvider`, memory L1 + optional SQLite L2), a **feature-gated remote provider skeleton** (`RemoteEmbeddingProvider`, OpenAI/Cohere HTTP via ureq rustls), and an **opt-in remote-reachability health probe**.
+
+**Honest scope (read this)**: the **default build stays local, model-free, and 0-network-dep** — the deterministic identity provider is the default; fastembed (`embedding-fastembed`) and remote (`embedding-remote`) are **feature-gated + explicit opt-in** (ADR-004 local-first, the non-negotiable red line). The embedding cache + remote skeleton are verified at the **unit / contract layer** (no network in tests). **This is a provider-layer release with no recall numbers** — real remote-network 联调 / API keys / recall quality + the real remote health probe are honestly **deferred** (ADR-013 — CI has no credentials/network; not faked). `[embedding]` config is add-only — **no breaking contract bump**.
+
+### What shipped (Phase 22, tasks 22.1–22.4)
+
+| task | delivery | PR |
+|---|---|---|
+| 22.1 | `internal/config` add-only `[embedding]`(provider/dim) codec + `core/src/embedding/factory.rs` `select_provider` + `negotiate_dim`→`DimMismatch` + `server.rs` semantic path via factory (byte-equivalent default) | #163 |
+| 22.2 | `core/src/embedding/cache.rs` `CachingEmbeddingProvider` (Sha256(text)→embedding; memory L1 + optional SQLite L2, ADR-002; f32 LE BLOB round-trip) — 0 new dep | #164 |
+| 22.3 | `core/src/embedding/remote_provider.rs` `RemoteEmbeddingProvider` (`embedding-remote` feature, ureq rustls) + pure `build_request_body`/`parse_response` + contract tests (fixtures, no network); `ureq 2.12.1` R7 chore | #165 |
+| 22.4 | Phase 22 closeout: `health.rs probe_embed` feature-gated opt-in remote probe (config-only default unchanged) + smoke v12 step 31 (`init` emits `[embedding]`) + v0.15.0 release docs + ADR-027 ratify | this PR |
+
+### ADR-027 ratified (Proposed → Accepted)
+
+**ADR-027 embedding-provider-abstraction** is ratified on the **real non-synthetic** verification of D1–D5: D1 config+factory (Go round-trip + Rust factory tests), D2 dim negotiation (`negotiate_dim`→`DimMismatch` + feature fastembed 384-mismatch, network-free), D3 cache (`CachingEmbeddingProvider` 4/4 deterministic), D4 remote skeleton (contract 4/4 fixtures, no network), D5 local-first (default build 0 network dep — `cargo tree | grep ureq` empty). The ratify scope is the provider **abstraction layer**; remote real-network integration quality is honestly deferred (ADR-013).
+
+### Upgrade path
+
+- Drop-in: default build behavior unchanged (deterministic default + 0 model/0 network dep). No migration. `[embedding]` is add-only (absent / `Provider=""` → deterministic; existing `[remote]`/`[[collections]]` unaffected).
+- Embedding cache: a library decorator (`CachingEmbeddingProvider`) wrapping any provider. Remote provider: needs `--features embedding-remote` + explicit opt-in config + env API key (not in the default image; key never logged).
+
+### Rollback path
+
+`git tag -d v0.15.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.14.0 (BM25 + 0-dep deterministic semantic/hybrid path + config-only health probe), so a rollback is non-breaking.
+
 ## v0.14.0 (2026-05-31) — retrieval-quality (hybrid scoring + reranker + ADR-025/026 ratified)
 
 ### 摘要
