@@ -156,6 +156,23 @@ fn build_tantivy_schema() -> (Schema, [Field; 6]) {
     )
 }
 
+// ---- task-24.1: 自定义 code/CJK aware tokenizer（RED stub，GREEN 提交填充实现）----
+
+/// Tantivy 默认 analyzer 名（`TEXT` 字段恒用此名）— opt-in 之外维持现状.
+pub(crate) const DEFAULT_TOKENIZER: &str = "default";
+/// 自定义 code/CJK analyzer 注册名 — opt-in 时 `content` 字段绑此名.
+pub(crate) const CODE_CJK_TOKENIZER: &str = "code_cjk";
+
+/// 构建自定义 code/CJK `TextAnalyzer`（GREEN 实现）.
+pub(crate) fn build_code_cjk_analyzer() -> tantivy::tokenizer::TextAnalyzer {
+    todo!("task-24.1 GREEN: code/CJK TextAnalyzer")
+}
+
+/// 在 index 的 tokenizer manager 上注册 code/CJK analyzer（GREEN 实现）.
+pub(crate) fn register_code_cjk(_index: &Index) {
+    // RED no-op
+}
+
 // FIX-2 (PR #24 reviewer): 名实不符 — 实际返回 unix epoch seconds (decimal string),
 // 不是 RFC3339。改名 indexed_at_now_str() 避免误导.
 fn indexed_at_now_str() -> String {
@@ -219,6 +236,16 @@ impl IndexSession {
             f_line_start: fields[4],
             f_line_end: fields[5],
         })
+    }
+
+    /// task-24.1：opt-in 自定义 tokenizer 打开（GREEN 实现）.
+    pub fn open_with_tokenizer(
+        data_dir: &Path,
+        collection_id: &str,
+        _tokenizer: &str,
+    ) -> Result<Self, IndexError> {
+        // RED stub: 忽略 tokenizer → opt-in schema 未生效
+        Self::open(data_dir, collection_id)
     }
 
     /// 全量索引（task-2.4 历史 API）：thin wrapper 调 `index_path_with_progress`
@@ -761,6 +788,129 @@ mod tests {
             old_hits.is_empty(),
             "AC4: 旧 token 应从索引删除, 但命中 {} 个",
             old_hits.len()
+        );
+    }
+
+    // ---- task-24.1: code/CJK tokenizer tests ----
+
+    fn tok_texts(analyzer: &mut tantivy::tokenizer::TextAnalyzer, s: &str) -> Vec<String> {
+        use tantivy::tokenizer::TokenStream;
+        let mut ts = analyzer.token_stream(s);
+        let mut out = Vec::new();
+        while ts.advance() {
+            out.push(ts.token().text.clone());
+        }
+        out
+    }
+
+    fn content_tokenizer_name(schema: &tantivy::schema::Schema) -> String {
+        use tantivy::schema::FieldType;
+        let f = schema.get_field("content").unwrap();
+        match schema.get_field_entry(f).field_type() {
+            FieldType::Str(opts) => opts
+                .get_indexing_options()
+                .map(|i| i.tokenizer().to_string())
+                .unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    fn write_one_doc(sess: &mut IndexSession, body: &str) {
+        let src = temp_root("tok-src");
+        fs::write(src.join("doc.md"), format!("# Doc\n{}\n", body)).unwrap();
+        sess.index_path(&src, &make_scan_options(), &ChunkPolicy::default(), vec![])
+            .unwrap();
+    }
+
+    // ---- TEST-24.1.1 (AC1) — 代码符号拆分 + 保留原 token ----
+    #[test]
+    fn test_24_1_1_code_symbol_split_preserves_original() {
+        let mut a = build_code_cjk_analyzer();
+        assert_eq!(tok_texts(&mut a, "camelCase"), vec!["camelcase", "camel", "case"]);
+        assert_eq!(
+            tok_texts(&mut a, "getUserById"),
+            vec!["getuserbyid", "get", "user", "by", "id"]
+        );
+        assert_eq!(tok_texts(&mut a, "user_id"), vec!["user_id", "user", "id"]);
+        assert_eq!(
+            tok_texts(&mut a, "pkg.module.func"),
+            vec!["pkg.module.func", "pkg", "module", "func"]
+        );
+        assert_eq!(
+            tok_texts(&mut a, "kebab-case-name"),
+            vec!["kebab-case-name", "kebab", "case", "name"]
+        );
+        // 单词无分隔/无 camel 边界 → 不产生重复子 token
+        assert_eq!(tok_texts(&mut a, "config"), vec!["config"]);
+    }
+
+    // ---- TEST-24.1.2 (AC2) — CJK bigram + 混合输入 ----
+    #[test]
+    fn test_24_1_2_cjk_bigram_and_mixed() {
+        let mut a = build_code_cjk_analyzer();
+        assert_eq!(tok_texts(&mut a, "配置加载"), vec!["配置", "置加", "加载"]);
+        // 混合：非 CJK 段走代码符号切分，CJK 段走 bigram
+        assert_eq!(
+            tok_texts(&mut a, "getConfig配置"),
+            vec!["getconfig", "get", "config", "配置"]
+        );
+        // 单 CJK 字 → unigram
+        assert_eq!(tok_texts(&mut a, "中"), vec!["中"]);
+    }
+
+    // ---- TEST-24.1.3 (AC3) — 默认 tokenization 不变 + schema 字段集不变 ----
+    #[test]
+    fn test_24_1_3_default_tokenization_unchanged() {
+        use tantivy::tokenizer::TokenizerManager;
+        // 默认 analyzer：camelCase 整体一个（小写）token，CJK 连续段整体一个 token
+        let mut def = TokenizerManager::default()
+            .get(DEFAULT_TOKENIZER)
+            .expect("default analyzer");
+        assert_eq!(tok_texts(&mut def, "getUserById"), vec!["getuserbyid"]);
+        assert_eq!(tok_texts(&mut def, "配置加载"), vec!["配置加载"]);
+
+        // 默认模式 IndexSession：content 字段 tokenizer == "default"，6 字段 schema 不变
+        let data_dir = temp_root("tok-default");
+        let sess = IndexSession::open(&data_dir, "c").unwrap();
+        let schema = sess.tantivy_index.schema();
+        for f in ["chunk_id", "content", "file_path", "language", "line_start", "line_end"] {
+            assert!(schema.get_field(f).is_ok(), "schema 应含字段 {f}");
+        }
+        assert_eq!(content_tokenizer_name(&schema), DEFAULT_TOKENIZER);
+    }
+
+    // ---- TEST-24.1.4 (AC4) — index/query 对称 + opt-in 子词命中（默认 miss）----
+    #[test]
+    fn test_24_1_4_optin_subword_and_cjk_hit_roundtrip() {
+        // opt-in：camelCase 拆词 → "user" 命中；CJK bigram → "置加" 命中
+        let data_dir = temp_root("tok-optin");
+        let mut sess =
+            IndexSession::open_with_tokenizer(&data_dir, "c", CODE_CJK_TOKENIZER).unwrap();
+        write_one_doc(&mut sess, "fn getUserById() 配置加载");
+        sess.commit().unwrap();
+        let schema = sess.tantivy_index.schema();
+        assert_eq!(content_tokenizer_name(&schema), CODE_CJK_TOKENIZER);
+        assert!(
+            !sess.tantivy_search("user", 10).unwrap().is_empty(),
+            "opt-in: camel 子词 'user' 应命中"
+        );
+        assert!(
+            !sess.tantivy_search("置加", 10).unwrap().is_empty(),
+            "opt-in: CJK bigram '置加' 应命中"
+        );
+
+        // 默认模式：同内容 → camel 不拆、CJK 整体 → 子词 miss（向后兼容基线）
+        let data_dir2 = temp_root("tok-default-miss");
+        let mut sess2 = IndexSession::open(&data_dir2, "c").unwrap();
+        write_one_doc(&mut sess2, "fn getUserById() 配置加载");
+        sess2.commit().unwrap();
+        assert!(
+            sess2.tantivy_search("user", 10).unwrap().is_empty(),
+            "default: camel 子词 'user' 不应命中"
+        );
+        assert!(
+            sess2.tantivy_search("置加", 10).unwrap().is_empty(),
+            "default: CJK bigram '置加' 不应命中"
         );
     }
 }
