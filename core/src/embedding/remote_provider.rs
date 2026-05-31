@@ -58,18 +58,47 @@ impl std::fmt::Debug for RemoteEmbeddingProvider {
 /// Build an OpenAI/Cohere-style embedding request body. `dim == 0` omits the `dimensions` field
 /// (let the model use its native dimension). Pure — no network.
 fn build_request_body(model: &str, texts: &[String], dim: usize) -> Value {
-    // task-22.3 RED: stub — GREEN constructs the real {model, input, dimensions} body.
-    let _ = (model, texts, dim);
-    serde_json::json!({})
+    let mut body = serde_json::json!({
+        "model": model,
+        "input": texts,
+    });
+    if dim != 0 {
+        body["dimensions"] = serde_json::json!(dim);
+    }
+    body
 }
 
 /// Parse an OpenAI/Cohere-style embedding response (`{"data":[{"embedding":[...]}, ...]}`) into one
 /// vector per `data` entry, in order. Pure — no network. Malformed JSON / empty `data` / a missing
 /// `embedding` field map to an explicit `EmbeddingError` (never a panic).
 fn parse_response(body: &str) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-    // task-22.3 RED: stub — GREEN parses data[].embedding with explicit error paths.
-    let _ = body;
-    Err(EmbeddingError::Other("parse_response not implemented (RED)".into()))
+    let json: Value = serde_json::from_str(body)
+        .map_err(|e| EmbeddingError::Other(format!("remote response parse: {e}")))?;
+    let data = json
+        .get("data")
+        .and_then(|d| d.as_array())
+        .ok_or_else(|| EmbeddingError::Other("remote response missing 'data' array".into()))?;
+    if data.is_empty() {
+        return Err(EmbeddingError::Other("remote response 'data' is empty".into()));
+    }
+    let mut out = Vec::with_capacity(data.len());
+    for (i, item) in data.iter().enumerate() {
+        let emb = item
+            .get("embedding")
+            .and_then(|e| e.as_array())
+            .ok_or_else(|| {
+                EmbeddingError::Other(format!("remote response data[{i}] missing 'embedding'"))
+            })?;
+        let v: Vec<f32> = emb
+            .iter()
+            .map(|x| x.as_f64().map(|f| f as f32))
+            .collect::<Option<Vec<f32>>>()
+            .ok_or_else(|| {
+                EmbeddingError::Other(format!("remote response data[{i}].embedding has a non-number"))
+            })?;
+        out.push(v);
+    }
+    Ok(out)
 }
 
 impl EmbeddingProvider for RemoteEmbeddingProvider {
