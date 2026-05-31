@@ -134,11 +134,11 @@ func TestTask81_AC5_JSONLRoundTrip(t *testing.T) {
 // TEST-18.8.1 / AC1: SemanticRecall@K counts strong hits within the top K only.
 func TestTask188_AC1_SemanticRecallAtK(t *testing.T) {
 	results := []Result{
-		{Outcome: OutcomeStrong, MatchedRank: 1},  // strong @1  → counts for @5 and @10
-		{Outcome: OutcomeStrong, MatchedRank: 5},  // strong @5  → counts for @5 and @10
-		{Outcome: OutcomeStrong, MatchedRank: 8},  // strong @8  → counts for @10 only
-		{Outcome: OutcomeWeak, MatchedRank: 2},    // weak       → never counts toward recall
-		{Outcome: OutcomeMiss, MatchedRank: -1},   // miss
+		{Outcome: OutcomeStrong, MatchedRank: 1}, // strong @1  → counts for @5 and @10
+		{Outcome: OutcomeStrong, MatchedRank: 5}, // strong @5  → counts for @5 and @10
+		{Outcome: OutcomeStrong, MatchedRank: 8}, // strong @8  → counts for @10 only
+		{Outcome: OutcomeWeak, MatchedRank: 2},   // weak       → never counts toward recall
+		{Outcome: OutcomeMiss, MatchedRank: -1},  // miss
 	}
 	if got, want := SemanticRecallAtK(results, 5), 2.0/5.0; got != want {
 		t.Fatalf("SemanticRecall@5 = %v, want %v", got, want)
