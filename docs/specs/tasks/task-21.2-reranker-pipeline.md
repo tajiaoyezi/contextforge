@@ -1,6 +1,6 @@
 # Task `21.2`: `reranker-pipeline — core/src/rerank/{mod,traits,identity,cross_encoder}.rs Reranker trait + 确定性 IdentityReranker（默认构建 0 模型依赖，供 CI/测试）+ CrossEncoderReranker（real cross-encoder, feature-gated）+ Retriever::with_reranker builder seam`
 
-**Status**: Draft
+**Status**: In Progress
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
