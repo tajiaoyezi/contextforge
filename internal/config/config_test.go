@@ -170,3 +170,61 @@ func TestRemoteProviderDefaultOff(t *testing.T) {
 		}
 	})
 }
+
+// SCEN-22.1.1 / AC1 (task-22.1): add-only [embedding] 段（provider/dim）round-trip——含段时保真、
+// 不含段时仍合法加载（缺省 Provider=""/Dim=0），且既有 [remote]/[[collections]] 段互不影响。
+func TestTask221EmbeddingConfig(t *testing.T) {
+	t.Run("TEST-22.1.1: 默认 Embedding 空 provider/0 维，显式设置后 Save/Load 保真（既有段不受影响）", func(t *testing.T) {
+		dc := DefaultConfig()
+		if dc.Embedding.Provider != "" || dc.Embedding.Dim != 0 {
+			t.Errorf("默认 Embedding 应为空 provider/0 维，got %+v", dc.Embedding)
+		}
+
+		root := t.TempDir()
+		c := dc
+		c.DataDir = root
+		c.Embedding = EmbeddingConfig{Provider: "fastembed", Dim: 512}
+		// 既有 [remote] / [[collections]] 段同时存在，验证 [embedding] 加入后互不影响。
+		c.Remote = RemoteProviderConfig{Enabled: true, Provider: "openai-compatible", Endpoint: "http://127.0.0.1:1234"}
+		c.Collections = []CollectionConfig{{ID: "proj_x", Allowlist: []string{"/home/u/proj_x"}, AgentScope: []string{"hermes"}}}
+
+		if err := Save(root, c); err != nil {
+			t.Fatalf("Save error = %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load error = %v", err)
+		}
+		if got.Embedding.Provider != "fastembed" || got.Embedding.Dim != 512 {
+			t.Errorf("[embedding] 段未保真: %+v", got.Embedding)
+		}
+		if !got.Remote.Enabled || got.Remote.Provider != "openai-compatible" {
+			t.Errorf("[embedding] 加入后 [remote] 段受影响: %+v", got.Remote)
+		}
+		if len(got.Collections) != 1 || got.Collections[0].ID != "proj_x" {
+			t.Errorf("[embedding] 加入后 [[collections]] 段受影响: %+v", got.Collections)
+		}
+	})
+
+	t.Run("TEST-22.1.1: 不含 [embedding] 段的旧 config 仍合法加载（向后兼容 Provider=\"\"/Dim=0）", func(t *testing.T) {
+		root := t.TempDir()
+		legacy := "schema_version = \"0.1\"\n" +
+			"data_dir = " + tomlQuote(root) + "\n" +
+			"allow_denylist_override = false\n" +
+			"denylist = []\n" +
+			"\n[remote]\n" +
+			"enabled = false\n" +
+			"provider = \"\"\n" +
+			"endpoint = \"\"\n"
+		if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(legacy), 0o600); err != nil {
+			t.Fatalf("write legacy config: %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load legacy (no [embedding]) error = %v", err)
+		}
+		if got.Embedding.Provider != "" || got.Embedding.Dim != 0 {
+			t.Errorf("不含 [embedding] 段应得空 provider/0 维，got %+v", got.Embedding)
+		}
+	})
+}

@@ -26,7 +26,7 @@ use crate::pb::{
     HealthRequest, HealthResponse, IndexProgress, IndexRequest, Provenance as PbProvenance,
     RetrievalResult, SearchRequest, SearchResponse,
 };
-use crate::embedding::{DeterministicEmbeddingProvider, EmbeddingProvider};
+use crate::embedding::{select_provider, DeterministicEmbeddingProvider};
 use crate::retriever::vector::BruteForceVectorBackend;
 use crate::retriever::{
     is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
@@ -333,7 +333,11 @@ impl ContextService for CoreService {
         // prove the wiring, not recall (real recall is task-19.5; ADR-013).
         if req.semantic {
             let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
-            let embedder = Arc::new(DeterministicEmbeddingProvider::default());
+            // task-22.1: provider now comes from the factory. No embedding config is plumbed to the
+            // server yet, so default args ("deterministic", 0) — byte-equivalent to the Phase 19
+            // hardcoded DeterministicEmbeddingProvider::default() (TEST-22.1.2/22.1.5).
+            let embedder = select_provider("deterministic", 0)
+                .map_err(|e| Status::internal(format!("semantic embedder: {}", e)))?;
             let backend = Arc::new(BruteForceVectorBackend::new());
             let wired = retriever
                 .with_embedder(embedder.clone())
@@ -794,6 +798,52 @@ mod tests {
             top.vector_score
         );
         assert!(!top.provenance.is_empty(), "AC3 provenance floor still holds on the vector path");
+    }
+
+    // ---- TEST-22.1.5 — AC5: the semantic path now builds its embedder via select_provider with
+    // default args ("deterministic", 0). Behavior must not regress — provider stays
+    // "deterministic-sha256", the vector method holds, and results stay byte-stable across calls
+    // (the factory swap is a pure construction change). Default-arg byte-equivalence to the Phase 19
+    // hardcoded default() is additionally proven at the embedding layer by TEST-22.1.2.
+    #[tokio::test]
+    async fn test_22_1_5_semantic_path_factory_default_no_regression() {
+        let (data, coll) = build_fixture(
+            "semantic-factory-default",
+            &[
+                ("a.md", "where is the config loader and default data dir"),
+                ("b.md", "how the daemon restarts after a crash"),
+            ],
+        );
+        let svc = CoreService::new(data);
+        let mk = || SearchRequest {
+            query: "where is the config loader and default data dir".into(),
+            collections: vec![coll.clone()],
+            agent_scope: vec![],
+            top_k: 5,
+            filters: None,
+            explain: false,
+            semantic: true,
+            hybrid: false,
+        };
+        let first = svc
+            .search(Request::new(mk()))
+            .await
+            .expect("factory-driven semantic ok")
+            .into_inner();
+        assert!(!first.results.is_empty(), "factory-driven semantic path should return hits");
+        assert_eq!(first.results[0].retrieval_method, "vector");
+        assert_eq!(
+            first.results[0].embedding_provider, "deterministic-sha256",
+            "default-arg factory must keep the deterministic provider"
+        );
+        let second = svc
+            .search(Request::new(mk()))
+            .await
+            .expect("factory-driven semantic ok")
+            .into_inner();
+        let scores1: Vec<f32> = first.results.iter().map(|r| r.vector_score).collect();
+        let scores2: Vec<f32> = second.results.iter().map(|r| r.vector_score).collect();
+        assert_eq!(scores1, scores2, "factory-driven semantic results must be byte-stable across calls");
     }
 
     // ---- TEST-21.1.2 — hybrid=true dispatches the RRF fusion path ----
