@@ -19,7 +19,7 @@ func TestTask194_AC4_SmokeV9SyntaxAndSteps(t *testing.T) {
 		t.Fatalf("read %s: %v", script, err)
 	}
 	body := string(raw)
-	for _, marker := range []string{"[29/30]", "[30/30]"} {
+	for _, marker := range []string{"[29/31]", "[30/31]"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("console_smoke.sh missing step marker %q (v9 migrates [N/28]→[N/30] + adds steps 29/30)", marker)
 		}
@@ -27,6 +27,42 @@ func TestTask194_AC4_SmokeV9SyntaxAndSteps(t *testing.T) {
 	// No stale /28 step headers should remain after the v9 migration.
 	if strings.Contains(body, "/28]") {
 		t.Fatalf("console_smoke.sh still has /28] step headers; v9 must migrate all to /30]")
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
+// TEST-22.4.1 / AC1: smoke v12 adds step 31 (task-22.4 closeout) — `contextforge init` emits the
+// add-only [embedding] config section (task-22.1). The step greps the generated config.toml for the
+// [embedding] header + the `dim` key (unique to that section) + an intact [remote] header. ADR-013:
+// no real network — cache/remote are unit/contract-verified, not console-hot-path-wired in v0.15.
+func TestTask224_SmokeV12EmbeddingConfigStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v12") {
+		t.Fatalf("console_smoke.sh missing v12 header (task-22.4 closeout)")
+	}
+	for _, marker := range []string{"[31/31]", "init --root", `grep -q '^\[embedding\]'`} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v12 step 31 must assert init emits [embedding] config (missing %q)", marker)
+		}
+	}
+	// No regression of the v9/v10/v11 steps (renumbered to /31).
+	for _, marker := range []string{"[29/31]", "[30/31]", "vector-bruteforce", "--hybrid", "--rerank"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v12 must not regress existing step marker %q", marker)
+		}
 	}
 
 	bash, err := exec.LookPath("bash")
@@ -84,7 +120,7 @@ func TestTask213_SmokeV11HybridRerankAssertion(t *testing.T) {
 		}
 	}
 	// No regression of the v9/v10 steps.
-	for _, marker := range []string{"[29/30]", "[30/30]", "vector-bruteforce"} {
+	for _, marker := range []string{"[29/31]", "[30/31]", "vector-bruteforce"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("smoke v11 must not regress existing step marker %q", marker)
 		}
