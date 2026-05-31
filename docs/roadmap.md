@@ -63,6 +63,10 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 | **v0.14.0** | 21 | 检索质量：hybrid scoring + reranker | `hybrid-scoring` / `reranker` | 🟢 hybrid + 管道 / 🔴 reranker 真实质量 |
 | **v0.15.0** | 22 | embedding provider 完整化 | `embedding-provider-full` / `embedding-provider-remote` / `embedding-cache` | 🟢 缓存+配置 / 🔴 remote 联调 |
 | **v0.16.0** | 23 | 向量持久化与跨平台 | `hnsw-graph-persistence` / `sqlite-vec-cross-platform` / `vector-incremental-index` | 🟡 hnsw 持久化 / 🔴 sqlite-vec MSVC |
+| **v0.17.0** | 24 | 检索 tokenizer + eval 加固 | `cjk-and-code-tokenizer` / `eval-dataset-validation` / `semantic-golden-dataset` / `rust-native-eval-runner` | 🟢 tokenizer opt-in + 校验器 / 🟡 真实 recall delta |
+| **v0.18.0** | 25 | 生产向量 backend（qdrant / lancedb） | `qdrant-server-lifecycle` / `lancedb-build-prereq-ci` / `lancedb-index-tuning` | 🟢 qdrant 契约生命周期层 / 🔴 live server + lancedb protoc 构建 |
+| **v0.19.0** | 26 | 可观测性硬化（trace FTS/VACUUM + events SSE/replay） | `tracestore-fts` / `tracestore-sqlite-vacuum` / `events-sse-push` / `events-replay-from-audit` | 🟢 FTS + VACUUM + audit 重放 / 🟡 SSE live e2e |
+| **v0.20.0** | 27 | memory-ops 硬化（pin actor/timestamp + unpin/hard-delete） | `memory-pin-actor` / `memory-pinned-at-timestamp` / `memory-pin-unpin-split` / `hard-delete-policy` / `is-pinned-backfill-from-audit` | 🟢 proto add-only + 写穿 + X-Confirm hard-delete |
 | **（穿插）** | — | 发布 / CI 硬化 | `multi-arch-image` / `image-signing-and-sbom` / `ci-strict-lint` | 🟢 CI 配置（release run 验证） |
 | **（跨仓库）** | — | Console 语义 explain | `console-semantic-explain` | 🔴 Console 独立仓库，本仓仅协调 / 文档 |
 
@@ -140,7 +144,67 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-028 vector-persistence-strategy**（Proposed，hnsw 持久化格式 + sqlite-vec 跨平台结论）。
 
-### 3.5 发布 / CI 硬化（穿插，可单列 Phase 或并入某版 closeout）
+### 3.5 v0.17.0 / Phase 24 — code-and-cjk-tokenizer-and-eval-hardening
+
+**目标**：解决两块直接影响核心代码检索用例可信度的检索质量债：`content` 字段**代码/CJK 分词偏弱**（`core/src/indexer/mod.rs:148` 用默认 `TEXT` analyzer，对 camelCase / snake_case / dotted.path / kebab-case / CJK 切分弱）与 **eval 标尺未加固**（`internal/eval/eval.go::ValidateDataset` 仅基本校验、golden 无代码/CJK case、`core/src/eval/runner.rs` 为 placeholder）。opt-in 的代码/CJK tokenizer 提升代码符号 + CJK 召回；eval 数据集校验器 + golden 扩充让召回声明可信。
+
+**来源 marker（§4 backlog 本版兑现）**：
+- `[SPEC-DEFER:phase-future.cjk-and-code-tokenizer]`（`phase-19` §2 / 检索 tokenizer 段）。
+- `eval-dataset-validation` / `semantic-golden-dataset` / `rust-native-eval-runner`（§4 eval 段三 marker）。
+
+**候选 task 拆分**：
+- **task-24.1** code/CJK tokenizer：`core/src/indexer/mod.rs` 注册自定义 `TextAnalyzer`（代码符号拆分 + 保留原 token + CJK bigram），opt-in via config + 默认 tokenization 不变（既有索引不失效）+ index/query 侧对称（`RetrieverConfig.tokenizer` 接入点）。🟢 分词单测（优先 std-only 0 新 dep）。
+- **task-24.2** eval 数据集加固：`internal/eval/eval.go` 独立校验器（schema 良构 + 重复 + 覆盖，add-only）+ `test/fixtures/eval/golden-semantic.jsonl` 含代码/CJK annotated query case。🟢
+- **task-24.3** tokenizer recall delta + runner 评估 + v0.17.0 closeout：真实 before/after recall delta（小语料 delta 不显著则如实记录，ADR-013）+ `core/src/eval/runner.rs` promote 最小 runner 或诚实延后。🟡 真实 delta / 🟢 wiring。
+
+**ADR**：**ADR-029 code-and-cjk-tokenizer-and-eval-hardening**（Proposed，D1 tokenizer opt-in / D2 校验器 / D3 数据集扩充 / D4 runner 评估 / D5 默认不变；真实 recall delta + runner 评估出来才 Accepted）。
+
+### 3.6 v0.18.0 / Phase 25 — production-vector-backend
+
+**目标**：把 ADR-023 列为生产规模 ANN 两档的 **qdrant**（外部 gRPC server，hosted/scale-out）与 **lancedb**（嵌入式列存）从 Phase 18 spike 态推向生产：qdrant 加 connect / health-probe / collection ensure-create / 连接配置的**生命周期层**（契约层不需 live server 即可 deterministic 验证）；lancedb 做**真实可构建性调查**（dev-box `cargo build --features vector-lancedb`，protoc 前置，仿 task-23.2 sqlite-vec MSVC pattern）+ 索引调参参数；产出**生产 backend 选择矩阵**。
+
+**来源 marker（§4 向量 backend 细化段）**：
+- `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]` / `qdrant-deployment-topology` / `multi-backend-production`。
+- `[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]` / `lancedb-index-tuning` / `lancedb-schema-compaction`。
+
+**候选 task 拆分**：
+- **task-25.1** qdrant server lifecycle：connection-config validate + health-probe（unreachable shape）+ `decide_ensure`（reuse / create / error 纯函数 3 分支，替 spike 盲目 drop+create）契约层 deterministic 单测（不需 live server）。🟢 契约层 / 🔴 live KNN（CI 无 server，如实 defer）。
+- **task-25.2** lancedb 可构建性 + 索引调参：dev-box 真实 `cargo build --features vector-lancedb`（protoc 前置）三态如实标 + 索引调参参数 struct 校验（不建大索引）。🔴 构建 / 🟢 参数校验。
+- **task-25.3** v0.18.0 closeout + 生产 backend 选择矩阵。🟢 / 🔴 视调查结果。
+
+**ADR**：**ADR-030 production-vector-backend**（Proposed，qdrant 生命周期 + lancedb 可构建性 + 选择矩阵 + 默认 0-dep；ADR-023 D3/D4 tier add-only Amendment 推进）。
+
+### 3.7 v0.19.0 / Phase 26 — observability-hardening
+
+**目标**：硬化 Phase 16 落地的两条可观测性信号路径：**TraceStore 持久化**（`core/src/data_plane/search_persist.rs`，`search_traces` 表无按内容检索 + 无清理路径无界膨胀）与 **events 实时面**（`internal/consoleapi` `GET /v1/observability/events` long-poll + `EventBus`）。trace 全文检索（FTS5）+ 周期 VACUUM；events SSE 实时推送（替 long-poll 重订阅）+ 从 audit log 重放漏失事件 + event-bus 容量 / 分区 / drain 超时配置。全部 local-first（默认 0 新 dep / 0 network，ADR-004）。
+
+**来源 marker（§4 trace/events 段）**：
+- `[SPEC-DEFER:phase-future.tracestore-fts]` / `tracestore-sqlite-vacuum`。
+- `[SPEC-DEFER:phase-future.events-sse-push]` / `events-replay-from-audit`（`adr-021:115`）/ `events-drain-timeout-config` / `event-bus-capacity` / `event-bus-partition`。
+
+**候选 task 拆分**：
+- **task-26.1** TraceStore FTS + VACUUM：`search_traces_fts` shadow 表（FTS5，bundled SQLite 0 新 dep）+ `prune_older_than` / VACUUM（新 migration `0016`，add-only 方法，既有签名不变）。🟢
+- **task-26.2** events SSE 推送 + 重放：`GET /v1/observability/events/stream`（Go stdlib `http.Flusher`，add-only side-by-side 既有 long-poll）+ 从 `audit_log` 重放漏失事件 + event-bus 容量 / drain 配置（复用 `EventBus::with_capacity` seam，兑现 ADR-021 `events-replay-from-audit` + Rollback path）。🟢 契约 + 重放 id-ASC 序 / 🟡 SSE live e2e（需 running daemon，如实 defer）。
+- **task-26.3** v0.19.0 closeout。🟢 / 🟡。
+
+**ADR**：**ADR-031 observability-hardening**（Proposed，D1 FTS / D2 VACUUM / D3 SSE / D4 audit 重放 / D5 event-bus 配置 / D6 默认不变；ADR-021 / ADR-015 add-only Amendment）。
+
+### 3.8 v0.20.0 / Phase 27 — memory-ops-hardening
+
+**目标**：硬化 Phase 13 / Phase 17 落地的 Memory 生命周期 / pin 语义：记录 **pin-actor + pinned-at-timestamp**、**Pin/Unpin 显式拆分**（vs 既有 `bool pin` toggle）、**hard-delete 策略**（vs 仅 soft-delete，X-Confirm gated）、**is_pinned 审计回填**。proto 改动全 **add-only**（新字段在冻结 tag 之后 + 新 Unpin/HardDelete RPC，不破冻结契约，proto-freeze guard 须过）。全部本地（ADR-004，0 网络 / 默认构建 0 新 dep）。
+
+**来源 marker（§4 memory 段；兑现 ADR-022 §Trade-offs 三 marker）**：
+- `[SPEC-DEFER:phase-future.memory-pin-actor]` / `memory-pinned-at-timestamp` / `is-pinned-backfill-from-audit`（ADR-022 §Trade-offs 缩范围延后）。
+- `[SPEC-DEFER:phase-future.memory-pin-unpin-split]` / `hard-delete-policy` / `handle-memory-pin-strict-body`。
+
+**候选 task 拆分**：
+- **task-27.1** pin-actor + pinned-at-timestamp：proto add-only `pinned_by`(string) + `pinned_at_unix`(int64)（tag 10 之后）+ `core/src/memory/store.rs` 写穿 + 从 audit 回填。🟢（console-api `source` 硬编码，真实 per-user actor 上游传播如实 defer）。
+- **task-27.2** Pin/Unpin 显式拆分 + hard-delete：add-only `Unpin` / `HardDelete` RPC（hard-delete 复用 `confirmMiddleware` X-Confirm，ADR-017 D2）+ Pin toggle 向后兼容。🟢（hard-delete 仅删 `memory_items` 行，vector-index/trace 级联如实 defer）。
+- **task-27.3** v0.20.0 closeout。🟢。
+
+**ADR**：**ADR-032 memory-ops-hardening**（Proposed，proto add-only pin-actor/timestamp + Unpin/HardDelete RPC + 审计回填 + X-Confirm hard-delete；兑现 ADR-022 三 marker）。
+
+### 3.9 发布 / CI 硬化（穿插，可单列 Phase 或并入某版 closeout）
 
 **来源 marker**：
 - `[SPEC-DEFER:phase-future.multi-arch-image]`（`prd:524` / `release.yml` 现 linux/amd64 only / 多处 v0.9-v0.11 artifacts）。
@@ -148,9 +212,9 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 - `[SPEC-DEFER:phase-future.ci-strict-lint]`（`prd:524`——clippy / gofmt 卡红，现非阻断）。
 - `[SPEC-DEFER:phase-future.verify-image-anonymous-pull]`（`RELEASE_NOTES` / `v0.10.0-artifacts`）。
 
-**性质**：均为 CI / release.yml 配置，🟢 可在 CI / release run 验证（multi-arch 需 buildx+QEMU；签名需 cosign/syft）。建议作为**发布硬化小 Phase**（如 Phase 24）单列，或逐项并入上述版本的 closeout PR。ci-strict-lint 须先评估存量 clippy/gofmt 告警量再决定卡红时机（避免一次性大面积变红）。
+**性质**：均为 CI / release.yml 配置，🟢 可在 CI / release run 验证（multi-arch 需 buildx+QEMU；签名需 cosign/syft）。建议作为**发布硬化小 Phase**（Phase 24-27 已分配给 v0.17-v0.20，故此项落后续小 Phase，如 Phase 28+）单列，或逐项并入上述版本的 closeout PR。ci-strict-lint 须先评估存量 clippy/gofmt 告警量再决定卡红时机（避免一次性大面积变红）。
 
-### 3.6 Console 语义 explain（跨仓库，本仓不实现）
+### 3.10 Console 语义 explain（跨仓库，本仓不实现）
 
 - `[SPEC-OWNER:phase-future.console-semantic-explain]`：ContextForge-Console 是**独立仓库**，语义召回 explain 面板属 Console 领域。本仓职责限于：(a) 确保 `/v1/search` 语义响应携带 `vector_score` / `embedding_provider` provenance（v0.12 已加，v0.13 贯通 console-api）；(b) 跨仓库通知 + 契约对齐文档（仿 ADR-022 D4 cross-repo signal 模式）。🔴 本仓不实现 UI，规划中仅记协调项。
 
@@ -168,6 +232,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 - **cache / deploy**：`cache-lru`、`cache-cap-configurable`、`compose-resource-limits`、`compose-tls-termination`。
 
 > 该清单由对应版本启动时的 marker 复扫刷新（`rg 'SPEC-(DEFER|OWNER):phase-future'`）；本文件 add-only 更新，不删历史条目。
+>
+> **v0.17–v0.20 排期更新（add-only，不删上方历史条目）**：上方部分 backlog 已据 §3.5-§3.8 排入对应版本——`cjk-and-code-tokenizer` + eval 三 marker（`eval-dataset-validation` / `semantic-golden-dataset` / `rust-native-eval-runner`）→ **v0.17.0 / Phase 24**；`qdrant-server-lifecycle` / `lancedb-build-prereq-ci` / `lancedb-index-tuning`（+ `qdrant-deployment-topology` / `multi-backend-production` 部分）→ **v0.18.0 / Phase 25**；`tracestore-fts` / `tracestore-sqlite-vacuum` / `events-sse-push` / `events-replay-from-audit`（+ `event-bus-capacity` / `events-drain-timeout-config` 部分）→ **v0.19.0 / Phase 26**；`memory-pin-actor` / `memory-pinned-at-timestamp` / `is-pinned-backfill-from-audit` / `memory-pin-unpin-split` / `hard-delete-policy`（+ `handle-memory-pin-strict-body` 部分）→ **v0.20.0 / Phase 27**。未点名的 marker（如 `lancedb-schema-compaction` / `tracestore-multi-workspace-strict` / `event-bus-partition` / `memstore-event-emit` / `case-results-subtable` / `cache-lru` / `cache-cap-configurable` / `compose-*`）续留 backlog，由各 phase `[SPEC-DEFER]` 如实承接，真正落地或延后以对应版本数据决定。
 
 ---
 

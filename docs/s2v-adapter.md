@@ -256,6 +256,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 21 | `retrieval-quality` | `docs/specs/phases/phase-21-retrieval-quality.md` | Done | 3 | master（v0.14.0：hybrid scoring（RRF k=60 BM25+向量融合，task-21.1）+ reranker（Reranker trait + 确定性 IdentityReranker + feature-gated CrossEncoderReranker，task-21.2）+ eval/smoke/release 收口（task-21.3）。真实 dogfood eval：hybrid top-1 0.0333→0.6667 / MRR 0.4095→0.7881 vs BM25 baseline → ADR-025 Accepted；real cross-encoder run（D5 未触发，top-1/MRR vs baseline uplift + 最高 recall@5，诚实 caveat：本小型代码语料不及 hybrid）→ ADR-026 Accepted。默认构建 0 新 dep、BM25 baseline 不变；tag 待用户授权后 push） |
 | 22 | `embedding-provider-completion` | `docs/specs/phases/phase-22-embedding-provider-completion.md` | Done | 4 | master（v0.15.0：provider 配置选择 + dim 协商（`select_provider` 工厂 + `negotiate_dim`→`DimMismatch`，task-22.1）+ content-hash 缓存（`CachingEmbeddingProvider` 内存 L1 + 可选 SQLite L2，task-22.2）+ 远程 OpenAI/Cohere HTTP 骨架（`RemoteEmbeddingProvider` ureq rustls feature-gated + 契约测试不打网络，task-22.3）+ health opt-in 远程探针 + smoke v12 + 收口（task-22.4）。ADR-027 据 D1-D5 真实非合成验证（Go config round-trip + Rust factory/dim/cache 单测 + 远程契约 fixture + 默认 0 网络 dep）Proposed→Accepted；默认构建 0 模型 / 0 网络 dep（deterministic 缺省，fastembed/remote feature-gated + opt-in，ADR-004）；远程真实联调/密钥/召回质量 + 远程探针真实命中如实 defer（ADR-013）；tag 无人值守授权下主 agent 自主 push） |
 | 23 | `vector-persistence-and-cross-platform` | `docs/specs/phases/phase-23-vector-persistence-and-cross-platform.md` | Done | 3 | master（v0.16.0：hnsw 图持久化往返（路径 B 输入集 serialize + load 重建 + rebuild-on-load，task-23.1，3/3 PASS）+ sqlite-vec Windows MSVC 跨平台（task-23.2 真实在 x86_64-pc-windows-msvc 构建+运行通过，**解除 Phase 18 MSVC-blocked stop-condition**，0 源码改动）+ 向量增量索引评估（brute-force/sqlite-vec 行级追加，hnsw 增量延后，task-23.3）+ smoke v13 + 收口。ADR-028 据 D1-D4 真实非合成验证 Proposed→Accepted；ADR-023 add-only Amendment 推进 Follow-ups（rebuild-on-restart 前提解除 / MSVC parity 缩小，不溯改正文 D5）；默认构建 0-vector-dep BM25 baseline 不变（ADR-023 D5）；tag 无人值守授权下主 agent 自主 push） |
+| 24 | `retrieval-tokenizer-and-eval-hardening` | `docs/specs/phases/phase-24-retrieval-tokenizer-and-eval-hardening.md` | Draft | 0 | 规划 Draft（roadmap §3.5 / v0.17.0；3 task spec Draft）；实现期逐 task 建 `../ContextForge-wt-task-24.x` |
+| 25 | `production-vector-backend` | `docs/specs/phases/phase-25-production-vector-backend.md` | Draft | 0 | 规划 Draft（roadmap §3.6 / v0.18.0；3 task spec Draft）；实现期逐 task 建 `../ContextForge-wt-task-25.x` |
+| 26 | `observability-hardening` | `docs/specs/phases/phase-26-observability-hardening.md` | Draft | 0 | 规划 Draft（roadmap §3.7 / v0.19.0；3 task spec Draft）；实现期逐 task 建 `../ContextForge-wt-task-26.x` |
+| 27 | `memory-ops-hardening` | `docs/specs/phases/phase-27-memory-ops-hardening.md` | Draft | 0 | 规划 Draft（roadmap §3.8 / v0.20.0；3 task spec Draft）；实现期逐 task 建 `../ContextForge-wt-task-27.x` |
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
@@ -354,6 +358,18 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 23.1 | core/src/retriever/vector/hnsw.rs HnswBackend 图序列化/反序列化到磁盘（VectorIndexConfig.persistence_path 既有字段首次消费）+ rebuild-on-load fallback + feature vector-hnsw 序列化往返 roundtrip 测试 | docs/specs/tasks/task-23.1-hnsw-graph-persistence.md | Done | Phase23 #1（dep task-18.6 HnswBackend + task-18.1 persistence_path；可与 23.2 并行，hnsw.rs vs sqlite_vec.rs/Cargo.toml 写路径不相交；管道 🟢 / feature 真实持久化往返 🟡）| master |
 | 23.2 | core/Cargo.toml vector-sqlite + core/src/retriever/vector/sqlite_vec.rs Windows MSVC 可构建路径调查（bundled amalgamation / 预编译扩展 / 替代绑定三路径）+ docs/spikes/phase-23-sqlite-vec-cross-platform.md（落地或诚实文档化 stop-condition，禁伪造跨平台通过）| docs/specs/tasks/task-23.2-sqlite-vec-cross-platform.md | Done | Phase23 #2（dep task-18.3 SqliteVecBackend Linux gcc 凭据；🔴 受阻平台调查类；结论=落地或 stop-condition；受阻不阻塞 23.1/23.3）| master |
 | 23.3 | 向量增量索引评估（最小实现或如实延后 [SPEC-DEFER:phase-future.vector-incremental-index]）+ scripts/console_smoke.sh v13 向量持久化/跨平台 smoke + v0.16.0 release docs + ADR-028 ratify + ADR-023/008 add-only Amendment + phase-23 §6 闭合 + adapter | docs/specs/tasks/task-23.3-closeout-v0.16.0.md | Done | Phase23 #3（dep 23.1+23.2 全 Done；tag push 经用户授权；承 task-19.7/18.9 closeout 模式）| master |
+| 24.1 | core/src/indexer/mod.rs 自定义 code/CJK TextAnalyzer（opt-in + 代码符号拆分保留原 token + CJK bigram + 默认不变）| docs/specs/tasks/task-24.1-code-and-cjk-tokenizer.md | Draft | Phase24 #1（dep task-2.4 indexer schema + task-4.1 RetrieverConfig.tokenizer 接入点；可与 24.2 并行）| 规划 Draft |
+| 24.2 | internal/eval/eval.go 数据集校验器（schema/重复/覆盖）+ test/fixtures/eval/golden-semantic.jsonl 代码/CJK 扩充 | docs/specs/tasks/task-24.2-eval-dataset-hardening.md | Draft | Phase24 #2（dep task-8.1 ValidateDataset + task-19.5 golden 口径；可与 24.1 并行）| 规划 Draft |
+| 24.3 | tokenizer 真实 before/after recall delta + core/src/eval/runner.rs 评估（promote/延后）+ console_smoke v14 + v0.17.0 closeout + ADR-029 ratify | docs/specs/tasks/task-24.3-closeout-v0.17.0.md | Draft | Phase24 #3（dep 24.1+24.2；收口）| 规划 Draft |
+| 25.1 | core/src/retriever/vector/qdrant.rs 生命周期层（connection-config validate + health-probe + decide_ensure 纯函数契约层 deterministic 单测）| docs/specs/tasks/task-25.1-qdrant-server-lifecycle.md | Draft | Phase25 #1（dep task-18.4 QdrantBackend spike；契约层不需 live server；可与 25.2 并行）| 规划 Draft |
+| 25.2 | core/src/retriever/vector/lance_db.rs 真实可构建性调查（dev-box cargo build protoc 前置三态）+ 索引调参参数校验 | docs/specs/tasks/task-25.2-lancedb-buildability-and-index-tuning.md | Draft | Phase25 #2（dep task-18.5 LanceDbBackend spike；仿 task-23.2 sqlite-vec MSVC 调查 pattern；可与 25.1 并行）| 规划 Draft |
+| 25.3 | 生产 backend 选择矩阵 + console_smoke v15 + v0.18.0 closeout + ADR-030 ratify + ADR-023 add-only Amendment | docs/specs/tasks/task-25.3-closeout-v0.18.0.md | Draft | Phase25 #3（dep 25.1+25.2；收口）| 规划 Draft |
+| 26.1 | core/src/data_plane/search_persist.rs TraceStore FTS5 shadow 表 + prune_older_than/VACUUM（migration 0016 add-only，bundled SQLite 0 新 dep）| docs/specs/tasks/task-26.1-tracestore-fts-and-vacuum.md | Draft | Phase26 #1（dep Phase16 task-16.1 SqliteTracePersist；可与 26.2 并行）| 规划 Draft |
+| 26.2 | events SSE 推送（GET /v1/observability/events/stream，Go http.Flusher add-only）+ audit_log 重放 + event-bus 容量/drain 配置 | docs/specs/tasks/task-26.2-events-sse-push-and-replay.md | Draft | Phase26 #2（dep Phase16 task-16.2 long-poll + Phase11 task-11.4 EventBus + ADR-021；可与 26.1 并行）| 规划 Draft |
+| 26.3 | console_smoke v16 + v0.19.0 closeout + ADR-031 ratify + ADR-021/015 add-only Amendment | docs/specs/tasks/task-26.3-closeout-v0.19.0.md | Draft | Phase26 #3（dep 26.1+26.2；收口）| 规划 Draft |
+| 27.1 | proto add-only pinned_by(string)/pinned_at_unix(int64) + core/src/memory/store.rs 写穿 + audit 回填 | docs/specs/tasks/task-27.1-memory-pin-actor-and-timestamp.md | Draft | Phase27 #1（dep Phase13 task-13.1 MemoryService + Phase17 task-17.1 is_pinned + ADR-022 §Trade-offs 三 marker；proto add-only 不破冻结）| 规划 Draft |
+| 27.2 | proto add-only Unpin/HardDelete RPC + Pin/Unpin 显式拆分 + hard-delete X-Confirm（复用 confirmMiddleware，ADR-017 D2）| docs/specs/tasks/task-27.2-memory-pin-unpin-split-and-hard-delete.md | Draft | Phase27 #2（dep 27.1；串行 proto add-only）| 规划 Draft |
+| 27.3 | console_smoke v17 + v0.20.0 closeout + ADR-032 ratify | docs/specs/tasks/task-27.3-closeout-v0.20.0.md | Draft | Phase27 #3（dep 27.1+27.2；收口）| 规划 Draft |
 
 ## ADR 索引
 
@@ -390,6 +406,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 026 | reranker-provider | Accepted | docs/decisions/adr-026-reranker-provider.md |
 | 027 | embedding-provider-abstraction | Accepted | docs/decisions/adr-027-embedding-provider-abstraction.md |
 | 028 | vector-persistence-strategy | Accepted | docs/decisions/adr-028-vector-persistence-strategy.md |
+| 029 | code-and-cjk-tokenizer-and-eval-hardening | Proposed | docs/decisions/adr-029-code-and-cjk-tokenizer-and-eval-hardening.md |
+| 030 | production-vector-backend | Proposed | docs/decisions/adr-030-production-vector-backend.md |
+| 031 | observability-hardening | Proposed | docs/decisions/adr-031-observability-hardening.md |
+| 032 | memory-ops-hardening | Proposed | docs/decisions/adr-032-memory-ops-hardening.md |
 
 ## BDD Feature 索引
 
@@ -426,6 +446,10 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 21.1 / 21.2 / 21.3 | test/features/phase-21-retrieval-quality.feature |
 | 22.1 / 22.2 / 22.3 / 22.4 | test/features/phase-22-embedding-provider-completion.feature |
 | 23.1 / 23.2 / 23.3 | test/features/phase-23-vector-persistence-and-cross-platform.feature |
+| 24.1 / 24.2 / 24.3 | test/features/phase-24-retrieval-tokenizer-and-eval-hardening.feature |
+| 25.1 / 25.2 / 25.3 | test/features/phase-25-production-vector-backend.feature |
+| 26.1 / 26.2 / 26.3 | test/features/phase-26-observability-hardening.feature |
+| 27.1 / 27.2 / 27.3 | test/features/phase-27-memory-ops-hardening.feature |
 
 ---
 
