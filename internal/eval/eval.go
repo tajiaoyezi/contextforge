@@ -74,6 +74,29 @@ type Report struct {
 	SemanticMisses       int     `json:"semantic_misses"`
 	SemanticRecallAt5    float64 `json:"semantic_recall_at_5"`
 	SemanticRecallAt10   float64 `json:"semantic_recall_at_10"`
+
+	// task-21.3: hybrid (RRF-fused BM25+vector, ADR-025) recall, computed alongside the BM25 path when
+	// a hybrid pass is supplied (add-only, mirrors the task-18.8 SemanticRecall@K fields).
+	// HybridEvaluated is false for a run without a hybrid pass — byte-equivalent to the legacy report.
+	HybridEvaluated    bool    `json:"hybrid_evaluated"`
+	HybridStrongHits5  int     `json:"hybrid_strong_hits_top5"`
+	HybridStrongHits10 int     `json:"hybrid_strong_hits_top10"`
+	HybridWeakHits     int     `json:"hybrid_weak_hits"`
+	HybridMisses       int     `json:"hybrid_misses"`
+	HybridRecallAt5    float64 `json:"hybrid_recall_at_5"`
+	HybridRecallAt10   float64 `json:"hybrid_recall_at_10"`
+
+	// task-21.3: reranked (top-k re-ordered by the wired Reranker — the deterministic IdentityReranker
+	// default, ADR-026 D2) recall, add-only mirror of the hybrid/semantic columns. RerankedEvaluated is
+	// false without a rerank pass. Real cross-encoder uplift is recorded in the dogfood spike
+	// (docs/spikes/phase-21-hybrid-recall.md), not asserted here (ADR-013 — no synthetic quality).
+	RerankedEvaluated    bool    `json:"reranked_evaluated"`
+	RerankedStrongHits5  int     `json:"reranked_strong_hits_top5"`
+	RerankedStrongHits10 int     `json:"reranked_strong_hits_top10"`
+	RerankedWeakHits     int     `json:"reranked_weak_hits"`
+	RerankedMisses       int     `json:"reranked_misses"`
+	RerankedRecallAt5    float64 `json:"reranked_recall_at_5"`
+	RerankedRecallAt10   float64 `json:"reranked_recall_at_10"`
 }
 
 // Recall gate thresholds (ADR-006 acceptance gate + Phase 18 task-18.8 amendment).
@@ -81,6 +104,8 @@ const (
 	GateTop5StrongMin       = 0.75 // BM25 Top-5 strong-hit rate (ADR-006)
 	GateTop10StrongMin      = 0.85 // BM25 Top-10 strong-hit rate (ADR-006)
 	GateSemanticRecall10Min = 0.70 // SemanticRecall@10 (Phase 18 task-18.8 amendment)
+	GateHybridRecall10Min   = 0.70 // HybridRecall@10 (Phase 21 task-21.3; ADR-006 A1 parity)
+	GateRerankedRecall10Min = 0.70 // RerankedRecall@10 (Phase 21 task-21.3; ADR-006 A1 parity)
 )
 
 func BuiltinGoldenQuestions() []Question {
@@ -301,36 +326,69 @@ func SemanticRecallAtK(results []Result, k int) float64 {
 	return float64(hits) / float64(len(results))
 }
 
-// SummarizeHybrid summarizes the BM25 path (bm25) and, when semantic (vector-path) results are
-// supplied, the semantic path alongside it. With no semantic results the report is BM25-only
-// (SemanticEvaluated=false): the live semantic path requires the deferred vector-retrieval
-// integration + an embedding provider, so production runs stay BM25-only until those ship. The
-// bm25 and semantic result slices are the per-question outcomes of the two retrieval methods over
-// the same question set.
-func SummarizeHybrid(bm25 []Result, semantic []Result) Report {
+// Passes bundles the optional retrieval passes evaluated alongside the BM25 baseline (task-21.3,
+// add-only). Each slice holds the per-question outcomes of that retrieval method over the same
+// question set; an empty/nil slice leaves that pass's columns at the zero value (it was not run).
+type Passes struct {
+	Semantic []Result
+	Hybrid   []Result
+	Reranked []Result
+}
+
+// SummarizePasses summarizes the BM25 baseline plus any supplied optional passes (semantic / hybrid /
+// reranked, task-21.3). With no optional passes the report is BM25-only — byte-equivalent to the
+// legacy Summarize / SummarizeHybrid(bm25, nil) output (every *Evaluated stays false). Each pass uses
+// the same strong@K recall definition as the semantic path (SemanticRecallAtK).
+func SummarizePasses(bm25 []Result, p Passes) Report {
 	report := Summarize(bm25)
-	if len(semantic) == 0 {
-		return report
+	if len(p.Semantic) > 0 {
+		report.SemanticEvaluated = true
+		report.SemanticStrongHits5, report.SemanticStrongHits10, report.SemanticWeakHits, report.SemanticMisses = tallyPass(p.Semantic)
+		report.SemanticRecallAt5 = SemanticRecallAtK(p.Semantic, 5)
+		report.SemanticRecallAt10 = SemanticRecallAtK(p.Semantic, 10)
 	}
-	report.SemanticEvaluated = true
-	for _, r := range semantic {
+	if len(p.Hybrid) > 0 {
+		report.HybridEvaluated = true
+		report.HybridStrongHits5, report.HybridStrongHits10, report.HybridWeakHits, report.HybridMisses = tallyPass(p.Hybrid)
+		report.HybridRecallAt5 = SemanticRecallAtK(p.Hybrid, 5)
+		report.HybridRecallAt10 = SemanticRecallAtK(p.Hybrid, 10)
+	}
+	if len(p.Reranked) > 0 {
+		report.RerankedEvaluated = true
+		report.RerankedStrongHits5, report.RerankedStrongHits10, report.RerankedWeakHits, report.RerankedMisses = tallyPass(p.Reranked)
+		report.RerankedRecallAt5 = SemanticRecallAtK(p.Reranked, 5)
+		report.RerankedRecallAt10 = SemanticRecallAtK(p.Reranked, 10)
+	}
+	return report
+}
+
+// tallyPass counts strong@5 / strong@10 / weak / miss for one pass's per-question outcomes (task-21.3
+// helper shared by every optional pass; matches the original SummarizeHybrid semantic tally exactly).
+func tallyPass(results []Result) (strong5, strong10, weak, miss int) {
+	for _, r := range results {
 		switch r.Outcome {
 		case OutcomeStrong:
 			if r.MatchedRank >= 1 && r.MatchedRank <= 5 {
-				report.SemanticStrongHits5++
+				strong5++
 			}
 			if r.MatchedRank >= 1 && r.MatchedRank <= 10 {
-				report.SemanticStrongHits10++
+				strong10++
 			}
 		case OutcomeWeak:
-			report.SemanticWeakHits++
+			weak++
 		default:
-			report.SemanticMisses++
+			miss++
 		}
 	}
-	report.SemanticRecallAt5 = SemanticRecallAtK(semantic, 5)
-	report.SemanticRecallAt10 = SemanticRecallAtK(semantic, 10)
-	return report
+	return
+}
+
+// SummarizeHybrid summarizes the BM25 path and, when semantic (vector-path) results are supplied, the
+// semantic path alongside it. It now delegates to SummarizePasses (task-21.3, add-only) so the
+// BM25/semantic output stays byte-equivalent to the task-18.8 behaviour while hybrid/reranked passes
+// reuse the same machinery. With no semantic results the report is BM25-only (SemanticEvaluated=false).
+func SummarizeHybrid(bm25 []Result, semantic []Result) Report {
+	return SummarizePasses(bm25, Passes{Semantic: semantic})
 }
 
 // MeetsRecallGate checks a report against the ADR-006 (+ Phase 18 task-18.8) recall thresholds.
@@ -348,6 +406,14 @@ func MeetsRecallGate(report Report) (bool, []string) {
 	}
 	if report.SemanticEvaluated && report.SemanticRecallAt10 < GateSemanticRecall10Min {
 		failures = append(failures, fmt.Sprintf("SemanticRecallAt10 %.3f < %.2f", report.SemanticRecallAt10, GateSemanticRecall10Min))
+	}
+	// task-21.3: hybrid / reranked recall gates apply only when those passes were evaluated (mirrors
+	// the semantic gate). ADR-013: the gate is printed for human judgement, not an eval verdict.
+	if report.HybridEvaluated && report.HybridRecallAt10 < GateHybridRecall10Min {
+		failures = append(failures, fmt.Sprintf("HybridRecallAt10 %.3f < %.2f", report.HybridRecallAt10, GateHybridRecall10Min))
+	}
+	if report.RerankedEvaluated && report.RerankedRecallAt10 < GateRerankedRecall10Min {
+		failures = append(failures, fmt.Sprintf("RerankedRecallAt10 %.3f < %.2f", report.RerankedRecallAt10, GateRerankedRecall10Min))
 	}
 	return len(failures) == 0, failures
 }

@@ -2,6 +2,7 @@ package eval
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -212,5 +213,84 @@ func result(chunkID, filePath string, lineStart, lineEnd int64) *contextforgev1.
 		FilePath:  filePath,
 		LineStart: lineStart,
 		LineEnd:   lineEnd,
+	}
+}
+
+// TEST-21.3.1 / AC1: SummarizePasses fills the add-only hybrid + reranked recall columns alongside
+// the BM25 + semantic columns (task-21.3, mirroring the task-18.8 SemanticRecall@K add-only pattern).
+func TestTask213_AC1_SummarizePassesHybridRerankedColumns(t *testing.T) {
+	bm25 := []Result{
+		{Outcome: OutcomeStrong, StrongTop5: true, StrongTop10: true, MatchedRank: 1, Latency: 5 * time.Millisecond},
+		{Outcome: OutcomeWeak, MatchedRank: 3, Latency: 7 * time.Millisecond},
+	}
+	hybrid := []Result{
+		{Outcome: OutcomeStrong, MatchedRank: 2},
+		{Outcome: OutcomeStrong, MatchedRank: 7},
+	}
+	reranked := []Result{
+		{Outcome: OutcomeStrong, MatchedRank: 1},
+		{Outcome: OutcomeMiss, MatchedRank: -1},
+	}
+	report := SummarizePasses(bm25, Passes{Hybrid: hybrid, Reranked: reranked})
+
+	if !report.HybridEvaluated {
+		t.Fatal("HybridEvaluated should be true when hybrid results supplied")
+	}
+	if report.HybridStrongHits5 != 1 || report.HybridStrongHits10 != 2 {
+		t.Fatalf("hybrid strong hits wrong: top5=%d top10=%d", report.HybridStrongHits5, report.HybridStrongHits10)
+	}
+	if report.HybridRecallAt5 != 1.0/2.0 || report.HybridRecallAt10 != 2.0/2.0 {
+		t.Fatalf("hybrid recall wrong: @5=%v @10=%v", report.HybridRecallAt5, report.HybridRecallAt10)
+	}
+	if !report.RerankedEvaluated {
+		t.Fatal("RerankedEvaluated should be true when reranked results supplied")
+	}
+	if report.RerankedStrongHits5 != 1 || report.RerankedRecallAt10 != 1.0/2.0 {
+		t.Fatalf("reranked columns wrong: strong5=%d recall@10=%v", report.RerankedStrongHits5, report.RerankedRecallAt10)
+	}
+	// BM25 columns still correct; semantic stays unevaluated (no semantic pass supplied).
+	if report.Total != 2 || report.Top5StrongHits != 1 || report.WeakHits != 1 {
+		t.Fatalf("bm25 columns wrong: %+v", report)
+	}
+	if report.SemanticEvaluated {
+		t.Fatal("SemanticEvaluated should be false when no semantic pass supplied")
+	}
+}
+
+// TEST-21.3.1 / AC1 (byte-equivalent): SummarizeHybrid delegates to SummarizePasses and stays
+// byte-equivalent to the legacy BM25/semantic-only output — no hybrid/reranked columns set (add-only).
+func TestTask213_AC1_SummarizeHybridByteEquivalent(t *testing.T) {
+	bm25 := []Result{{Outcome: OutcomeStrong, StrongTop5: true, StrongTop10: true, MatchedRank: 1}}
+	semantic := []Result{{Outcome: OutcomeStrong, MatchedRank: 2}}
+
+	legacy := SummarizeHybrid(bm25, semantic)
+	viaPasses := SummarizePasses(bm25, Passes{Semantic: semantic})
+	if !reflect.DeepEqual(legacy, viaPasses) {
+		t.Fatalf("SummarizeHybrid must equal SummarizePasses{Semantic}:\n legacy=%+v\n passes=%+v", legacy, viaPasses)
+	}
+	// No hybrid/reranked pass → those columns stay zero/false (add-only, byte-equivalent).
+	if legacy.HybridEvaluated || legacy.RerankedEvaluated {
+		t.Fatalf("hybrid/reranked must be unset for a semantic-only run: %+v", legacy)
+	}
+	if legacy.HybridRecallAt10 != 0 || legacy.RerankedRecallAt10 != 0 {
+		t.Fatalf("hybrid/reranked recall must be zero when not evaluated: %+v", legacy)
+	}
+}
+
+// TEST-21.3.1 / AC1: the recall gate adds HybridRecall@10 / RerankedRecall@10 checks ONLY when those
+// passes were evaluated (mirrors the SemanticRecall@10 gate; BM25/semantic-only reports unaffected).
+func TestTask213_AC1_RecallGateHybridReranked(t *testing.T) {
+	// hybrid + reranked evaluated, both below 0.70 → two extra failures (BM25 thresholds ok).
+	pass, failures := MeetsRecallGate(Report{
+		Top5StrongRate: 0.8, Top10StrongRate: 0.9,
+		HybridEvaluated: true, HybridRecallAt10: 0.5,
+		RerankedEvaluated: true, RerankedRecallAt10: 0.4,
+	})
+	if pass || len(failures) != 2 {
+		t.Fatalf("gate should fail on hybrid+reranked recall: pass=%v failures=%v", pass, failures)
+	}
+	// not evaluated → no extra checks (byte-equivalent to the BM25-only gate).
+	if ok, _ := MeetsRecallGate(Report{Top5StrongRate: 0.8, Top10StrongRate: 0.9}); !ok {
+		t.Fatal("gate should pass when hybrid/reranked not evaluated")
 	}
 }

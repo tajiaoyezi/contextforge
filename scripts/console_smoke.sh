@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 20 task-20.3 console-api semantic smoke (v10).
+# scripts/console_smoke.sh — Phase 21 task-21.3 retrieval-quality smoke (v11; was Phase 20 v10).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -38,6 +38,16 @@
 # not only that the add-only param preserves the {result, trace} contract. Per ADR-013
 # still no recall-threshold assertion (deterministic provider proves dispatch, not recall;
 # real recall via the Retriever hot path is task-20.2 / docs/spikes/phase-20-recall-via-retriever.md).
+#
+# v11 (Phase 21) upgrades step 30 — task-21.3 grows `eval run --semantic` into
+# `eval run --semantic --hybrid --rerank`, so step 30 now also asserts the add-only hybrid
+# (req.Hybrid → daemon search_hybrid, task-21.1) + reranked (eval-layer deterministic
+# IdentityReranker, ADR-026 D2) multi-path report lines + gate engage end-to-end. Per ADR-013
+# still no recall-threshold assertion (the transient eval index is empty; real hybrid/rerank
+# recall vs the baseline is docs/spikes/phase-21-hybrid-recall.md). Per-result
+# retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
+# (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); the console-api ?hybrid/?rerank
+# REST forward stays [SPEC-DEFER:phase-future.console-api-hybrid-forward].
 #
 # Modes (selected by env):
 #
@@ -670,27 +680,34 @@ else
   echo "    SKIP ($MODE mode — semantic REST path validated via Go/Rust unit tests; needs the real daemon)"
 fi
 
-echo "  [30/30] task-19.4 contextforge eval run --semantic (dual-path BM25 + semantic report + recall gate)"
+echo "  [30/30] task-21.3 contextforge eval run --semantic --hybrid --rerank (multi-path BM25 + semantic + hybrid + reranked report + gate)"
 if [ "$MODE" = "real" ]; then
-  # $GO_BIN built at [real][3/4]. `eval run --semantic` spawns a transient core per query
-  # (searchViaDaemon) and issues BM25 + semantic passes, summarizing via task-18.8 SummarizeHybrid +
-  # MeetsRecallGate. ADR-013: assert the dual-path report SHAPE + gate line + exit 0 ONLY — real
-  # SemanticRecall@K numbers come from task-19.5 (the transient index is empty, so recall is not meaningful).
-  if eval_out=$("$GO_BIN" eval run --semantic --collection=default 2>"$STAGING/eval.err"); then
+  # $GO_BIN built at [real][3/4]. v11 (task-21.3): `eval run --semantic --hybrid --rerank` spawns a
+  # transient core per query (searchViaDaemon) and issues BM25 + semantic (req.Semantic) + hybrid
+  # (req.Hybrid → daemon search_hybrid, task-21.1) + reranked (eval-layer deterministic
+  # IdentityReranker over the hybrid top-k, ADR-026 D2) passes, summarizing via SummarizePasses +
+  # MeetsRecallGate. ADR-013: assert the multi-path report SHAPE + gate line + exit 0 ONLY — the
+  # transient index is empty, so recall is not meaningful; real hybrid/rerank recall vs the baseline
+  # comes from the dogfood eval (docs/spikes/phase-21-hybrid-recall.md). Per-result
+  # retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
+  # (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path).
+  if eval_out=$("$GO_BIN" eval run --semantic --hybrid --rerank --collection=default 2>"$STAGING/eval.err"); then
     echo "$eval_out" | grep -q '^total=' \
       && echo "$eval_out" | grep -q 'semantic_recall_at_10=' \
+      && echo "$eval_out" | grep -q 'hybrid_recall_at_10=' \
+      && echo "$eval_out" | grep -q 'reranked_recall_at_10=' \
       && echo "$eval_out" | grep -q '^gate=' \
-      || { echo "FAIL: eval --semantic missing dual-path/gate lines:" >&2; echo "$eval_out" >&2; exit 1; }
-    echo "    → eval run --semantic produced dual-path report + gate line (recall numbers deferred to task-19.5) ✅"
+      || { echo "FAIL: eval --semantic --hybrid --rerank missing multi-path/gate lines:" >&2; echo "$eval_out" >&2; exit 1; }
+    echo "    → eval run --semantic --hybrid --rerank produced multi-path report + gate line (recall numbers → docs/spikes/phase-21-hybrid-recall.md) ✅"
   else
-    echo "FAIL: eval run --semantic exited non-zero" >&2
+    echo "FAIL: eval run --semantic --hybrid --rerank exited non-zero" >&2
     cat "$STAGING/eval.err" >&2
     echo "---- core.log ----" >&2; tail -30 "$STAGING/core.log" 2>/dev/null || true
     echo "---- api.log ----" >&2; tail -30 "$STAGING/api.log" 2>/dev/null || true
     exit 1
   fi
 else
-  echo "    SKIP ($MODE mode — eval --semantic needs the real daemon search backend)"
+  echo "    SKIP ($MODE mode — eval multi-path needs the real daemon search backend)"
 fi
 
 echo

@@ -59,3 +59,43 @@ func TestTask203_SmokeV10SemanticEngagementAssertion(t *testing.T) {
 		t.Fatalf("smoke v10 step 29 must assert the vector path engaged (grep candidate_generation_steps=vector-bruteforce)")
 	}
 }
+
+// TEST-21.3.2 / AC2: smoke v11 upgrades step 30 from `eval run --semantic` to
+// `eval run --semantic --hybrid --rerank`, asserting the add-only hybrid (req.Hybrid → daemon
+// search_hybrid, task-21.1) + reranked (eval-layer deterministic IdentityReranker, ADR-026 D2) eval
+// passes engage end-to-end. ADR-013: report shape + gate only (the transient eval index is empty;
+// real hybrid/rerank recall is docs/spikes/phase-21-hybrid-recall.md). Existing steps unchanged; the
+// per-result retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
+// (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); console-api ?hybrid/?rerank REST
+// forward stays [SPEC-DEFER:phase-future.console-api-hybrid-forward].
+func TestTask213_SmokeV11HybridRerankAssertion(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v11") {
+		t.Fatalf("console_smoke.sh missing v11 header (task-21.3 closeout)")
+	}
+	for _, marker := range []string{"--hybrid", "--rerank", "hybrid_recall_at_10=", "reranked_recall_at_10="} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v11 step 30 must assert the hybrid/rerank eval path (missing %q)", marker)
+		}
+	}
+	// No regression of the v9/v10 steps.
+	for _, marker := range []string{"[29/30]", "[30/30]", "vector-bruteforce"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v11 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}

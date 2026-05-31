@@ -1,5 +1,54 @@
 # ContextForge Release Notes
 
+## v0.14.0 (2026-05-31) — retrieval-quality (hybrid scoring + reranker + ADR-025/026 ratified)
+
+### 摘要
+
+v0.14.0 minor release (Phase 21): on top of the Phase 19/20 BM25 + semantic dual paths, it adds two **opt-in** ranking-quality enhancements — **hybrid scoring** (RRF fusion of the BM25 word-level + vector semantic scores, `retrieval_method = "hybrid"` + add-only `hybrid_score`) and a **reranker pipeline** (`Reranker` trait + deterministic `IdentityReranker` default + feature-gated real cross-encoder `CrossEncoderReranker`, wired via `Retriever::with_reranker`).
+
+**Honest scope (read this)**: hybrid + rerank are both **opt-in** — default retrieval stays BM25. The **default build is unchanged and dependency-free** (0 new crate): its hybrid path uses the 0-dep `DeterministicEmbeddingProvider` + `BruteForceVectorBackend`, and the default reranker is the deterministic model-free `IdentityReranker`. The **real** embedding model (`FastEmbedProvider`, `all-MiniLM-L6-v2`) and **real** cross-encoder (`BGE-reranker-base`) are behind the `embedding-fastembed` / `reranker-fastembed` features; the real recall numbers below were measured with them. `SearchRequest.hybrid` is add-only — **no breaking contract bump**.
+
+### What shipped (Phase 21, tasks 21.1–21.3)
+
+| task | delivery | PR |
+|---|---|---|
+| 21.1 | `core/src/retriever/fusion.rs` RRF fusion (k=60) + `Retriever::search_hybrid` + proto `SearchRequest.hybrid=8` / `RetrievalResult.hybrid_score=15` (add-only, buf regen) + `server.rs` `req.hybrid` dispatch + `test_21_1×4` | #159 |
+| 21.2 | `core/src/rerank/{mod,traits,identity,cross_encoder}.rs` `Reranker` trait + deterministic `IdentityReranker` (0 model dep) + feature-gated `CrossEncoderReranker` + `Retriever::with_reranker` seam + `docs/spikes/phase-21-reranker.md` | #160 |
+| 21.3 | Phase 21 closeout: `internal/eval` Report hybrid/reranked columns + `internal/cli/eval.go --hybrid/--rerank` + smoke v11 step 30 multi-path assertion + real dogfood eval + v0.14.0 release docs + ADR-025/026 ratify | this PR |
+
+### Real hybrid / reranked recall vs the BM25 baseline (dogfood, ADR-013 real run)
+
+Real `FastEmbedProvider` (`all-MiniLM-L6-v2`, dim 384) + real `CrossEncoderReranker` (`BGE-reranker-base`), through the production `Retriever` over real ContextForge text (180 production chunks / 30 golden queries; `docs/spikes/phase-21-hybrid-recall.md`):
+
+| method | recall@5 | recall@10 | top-1 | MRR | ADR-006 gate (≥0.70) |
+|---|---|---|---|---|---|
+| baseline BM25 | 0.9000 | 0.9667 | 0.0333 | 0.4095 | PASS |
+| **hybrid RRF** | 0.9333 | 0.9667 | **0.6667** | **0.7881** | PASS |
+| reranked cross-encoder | **0.9667** | 0.9667 | 0.3333 | 0.6306 | PASS |
+
+- **Hybrid RRF is the decisive win**: top-1 +0.6334 / MRR +0.3786 over BM25 (BM25 finds the right file in top-10 but rarely ranks it first; fusing the vector signal fixes that) → ratifies **ADR-025 Accepted**.
+- **Real cross-encoder ran** (ADR-026 D5 stop-condition not triggered): beats BM25 baseline (top-1 +0.30, MRR +0.22) + best recall@5. **Honest caveat (ADR-013)**: on this small code+ADR corpus, reranking the already-strong hybrid top-k does **not** beat hybrid on top-1/MRR (general-text BGE is weaker on code chunks; rerank only re-orders an already-good fusion) → rerank is recommended as a **domain-fit opt-in**, never a default. → ratifies **ADR-026 Accepted (with caveat)**.
+
+### Upgrade path
+
+- Drop-in: default build behavior unchanged (BM25-only, 0 new dependency). No migration.
+- Hybrid: send `SearchRequest.hybrid=true` (or `contextforge eval run --hybrid`); unset → BM25. Reranking: wire `Retriever::with_reranker` (default `None` → no rerank). Real-model hybrid vector component needs `--features embedding-fastembed`; real cross-encoder rerank needs `--features reranker-fastembed` (not in the default image).
+- Proto: `SearchRequest.hybrid` (8) + `RetrievalResult.hybrid_score` (15) are **add-only** — existing clients unaffected (Console Contract v1 shape unchanged, 22-endpoint conformance + proto-freeze guard PASS, unset → BM25). **No breaking contract bump.**
+
+### Rollback path
+
+`git tag -d v0.14.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.13.0 (BM25-only + 0-dep deterministic semantic/hybrid path + identity reranker seam), so a rollback is non-breaking.
+
+### Contract
+
+Console Contract v1 unchanged in shape; the new `SearchRequest.hybrid` / `RetrievalResult.hybrid_score` fields are add-only and default to BM25 behavior when unset. The reranker adds no proto field (builder seam).
+
+### ADR
+
+**ADR-025 hybrid-scoring-fusion → Accepted** + **ADR-026 reranker-provider → Accepted** — both ratified on real dogfood eval data (ADR-013: real `FastEmbedProvider` + `CrossEncoderReranker` run, no synthetic figures). ADR-025 confirms the default RRF strategy (decisive top-1/MRR uplift, resolving the "indistinguishable on synthetic data" open point). ADR-026 ratifies the reranker architecture (real model ran; uplift over baseline + best recall@5) with the honest caveat that it underperforms hybrid on this corpus → opt-in domain-fit enhancement. **ADR-014 cross-validation gate — 12th activation**.
+
+详 [Phase 21 spec](docs/specs/phases/phase-21-retrieval-quality.md) + [ADR-025](docs/decisions/adr-025-hybrid-scoring-fusion.md) + [ADR-026](docs/decisions/adr-026-reranker-provider.md) + [v0.14.0 evidence](docs/releases/v0.14.0-evidence.md) + [v0.14.0 artifacts](docs/releases/v0.14.0-artifacts.md) + [hybrid/reranked recall evidence](docs/spikes/phase-21-hybrid-recall.md)。
+
 ## v0.13.0 (2026-05-31) — semantic-retrieval-throughline (语义检索贯通 console-api + 经 Retriever 真实召回 + ADR-024 ratified)
 
 ### 摘要
