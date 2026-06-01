@@ -86,6 +86,26 @@ fn test_27_1_memory_item_pin_actor_superset() {
     );
 }
 
+// TEST-27.2.1 / AC1 — console MemoryService 加 add-only Unpin / HardDelete RPC
+// 为既有 5 RPC 的 superset 追加（既有 RPC + PinMemoryRequest{bool pin} 不动）。
+#[test]
+fn test_27_2_memory_service_unpin_harddelete_superset() {
+    assert_superset(
+        &contract::console_service_methods("MemoryService"),
+        &[
+            "List", "Get", "Pin", "Deprecate", "SoftDelete",
+            "Unpin", "HardDelete",
+        ],
+        "AC1 MemoryService add-only Unpin/HardDelete superset",
+    );
+    for m in ["UnpinMemoryRequest", "HardDeleteMemoryRequest"] {
+        assert!(
+            !contract::console_message_fields(m).is_empty(),
+            "AC1: console message {m:?} not defined / has no fields"
+        );
+    }
+}
+
 // TEST-1.1.4 / SCEN-1.1.4 / AC4 — Rust 侧 tonic/prost codegen 成功（无 FFI）。
 #[test]
 fn test_rust_codegen_succeeds() {

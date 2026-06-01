@@ -588,6 +588,48 @@ func handleMemorySoftDelete(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleMemoryUnpin — POST /v1/memory/{id}/unpin → 204 (non-destructive; aligns
+// with pin, no confirmMiddleware). task-27.2 (ADR-032 D2): explicit unpin.
+func handleMemoryUnpin(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		if err := deps.Memory.Unpin(id); err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleMemoryHardDelete — POST /v1/memory/{id}/hard-delete → 204 (destructive;
+// confirmMiddleware-gated per ADR-017 D2 — physical row removal, unrecoverable).
+func handleMemoryHardDelete(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Memory == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		id := trimID(r)
+		if id == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		if err := deps.Memory.HardDelete(id); err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // =====================================================================
 // task-14.2 (ADR-017 D1 Wave 4) — 2 eval REST handlers.
 // =====================================================================

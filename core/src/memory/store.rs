@@ -225,6 +225,15 @@ impl SqliteMemoryStore {
         }
     }
 
+    /// task-27.2 (ADR-032 D2): physically delete a memory row (vs soft-delete's
+    /// status flip — the row is removed from the table, so get-by-id returns
+    /// None afterwards). NotFound when the memory_id does not exist. Deletes any
+    /// status (active/deprecated/soft_deleted).
+    pub fn hard_delete(&self, memory_id: &str) -> Result<(), MemoryStoreError> {
+        let _ = memory_id;
+        todo!("task-27.2 GREEN: DELETE FROM memory_items WHERE memory_id=? (NotFound on 0 rows)")
+    }
+
     /// Bulk-insert helper used by unit + integration test fixtures.
     pub fn seed_for_tests(&self, items: Vec<MemoryItem>) -> Result<(), MemoryStoreError> {
         let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
@@ -518,5 +527,30 @@ mod tests {
         s.seed_for_tests(vec![mem("y", "scope", "active")]).unwrap();
         let err = s.set_status("y", "garbage").expect_err("expect Invalid");
         assert!(matches!(err, MemoryStoreError::Invalid(_)));
+    }
+
+    /// TEST-27.2.2: hard_delete physically removes the row — get-by-id returns
+    /// None afterwards (vs soft-delete which keeps the row); NotFound on missing;
+    /// deletes any status.
+    #[test]
+    fn test_hard_delete_physical_removal() {
+        let s = fresh_store();
+        s.seed_for_tests(vec![
+            mem("hd", "scope", "active"),
+            mem("sd", "scope", "active"),
+        ])
+        .unwrap();
+        // soft-delete keeps the row gettable.
+        s.set_status("sd", "soft_deleted").unwrap();
+        assert!(s.get("sd").unwrap().is_some(), "soft-delete row still gettable");
+        // hard-delete removes it entirely.
+        s.hard_delete("hd").unwrap();
+        assert!(s.get("hd").unwrap().is_none(), "hard-delete row gone");
+        // hard-delete a soft_deleted row also works (any status).
+        s.hard_delete("sd").unwrap();
+        assert!(s.get("sd").unwrap().is_none());
+        // missing id → NotFound.
+        let err = s.hard_delete("nope").expect_err("expect NotFound");
+        assert!(matches!(err, MemoryStoreError::NotFound));
     }
 }

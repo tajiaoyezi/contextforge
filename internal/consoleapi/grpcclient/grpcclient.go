@@ -733,6 +733,18 @@ func (m *memoryClient) SoftDelete(id string) error {
 	return mapGrpcErr(err)
 }
 
+// task-27.2 (ADR-032 D2): explicit Unpin RPC (non-destructive).
+func (m *memoryClient) Unpin(id string) error {
+	_, err := m.c.Unpin(context.Background(), &pb.UnpinMemoryRequest{MemoryId: id})
+	return mapGrpcErr(err)
+}
+
+// task-27.2 (ADR-032 D2): hard-delete RPC (physical row removal; destructive).
+func (m *memoryClient) HardDelete(id string) error {
+	_, err := m.c.HardDelete(context.Background(), &pb.HardDeleteMemoryRequest{MemoryId: id})
+	return mapGrpcErr(err)
+}
+
 func protoToMemoryItem(p *pb.MemoryItem) contractv1.MemoryItem {
 	return contractv1.MemoryItem{
 		MemoryID:       p.MemoryId,

@@ -808,6 +808,8 @@ const (
 	MemoryService_Pin_FullMethodName        = "/contextforge.console_data_plane.v1.MemoryService/Pin"
 	MemoryService_Deprecate_FullMethodName  = "/contextforge.console_data_plane.v1.MemoryService/Deprecate"
 	MemoryService_SoftDelete_FullMethodName = "/contextforge.console_data_plane.v1.MemoryService/SoftDelete"
+	MemoryService_Unpin_FullMethodName      = "/contextforge.console_data_plane.v1.MemoryService/Unpin"
+	MemoryService_HardDelete_FullMethodName = "/contextforge.console_data_plane.v1.MemoryService/HardDelete"
 )
 
 // MemoryServiceClient is the client API for MemoryService service.
@@ -819,6 +821,9 @@ type MemoryServiceClient interface {
 	Pin(ctx context.Context, in *PinMemoryRequest, opts ...grpc.CallOption) (*PinMemoryResponse, error)
 	Deprecate(ctx context.Context, in *DeprecateMemoryRequest, opts ...grpc.CallOption) (*DeprecateMemoryResponse, error)
 	SoftDelete(ctx context.Context, in *SoftDeleteMemoryRequest, opts ...grpc.CallOption) (*SoftDeleteMemoryResponse, error)
+	// task-27.2 / ADR-032 D2 (add-only RPC).
+	Unpin(ctx context.Context, in *UnpinMemoryRequest, opts ...grpc.CallOption) (*UnpinMemoryResponse, error)
+	HardDelete(ctx context.Context, in *HardDeleteMemoryRequest, opts ...grpc.CallOption) (*HardDeleteMemoryResponse, error)
 }
 
 type memoryServiceClient struct {
@@ -879,6 +884,26 @@ func (c *memoryServiceClient) SoftDelete(ctx context.Context, in *SoftDeleteMemo
 	return out, nil
 }
 
+func (c *memoryServiceClient) Unpin(ctx context.Context, in *UnpinMemoryRequest, opts ...grpc.CallOption) (*UnpinMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UnpinMemoryResponse)
+	err := c.cc.Invoke(ctx, MemoryService_Unpin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) HardDelete(ctx context.Context, in *HardDeleteMemoryRequest, opts ...grpc.CallOption) (*HardDeleteMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HardDeleteMemoryResponse)
+	err := c.cc.Invoke(ctx, MemoryService_HardDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MemoryServiceServer is the server API for MemoryService service.
 // All implementations must embed UnimplementedMemoryServiceServer
 // for forward compatibility.
@@ -888,6 +913,9 @@ type MemoryServiceServer interface {
 	Pin(context.Context, *PinMemoryRequest) (*PinMemoryResponse, error)
 	Deprecate(context.Context, *DeprecateMemoryRequest) (*DeprecateMemoryResponse, error)
 	SoftDelete(context.Context, *SoftDeleteMemoryRequest) (*SoftDeleteMemoryResponse, error)
+	// task-27.2 / ADR-032 D2 (add-only RPC).
+	Unpin(context.Context, *UnpinMemoryRequest) (*UnpinMemoryResponse, error)
+	HardDelete(context.Context, *HardDeleteMemoryRequest) (*HardDeleteMemoryResponse, error)
 	mustEmbedUnimplementedMemoryServiceServer()
 }
 
@@ -912,6 +940,12 @@ func (UnimplementedMemoryServiceServer) Deprecate(context.Context, *DeprecateMem
 }
 func (UnimplementedMemoryServiceServer) SoftDelete(context.Context, *SoftDeleteMemoryRequest) (*SoftDeleteMemoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SoftDelete not implemented")
+}
+func (UnimplementedMemoryServiceServer) Unpin(context.Context, *UnpinMemoryRequest) (*UnpinMemoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Unpin not implemented")
+}
+func (UnimplementedMemoryServiceServer) HardDelete(context.Context, *HardDeleteMemoryRequest) (*HardDeleteMemoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HardDelete not implemented")
 }
 func (UnimplementedMemoryServiceServer) mustEmbedUnimplementedMemoryServiceServer() {}
 func (UnimplementedMemoryServiceServer) testEmbeddedByValue()                       {}
@@ -1024,6 +1058,42 @@ func _MemoryService_SoftDelete_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MemoryService_Unpin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnpinMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).Unpin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_Unpin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).Unpin(ctx, req.(*UnpinMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_HardDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HardDeleteMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).HardDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_HardDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).HardDelete(ctx, req.(*HardDeleteMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MemoryService_ServiceDesc is the grpc.ServiceDesc for MemoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1050,6 +1120,14 @@ var MemoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SoftDelete",
 			Handler:    _MemoryService_SoftDelete_Handler,
+		},
+		{
+			MethodName: "Unpin",
+			Handler:    _MemoryService_Unpin_Handler,
+		},
+		{
+			MethodName: "HardDelete",
+			Handler:    _MemoryService_HardDelete_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

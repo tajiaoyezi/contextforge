@@ -121,9 +121,14 @@ type MemoryListFilter struct {
 type MemoryClient interface {
 	List(filter MemoryListFilter) ([]contractv1.MemoryItem, error)
 	Get(memoryID string) (*contractv1.MemoryItem, error) // nil if not found
-	Pin(memoryID string, pin bool) error                  // pin=false = unpin
+	Pin(memoryID string, pin bool) error                  // pin=false = unpin (toggle)
 	Deprecate(memoryID string) error
 	SoftDelete(memoryID string) error
+	// task-27.2 (ADR-032 D2, add-only): explicit Unpin (non-destructive) +
+	// HardDelete (destructive — physical row removal; console-api gates it
+	// behind confirmMiddleware).
+	Unpin(memoryID string) error
+	HardDelete(memoryID string) error
 }
 
 // EvalClient backs POST /v1/eval-runs + GET /v1/eval-runs/{id} (task-14.2 / ADR-017 D1 Wave 4)

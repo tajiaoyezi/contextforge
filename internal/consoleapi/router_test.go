@@ -795,6 +795,59 @@ func TestMemorySoftDelete_412_then_204_then_excluded(t *testing.T) {
 	}
 }
 
+// TEST-27.2.4: explicit unpin route is non-destructive (no confirmMiddleware) → 204.
+func TestMemoryUnpin_204_non_destructive(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/unpin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 (non-destructive, no X-Confirm); got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TEST-27.2.4: hard-delete is confirmMiddleware-gated (412 without X-Confirm),
+// 204 with confirm, and physically removes the item (subsequent GET → 404).
+func TestMemoryHardDelete_412_then_204_then_gone(t *testing.T) {
+	router := newTestRouterWithMemFixtures(t)
+
+	// Without X-Confirm → 412.
+	req := httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/hard-delete", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("expected 412 without X-Confirm; got %d body=%s", w.Code, w.Body.String())
+	}
+
+	// With X-Confirm: yes → 204.
+	req = httptest.NewRequest("POST", "/v1/memory/mem-fixture-1/hard-delete", nil)
+	req.Header.Set("X-Confirm", "yes")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 with X-Confirm; got %d body=%s", w.Code, w.Body.String())
+	}
+
+	// Physically gone: GET → 404 (vs soft-delete which keeps the row).
+	req = httptest.NewRequest("GET", "/v1/memory/mem-fixture-1", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("hard-deleted item must be gone (404); got %d", w.Code)
+	}
+	// Also absent from include_soft_deleted list (it's not soft-deleted, it's removed).
+	req = httptest.NewRequest("GET", "/v1/memory?include_soft_deleted=true", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var items []contractv1.MemoryItem
+	_ = json.Unmarshal(w.Body.Bytes(), &items)
+	for _, item := range items {
+		if item.MemoryID == "mem-fixture-1" {
+			t.Errorf("hard-deleted item still present: %+v", item)
+		}
+	}
+}
+
 // TestHandleHealth_ContractVersion — must-have field check (AC1).
 func TestHandleHealth_ContractVersion(t *testing.T) {
 	router, _ := newTestRouter(t, "")
