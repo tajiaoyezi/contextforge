@@ -82,6 +82,12 @@ impl SqliteTracePersist {
         let path = data_dir.join("search_traces.db");
         let conn = Connection::open(&path)?;
         conn.execute_batch(MIGRATION_SQL)?;
+        // task-26.1 (ADR-031 D1): FTS5 shadow table (idempotent). Old DBs that
+        // only carry the 0015 schema get the table created here, then a one-time
+        // boot backfill populates it from existing trace_json (the readable
+        // query text is base64-encoded so SQL alone cannot extract it).
+        conn.execute_batch(MIGRATION_FTS_SQL)?;
+        backfill_fts_if_empty(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -102,6 +108,19 @@ impl SqliteTracePersist {
             "INSERT OR REPLACE INTO search_traces (query_id, trace_json, workspace_id, ts_unix) \
              VALUES (?1, ?2, ?3, ?4)",
             params![key, trace_json, workspace_id, ts_unix],
+        )?;
+        // task-26.1 (ADR-031 D1): keep the FTS shadow in sync. INSERT OR REPLACE
+        // above replaces the main row on duplicate key; mirror that for FTS by
+        // deleting any prior shadow row for this key then re-inserting the
+        // (possibly updated) query text. No triggers — explicit sync because the
+        // indexed text lives in the base64 trace_json, not a column.
+        conn.execute(
+            "DELETE FROM search_traces_fts WHERE query_id = ?1",
+            params![key],
+        )?;
+        conn.execute(
+            "INSERT INTO search_traces_fts (query_id, query_text) VALUES (?1, ?2)",
+            params![key, trace.query],
         )?;
         Ok(())
     }
@@ -202,15 +221,50 @@ impl SqliteTracePersist {
         query_text: &str,
         limit: usize,
     ) -> Result<Vec<PbQueryRecord>, SqliteTracePersistError> {
-        let _ = (query_text, limit);
-        todo!("task-26.1 GREEN: FTS5 MATCH query over search_traces_fts JOIN search_traces")
+        let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
+        let lim = limit.clamp(1, 100) as i64;
+        // Treat the caller's text as a literal FTS5 phrase: wrap in double quotes
+        // (escaping internal quotes by doubling) so punctuation like '-' / ':' is
+        // tokenized rather than interpreted as FTS5 query-syntax operators. Empty
+        // input matches nothing.
+        if query_text.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let match_expr = format!("\"{}\"", query_text.replace('"', "\"\""));
+        let mut stmt = conn.prepare(
+            "SELECT t.query_id, t.trace_json, t.workspace_id, t.ts_unix \
+             FROM search_traces_fts f JOIN search_traces t ON t.query_id = f.query_id \
+             WHERE search_traces_fts MATCH ?1 ORDER BY rank LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![match_expr, lim], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (key, trace_json, workspace_id, ts_unix) = r?;
+            let trace = decode_trace(&trace_json)?;
+            out.push(PbQueryRecord {
+                query_id: key,
+                query: trace.query,
+                ts_unix,
+                workspace_id,
+            });
+        }
+        Ok(out)
     }
 
     /// task-26.1 (ADR-031 D2): reclaim disk via SQLite VACUUM. Rebuilds the
     /// database file compactly; must run with exclusive access (not on the hot
     /// path). The `Mutex<Connection>` already serializes callers.
     pub fn vacuum(&self) -> Result<(), SqliteTracePersistError> {
-        todo!("task-26.1 GREEN: execute VACUUM")
+        let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
+        conn.execute_batch("VACUUM")?;
+        Ok(())
     }
 
     /// task-26.1 (ADR-031 D2): delete traces older than `cutoff_ts` (by
@@ -218,8 +272,20 @@ impl SqliteTracePersist {
     /// `search_traces` rows deleted. Callers may `vacuum()` afterwards to
     /// actually reclaim the freed pages.
     pub fn prune_older_than(&self, cutoff_ts: i64) -> Result<usize, SqliteTracePersistError> {
-        let _ = cutoff_ts;
-        todo!("task-26.1 GREEN: DELETE FROM search_traces (+ fts) WHERE ts_unix < cutoff")
+        let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
+        // Remove FTS shadow rows first (no triggers — explicit sync), then the
+        // main rows. The subquery resolves the pruned keys before the main
+        // DELETE removes them.
+        conn.execute(
+            "DELETE FROM search_traces_fts WHERE query_id IN \
+             (SELECT query_id FROM search_traces WHERE ts_unix < ?1)",
+            params![cutoff_ts],
+        )?;
+        let n = conn.execute(
+            "DELETE FROM search_traces WHERE ts_unix < ?1",
+            params![cutoff_ts],
+        )?;
+        Ok(n)
     }
 
     /// Count rows — testing aid; not used by the production hot path.
@@ -229,6 +295,39 @@ impl SqliteTracePersist {
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM search_traces", [], |r| r.get(0))?;
         Ok(n)
     }
+}
+
+/// task-26.1 (ADR-031 D1): one-time FTS backfill for DBs upgraded from the
+/// 0015-only schema. When the FTS shadow is empty but `search_traces` has rows,
+/// decode each persisted trace and index its `query` text. Idempotent: once the
+/// shadow is populated, subsequent boots skip the backfill (FTS count > 0).
+fn backfill_fts_if_empty(conn: &Connection) -> Result<(), SqliteTracePersistError> {
+    let fts_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM search_traces_fts", [], |r| r.get(0))?;
+    let trace_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM search_traces", [], |r| r.get(0))?;
+    if fts_count != 0 || trace_count == 0 {
+        return Ok(());
+    }
+    let pairs: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT query_id, trace_json FROM search_traces")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    for (query_id, trace_json) in pairs {
+        let trace = decode_trace(&trace_json)?;
+        conn.execute(
+            "INSERT INTO search_traces_fts (query_id, query_text) VALUES (?1, ?2)",
+            params![query_id, trace.query],
+        )?;
+    }
+    Ok(())
 }
 
 fn encode_trace(t: &PbRetrievalTrace) -> String {
