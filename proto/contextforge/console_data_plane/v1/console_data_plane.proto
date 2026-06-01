@@ -291,6 +291,11 @@ message MemoryItem {
   int64 hit_count = 8;
   string status = 9;  // "active" | "deprecated" | "soft_deleted"
   bool is_pinned = 10;  // task-17.1 / ADR-022 D1 — pin state snapshot
+  // task-27.1 / ADR-032 D1 (add-only, 推进 ADR-022 §Trade-offs 两条 marker):
+  // pin-actor + pinned-at-timestamp as first-class fields (audit log does not
+  // record the calling actor). pin=true writes both; unpin clears to defaults.
+  string pinned_by = 11;       // 最近一次 pin 操作的调用 actor（unpin 归 ''）
+  int64 pinned_at_unix = 12;   // 最近一次 pin 置真的 unix 秒（unpin 归 0）
 }
 
 message ListMemoryRequest {

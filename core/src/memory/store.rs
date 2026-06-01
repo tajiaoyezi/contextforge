@@ -16,6 +16,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, params_from_iter, Connection, Error as RusqliteError};
 
 const MIGRATION_SQL: &str = include_str!("../../migrations/0013_memory_items.sql");
+// task-27.1 (ADR-032 D1): add-only pin-actor + pinned-at-timestamp columns.
+// Applied via a guarded check in `open` (ALTER ADD COLUMN is not idempotent on
+// its own). See 0017_memory_items_add_pin_actor.sql header.
+const MIGRATION_PIN_ACTOR_SQL: &str =
+    include_str!("../../migrations/0017_memory_items_add_pin_actor.sql");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryItem {
@@ -29,6 +34,10 @@ pub struct MemoryItem {
     pub hit_count: i64,
     pub status: String,
     pub is_pinned: bool,
+    /// task-27.1 (ADR-032 D1): pin-actor — most-recent pin caller; '' when unpinned.
+    pub pinned_by: String,
+    /// task-27.1 (ADR-032 D1): pinned-at unix seconds; 0 when unpinned.
+    pub pinned_at_unix: i64,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -84,6 +93,9 @@ impl SqliteMemoryStore {
         let db_path = data_dir.join("memory.db");
         let conn = Connection::open(&db_path)?;
         conn.execute_batch(MIGRATION_SQL)?;
+        // task-27.1 (ADR-032 D1): idempotent add-only pin-actor/timestamp columns
+        // (guarded — ALTER ADD COLUMN errors if re-run, so skip when present).
+        ensure_pin_actor_columns(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -96,7 +108,8 @@ impl SqliteMemoryStore {
         let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
         let mut sql = String::from(
             "SELECT memory_id, agent_scope, content_preview, source_type, source_ref, \
-             created_at_unix, updated_at_unix, hit_count, status, is_pinned \
+             created_at_unix, updated_at_unix, hit_count, status, is_pinned, \
+             pinned_by, pinned_at_unix \
              FROM memory_items WHERE 1=1",
         );
         let mut args: Vec<String> = Vec::new();
@@ -137,7 +150,8 @@ impl SqliteMemoryStore {
         let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
         let mut stmt = conn.prepare(
             "SELECT memory_id, agent_scope, content_preview, source_type, source_ref, \
-             created_at_unix, updated_at_unix, hit_count, status, is_pinned \
+             created_at_unix, updated_at_unix, hit_count, status, is_pinned, \
+             pinned_by, pinned_at_unix \
              FROM memory_items WHERE memory_id = ? LIMIT 1",
         )?;
         let mut rows = stmt.query(params![memory_id])?;
@@ -162,6 +176,21 @@ impl SqliteMemoryStore {
         } else {
             Ok(())
         }
+    }
+
+    /// task-27.1 (ADR-032 D1): actor-aware pin. pin=true writes `pinned_by=actor`
+    /// + `pinned_at_unix=now`; pin=false clears both to defaults (`''` / 0).
+    /// Also bumps `updated_at_unix` and toggles `is_pinned` (superset of
+    /// `set_pinned`, which delegates here with an empty actor). NotFound when
+    /// the memory_id does not exist.
+    pub fn set_pinned_with_actor(
+        &self,
+        memory_id: &str,
+        pinned: bool,
+        actor: &str,
+    ) -> Result<(), MemoryStoreError> {
+        let _ = (memory_id, pinned, actor);
+        todo!("task-27.1 GREEN: UPDATE is_pinned + pinned_by/pinned_at_unix write-through")
     }
 
     /// Set status to one of {active, deprecated, soft_deleted}; bumps updated_at_unix.
@@ -193,8 +222,9 @@ impl SqliteMemoryStore {
             conn.execute(
                 "INSERT INTO memory_items \
                  (memory_id, agent_scope, content_preview, source_type, source_ref, \
-                  created_at_unix, updated_at_unix, hit_count, status, is_pinned) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  created_at_unix, updated_at_unix, hit_count, status, is_pinned, \
+                  pinned_by, pinned_at_unix) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     item.memory_id,
                     item.agent_scope,
@@ -206,6 +236,8 @@ impl SqliteMemoryStore {
                     item.hit_count,
                     item.status,
                     item.is_pinned as i64,
+                    item.pinned_by,
+                    item.pinned_at_unix,
                 ],
             )?;
         }
@@ -224,8 +256,33 @@ impl SqliteMemoryStore {
             hit_count: row.get(7)?,
             status: row.get(8)?,
             is_pinned: row.get::<_, i64>(9)? != 0,
+            pinned_by: row.get(10)?,
+            pinned_at_unix: row.get(11)?,
         })
     }
+}
+
+/// task-27.1 (ADR-032 D1): idempotently add the pin-actor / pinned-at columns to
+/// an existing `memory_items` table. ALTER ADD COLUMN is not IF-NOT-EXISTS-able,
+/// so check `PRAGMA table_info` first and only run the 0017 migration when the
+/// column is absent (fresh DBs created by the 0013 CREATE TABLE go through here
+/// too — they lack the columns until this adds them).
+fn ensure_pin_actor_columns(conn: &Connection) -> Result<(), MemoryStoreError> {
+    let mut has_pinned_by = false;
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(memory_items)")?;
+        let cols = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for c in cols {
+            if c? == "pinned_by" {
+                has_pinned_by = true;
+                break;
+            }
+        }
+    }
+    if !has_pinned_by {
+        conn.execute_batch(MIGRATION_PIN_ACTOR_SQL)?;
+    }
+    Ok(())
 }
 
 fn now_unix() -> i64 {
@@ -265,6 +322,8 @@ mod tests {
             hit_count: 0,
             status: status.into(),
             is_pinned: false,
+            pinned_by: String::new(),
+            pinned_at_unix: 0,
         }
     }
 
@@ -361,6 +420,59 @@ mod tests {
         let p2 = items.iter().find(|i| i.memory_id == "p2").unwrap();
         assert!(p1.is_pinned, "p1 list row should reflect set_pinned(true)");
         assert!(!p2.is_pinned, "p2 list row should default to is_pinned=false");
+    }
+
+    /// TEST-27.1.2: set_pinned_with_actor(true) writes pinned_by=actor +
+    /// pinned_at_unix>0; (false) clears to defaults; get+list project both.
+    #[test]
+    fn test_set_pinned_with_actor_writes_through_and_clears() {
+        let s = fresh_store();
+        s.seed_for_tests(vec![mem("pa", "scope", "active")]).unwrap();
+        // pin=true → actor + timestamp written.
+        s.set_pinned_with_actor("pa", true, "console-api").unwrap();
+        let got = s.get("pa").unwrap().unwrap();
+        assert!(got.is_pinned);
+        assert_eq!(got.pinned_by, "console-api");
+        assert!(got.pinned_at_unix > 0, "pinned_at_unix set on pin");
+        // list projects the fields too.
+        let listed = s.list(MemoryListFilter::default()).unwrap();
+        let row = listed.iter().find(|i| i.memory_id == "pa").unwrap();
+        assert_eq!(row.pinned_by, "console-api");
+        assert!(row.pinned_at_unix > 0);
+        // pin=false → cleared to defaults.
+        s.set_pinned_with_actor("pa", false, "console-api").unwrap();
+        let after = s.get("pa").unwrap().unwrap();
+        assert!(!after.is_pinned);
+        assert_eq!(after.pinned_by, "", "unpin clears actor");
+        assert_eq!(after.pinned_at_unix, 0, "unpin clears timestamp");
+    }
+
+    /// TEST-27.1.2b: pinned_at_unix is independent of updated_at_unix — a later
+    /// deprecate/soft_delete update bumps updated_at but does not touch pin fields.
+    #[test]
+    fn test_pinned_at_independent_of_updated_at() {
+        let s = fresh_store();
+        s.seed_for_tests(vec![mem("pi", "scope", "active")]).unwrap();
+        s.set_pinned_with_actor("pi", true, "actor-x").unwrap();
+        let pinned = s.get("pi").unwrap().unwrap();
+        let pin_ts = pinned.pinned_at_unix;
+        // A non-pin update (deprecate) bumps updated_at but leaves pin fields.
+        s.set_status("pi", "deprecated").unwrap();
+        let after = s.get("pi").unwrap().unwrap();
+        assert_eq!(after.pinned_by, "actor-x", "deprecate must not clear pin actor");
+        assert_eq!(after.pinned_at_unix, pin_ts, "deprecate must not change pinned_at");
+    }
+
+    /// TEST-27.1: bare set_pinned still works (delegates with empty actor),
+    /// preserving the task-17.1 signature + behavior.
+    #[test]
+    fn test_set_pinned_delegates_backward_compatible() {
+        let s = fresh_store();
+        s.seed_for_tests(vec![mem("bc", "scope", "active")]).unwrap();
+        s.set_pinned("bc", true).unwrap();
+        assert!(s.get("bc").unwrap().unwrap().is_pinned);
+        s.set_pinned("bc", false).unwrap();
+        assert!(!s.get("bc").unwrap().unwrap().is_pinned);
     }
 
     #[test]

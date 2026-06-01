@@ -149,6 +149,9 @@ fn memory_to_pb(m: RustMemoryItem) -> PbMemoryItem {
         hit_count: m.hit_count,
         status: m.status,
         is_pinned: m.is_pinned,
+        // task-27.1 (ADR-032 D1): project add-only pin-actor + pinned-at-timestamp.
+        pinned_by: m.pinned_by,
+        pinned_at_unix: m.pinned_at_unix,
     }
 }
 
@@ -355,6 +358,8 @@ mod tests {
             hit_count: 0,
             status: status.into(),
             is_pinned: false,
+            pinned_by: String::new(),
+            pinned_at_unix: 0,
         }
     }
 
