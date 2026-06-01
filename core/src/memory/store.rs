@@ -230,8 +230,16 @@ impl SqliteMemoryStore {
     /// None afterwards). NotFound when the memory_id does not exist. Deletes any
     /// status (active/deprecated/soft_deleted).
     pub fn hard_delete(&self, memory_id: &str) -> Result<(), MemoryStoreError> {
-        let _ = memory_id;
-        todo!("task-27.2 GREEN: DELETE FROM memory_items WHERE memory_id=? (NotFound on 0 rows)")
+        let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
+        let n = conn.execute(
+            "DELETE FROM memory_items WHERE memory_id = ?",
+            params![memory_id],
+        )?;
+        if n == 0 {
+            Err(MemoryStoreError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
     /// Bulk-insert helper used by unit + integration test fixtures.
