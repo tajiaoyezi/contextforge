@@ -55,9 +55,56 @@ pub struct LanceIndexTuning {
 
 impl LanceIndexTuning {
     /// 参数范围校验（不建真实索引）：partitions>0 / sub_vectors>0 且整除 dim / m>0 / ef>0 /
-    /// 阈值>0 / metric 受支持。
+    /// 阈值>0 / metric 受支持。纯函数——给定相同参数 → 相同 Ok/Err（确定性，可单测）。
     pub fn validate(&self, dim: usize) -> Result<(), VectorError> {
-        todo!("task-25.2 GREEN")
+        if dim == 0 {
+            return Err(VectorError::Other(
+                "lancedb index tuning: dim must be > 0".into(),
+            ));
+        }
+        if self.compaction_threshold_rows == 0 {
+            return Err(VectorError::Other(
+                "lancedb index tuning: compaction_threshold_rows must be > 0".into(),
+            ));
+        }
+        // metric 受支持：所有 VectorMetric 变体均映射到 lance DistanceType（Cosine/Dot/L2）。
+        match self.metric {
+            VectorMetric::Cosine | VectorMetric::DotProduct | VectorMetric::L2 => {}
+        }
+        match &self.index {
+            LanceAnnIndex::IvfPq {
+                num_partitions,
+                num_sub_vectors,
+            } => {
+                if *num_partitions == 0 {
+                    return Err(VectorError::Other(
+                        "lancedb IVF_PQ: num_partitions must be > 0".into(),
+                    ));
+                }
+                if *num_sub_vectors == 0 {
+                    return Err(VectorError::Other(
+                        "lancedb IVF_PQ: num_sub_vectors must be > 0".into(),
+                    ));
+                }
+                // PQ 子向量须整除 dim（每子向量等长切分）。
+                if dim % *num_sub_vectors != 0 {
+                    return Err(VectorError::Other(format!(
+                        "lancedb IVF_PQ: num_sub_vectors ({num_sub_vectors}) must divide dim ({dim})"
+                    )));
+                }
+            }
+            LanceAnnIndex::Hnsw { m, ef_construction } => {
+                if *m == 0 {
+                    return Err(VectorError::Other("lancedb HNSW: m must be > 0".into()));
+                }
+                if *ef_construction == 0 {
+                    return Err(VectorError::Other(
+                        "lancedb HNSW: ef_construction must be > 0".into(),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
