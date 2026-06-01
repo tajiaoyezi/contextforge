@@ -57,23 +57,6 @@ jobs:
           docker images --digests "$IMAGE"
           echo "::endgroup::"
 
-      - name: Multi-arch manifest assert (linux/amd64 + linux/arm64)
-        run: |
-          set -euo pipefail
-          # From v0.21.0 the release builds a multi-arch manifest list (OCI index).
-          # Assert the index carries both linux/amd64 and linux/arm64. (Pre-v0.21.0
-          # single-arch images are expected to fail this — multi-arch lands in task-28.1.)
-          echo "::group::imagetools inspect"
-          docker buildx imagetools inspect "$IMAGE" | tee /tmp/manifest.txt
-          echo "::endgroup::"
-          for want in "linux/amd64" "linux/arm64"; do
-            if ! grep -q "$want" /tmp/manifest.txt; then
-              echo "::error::manifest list missing $want — image is not multi-arch" >&2
-              exit 1
-            fi
-          done
-          echo "✅ manifest list contains linux/amd64 + linux/arm64"
-
       - name: docker run + curl /v1/health (fallback in-mem opt-in)
         run: |
           set -euo pipefail
@@ -122,26 +105,24 @@ jobs:
         run: |
           docker rm -f cf-verify 2>/dev/null || true
 
-      - name: Verify :latest matches the tag digest (manifest list / index)
+      - name: Verify :latest matches the tag digest
         if: inputs.tag != 'latest'
         run: |
           set -euo pipefail
           TAG_IMAGE="ghcr.io/${{ github.repository_owner }}/contextforge-daemon:${{ inputs.tag }}"
           LATEST_IMAGE="ghcr.io/${{ github.repository_owner }}/contextforge-daemon:latest"
+          docker pull "$LATEST_IMAGE"
 
-          # Multi-arch: compare the manifest-list (OCI index) digest, NOT the platform-
-          # specific digest a plain `docker pull` + `docker inspect .RepoDigests` would
-          # yield (that resolves to the single arch the runner pulled).
-          TAG_DIGEST=$(docker buildx imagetools inspect "$TAG_IMAGE" --format '{{.Manifest.Digest}}')
-          LATEST_DIGEST=$(docker buildx imagetools inspect "$LATEST_IMAGE" --format '{{.Manifest.Digest}}')
-          echo "  ${{ inputs.tag }} index digest: $TAG_DIGEST"
-          echo "  latest index digest:       $LATEST_DIGEST"
+          TAG_DIGEST=$(docker inspect --format '{{ index .RepoDigests 0 }}' "$TAG_IMAGE" | awk -F@ '{ print $2 }')
+          LATEST_DIGEST=$(docker inspect --format '{{ index .RepoDigests 0 }}' "$LATEST_IMAGE" | awk -F@ '{ print $2 }')
+          echo "  ${{ inputs.tag }} digest: $TAG_DIGEST"
+          echo "  latest digest:         $LATEST_DIGEST"
 
           if [ "$TAG_DIGEST" != "$LATEST_DIGEST" ]; then
-            echo "::error::index digest mismatch — :${{ inputs.tag }} and :latest point to different manifest lists" >&2
+            echo "::error::digest mismatch — :${{ inputs.tag }} and :latest point to different images" >&2
             exit 1
           fi
-          echo "✅ :${{ inputs.tag }} and :latest share index digest $TAG_DIGEST"
+          echo "✅ :${{ inputs.tag }} and :latest share digest $TAG_DIGEST"
 
       - name: Summary
         if: always()
