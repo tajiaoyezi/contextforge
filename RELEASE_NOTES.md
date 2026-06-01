@@ -1,5 +1,19 @@
 # ContextForge Release Notes
 
+## v0.19.0 (2026-06-01) — observability-hardening (TraceStore FTS5 + VACUUM + events SSE/重放 + event-bus 配置 + ADR-031 ratified)
+
+Phase 26 硬化 Phase 16 落地的两条可观测性信号路径（TraceStore 持久化 + events 实时面）。默认构建恒 0 新依赖 / 0 network（FTS5/VACUUM 复用 rusqlite bundled，SSE 用 Go stdlib `http.Flusher`，重放查既有 `audit_log`，event-bus 配置复用 `with_capacity` seam）；既有 long-poll endpoint + 22-endpoint 契约 + `put`/`get`/`list`/`load_warm` 签名不退化（add-only，ADR-015 D1）。
+
+| task | 交付 |
+|---|---|
+| 26.1 (#178) | `SqliteTracePersist` FTS5 内容检索 `search_fts`（quoted-phrase MATCH，limit clamp 1..=100）+ 周期 `vacuum()` / `prune_older_than(cutoff)` + `open()` 旧 0015-only 库 boot 回填（`backfill_fts_if_empty`）+ `put()` FTS 同步；migration `0016_search_traces_fts.sql`（FTS5 影子虚表，`IF NOT EXISTS` 幂等）；既有签名语义不变；0 新依赖（rusqlite bundled）；TEST-26.1.1-5（10/10） |
+| 26.2 (#179) | events SSE 实时推送 `GET /v1/observability/events/stream`（`text/event-stream` + `http.Flusher`，add-only 旁挂 long-poll）+ 从 audit log 重放漏失 memory state-op 事件（proto add-only `since_ts`/`last_event_id`，`replay_events_from_audit` id ASC + ADR-021 D3 映射，`evt-audit-{id}` 拼接边界去重）；SSE 帧契约 + 重放顺序 deterministic（不依赖墙钟）；真实 daemon SSE e2e 诚实延后 `[SPEC-DEFER:phase-future.sse-live-server-e2e]`；TEST-26.2.1-5（Rust 2/2 + Go SSE 4 契约） |
+| 26.3 (this) | event-bus 容量/分区/drain 配置（`EventBus::from_config` + `CF_EVENT_BUS_CAPACITY`/`CF_EVENT_BUS_PARTITION` + `CONSOLE_EVENTS_DRAIN_TIMEOUT`，保守默认 1000/不分区/100ms 行为不变）+ smoke v16 step 35 + v0.19.0 release docs + ADR-031 ratify + ADR-021/015 add-only Amendment + phase-26 §6 闭合；TEST-26.3.1（events 6/6 + drain 5/5） |
+
+**ADR**：ADR-031 (observability-hardening) 据 D1-D6 真实非合成验证 `Proposed → Accepted`（SSE live-server e2e 维度据 CI 无 running daemon **记录维持**，不强 ratify、不伪造，ADR-013）；ADR-021 add-only Amendment 兑现 events-replay-from-audit（`adr-021:115`）+ event-bus 容量/分区（Rollback path `adr-021:153`）；ADR-015 SSE endpoint add-only。
+
+**Upgrade / Rollback**：默认行为不变，无强制迁移。旧 `search_traces.db`（0015-only）boot 时幂等创建 0016 FTS 表 + 回填（add-only，既有数据不损）。SSE endpoint + `?since_ts=` 重放 + event-bus 配置均 opt-in。Rollback：`git tag -d v0.19.0` + 删 Release / ghcr tag；与 v0.18.0 行为兼容（add-only / opt-in），旧库 0016 FTS 表对 v0.18.0 代码无害。
+
 ## v0.18.0 (2026-06-01) — production-vector-backend (qdrant 生命周期层 + lancedb 可构建性 🟢 + 生产 backend 选择矩阵 + ADR-030 ratified)
 
 ### 摘要

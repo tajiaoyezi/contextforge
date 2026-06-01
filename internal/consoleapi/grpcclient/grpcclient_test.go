@@ -840,3 +840,33 @@ func TestEventsClient_NoGoroutineLeakAfterMultipleCalls(t *testing.T) {
 		)
 	}
 }
+
+// TEST-26.3.1d (ADR-031 D5): events drain timeout is env-configurable
+// (CONSOLE_EVENTS_DRAIN_TIMEOUT) with a conservative 100ms default; invalid /
+// non-positive values fall back to the default (task-16.2 behavior unchanged).
+func TestDrainTimeoutFromEnv(t *testing.T) {
+	cases := []struct {
+		name string
+		set  bool
+		raw  string
+		want time.Duration
+	}{
+		{"default_unset", false, "", 100 * time.Millisecond},
+		{"valid_150ms", true, "150ms", 150 * time.Millisecond},
+		{"valid_1s", true, "1s", time.Second},
+		{"invalid_garbage", true, "not-a-duration", 100 * time.Millisecond},
+		{"non_positive", true, "0s", 100 * time.Millisecond},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.set {
+				t.Setenv("CONSOLE_EVENTS_DRAIN_TIMEOUT", tc.raw)
+			} else {
+				t.Setenv("CONSOLE_EVENTS_DRAIN_TIMEOUT", "")
+			}
+			if got := drainTimeoutFromEnv(); got != tc.want {
+				t.Errorf("drainTimeoutFromEnv() = %v want %v", got, tc.want)
+			}
+		})
+	}
+}

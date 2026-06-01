@@ -596,7 +596,12 @@ pub async fn serve_full(
             // task-11.4 §6 AC4: shared EventBus for indexing.progress /
             // indexing.cancelled / indexing.error emission + EventsService
             // .Subscribe broadcast stream.
-            let event_bus = crate::data_plane::events::EventBus::new();
+            // task-26.3 (ADR-031 D5): capacity + partition are env-configurable
+            // (CF_EVENT_BUS_CAPACITY / CF_EVENT_BUS_PARTITION); conservative
+            // defaults (1000 / un-partitioned) keep task-11.4 behavior unchanged.
+            let event_bus = crate::data_plane::events::EventBus::from_config(
+                crate::data_plane::events::EventBusConfig::from_env(),
+            );
 
             // task-11.3 §6 AC1/AC2 + task-11.4: real JobRunner backed by
             // IndexSessionBackend wired to EventBus.

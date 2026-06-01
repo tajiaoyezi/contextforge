@@ -7,6 +7,24 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.19.0
+
+🔭 **v0.19.0 observability-hardening** — hardens the two observability signal paths landed in Phase 16. **TraceStore** gains FTS5 content search + periodic VACUUM/prune; **events** gain an SSE real-time push endpoint (add-only beside the long-poll) + replay of missed memory state-op events from the persistent audit log; the **EventBus** gains capacity / partition / drain-timeout config. The **default build stays 0-new-dependency, 0-network** (FTS5/VACUUM reuse rusqlite bundled, SSE uses Go stdlib `http.Flusher`, replay reads the existing `audit_log`).
+
+- **TraceStore FTS5 + VACUUM** (task-26.1): `search_fts(query_text, limit)` content-searches persisted traces (FTS5 shadow table, quoted-phrase MATCH); `vacuum()` + `prune_older_than(cutoff)` reclaim space so `search_traces.db` no longer grows unbounded. Old 0015-only DBs get the FTS table created + backfilled on boot. Existing `put`/`get`/`list`/`load_warm` signatures unchanged; **0 new dependency** (rusqlite bundled). TEST-26.1.1-5 (10/10).
+- **events SSE push + audit replay** (task-26.2): `GET /v1/observability/events/stream` (`text/event-stream` + `http.Flusher`) pushes events in real time, add-only beside the existing long-poll endpoint. `?since_ts=` replays missed memory state-op events from the audit log (`id ASC`, ADR-021 D3 mapping) then splices the live stream, deduping the boundary by event_id. SSE frame contract + replay order are **deterministic** (no wall-clock). Real daemon-served SSE end-to-end **deferred** (`[SPEC-DEFER:phase-future.sse-live-server-e2e]`, CI has no running daemon).
+- **event-bus config** (task-26.3): `CF_EVENT_BUS_CAPACITY` (default 1000) + `CF_EVENT_BUS_PARTITION` (default off — `memory.*` / `indexing.*` on independent channels) + `CONSOLE_EVENTS_DRAIN_TIMEOUT` (default 100ms). Conservative defaults keep the task-11.4 behavior unchanged. **ADR-031 → Accepted**; **ADR-021** add-only Amendment (events-replay + event-bus config). **ADR-014 cross-validation gate — 17th activation**.
+
+```bash
+# trace FTS5 content search + VACUUM/prune (default build, 0 new dep)
+cargo test -p contextforge-core --lib data_plane::search_persist
+# events SSE replay query face + event-bus config
+cargo test -p contextforge-core --lib data_plane::events
+go test ./internal/consoleapi/... -run 'EventsStream|DrainTimeout'
+```
+
+详 `RELEASE_NOTES.md` v0.19.0 段 + [Phase 26 spec](docs/specs/phases/phase-26-observability-hardening.md) + [ADR-031](docs/decisions/adr-031-observability-hardening.md)。
+
 ## What's new in v0.18.0
 
 🧭 **v0.18.0 production-vector-backend** — pushes the two production-scale ANN backends ADR-023 tiered (**qdrant** for hosted/scale-out, **lancedb** for embedded-columnar) from the Phase-18 spike state toward production, and ships a **production backend selection matrix**. The **default build stays 0-vector-dependency, BM25-only baseline** (qdrant/lancedb are feature-gated, default unchanged).

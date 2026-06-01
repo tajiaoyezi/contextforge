@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -396,8 +397,26 @@ type eventsClient struct{ c pb.EventsServiceClient }
 
 // task-16.2 (Phase 16 P4 #11): drain timeout for phase-2 — once the first
 // event arrives, give immediately-broadcast follow-up events ~drainTimeout
-// to land before returning. Hardcoded; tuning [SPEC-DEFER:phase-future.events-drain-timeout-config].
-const eventsDrainTimeout = 100 * time.Millisecond
+// to land before returning.
+//
+// task-26.3 (ADR-031 D5): now configurable via CONSOLE_EVENTS_DRAIN_TIMEOUT
+// (Go duration string, e.g. "150ms"); conservative default 100ms keeps the
+// task-16.2 two-phase long-poll behavior unchanged.
+var eventsDrainTimeout = drainTimeoutFromEnv()
+
+// drainTimeoutFromEnv reads CONSOLE_EVENTS_DRAIN_TIMEOUT (default 100ms; invalid
+// / non-positive → default).
+func drainTimeoutFromEnv() time.Duration {
+	raw := os.Getenv("CONSOLE_EVENTS_DRAIN_TIMEOUT")
+	if raw == "" {
+		return 100 * time.Millisecond
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 100 * time.Millisecond
+	}
+	return d
+}
 
 // isCtxDeadlineExceeded probes both the native ctx error and the gRPC
 // status-code variant. gRPC wraps context.DeadlineExceeded into

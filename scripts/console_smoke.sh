@@ -90,6 +90,18 @@
 # server; ADR-013 — no faked live-server/cross-platform credentials). Step 34 asserts the default build is
 # intact (feature-layer verification, not a faked console production-backend path).
 #
+# v16 (Phase 26) adds step 35 — task-26.3 closeout (observability-hardening). The two observability
+# signal paths are hardened: TraceStore gains FTS5 content search + periodic VACUUM/prune (task-26.1,
+# TEST-26.1.1-4 — search_fts content match + prune+vacuum data-intact, rusqlite bundled, 0 new dep),
+# events gain an SSE real-time push endpoint (GET /v1/observability/events/stream, add-only beside the
+# long-poll) + audit-log replay of missed memory state-op events (task-26.2, TEST-26.2.1-4 — SSE frame
+# contract + replay id-ASC order, deterministic, no wall-clock), and the EventBus gains capacity /
+# partition / drain-timeout config (task-26.3, TEST-26.3.1 — CF_EVENT_BUS_CAPACITY/PARTITION +
+# CONSOLE_EVENTS_DRAIN_TIMEOUT, conservative defaults keep task-11.4 behavior unchanged). All are
+# default-0-new-dep / 0-network (ADR-004). Real daemon-served SSE end-to-end is honestly deferred
+# ([SPEC-DEFER:phase-future.sse-live-server-e2e]; ADR-013 — no faked live-server pass); FTS / SSE / replay
+# are verified at the Rust + Go contract layers. Step 35 asserts the default build is intact.
+#
 # Modes (selected by env):
 #
 #   Default (REAL mode):  spawn contextforge-core + console-api-serve;
@@ -823,6 +835,23 @@ if "$GO_BIN" init --root "$STAGING/cf-v18-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build intact; qdrant lifecycle (TEST-25.1.*) + lancedb buildability 🟢 (TEST-25.2.*) feature-layer verified; selection matrix in v0.18.0-evidence.md ✅"
 else
   echo "FAIL: contextforge init failed in v15 step 34" >&2
+  exit 1
+fi
+
+echo "  [35/35] task-26.3 observability hardening status (Phase 26 — trace FTS + events SSE/replay + event-bus config, Rust+Go contract-layer verified)"
+# v16 (task-26.3): Phase 26 (observability-hardening) hardens the two observability signal paths. The
+# TraceStore FTS5 content search + periodic VACUUM/prune (task-26.1, TEST-26.1.1-4) and the events SSE
+# real-time push (GET /v1/observability/events/stream, add-only beside the long-poll) + audit-log replay
+# of missed memory state-op events (task-26.2, TEST-26.2.1-4) + the EventBus capacity/partition/drain
+# config (task-26.3, TEST-26.3.1) are verified at the Rust + Go contract layers, NOT a faked console live
+# path. Default build stays 0-new-dep / 0-network (ADR-004); FTS5/VACUUM reuse rusqlite bundled, SSE uses
+# Go stdlib http.Flusher, replay reads the existing audit_log, event-bus config reuses the with_capacity
+# seam. Real daemon-served SSE end-to-end is honestly deferred ([SPEC-DEFER:phase-future.sse-live-server-e2e];
+# ADR-013 — no faked live-server pass). This step asserts the default build is intact.
+if "$GO_BIN" init --root "$STAGING/cf-v19-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v19-cfg/config.toml" ]; then
+  echo "    → default build intact; trace FTS+VACUUM (TEST-26.1.*) + events SSE/replay (TEST-26.2.*) + event-bus config (TEST-26.3.*) contract-layer verified ✅"
+else
+  echo "FAIL: contextforge init failed in v16 step 35" >&2
   exit 1
 fi
 
