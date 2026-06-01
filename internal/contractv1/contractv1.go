@@ -214,6 +214,11 @@ type MemoryItem struct {
 	HitCount       int               `json:"hit_count"`
 	Status         string            `json:"status"`
 	IsPinned       bool              `json:"is_pinned"`
+	// task-27.1 / ADR-032 D1: add-only pin-actor + pinned-at-timestamp. v0.19
+	// and earlier daemon responses lacking the keys unmarshal to zero values
+	// ("" / 0), preserving forward / backward compatibility.
+	PinnedBy       string            `json:"pinned_by"`
+	PinnedAtUnix   int64             `json:"pinned_at_unix"`
 	Availability   FieldAvailability `json:"field_availability"`
 }
 

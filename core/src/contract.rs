@@ -31,6 +31,127 @@ fn proto_dir() -> Option<PathBuf> {
     }
 }
 
+/// task-27.1: locate the console data-plane proto SSOT
+/// `proto/contextforge/console_data_plane/v1` (separate module from the frozen
+/// core `contextforge/v1`). Used by the MemoryService / MemoryItem freeze guard.
+fn console_proto_dir() -> Option<PathBuf> {
+    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    loop {
+        let p = d
+            .join("proto")
+            .join("contextforge")
+            .join("console_data_plane")
+            .join("v1");
+        if p.is_dir() {
+            return Some(p);
+        }
+        if !d.pop() {
+            return None;
+        }
+    }
+}
+
+fn console_proto_text() -> String {
+    let Some(dir) = console_proto_dir() else {
+        return String::new();
+    };
+    let mut out = String::new();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return String::new();
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "proto") {
+            if let Ok(s) = std::fs::read_to_string(&p) {
+                out.push_str(&s);
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
+/// task-27.1 (ADR-032 D1): proto field names on a console data-plane message
+/// (e.g. `MemoryItem`), read from the console_data_plane SSOT. Mirrors
+/// `message_fields` but over the console module proto.
+pub fn console_message_fields(msg: &str) -> Vec<String> {
+    let txt = console_proto_text();
+    let Some(body) = message_block(&txt, msg) else {
+        return Vec::new();
+    };
+    // Strip `//` line comments first so trailing comments (and any `;` inside a
+    // comment) cannot corrupt the `;`-split field parse.
+    let stripped: String = body
+        .lines()
+        .map(|l| match l.find("//") {
+            Some(i) => &l[..i],
+            None => l,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut fields = Vec::new();
+    for raw in stripped.split(';') {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((decl, _tag)) = line.split_once('=') else {
+            continue;
+        };
+        if let Some(name) = decl.trim().split_whitespace().last() {
+            if name.chars().all(|c| c.is_alphanumeric() || c == '_') && !name.is_empty() {
+                fields.push(name.to_string());
+            }
+        }
+    }
+    fields.sort();
+    fields
+}
+
+/// Extract the `{ ... }` body of `service <svc> { ... }` (brace-counted).
+fn service_block(txt: &str, svc: &str) -> Option<String> {
+    let needle = format!("service {svc}");
+    let start = txt.find(&needle)?;
+    let open = start + txt[start..].find('{')?;
+    let mut depth = 0i32;
+    for (i, ch) in txt[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(txt[open + 1..open + i].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// task-27.1: RPC method names declared on a console data-plane `service`
+/// (e.g. `MemoryService`). Used by the proto-freeze superset guard.
+pub fn console_service_methods(svc: &str) -> Vec<String> {
+    let txt = console_proto_text();
+    let Some(body) = service_block(&txt, svc) else {
+        return Vec::new();
+    };
+    let mut methods = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("rpc ") {
+            if let Some(name) = rest.split('(').next() {
+                let name = name.trim();
+                if !name.is_empty() {
+                    methods.push(name.to_string());
+                }
+            }
+        }
+    }
+    methods.sort();
+    methods
+}
+
 fn proto_text() -> String {
     let Some(dir) = proto_dir() else {
         return String::new();

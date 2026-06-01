@@ -49,6 +49,8 @@ fn mem(id: &str, scope: &str, status: &str) -> MemoryItem {
         hit_count: 0,
         status: status.into(),
         is_pinned: false,
+        pinned_by: String::new(),
+        pinned_at_unix: 0,
     }
 }
 
