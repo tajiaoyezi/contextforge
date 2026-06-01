@@ -69,14 +69,39 @@ impl EventsService for EventsServer {
 
     async fn subscribe(
         &self,
-        _req: Request<SubscribeEventsRequest>,
+        req: Request<SubscribeEventsRequest>,
     ) -> Result<Response<Self::SubscribeStream>, Status> {
+        let req = req.into_inner();
         let (tx, rx) = tokio::sync::mpsc::channel(EVENTS_STREAM_CAPACITY);
 
         // task-11.4 §6 AC3/AC4: real broadcast subscription.
         if let Some(event_bus) = self.stores.event_bus.as_ref() {
+            // Subscribe to the live broadcast FIRST so no event emitted after
+            // this point is lost while we build the replay batch below.
             let mut sub = event_bus.subscribe();
+            // task-26.2 / ADR-031 D4: when `since_ts > 0`, replay the memory
+            // state-op events the subscriber missed from the persistent audit
+            // log (id ASC) before splicing the live stream. Replay event_ids
+            // are `evt-audit-{id}` so the SSE client can dedup the splice
+            // boundary. Best-effort: audit lock / list failure → no replay.
+            let replay: Vec<PbEvent> = if req.since_ts > 0 {
+                self.stores
+                    .audit
+                    .as_ref()
+                    .and_then(|a| a.lock().ok().and_then(|s| s.list().ok()))
+                    .map(|entries| replay_events_from_audit(&entries, req.since_ts))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             tokio::spawn(async move {
+                // 1. replay historical (audit) events first, in id ASC order.
+                for evt in replay {
+                    if tx.send(Ok(evt)).await.is_err() {
+                        return;
+                    }
+                }
+                // 2. then forward the live broadcast.
                 loop {
                     match sub.recv().await {
                         Ok(evt) => {
@@ -199,8 +224,34 @@ fn audit_op_str_to_event(op: &str) -> Option<(&'static str, &'static str)> {
 /// `[SPEC-DEFER:phase-future.indexing-event-persistence]`). Each event_id is the
 /// deterministic `evt-audit-{audit_id}` so the replay→live splice can dedup.
 pub fn replay_events_from_audit(entries: &[AuditLogEntry], since_ts: i64) -> Vec<PbEvent> {
-    let _ = (entries, since_ts, audit_op_str_to_event("memory_pin"));
-    todo!("task-26.2 GREEN: rebuild memory state-op events from audit id ASC + since_ts filter")
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some((event_type, op_str)) = audit_op_str_to_event(&entry.operation) else {
+            continue;
+        };
+        let ts: i64 = entry.timestamp.parse().unwrap_or(0);
+        if since_ts > 0 && ts < since_ts {
+            continue;
+        }
+        let memory_id = entry.chunk_ids.first().cloned().unwrap_or_default();
+        let payload_json = format!(
+            r#"{{"memory_id":{},"op":"{}"}}"#,
+            serde_json::to_string(&memory_id).unwrap_or_else(|_| String::from("\"\"")),
+            op_str,
+        );
+        out.push(PbEvent {
+            event_id: format!("evt-audit-{}", entry.id),
+            event_type: event_type.to_string(),
+            severity: "info".to_string(),
+            source: "contextforge-core".to_string(),
+            message: format!("memory {op_str}: {memory_id}"),
+            ts_unix: ts,
+            trace_id: None,
+            job_id: None,
+            payload_json,
+        });
+    }
+    out
 }
 
 fn now_unix() -> i64 {
