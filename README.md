@@ -7,6 +7,24 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.18.0
+
+🧭 **v0.18.0 production-vector-backend** — pushes the two production-scale ANN backends ADR-023 tiered (**qdrant** for hosted/scale-out, **lancedb** for embedded-columnar) from the Phase-18 spike state toward production, and ships a **production backend selection matrix**. The **default build stays 0-vector-dependency, BM25-only baseline** (qdrant/lancedb are feature-gated, default unchanged).
+
+- **Feature-gated, default unchanged.** Both production backends are off by default; the default build is 0-vector-dep BM25 baseline. This is a backend **lifecycle / buildability-layer** release with **no recall numbers** — qdrant's lifecycle is contract-verified without a live server, lancedb is buildability-verified on the dev box.
+- **qdrant server lifecycle** (task-25.1): `QdrantConnConfig` (url/timeout/api-key/TLS) + `validate()` + `health()` probe (unreachable when no server, no panic) + `decide_ensure` collection ensure-create (reuse-if-matching / create / error-on-mismatch, replacing the spike's blind drop+create). Contract-testable **without a live server** (TEST-25.1.1-4); real KNN over live qdrant **deferred** (`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`, CI has no server).
+- **lancedb buildability** 🟢 (task-25.2): `cargo build --features vector-lancedb` **builds on `x86_64-pc-windows-msvc`** (protoc via the in-repo `protoc-bin-vendored` binary, **0 new dependency**), narrowing the Phase-18 protoc-prerequisite concern (protoc must still be explicitly provided). Adds an index-tuning param-validation layer (`LanceIndexTuning::validate`: IVF_PQ/HNSW + compaction threshold). Real ANN index perf **deferred** (`[SPEC-DEFER:phase-future.lancedb-index-tuning]`).
+- **Production backend selection matrix** (task-25.3): corpus-size × deployment-shape → hnsw (dev/small) / sqlite-vec (single-box embedded) / lancedb (large-corpus columnar) / qdrant (hosted scale-out), each with its caveat (live-server dependency / protoc prerequisite / platform limit). **ADR-030 → Accepted**. **ADR-014 cross-validation gate — 16th activation**.
+
+```bash
+# qdrant lifecycle contract layer (feature; no live server needed)
+cargo test -p contextforge-core --features vector-qdrant retriever::vector::qdrant
+# lancedb real buildability 🟢 + index-tuning param validation (needs protoc via PROTOC env)
+cargo build --features vector-lancedb -p contextforge-core
+```
+
+详 `RELEASE_NOTES.md` v0.18.0 段 + [Phase 25 spec](docs/specs/phases/phase-25-production-vector-backend.md) + [ADR-030](docs/decisions/adr-030-production-vector-backend.md) + [lancedb buildability spike](docs/spikes/phase-25-lancedb-buildability.md)。
+
 ## What's new in v0.17.0
 
 🔤 **v0.17.0 code-and-cjk-tokenizer-and-eval-hardening** — adds an **opt-in code/CJK tokenizer** and a **hardened eval ruler**. The `content` field can split `camelCase`/`snake_case`/`dotted.path`/`kebab-case` into sub-tokens (keeping the original token) and tokenize CJK text into bigrams; the eval golden dataset gains an independent validator + code/CJK query cases. The **default build stays 0-new-dep, default-tokenization-unchanged, eval-gate-threshold-unchanged**.

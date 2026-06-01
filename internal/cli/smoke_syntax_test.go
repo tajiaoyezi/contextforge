@@ -148,6 +148,45 @@ func TestTask243_SmokeV14TokenizerEvalHardeningStep(t *testing.T) {
 	}
 }
 
+// TEST-25.3.1 / AC1: smoke v15 adds step 34 (task-25.3 closeout) — documents that the two production-scale
+// ANN backends are verified at the Rust feature layer, not the console-api hot path: the qdrant server
+// lifecycle layer (task-25.1, TEST-25.1.* — connect-config / health-probe / collection ensure-create
+// decision, no live server) and the lancedb dev-box buildability + index-tuning param validation (task-25.2,
+// TEST-25.2.* — 🟢 cargo build --features vector-lancedb on x86_64-pc-windows-msvc). The step asserts the
+// default build is intact. ADR-013: feature-layer verification, no faked live-server / cross-platform path.
+func TestTask253_SmokeV15ProductionVectorBackendStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v15") {
+		t.Fatalf("console_smoke.sh missing v15 header (task-25.3 closeout)")
+	}
+	for _, marker := range []string{"[34/34]", "production vector backend", "TEST-25.1.", "TEST-25.2."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v15 step 34 must document production vector backend status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13/v14 blocks intact; denominators untouched per ADR-014 D5 —
+	// only the newest step carries the running total, matching the v14 [33/33] precedent).
+	for _, marker := range []string{"[32/32]", "[33/33]", "vector persistence", "code/CJK tokenizer", "--hybrid"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v15 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
 // real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
 // step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),

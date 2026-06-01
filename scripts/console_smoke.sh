@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 24 task-24.3 retrieval-tokenizer-and-eval-hardening smoke (v14; was Phase 23 v13).
+# scripts/console_smoke.sh — Phase 25 task-25.3 production-vector-backend smoke (v15; was Phase 24 v14).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -76,6 +76,19 @@
 # (docs/spikes/phase-24-tokenizer-recall.md, ADR-013 — no faked numbers). The rust-native-eval-runner stays
 # a placeholder (evaluated + honestly deferred, [SPEC-DEFER:phase-future.rust-native-eval-runner]). Step 33
 # asserts the default build is intact (ADR-013: feature/config-layer verification, not a faked console path).
+#
+# v15 (Phase 25) adds step 34 — task-25.3 closeout. The two production-scale ANN backends live in the
+# feature-gated vector backends, NOT the console-api hot path: the qdrant server lifecycle layer (task-25.1,
+# TEST-25.1.1-4 — connect-config validation + health-probe unreachable shape + collection ensure-create
+# reuse/create/error decision, all without a live server) and the lancedb dev-box buildability (task-25.2,
+# TEST-25.2.3-4 — cargo build --features vector-lancedb on x86_64-pc-windows-msvc + index-tuning param
+# validation) are verified by Rust tests under --features vector-qdrant / vector-lancedb. The production
+# backend selection matrix (corpus-size x deployment-shape -> hnsw / sqlite-vec / lancedb / qdrant + per-tier
+# caveat) ships in docs/releases/v0.18.0-evidence.md. The default build stays 0-vector-dep BM25 baseline
+# (ADR-023 D5); real KNN over live qdrant ([SPEC-DEFER:phase-future.qdrant-server-lifecycle]) + lancedb real
+# ANN index perf ([SPEC-DEFER:phase-future.lancedb-index-tuning]) are honestly deferred (CI has no qdrant
+# server; ADR-013 — no faked live-server/cross-platform credentials). Step 34 asserts the default build is
+# intact (feature-layer verification, not a faked console production-backend path).
 #
 # Modes (selected by env):
 #
@@ -791,6 +804,25 @@ if "$GO_BIN" init --root "$STAGING/cf-v17-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build intact; code/CJK tokenizer (TEST-24.1.*) + eval validator (TEST-24.2.*) layer-verified; recall delta +0.0909 ✅"
 else
   echo "FAIL: contextforge init failed in v14 step 33" >&2
+  exit 1
+fi
+
+echo "  [34/34] task-25.3 production vector backend status (Phase 25 — qdrant lifecycle + lancedb buildability, Rust feature-layer verified)"
+# v15 (task-25.3): Phase 25 (production-scale ANN backends) lives in the feature-gated vector backends, NOT
+# the console-api hot path. The qdrant server lifecycle layer (task-25.1, TEST-25.1.1-4 — connect-config
+# validation + health-probe unreachable shape + collection ensure-create reuse/create/error decision, all
+# without a live server) and the lancedb dev-box buildability (task-25.2, TEST-25.2.3-4 — cargo build
+# --features vector-lancedb on x86_64-pc-windows-msvc + index-tuning param validation) are verified by Rust
+# tests under --features vector-qdrant / vector-lancedb. The production backend selection matrix
+# (corpus-size x deployment-shape -> hnsw / sqlite-vec / lancedb / qdrant + per-tier caveat) ships in
+# docs/releases/v0.18.0-evidence.md. The default build stays 0-vector-dep BM25 baseline (ADR-023 D5); real
+# KNN over live qdrant ([SPEC-DEFER:phase-future.qdrant-server-lifecycle]) + lancedb real ANN index perf
+# ([SPEC-DEFER:phase-future.lancedb-index-tuning]) are honestly deferred (CI has no qdrant server; ADR-013 —
+# no faked live-server/cross-platform credentials). This step asserts the default build is intact.
+if "$GO_BIN" init --root "$STAGING/cf-v18-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v18-cfg/config.toml" ]; then
+  echo "    → default build intact; qdrant lifecycle (TEST-25.1.*) + lancedb buildability 🟢 (TEST-25.2.*) feature-layer verified; selection matrix in v0.18.0-evidence.md ✅"
+else
+  echo "FAIL: contextforge init failed in v15 step 34" >&2
   exit 1
 fi
 

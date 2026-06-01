@@ -26,6 +26,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::pb_console::{QueryRecord as PbQueryRecord, RetrievalTrace as PbRetrievalTrace};
 
 const MIGRATION_SQL: &str = include_str!("../../migrations/0015_search_traces.sql");
+// task-26.1 (Phase 26 / ADR-031 D1): FTS5 shadow table for content search.
+// Applied after MIGRATION_SQL in `open` (IF NOT EXISTS, idempotent); 0 new dep
+// (FTS5 is bundled SQLite). See 0016_search_traces_fts.sql header.
+const MIGRATION_FTS_SQL: &str = include_str!("../../migrations/0016_search_traces_fts.sql");
 
 /// task-16.1: persistent backing store for `TraceStore` (in `search.rs`).
 ///
@@ -78,6 +82,12 @@ impl SqliteTracePersist {
         let path = data_dir.join("search_traces.db");
         let conn = Connection::open(&path)?;
         conn.execute_batch(MIGRATION_SQL)?;
+        // task-26.1 (ADR-031 D1): FTS5 shadow table (idempotent). Old DBs that
+        // only carry the 0015 schema get the table created here, then a one-time
+        // boot backfill populates it from existing trace_json (the readable
+        // query text is base64-encoded so SQL alone cannot extract it).
+        conn.execute_batch(MIGRATION_FTS_SQL)?;
+        backfill_fts_if_empty(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -98,6 +108,19 @@ impl SqliteTracePersist {
             "INSERT OR REPLACE INTO search_traces (query_id, trace_json, workspace_id, ts_unix) \
              VALUES (?1, ?2, ?3, ?4)",
             params![key, trace_json, workspace_id, ts_unix],
+        )?;
+        // task-26.1 (ADR-031 D1): keep the FTS shadow in sync. INSERT OR REPLACE
+        // above replaces the main row on duplicate key; mirror that for FTS by
+        // deleting any prior shadow row for this key then re-inserting the
+        // (possibly updated) query text. No triggers — explicit sync because the
+        // indexed text lives in the base64 trace_json, not a column.
+        conn.execute(
+            "DELETE FROM search_traces_fts WHERE query_id = ?1",
+            params![key],
+        )?;
+        conn.execute(
+            "INSERT INTO search_traces_fts (query_id, query_text) VALUES (?1, ?2)",
+            params![key, trace.query],
         )?;
         Ok(())
     }
@@ -189,6 +212,82 @@ impl SqliteTracePersist {
         Ok(out)
     }
 
+    /// task-26.1 (ADR-031 D1): FTS5 content search over persisted traces.
+    /// Returns traces whose `RetrievalTrace.query` text matches `query_text`
+    /// (FTS5 MATCH), ordered by relevance (`rank`), projected to `QueryRecord`.
+    /// `limit` clamped 1..=100 (mirrors `list`). Empty match → `Ok(vec![])`.
+    pub fn search_fts(
+        &self,
+        query_text: &str,
+        limit: usize,
+    ) -> Result<Vec<PbQueryRecord>, SqliteTracePersistError> {
+        let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
+        let lim = limit.clamp(1, 100) as i64;
+        // Treat the caller's text as a literal FTS5 phrase: wrap in double quotes
+        // (escaping internal quotes by doubling) so punctuation like '-' / ':' is
+        // tokenized rather than interpreted as FTS5 query-syntax operators. Empty
+        // input matches nothing.
+        if query_text.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let match_expr = format!("\"{}\"", query_text.replace('"', "\"\""));
+        let mut stmt = conn.prepare(
+            "SELECT t.query_id, t.trace_json, t.workspace_id, t.ts_unix \
+             FROM search_traces_fts f JOIN search_traces t ON t.query_id = f.query_id \
+             WHERE search_traces_fts MATCH ?1 ORDER BY rank LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![match_expr, lim], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (key, trace_json, workspace_id, ts_unix) = r?;
+            let trace = decode_trace(&trace_json)?;
+            out.push(PbQueryRecord {
+                query_id: key,
+                query: trace.query,
+                ts_unix,
+                workspace_id,
+            });
+        }
+        Ok(out)
+    }
+
+    /// task-26.1 (ADR-031 D2): reclaim disk via SQLite VACUUM. Rebuilds the
+    /// database file compactly; must run with exclusive access (not on the hot
+    /// path). The `Mutex<Connection>` already serializes callers.
+    pub fn vacuum(&self) -> Result<(), SqliteTracePersistError> {
+        let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
+        conn.execute_batch("VACUUM")?;
+        Ok(())
+    }
+
+    /// task-26.1 (ADR-031 D2): delete traces older than `cutoff_ts` (by
+    /// `ts_unix`) and the matching FTS shadow rows. Returns the number of
+    /// `search_traces` rows deleted. Callers may `vacuum()` afterwards to
+    /// actually reclaim the freed pages.
+    pub fn prune_older_than(&self, cutoff_ts: i64) -> Result<usize, SqliteTracePersistError> {
+        let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
+        // Remove FTS shadow rows first (no triggers — explicit sync), then the
+        // main rows. The subquery resolves the pruned keys before the main
+        // DELETE removes them.
+        conn.execute(
+            "DELETE FROM search_traces_fts WHERE query_id IN \
+             (SELECT query_id FROM search_traces WHERE ts_unix < ?1)",
+            params![cutoff_ts],
+        )?;
+        let n = conn.execute(
+            "DELETE FROM search_traces WHERE ts_unix < ?1",
+            params![cutoff_ts],
+        )?;
+        Ok(n)
+    }
+
     /// Count rows — testing aid; not used by the production hot path.
     #[cfg(test)]
     pub(crate) fn row_count(&self) -> Result<i64, SqliteTracePersistError> {
@@ -196,6 +295,39 @@ impl SqliteTracePersist {
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM search_traces", [], |r| r.get(0))?;
         Ok(n)
     }
+}
+
+/// task-26.1 (ADR-031 D1): one-time FTS backfill for DBs upgraded from the
+/// 0015-only schema. When the FTS shadow is empty but `search_traces` has rows,
+/// decode each persisted trace and index its `query` text. Idempotent: once the
+/// shadow is populated, subsequent boots skip the backfill (FTS count > 0).
+fn backfill_fts_if_empty(conn: &Connection) -> Result<(), SqliteTracePersistError> {
+    let fts_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM search_traces_fts", [], |r| r.get(0))?;
+    let trace_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM search_traces", [], |r| r.get(0))?;
+    if fts_count != 0 || trace_count == 0 {
+        return Ok(());
+    }
+    let pairs: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT query_id, trace_json FROM search_traces")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    for (query_id, trace_json) in pairs {
+        let trace = decode_trace(&trace_json)?;
+        conn.execute(
+            "INSERT INTO search_traces_fts (query_id, query_text) VALUES (?1, ?2)",
+            params![query_id, trace.query],
+        )?;
+    }
+    Ok(())
 }
 
 fn encode_trace(t: &PbRetrievalTrace) -> String {
@@ -371,5 +503,129 @@ mod tests {
             .put("", &fixture_trace("again"), "ws-2", 1)
             .expect("re-put same key ok");
         assert_eq!(persist.row_count().unwrap(), 1, "same key replaced not duplicated");
+    }
+
+    // =====================================================================
+    // task-26.1 (Phase 26 / ADR-031 D1/D2) — FTS5 content search + VACUUM.
+    // =====================================================================
+
+    /// TEST-26.1.1 / AC1: search_fts hits traces containing the query term;
+    /// limit clamps to 1..=100.
+    #[test]
+    fn test_search_fts_hits_by_content_and_clamps_limit() {
+        let dir = temp_dir("fts-hit");
+        let persist = SqliteTracePersist::open(&dir).expect("open ok");
+        persist
+            .put("q-rotate", &fixture_trace("rotate prod token"), "ws", 100)
+            .unwrap();
+        persist
+            .put("q-deploy", &fixture_trace("deploy staging cluster"), "ws", 200)
+            .unwrap();
+        persist
+            .put("q-rotate2", &fixture_trace("how to rotate the token again"), "ws", 300)
+            .unwrap();
+        // Two traces contain "rotate"; one contains "deploy".
+        let hits = persist.search_fts("rotate", 10).expect("fts ok");
+        let ids: Vec<&str> = hits.iter().map(|r| r.query_id.as_str()).collect();
+        assert_eq!(hits.len(), 2, "two traces contain 'rotate': {ids:?}");
+        assert!(ids.contains(&"q-rotate"));
+        assert!(ids.contains(&"q-rotate2"));
+        assert!(!ids.contains(&"q-deploy"));
+        // Projection carries the query text.
+        assert!(hits.iter().all(|r| r.query.contains("rotate")));
+        // Limit clamp: 0 → at least 1 returned (when matches exist).
+        let one = persist.search_fts("token", 0).expect("fts ok");
+        assert!(!one.is_empty(), "limit 0 clamps to >=1");
+    }
+
+    /// TEST-26.1.2 / AC2: search_fts misses cleanly (Ok(empty), no error).
+    #[test]
+    fn test_search_fts_miss_returns_empty() {
+        let dir = temp_dir("fts-miss");
+        let persist = SqliteTracePersist::open(&dir).expect("open ok");
+        persist
+            .put("q1", &fixture_trace("alpha beta gamma"), "ws", 100)
+            .unwrap();
+        let hits = persist.search_fts("absent-term-xyz", 10).expect("fts ok");
+        assert!(hits.is_empty(), "no trace contains the term → empty");
+    }
+
+    /// TEST-26.1.3 / AC3: prune_older_than + vacuum reclaim while preserving
+    /// surviving rows (get/list/fts intact, row_count consistent).
+    #[test]
+    fn test_prune_then_vacuum_preserves_surviving_data() {
+        let dir = temp_dir("vacuum");
+        let persist = SqliteTracePersist::open(&dir).expect("open ok");
+        for i in 0..6i64 {
+            let key = format!("q-{i}");
+            persist
+                .put(&key, &fixture_trace(&format!("term-{i} shared")), "ws", 100 * (i + 1))
+                .unwrap();
+        }
+        assert_eq!(persist.row_count().unwrap(), 6);
+        // Prune the 3 oldest (ts 100/200/300 < cutoff 350).
+        let deleted = persist.prune_older_than(350).expect("prune ok");
+        assert_eq!(deleted, 3, "3 rows older than cutoff deleted");
+        persist.vacuum().expect("vacuum ok");
+        // Surviving rows intact after VACUUM.
+        assert_eq!(persist.row_count().unwrap(), 3);
+        assert!(persist.get("q-5").unwrap().is_some(), "newest survives get");
+        assert!(persist.get("q-0").unwrap().is_none(), "pruned row gone");
+        let listed = persist.list(100).unwrap();
+        assert_eq!(listed.len(), 3, "list reflects survivors");
+        // FTS shadow rows for pruned traces removed; survivors still hit.
+        let shared = persist.search_fts("shared", 100).unwrap();
+        assert_eq!(shared.len(), 3, "only surviving traces FTS-match");
+        let gone = persist.search_fts("term-0", 100).unwrap();
+        assert!(gone.is_empty(), "pruned trace no longer FTS-indexed");
+    }
+
+    /// TEST-26.1.4 / AC4: an old DB carrying only the 0015 schema + rows gets
+    /// the FTS table created + backfilled on `open` without losing data, and
+    /// existing put/get/list semantics are unchanged.
+    #[test]
+    fn test_old_db_boot_backfills_fts_idempotently() {
+        let dir = temp_dir("oldboot");
+        let db_path = dir.join("search_traces.db");
+        // Simulate a v0.9-era DB: only 0015 schema, one row written directly.
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute_batch(MIGRATION_SQL).unwrap();
+            let trace_json = encode_trace(&fixture_trace("legacy rotate token"));
+            conn.execute(
+                "INSERT INTO search_traces (query_id, trace_json, workspace_id, ts_unix) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params!["legacy-1", trace_json, "ws-old", 1_700_000_000i64],
+            )
+            .unwrap();
+        }
+        // New code opens the old DB → 0016 FTS table created + backfilled.
+        let persist = SqliteTracePersist::open(&dir).expect("open old db ok");
+        assert_eq!(persist.row_count().unwrap(), 1, "existing row preserved");
+        assert!(persist.get("legacy-1").unwrap().is_some(), "get still works");
+        let hits = persist.search_fts("rotate", 10).expect("fts ok");
+        assert_eq!(hits.len(), 1, "legacy row backfilled into FTS");
+        assert_eq!(hits[0].query_id, "legacy-1");
+        // Re-open is idempotent (no duplicate FTS rows, no data loss).
+        drop(persist);
+        let persist2 = SqliteTracePersist::open(&dir).expect("re-open ok");
+        let hits2 = persist2.search_fts("rotate", 10).expect("fts ok");
+        assert_eq!(hits2.len(), 1, "re-open does not duplicate FTS rows");
+    }
+
+    /// TEST-26.1.4b: put after the FTS table exists keeps INSERT OR REPLACE
+    /// semantics (same key replaced, FTS not duplicated).
+    #[test]
+    fn test_put_replace_keeps_fts_in_sync() {
+        let dir = temp_dir("fts-replace");
+        let persist = SqliteTracePersist::open(&dir).expect("open ok");
+        persist.put("k", &fixture_trace("first version"), "ws", 1).unwrap();
+        persist.put("k", &fixture_trace("second version"), "ws", 2).unwrap();
+        assert_eq!(persist.row_count().unwrap(), 1, "same key replaced");
+        // Old text no longer matches; new text does.
+        assert!(persist.search_fts("first", 10).unwrap().is_empty(), "stale FTS row replaced");
+        let hit = persist.search_fts("second", 10).unwrap();
+        assert_eq!(hit.len(), 1);
+        assert_eq!(hit[0].query_id, "k");
     }
 }

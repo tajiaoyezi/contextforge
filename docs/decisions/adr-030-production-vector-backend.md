@@ -1,6 +1,6 @@
 # ADR `030`: `production-vector-backend`
 
-**Status**: Proposed (2026-05-31)
+**Status**: Accepted (2026-05-31 Proposed；2026-06-01 task-25.3 据 task-25.1/25.2 真实非合成验证 ratify Proposed→Accepted，ADR-013. D1 qdrant 生命周期契约层（TEST-25.1.1-4 不连 live server）+ D2 lancedb 🟢 真实 dev-box 可构建（`cargo build --features vector-lancedb` exit 0 @ x86_64-pc-windows-msvc + 索引调参参数 TEST-25.2.3-4）+ D3 生产 backend 选择矩阵 + D4 默认 0-vector-dep 均经真实验证；qdrant live-server KNN `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]` + lancedb 真实 ANN 索引性能 `[SPEC-DEFER:phase-future.lancedb-index-tuning]` 诚实延后不伪造。见 §Ratification Amendment.)
 **Category**: 数据平面 / 向量检索 / 生产规模 backend 生命周期 + 可构建性
 **Date**: 2026-05-31
 **Decided By**: 主 agent (ADR-012 自治)；tajiaoyezi ratification at v0.18.0 closeout
@@ -56,4 +56,11 @@ qdrant 生命周期层、lancedb 可构建性/调参参数**全部在各自 feat
 
 ## Ratification Amendment (v0.18.0 / task-25.3)
 
-> 本段在 v0.18.0 closeout（task-25.3）据 task-25.1/25.2 的**真实非合成验证**回填，把顶部 **Status** ratify **Proposed → Accepted**（ADR-013：禁据合成/伪造 ratify）。回填时按各维度真实结果记录：D1（qdrant 生命周期）契约层真实单测依据 + live-server 集成延后口径；D2（lancedb 可构建性）真实 dev-box 构建凭据（🟢 通过 / 🔴 受阻 stop-condition）+ 索引调参参数校验；D3（选择矩阵）落地；D4（默认 0-dep 不变）。某维度受阻则据「已达维度 ratify + 受阻维度如实记录」处理，不强 ratify。证据见 `docs/releases/v0.18.0-evidence.md`。Draft 阶段不填本段实测，由 task-25.3 实施时回填。
+本 ADR 于 v0.18.0 closeout（task-25.3）据 task-25.1/25.2 的**真实非合成验证** ratify **Proposed → Accepted**（ADR-013：禁据合成/伪造 ratify）。D1–D4 各项的真实验证依据：
+
+- **D1（qdrant server 生命周期层）→ 契约层真实达成 + live 集成诚实延后**：task-25.1 在 `vector-qdrant` feature 下加 `QdrantConnConfig`（url/timeout/api_key/tls + `from_env` + `validate`）+ `health()` + `decide_ensure` 纯函数 + `open()` ensure-create 重写。`cargo test -p contextforge-core --features vector-qdrant retriever::vector::qdrant` **4 passed / 0 failed**（TEST-25.1.1 config 校验 / 25.1.2 health 无 server `Unreachable` 不 panic / 25.1.3 `decide_ensure` reuse·create·error 三分支 / 25.1.4 不破坏三 trait 签名，全不连 live server）。**真实 KNN over live qdrant server 诚实延后** `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`（CI 无在跑的 qdrant server，禁伪造 live-server 通过）。
+- **D2（lancedb 真实可构建性 + 索引调参参数）→ 🟢 真实达成**：task-25.2 在 dev box 真实 `cargo build --features vector-lancedb -p contextforge-core` **exit 0, 0 warnings**（`x86_64-pc-windows-msvc`, rustc 1.95.0, protoc `libprotoc 31.1` via 仓内 `protoc-bin-vendored` 经 `PROTOC` env；硬证据 = `target/debug/deps` 1097 依赖 rlib 含 `liblancedb`/`liblance`/datafusion 53 + arrow 58 树；**Cargo.lock 未变 → 0 新依赖**）。`LanceIndexTuning::validate(dim)` 索引调参参数校验（IVF_PQ `num_partitions`/`num_sub_vectors` 整除 dim + HNSW `m`/`ef_construction` + compaction 阈值 + metric）+ 既有 backend 契约 `--lib retriever::vector::lance_db` **2 passed / 0 failed**。**诚实 caveat**：单台 MSVC dev box 真实凭据，protoc 仍是硬前置（须显式提供 `PROTOC`，担忧缩小非消除），CI 默认不构建该 feature；广义 `cargo test --features vector-lancedb`（全 integration test target）受 rustc 1.95.0 ICE + rlib-format 链接限制（向量无关 target，工具链项非逻辑回归）；**真实 ANN 索引建图 + 大语料性能** `[SPEC-DEFER:phase-future.lancedb-index-tuning]` / **compaction 执行** `[SPEC-DEFER:phase-future.lancedb-schema-compaction]` 诚实延后。详 `docs/spikes/phase-25-lancedb-buildability.md`（三态如实 🟢/🟡）。
+- **D3（生产 backend 选择矩阵）→ 达成**：task-25.3 据 ADR-023 D1-D4 tier + ADR-028 + 本 phase 推进结果产出「语料规模 × 部署形态 → 推荐 backend + caveat」矩阵（dev/小语料 → brute-force（默认 0-dep）/ hnsw；单机嵌入式 → sqlite-vec；大语料列存 → lancedb；hosted scale-out → qdrant），每档记 caveat（live-server 依赖 / protoc 前置 / 平台限制 / 真实性能延后），写入 `docs/releases/v0.18.0-evidence.md` §3.3 + adapter（add-only 指南，不溯改 ADR-023 D1-D6 tier 排序，D5）。
+- **D4（默认构建不变：0 vector 依赖 + BM25-only baseline）→ 守线**：qdrant 生命周期层 / lancedb 可构建性·调参均在各自 feature 下；默认 `cargo test --workspace` exit 0 全绿、`core/Cargo.toml` / `Cargo.lock` 未改（0 新 direct dep，qdrant-client/lancedb/arrow-array/futures 自 task-18.4/18.5 即 optional）→ 无 ADR-008 依赖变更 Amendment。
+
+ratify 范围 = qdrant 生命周期契约层 + lancedb 可构建性 + 索引调参参数 + 生产 backend 选择矩阵（D1-D4 经真实 cargo build/test 验证）；qdrant live-server KNN 集成 + lancedb 真实 ANN 索引性能属后续（如实延后，不伪造）。证据见 `docs/releases/v0.18.0-evidence.md` §3。

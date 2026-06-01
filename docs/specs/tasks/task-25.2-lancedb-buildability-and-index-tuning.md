@@ -1,6 +1,6 @@
 # Task `25.2`: `lancedb-buildability-and-index-tuning — dev box 真实 cargo build --features vector-lancedb 可构建性调查（protoc 前置，仿 task-23.2 sqlite-vec MSVC 调查 pattern；构建通过记真实凭据 / 确证受阻诚实 stop-condition 不伪造）+ core/src/retriever/vector/lance_db.rs 索引调参参数（IVF_PQ/HNSW + compaction 口径校验）+ docs/spikes/phase-25-lancedb-buildability.md 三态如实`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -74,21 +74,21 @@ protoc 前置 + 重 Arrow 栈在某平台（仿 sqlite-vec 当年在 Windows MSV
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: lancedb 真实 dev-box 可构建性给出结论——`cargo build --features vector-lancedb`（含 protoc 前置）构建通过记真实凭据（rustc/protoc/cmake 版本 + 耗时 + arch），或确证受阻时诚实文档化 stop-condition（承 protoc-prereq + sqlite-vec MSVC 先例，禁伪造跨平台构建通过，ADR-013）— verified by **TEST-25.2.1**
-- [ ] **AC2**: `docs/spikes/phase-25-lancedb-buildability.md` 产出 + 三态如实标（🟢 构建通过 / 🔴 确证受阻 stop-condition / 🟡 部分平台·caveat）+ 单机 caveat 口径（仿 `docs/spikes/phase-23-sqlite-vec-cross-platform.md`）— verified by **TEST-25.2.2**
-- [ ] **AC3**: 索引调参参数范围校验——`validate()` 合法参数（partitions>0 / sub_vectors 整除 dim / metric 受支持 / 阈值>0）Ok；非法（partitions=0 / sub_vectors 不整除 dim）→ 可识别 Err（纯函数，不建真实索引）— verified by **TEST-25.2.3**
-- [ ] **AC4**: 既有 lancedb backend 契约不退化（构建通过前提）——feature 下 open→index→search KNN + dim mismatch error 路径正确；真实 ANN 索引性能 / compaction 执行诚实延后（`[SPEC-DEFER:phase-future.lancedb-index-tuning]` / `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`）— verified by **TEST-25.2.4**
-- [ ] **AC5**: 既有不退化 + D2 lint — 默认 `cargo test --workspace`（无 vector feature）全 PASS + 0 新依赖；`go test ./...` 不受影响（本 PR 零 Go delta）；`bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-25.2.5** + §10 实测
+- [x] **AC1**: lancedb 真实 dev-box 可构建性给出结论——`cargo build --features vector-lancedb`（含 protoc 前置）构建通过记真实凭据（rustc/protoc/cmake 版本 + 耗时 + arch），或确证受阻时诚实文档化 stop-condition（承 protoc-prereq + sqlite-vec MSVC 先例，禁伪造跨平台构建通过，ADR-013）— verified by **TEST-25.2.1**（🟢 x86_64-pc-windows-msvc / rustc 1.95.0 / protoc 31.1 vendored / `cargo build` exit 0 / 0 新依赖）
+- [x] **AC2**: `docs/spikes/phase-25-lancedb-buildability.md` 产出 + 三态如实标（🟢 构建通过 / 🔴 确证受阻 stop-condition / 🟡 部分平台·caveat）+ 单机 caveat 口径（仿 `docs/spikes/phase-23-sqlite-vec-cross-platform.md`）— verified by **TEST-25.2.2**（🟢 buildability + 🟡 广义 feature 全 target 测试 rustc ICE caveat 如实标）
+- [x] **AC3**: 索引调参参数范围校验——`validate()` 合法参数（partitions>0 / sub_vectors 整除 dim / metric 受支持 / 阈值>0）Ok；非法（partitions=0 / sub_vectors 不整除 dim）→ 可识别 Err（纯函数，不建真实索引）— verified by **TEST-25.2.3**
+- [x] **AC4**: 既有 lancedb backend 契约不退化（构建通过前提）——feature 下 open→index→search KNN + dim mismatch error 路径正确；真实 ANN 索引性能 / compaction 执行诚实延后（`[SPEC-DEFER:phase-future.lancedb-index-tuning]` / `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`）— verified by **TEST-25.2.4**
+- [x] **AC5**: 既有不退化 + D2 lint — 默认 `cargo test --workspace`（无 vector feature）全 PASS + 0 新依赖；`go test ./...` 不受影响（本 PR 零 Go delta）；`bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-25.2.5** + §10 实测
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-25.2.1 | dev-box 真实 `cargo build --features vector-lancedb` 可构建性结论（通过记凭据 / 受阻 stop-condition） | `docs/spikes/phase-25-lancedb-buildability.md` + §10 | Planned |
-| TEST-25.2.2 | spike 三态如实标 + 单机 caveat 口径（仿 phase-23 sqlite-vec spike） | `docs/spikes/phase-25-lancedb-buildability.md` | Planned |
-| TEST-25.2.3 | 索引调参参数范围校验（合法 Ok / partitions=0·sub_vectors 不整除 dim Err，纯函数） | `core/src/retriever/vector/lance_db.rs`（`mod tests`） | Planned |
-| TEST-25.2.4 | feature `vector-lancedb` 既有 backend 契约不退化（open→index→search KNN + dim mismatch） | `core/src/retriever/vector/lance_db.rs`（`mod tests`） | Planned |
-| TEST-25.2.5 | 默认 `cargo test --workspace` 0 failed + 0 新依赖 + D2 lint 0 未标注命中 | 全 Rust + `scripts/spec_drift_lint.sh` | Planned |
+| TEST-25.2.1 | dev-box 真实 `cargo build --features vector-lancedb` 可构建性结论（通过记凭据 / 受阻 stop-condition） | `docs/spikes/phase-25-lancedb-buildability.md` + §10 | Done（🟢 `cargo build` exit 0） |
+| TEST-25.2.2 | spike 三态如实标 + 单机 caveat 口径（仿 phase-23 sqlite-vec spike） | `docs/spikes/phase-25-lancedb-buildability.md` | Done（🟢 + 🟡 ICE caveat） |
+| TEST-25.2.3 | 索引调参参数范围校验（合法 Ok / partitions=0·sub_vectors 不整除 dim Err，纯函数） | `core/src/retriever/vector/lance_db.rs`（`mod tests`） | Done |
+| TEST-25.2.4 | feature `vector-lancedb` 既有 backend 契约不退化（open→index→search KNN + dim mismatch） | `core/src/retriever/vector/lance_db.rs`（`mod tests`） | Done |
+| TEST-25.2.5 | 默认 `cargo test --workspace` 0 failed + 0 新依赖 + D2 lint 0 未标注命中 | 全 Rust + `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -121,4 +121,26 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 实测结果（ADR-013 真实非合成：dev-box 构建三态凭据 + 参数校验单测）/ 设计取舍（可构建性结论 🟢/🔴/🟡 + 索引调参参数结构 + protoc 前置处理 + 真实索引性能延后口径）/ 剩余风险 + 下游影响。
+- **完成日期**: 2026-06-01
+- **改动文件**:
+  - `core/src/retriever/vector/lance_db.rs`（修改，feature `vector-lancedb` gated）— 新增 `LanceAnnIndex`（`IvfPq{num_partitions,num_sub_vectors}` / `Hnsw{m,ef_construction}`）+ `LanceIndexTuning`（`index`/`metric`/`compaction_threshold_rows`）+ `LanceIndexTuning::validate(dim)` 参数契约层纯函数 + `import VectorMetric`；新增 2 个 feature-gated lib 单测（TEST-25.2.3 参数校验 / TEST-25.2.4 backend 契约往返）
+  - `docs/spikes/phase-25-lancedb-buildability.md`（新增）— 真实 dev-box 可构建性调查（protoc 前置 / 构建命令 / 真实凭据 / 三态如实标 🟢 buildability + 🟡 广义 feature 全 target 测试 rustc ICE caveat），仿 `docs/spikes/phase-23-sqlite-vec-cross-platform.md`
+  - `docs/specs/tasks/task-25.2-...md`（本文件）— Status→Done + AC1-5 勾选 + TEST 表 + §10
+- **commit 列表**:
+  - `071e81f` test(retriever): TEST-25.2.3~25.2.4 RED — lancedb 索引调参参数校验 + backend 契约（todo!）
+  - `b1c7fee` feat(retriever): lancedb 索引调参参数校验（IVF_PQ/HNSW + compaction 口径），通过 TEST-25.2.3~25.2.4
+  - （本 commit）docs(spec): 回填 task-25.2 §10 + Status → Done + spike phase-25-lancedb-buildability
+- **§9 Verification 结果**（ADR-013 真实非合成，单台 Windows MSVC dev box；详见 `docs/spikes/phase-25-lancedb-buildability.md`）:
+  - build: 🟢 `cargo build --features vector-lancedb -p contextforge-core` **exit 0, 0 warnings**（`x86_64-pc-windows-msvc`, rustc 1.95.0, protoc `libprotoc 31.1` via 仓内 `protoc-bin-vendored` 3.2.0 经 `PROTOC` env）；增量 feature 重建 13.78s；冷构建硬证据 = `target/debug/deps` 1097 依赖 rlib（含 `liblancedb`/`liblance`/datafusion 53 + arrow 58 树）；**Cargo.lock 未变 → 0 新依赖**（lancedb/arrow-array/futures 自 task-18.5 即 optional）
+  - unit-test（feature lib）: `cargo test -p contextforge-core --features vector-lancedb --lib retriever::vector::lance_db` **2 passed / 0 failed（lib exit 0）**（TEST-25.2.3 参数范围校验纯函数 / TEST-25.2.4 真实 Lance dataset open→index→search KNN + dim mismatch）；RED→GREEN 已复核（RED 25.2.3 FAILED on todo! / 25.2.4 ok → GREEN 2/2）
+  - unit-test（默认）: `cargo test --workspace`（无 vector feature）**exit 0，全 binary 0 failed**（169 lib + 全 integration target；lance_db.rs 全 `#[cfg(feature="vector-lancedb")]` gated，默认构建不编译，逐字节不变）
+  - integration: `go test ./...` — 本 PR 零 Go delta（改动仅 Rust + docs）
+  - lint: D2 `bash scripts/spec_drift_lint.sh --touched origin/master` — 触及行 `[SPEC-DEFER:phase-future.lancedb-index-tuning]` / `[SPEC-DEFER:phase-future.lancedb-schema-compaction]` / `[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]` 已标注 → exit 0（0 未标注命中）
+  - 🟡 caveat: 广义 `cargo test --features vector-lancedb`（编译全部 integration test target）exit 101——rustc 1.95.0 ICE + `crate datafusion_optimizer/lance required to be available in rlib format` 链接错误，命中**向量无关 integration test target**（`indexjob_real_runner`/`scanner`/`proto_contract`/`phase4_smoke`/…）。工具链限制（重 lance/datafusion 树在 integration-test 链接阶段），非逻辑回归、非本 task 引入（这些 target 不引用本 task 符号；启用 feature + integration-test 链接的固有属性，自 task-18.5 即存在）。buildability + lib 单测 + 默认 workspace 均通过。详见 spike §2.4。
+- **设计取舍**:
+  - **可构建性结论 🟢（非 🔴/🟡）**：lancedb 在 Windows MSVC `cargo build` 真实通过——protoc 前置以仓内既有 `protoc-bin-vendored` 二进制经 `PROTOC` env 满足（无需系统安装 protoc/cmake），与 task-23.2 解除 sqlite-vec MSVC 受阻同向缩小 ADR-023 D4 dev/prod parity 缺口。**诚实 caveat**：protoc 仍是硬前置（须显式提供 `PROTOC`）→ 担忧「缩小」非「消除」；单机凭据，CI 默认不构建该 feature；广义 feature 全 target 测试受 rustc ICE 限制（工具链项）。
+  - **索引调参参数结构**：`LanceIndexTuning` 作参数契约层（`validate` 纯函数不建真实索引）——与具体 `create_index` API 调用解耦（API 变化只影响建索引调用，校验层稳定可单测）；IVF_PQ 的 `num_sub_vectors` 整除 dim 是 PQ 等长切分前提；`compaction_threshold_rows` 为 compaction 触发口径（真实执行延后）。
+  - **add-only / 不破坏 trait**：索引调参为 `LanceIndexTuning` inherent 类型，不改 task-18.1 三 trait 签名 / 不重写 `LanceDbBackend` 读写本体（`[SPEC-OWNER:task-18.5-spike-lancedb]`）；`VectorError::Other(String)` 承载校验错误（避免新增 error 变体，`#[non_exhaustive]` add-only 安全）。
+  - **真实索引性能延后口径**：本 task 落参数校验（不建真实大索引）；真实 IVF_PQ/HNSW 建图 + 性能 `[SPEC-DEFER:phase-future.lancedb-index-tuning]` / compaction 执行 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]` 承 phase-18 Follow-up。
+- **剩余风险 / 未做项**: 真实 ANN 索引建图 + 大语料性能 / compaction 真实执行诚实延后（见 `[SPEC-DEFER]` 标）；CI 注入 protoc + 跨 CI lancedb 构建持续守护 + 广义 feature 全 target 测试 rustc ICE 守护 `[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]`。
+- **下游 task 影响**: task-25.3（closeout 据本可构建性结论 🟢 评估生产 backend 选择矩阵 lancedb 档 caveat：protoc 前置 / 重 Arrow 栈 / 单机凭据 / 广义 feature 测试 ICE / 真实索引性能延后；ADR-030 D2 维度据本 spike 真实凭据 ratify）。可与 task-25.1（qdrant，已 Done）并行（写路径不相交）。
