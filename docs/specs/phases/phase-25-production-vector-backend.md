@@ -1,6 +1,6 @@
 # Phase 25 · production-vector-backend
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 把 ADR-023 列为生产规模 ANN 两档的 **qdrant**（外部 gRPC server，D3 hosted/scale-out）与 **lancedb**（嵌入式列存，D4 embedded-columnar）从 Phase 18 spike 态推向生产：qdrant 加 connect/health-probe/collection ensure-create/连接配置的**生命周期层**（契约层真实可验证，不需 live server），lancedb 做**真实可构建性调查**（dev-box `cargo build --features vector-lancedb`，protoc 前置，仿 task-23.2 sqlite-vec MSVC 调查 pattern）+ 索引调参参数，并产出**生产 backend 选择矩阵**。ADR-013 关键：qdrant 需 live server（CI 无）、lancedb 需 protoc 且可能在某平台受阻——二者均以诚实 stop-condition 处理，不伪造跨环境通过。v0.18.0 收口。对应 `docs/roadmap.md` §3.6。
 >
@@ -93,11 +93,11 @@ v0.18.0 ship 后，ContextForge 的生产规模向量 backend 两档具备可生
 
 **阶段级验收标准（每条 AC 含 ADR-014 D3 verified by 显式 owner；Draft 阶段未勾选，实施后逐条置 `[x]`）**：
 
-- [ ] **AC1**：`vector-qdrant` feature 下 `QdrantBackend` 有生命周期层（连接配置校验 + health-probe 入口 + collection ensure-create 决策）；契约层 shape/config/ensure-create 决策在不连 live server 下 `cargo test --features vector-qdrant` 可断言；真实 KNN over live qdrant 因 CI 无 server 诚实延后（`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`，禁伪造 live-server 通过，ADR-013）；默认构建 0 新依赖不退化 — verified by task-25.1 §6 AC1-5 + phase-smoke step 1
-- [ ] **AC2**：lancedb 真实 dev-box 可构建性给出结论——`cargo build --features vector-lancedb`（含 protoc 前置）构建通过则记真实凭据 + 既有契约不退化 + 索引调参参数校验可单测，或确证受阻时诚实文档化 stop-condition（承 protoc-prereq + sqlite-vec MSVC 先例，禁伪造跨平台构建通过，ADR-013）；`docs/spikes/phase-25-lancedb-buildability.md` 三态如实标 — verified by task-25.2 §6 AC1-4 + phase-smoke step 2
-- [ ] **AC3**：生产 backend 选择矩阵产出（语料规模 × 部署形态 → 推荐 backend + caveat）；`scripts/console_smoke.sh` v15 `bash -n` exit 0 + 向量生产 backend 状态 smoke 断言 + 既有 step 不退化 — verified by task-25.3 §6 AC1 + phase-smoke step 3
-- [ ] **AC4**：v0.18.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-030 据真实非合成结果 ratify 或记录维持 + ADR-023/008 add-only Amendment + phase §6 闭合 — verified by task-25.3 §6 AC2-3
-- [ ] **AC5**：ADR-014 cross-validation gate 全套通过（第十六次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-24 不溯改 — verified by task-25.3 closeout PR body
+- [x] **AC1**：`vector-qdrant` feature 下 `QdrantBackend` 有生命周期层（连接配置校验 + health-probe 入口 + collection ensure-create 决策）；契约层 shape/config/ensure-create 决策在不连 live server 下 `cargo test --features vector-qdrant` 可断言；真实 KNN over live qdrant 因 CI 无 server 诚实延后（`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`，禁伪造 live-server 通过，ADR-013）；默认构建 0 新依赖不退化 — verified by task-25.1 §6 AC1-5 + phase-smoke step 1
+- [x] **AC2**：lancedb 真实 dev-box 可构建性给出结论——`cargo build --features vector-lancedb`（含 protoc 前置）构建通过则记真实凭据 + 既有契约不退化 + 索引调参参数校验可单测，或确证受阻时诚实文档化 stop-condition（承 protoc-prereq + sqlite-vec MSVC 先例，禁伪造跨平台构建通过，ADR-013）；`docs/spikes/phase-25-lancedb-buildability.md` 三态如实标 — verified by task-25.2 §6 AC1-4 + phase-smoke step 2
+- [x] **AC3**：生产 backend 选择矩阵产出（语料规模 × 部署形态 → 推荐 backend + caveat）；`scripts/console_smoke.sh` v15 `bash -n` exit 0 + 向量生产 backend 状态 smoke 断言 + 既有 step 不退化 — verified by task-25.3 §6 AC1 + phase-smoke step 3
+- [x] **AC4**：v0.18.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-030 据真实非合成结果 ratify 或记录维持 + ADR-023/008 add-only Amendment + phase §6 闭合 — verified by task-25.3 §6 AC2-3
+- [x] **AC5**：ADR-014 cross-validation gate 全套通过（第十六次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-24 不溯改 — verified by task-25.3 closeout PR body
 
 **端到端 smoke（C1 集成兜底）**：(1) `vector-qdrant` feature 下 qdrant 生命周期契约（config/health-probe/ensure-create 决策，不连 live server）；(2) lancedb 可构建性调查结论（构建通过 / 受阻如实标）；(3) 生产 backend 选择矩阵 + smoke v15 `bash -n` 全 PASS（含受阻态如实标注）。
 

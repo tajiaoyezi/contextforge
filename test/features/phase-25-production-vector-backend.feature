@@ -24,7 +24,7 @@ Feature: phase-25-production-vector-backend
   Scenario: SCEN-25.2.1 — 对应 AC2（lancedb 真实可构建性调查 + 索引调参参数 + backend 契约不退化）
     Given core/Cargo.toml vector-lancedb（lancedb 0.30 + arrow-array 58 + futures 0.3 optional）+ lance_db.rs（protoc 前置构建 + nearest_to Cosine）+ 索引调参参数结构（IVF_PQ/HNSW num_partitions/num_sub_vectors/metric + compaction 口径）
     When  在 dev box 真实跑 cargo build --features vector-lancedb（含 protoc 前置探测/安装，仿 task-23.2 pattern）+ 索引调参参数 validate() + 既有 backend 契约测试
-    Then  构建通过则记真实凭据（rustc/protoc/cmake 版本 + 耗时 + arch，TEST-25.2.1）或确证受阻诚实 stop-condition（承 protoc-prereq + sqlite-vec MSVC 先例，ADR-013 不伪造跨平台通过）；docs/spikes/phase-25-lancedb-buildability.md 三态如实标 + 单机 caveat（TEST-25.2.2）；索引调参参数 partitions=0·sub_vectors 不整除 dim → Err（TEST-25.2.3）；既有 open→index→search KNN + dim mismatch 不退化、真实 ANN 索引性能 [SPEC-DEFER:phase-future.lancedb-index-tuning] / compaction [SPEC-DEFER:phase-future.lancedb-schema-compaction] 延后（TEST-25.2.4）
+    Then  🟢 cargo build --features vector-lancedb 在 x86_64-pc-windows-msvc 真实 exit 0 记真实凭据（rustc 1.95.0 / protoc 31.1 via 仓内 protoc-bin-vendored / 0 新依赖，TEST-25.2.1；protoc 仍硬前置须显式提供，担忧缩小非消除，ADR-013 不伪造跨平台通过）；docs/spikes/phase-25-lancedb-buildability.md 三态如实标 🟢 buildability + 🟡 广义 feature 全 target 测试 rustc ICE caveat + 单机 caveat（TEST-25.2.2）；索引调参参数 partitions=0·sub_vectors 不整除 dim → Err（TEST-25.2.3）；既有 open→index→search KNN + dim mismatch 不退化、真实 ANN 索引性能 [SPEC-DEFER:phase-future.lancedb-index-tuning] / compaction [SPEC-DEFER:phase-future.lancedb-schema-compaction] 延后（TEST-25.2.4）
 
   # ---
   # Maps to: docs/specs/tasks/task-25.3-closeout-v0.18.0.md (TEST-25.3.1/25.3.2/25.3.3/25.3.5)

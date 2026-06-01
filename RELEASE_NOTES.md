@@ -1,5 +1,34 @@
 # ContextForge Release Notes
 
+## v0.18.0 (2026-06-01) — production-vector-backend (qdrant 生命周期层 + lancedb 可构建性 🟢 + 生产 backend 选择矩阵 + ADR-030 ratified)
+
+### 摘要
+
+v0.18.0 minor release (Phase 25): pushes the two production-scale ANN backends that ADR-023 tiered — **qdrant** (hosted/scale-out) and **lancedb** (embedded-columnar) — from the Phase-18 spike state toward production. **qdrant** gains a server lifecycle layer (`QdrantConnConfig` validate + `health()` probe + `decide_ensure` collection ensure-create) that is contract-testable **without a live server**, replacing the spike's blind drop+create `open()` (task-25.1). **lancedb** gets a real dev-box buildability investigation — 🟢 `cargo build --features vector-lancedb` passes on `x86_64-pc-windows-msvc` (protoc supplied via the in-repo vendored binary, 0 new dependency) — plus an index-tuning parameter-validation layer (`LanceIndexTuning::validate`, IVF_PQ/HNSW + compaction threshold) (task-25.2). A **production backend selection matrix** (corpus-size × deployment-shape → hnsw / sqlite-vec / lancedb / qdrant + per-tier caveat) ships in the evidence doc (task-25.3).
+
+**Honest scope (read this)**: the **default build is unchanged** — 0 vector dependency, BM25-only baseline (qdrant/lancedb are feature-gated, default unchanged). This is a **backend lifecycle / buildability-layer release with NO recall numbers**. qdrant's lifecycle layer is verified at the **contract layer without a live server** (config validation + health-probe unreachable shape + ensure-create decision); **real KNN over a live qdrant server is honestly deferred** (`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`, CI has no qdrant server). lancedb 🟢 builds on the Windows MSVC dev box, but the credential is **single-box** (protoc is still a hard prerequisite that must be explicitly provided; CI does not build the feature by default), and a broad `cargo test --features vector-lancedb` (compiling all integration-test targets) hits a rustc 1.95.0 ICE in vector-unrelated test targets — a toolchain limitation, not a regression (the `cargo build` + `--lib` tests pass). **lancedb real ANN index perf is deferred** (`[SPEC-DEFER:phase-future.lancedb-index-tuning]`). All recorded per ADR-013 (no faked live-server / cross-platform credentials).
+
+### What shipped (Phase 25, tasks 25.1–25.3)
+
+| task | delivery | PR |
+|---|---|---|
+| 25.1 | `core/src/retriever/vector/qdrant.rs` qdrant server lifecycle layer: `QdrantConnConfig` (url/timeout/api_key/tls + `from_env` + `validate`) + `QdrantHealth` + `CollectionDesc` + `EnsureAction` + `decide_ensure` pure fn + `QdrantBackend::connect`/`health()`; `open()` rewritten to ensure-create (reuse-if-matching, no silent drop) — TEST-25.1.1-4 contract-tested without a live server, 0 new dep | (merged) |
+| 25.2 | `core/src/retriever/vector/lance_db.rs` `LanceAnnIndex` (IvfPq/Hnsw) + `LanceIndexTuning::validate(dim)` index-tuning param contract + `docs/spikes/phase-25-lancedb-buildability.md` real dev-box buildability (🟢 `cargo build --features vector-lancedb` exit 0 on x86_64-pc-windows-msvc, 1097 rlib hard evidence, 0 new dep) — TEST-25.2.1-5 | (merged) |
+| 25.3 | Phase 25 closeout: production backend selection matrix (corpus-size × deployment-shape → hnsw/sqlite-vec/lancedb/qdrant + caveat) + smoke v15 step 34 + v0.18.0 release docs + ADR-030 ratify + ADR-023 D3/D4 add-only Amendment | this PR |
+
+### ADR-030 ratified (Proposed → Accepted) + ADR-023 Amendment
+
+**ADR-030 production-vector-backend** ratified on the **real non-synthetic** verification of D1–D4: D1 qdrant lifecycle contract layer (TEST-25.1.1-4, no live server), D2 lancedb 🟢 real dev-box build (`cargo build --features vector-lancedb` exit 0 + index-tuning param validation TEST-25.2.3-4), D3 production backend selection matrix, D4 default 0-vector-dep unchanged. **qdrant live-server KNN** (`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`) and **lancedb real ANN index perf** (`[SPEC-DEFER:phase-future.lancedb-index-tuning]`) are honestly deferred — not faked. **ADR-023** gets an add-only Amendment advancing the D3 (qdrant) + D4 (lancedb) tiers without rewriting D1-D6 (ADR-014 D5). **ADR-008** needs **no amendment** (qdrant-client/lancedb/arrow-array/futures are all pre-existing optional deps; 0 new direct dep). **ADR-014 — 16th activation.**
+
+### Upgrade path
+
+- Drop-in: default build behavior unchanged (0 vector dependency + BM25-only baseline). No forced migration. The production-scale backends are feature-gated: `--features vector-qdrant` (needs a live qdrant server) / `--features vector-lancedb` (needs a `protoc` prerequisite for the lance `build.rs`).
+- qdrant `open()` upgraded from spike drop+create to **ensure-create** (reuse if the collection exists with matching dim/metric; error on mismatch instead of silently dropping data) — a safer semantic for existing collections under `--features vector-qdrant`.
+
+### Rollback path
+
+`git tag -d v0.18.0` + delete the GitHub Release/ghcr tag. The default-build image is behavior-compatible with v0.17.0 (0 vector dependency + BM25 baseline), so a rollback is non-breaking (the qdrant/lancedb lifecycle/buildability work is all feature-gated and not enabled by default).
+
 ## v0.17.0 (2026-05-31) — code-and-cjk-tokenizer-and-eval-hardening (opt-in tokenizer + eval 校验器 + ADR-029 ratified)
 
 ### 摘要
