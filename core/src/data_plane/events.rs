@@ -18,11 +18,85 @@ use crate::pb_console::{ObservabilityEvent as PbEvent, SubscribeEventsRequest};
 
 use super::DataPlaneStores;
 
+/// task-26.3 (ADR-031 D5): EventBus configuration. Conservative defaults keep
+/// the existing behavior unchanged (capacity 1000, single un-partitioned
+/// channel — equivalent to task-11.4 `broadcast::channel(1000)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EventBusConfig {
+    /// Broadcast ring capacity per channel (replaces the hardcoded 1000).
+    pub capacity: usize,
+    /// When true, `memory.*` and `indexing.*` events get independent broadcast
+    /// channels so a high-volume namespace cannot evict the other's events
+    /// (ADR-021 D4 / Rollback path `adr-021:153`). Default false (single channel).
+    pub partitioned: bool,
+}
+
+impl Default for EventBusConfig {
+    fn default() -> Self {
+        Self {
+            capacity: 1000,
+            partitioned: false,
+        }
+    }
+}
+
+impl EventBusConfig {
+    /// Read config from the environment with conservative defaults:
+    /// `CF_EVENT_BUS_CAPACITY` (positive int; default 1000) +
+    /// `CF_EVENT_BUS_PARTITION` (`1`/`true` → partitioned; default off).
+    pub fn from_env() -> Self {
+        let capacity = std::env::var("CF_EVENT_BUS_CAPACITY")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(1000);
+        let partitioned = matches!(
+            std::env::var("CF_EVENT_BUS_PARTITION").ok().as_deref(),
+            Some("1") | Some("true") | Some("TRUE")
+        );
+        Self {
+            capacity,
+            partitioned,
+        }
+    }
+}
+
+/// task-26.3 (ADR-031 D5): coarse event-type namespace partition. `memory.*` and
+/// `indexing.*` are the two high-traffic namespaces ADR-021 D4 calls out; all
+/// other event types share the default channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Partition {
+    Memory,
+    Indexing,
+    Other,
+}
+
+/// Map an event_type string to its coarse partition.
+pub fn partition_of(event_type: &str) -> Partition {
+    if event_type.starts_with("memory.") {
+        Partition::Memory
+    } else if event_type.starts_with("indexing.") {
+        Partition::Indexing
+    } else {
+        Partition::Other
+    }
+}
+
 /// task-11.4: EventBus — broadcast::Sender wrapper sized at 1000 events.
 /// Slow subscribers that fall behind get `RecvError::Lagged(skipped)` and the
 /// stream loop logs a warning + continues (rather than breaking the stream).
+///
+/// task-26.3 (ADR-031 D5): capacity is now configurable and the bus can
+/// optionally partition `memory.*` / `indexing.*` onto independent channels
+/// (default: single channel, capacity 1000 — identical to task-11.4).
 pub struct EventBus {
+    /// Default channel — carries everything in single mode, and `Other` events
+    /// (plus memory/indexing when un-partitioned) otherwise.
     tx: broadcast::Sender<PbEvent>,
+    /// Partition channels (Some only when `config.partitioned`).
+    memory_tx: Option<broadcast::Sender<PbEvent>>,
+    indexing_tx: Option<broadcast::Sender<PbEvent>>,
+    config: EventBusConfig,
 }
 
 impl EventBus {
@@ -30,24 +104,68 @@ impl EventBus {
     /// convention; Kafka/NATS replacement is OOS per ADR-004 local-first).
     pub fn new() -> Arc<Self> {
         let (tx, _) = broadcast::channel(1000);
-        Arc::new(Self { tx })
+        Arc::new(Self {
+            tx,
+            memory_tx: None,
+            indexing_tx: None,
+            config: EventBusConfig::default(),
+        })
     }
 
     pub fn with_capacity(cap: usize) -> Arc<Self> {
         let (tx, _) = broadcast::channel(cap);
-        Arc::new(Self { tx })
+        Arc::new(Self {
+            tx,
+            memory_tx: None,
+            indexing_tx: None,
+            config: EventBusConfig {
+                capacity: cap,
+                partitioned: false,
+            },
+        })
+    }
+
+    /// task-26.3 (ADR-031 D5): build from config — RED stub.
+    pub fn from_config(_config: EventBusConfig) -> Arc<Self> {
+        todo!("task-26.3 GREEN: build single or partitioned channels per config")
+    }
+
+    /// task-26.3: configured ring capacity per channel — RED stub.
+    pub fn capacity(&self) -> usize {
+        todo!("task-26.3 GREEN: return config.capacity")
+    }
+
+    /// task-26.3: whether memory/indexing are on independent channels — RED stub.
+    pub fn partitioned(&self) -> bool {
+        todo!("task-26.3 GREEN: return config.partitioned")
     }
 
     /// Best-effort emit. Returns `usize` subscriber count on success, or
     /// `SendError` if no active subscribers. Caller should swallow SendError
     /// (event lost is acceptable when no one listens — local-first single
     /// user; the event is informational, not durable state).
+    ///
+    /// task-26.3 (ADR-031 D5): when partitioned, route `memory.*` / `indexing.*`
+    /// to their channel; everything else to the default channel.
     pub fn send(&self, evt: PbEvent) -> Result<usize, broadcast::error::SendError<PbEvent>> {
         self.tx.send(evt)
     }
 
+    /// Subscribe to the default channel (un-partitioned: every event). Kept for
+    /// the task-11.4 single-channel contract + existing tests.
     pub fn subscribe(&self) -> broadcast::Receiver<PbEvent> {
         self.tx.subscribe()
+    }
+
+    /// task-26.3 (ADR-031 D5): subscribe to all underlying channels — RED stub.
+    /// Single mode → 1 receiver; partitioned → default + memory + indexing.
+    pub fn subscribe_all(&self) -> Vec<broadcast::Receiver<PbEvent>> {
+        todo!("task-26.3 GREEN: return receivers for all channels")
+    }
+
+    /// task-26.3 (ADR-031 D5): subscribe to one partition's channel — RED stub.
+    pub fn subscribe_partition(&self, _p: Partition) -> broadcast::Receiver<PbEvent> {
+        todo!("task-26.3 GREEN: return the channel for the partition (or default)")
     }
 }
 
@@ -353,6 +471,90 @@ mod tests {
         assert_eq!(recent.len(), 2, "only ts>=200 (unpin@200 + soft_delete@300)");
         assert_eq!(recent[0].event_id, "evt-audit-3");
         assert_eq!(recent[1].event_id, "evt-audit-4");
+    }
+
+    // =====================================================================
+    // task-26.3 (Phase 26 / ADR-031 D5) — event-bus capacity + partition config.
+    // =====================================================================
+
+    fn mk_event(event_type: &str) -> PbEvent {
+        PbEvent {
+            event_id: format!("evt-{event_type}"),
+            event_type: event_type.to_string(),
+            severity: "info".to_string(),
+            source: "contextforge-core".to_string(),
+            message: "test".to_string(),
+            ts_unix: 1,
+            trace_id: None,
+            job_id: None,
+            payload_json: "{}".to_string(),
+        }
+    }
+
+    fn drain(rx: &mut broadcast::Receiver<PbEvent>) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Ok(evt) = rx.try_recv() {
+            out.push(evt.event_type);
+        }
+        out
+    }
+
+    #[test]
+    fn test_partition_of_namespaces() {
+        assert_eq!(partition_of("memory.pin"), Partition::Memory);
+        assert_eq!(partition_of("indexing.progress"), Partition::Indexing);
+        assert_eq!(partition_of("core.keepalive"), Partition::Other);
+    }
+
+    /// TEST-26.3.1a: default config = capacity 1000, single (un-partitioned)
+    /// channel — behaviorally identical to task-11.4 `broadcast::channel(1000)`.
+    #[test]
+    fn test_event_bus_default_config_single_channel_equiv() {
+        let bus = EventBus::from_config(EventBusConfig::default());
+        assert_eq!(bus.capacity(), 1000, "default capacity 1000");
+        assert!(!bus.partitioned(), "default un-partitioned");
+        // subscribe_all returns exactly one receiver in single mode.
+        let all = bus.subscribe_all();
+        assert_eq!(all.len(), 1, "single channel → 1 receiver");
+        // A single subscribe() receiver gets memory + indexing + other events.
+        let mut rx = bus.subscribe();
+        bus.send(mk_event("memory.pin")).ok();
+        bus.send(mk_event("indexing.progress")).ok();
+        bus.send(mk_event("core.keepalive")).ok();
+        let got = drain(&mut rx);
+        assert_eq!(got.len(), 3, "single channel carries all namespaces: {got:?}");
+    }
+
+    /// TEST-26.3.1b: capacity is configurable.
+    #[test]
+    fn test_event_bus_capacity_configurable() {
+        let bus = EventBus::from_config(EventBusConfig { capacity: 42, partitioned: false });
+        assert_eq!(bus.capacity(), 42);
+        assert!(!bus.partitioned());
+    }
+
+    /// TEST-26.3.1c: partitioned mode routes memory.* / indexing.* onto
+    /// independent channels (a high-volume namespace cannot evict the other).
+    #[test]
+    fn test_event_bus_partition_routes_by_namespace() {
+        let bus = EventBus::from_config(EventBusConfig { capacity: 16, partitioned: true });
+        assert!(bus.partitioned());
+        // Subscribe to each partition BEFORE sending (broadcast = from-now).
+        let mut mem_rx = bus.subscribe_partition(Partition::Memory);
+        let mut idx_rx = bus.subscribe_partition(Partition::Indexing);
+        let mut other_rx = bus.subscribe_partition(Partition::Other);
+        bus.send(mk_event("memory.pin")).ok();
+        bus.send(mk_event("memory.soft_delete")).ok();
+        bus.send(mk_event("indexing.progress")).ok();
+        bus.send(mk_event("core.keepalive")).ok();
+        let mem = drain(&mut mem_rx);
+        let idx = drain(&mut idx_rx);
+        let other = drain(&mut other_rx);
+        assert_eq!(mem, vec!["memory.pin", "memory.soft_delete"], "memory channel isolated");
+        assert_eq!(idx, vec!["indexing.progress"], "indexing channel isolated");
+        assert_eq!(other, vec!["core.keepalive"], "other → default channel");
+        // subscribe_all (partitioned) returns default + memory + indexing.
+        assert_eq!(bus.subscribe_all().len(), 3, "partitioned → 3 receivers");
     }
 
     #[tokio::test]
