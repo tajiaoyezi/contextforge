@@ -8,6 +8,9 @@ name: "[TEMP] task-28.1 multi-arch build + anon-pull validation"
 # Per user decision: one-off dispatch validation, no permanent CI guard (keep PR CI fast).
 
 on:
+  push:
+    branches:
+      - task/task-28.1-multi-arch-image-and-anonymous-pull
   workflow_dispatch: {}
 
 permissions:
