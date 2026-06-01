@@ -1,6 +1,6 @@
 # Task `26.3`: `closeout-v0.19.0 — event-bus 分区 + 容量 + drain 超时配置（event-bus-partition / event-bus-capacity / events-drain-timeout-config）+ scripts/console_smoke.sh v16 events SSE/trace FTS/event-bus 配置 smoke + v0.19.0 release docs（README/RELEASE_NOTES/evidence/artifacts）+ ADR-031 据真实结果 ratify + ADR-021/015 add-only Amendment + phase-26 §6 闭合 + adapter`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -83,21 +83,21 @@ task-26.1 已让 `SqliteTracePersist` 支持 FTS5 按内容检索 + 周期 VACUU
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: event-bus 配置完成 — `event-bus-capacity`（复用 `with_capacity` seam，默认 1000）+ `event-bus-partition`（`memory.*` / `indexing.*` 可选，默认不分区）+ `events-drain-timeout-config`（默认 ~100ms）+ deterministic 单测断言配置生效 + 默认等价；`scripts/console_smoke.sh` v16 通过 `bash -n`（exit 0）+ events SSE / trace FTS / event-bus 配置 smoke 断言 + 既有 step（25/26）不退化 — verified by **TEST-26.3.1**
-- [ ] **AC2**: v0.19.0 release docs 齐备（`docs/releases/v0.19.0-{evidence,artifacts}.md` + `README.md` v0.19 段 + `RELEASE_NOTES.md` v0.19.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback / §tag-backfill 待回填段 — verified by **TEST-26.3.2**
-- [ ] **AC3**: ADR-031 据 task-26.1/26.2 真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）+ §Ratification 回填真实依据；ADR-021/015 add-only Amendment 记推进结果（events-replay 兑现 + event-bus 配置兑现 Rollback path 预见 + SSE add-only，不溯改正文）；phase-26 §6 AC1-5 全 `[x]` + Status `Draft → Done`；adapter Phase 26 `Draft → Done` + Tasks `0 → 3` + ADR-031 索引 + ADR-021 预留兑现注 — verified by **TEST-26.3.3**
-- [ ] **AC4**: 既有不退化 — 默认 `cargo test --workspace` + `go test ./...` 全 PASS（trace FTS / VACUUM / SSE 帧 / 重放 / event-bus 配置单测）；0 新依赖 / 0 network — verified by **TEST-26.3.4** + §10
-- [ ] **AC5**: ADR-014 D1-D5 第十七次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-25 不溯改）— verified by **TEST-26.3.5** + 本 closeout PR body
+- [x] **AC1**: event-bus 配置完成 — `event-bus-capacity`（复用 `with_capacity` seam，默认 1000）+ `event-bus-partition`（`memory.*` / `indexing.*` 可选，默认不分区）+ `events-drain-timeout-config`（默认 ~100ms）+ deterministic 单测断言配置生效 + 默认等价；`scripts/console_smoke.sh` v16 通过 `bash -n`（exit 0）+ events SSE / trace FTS / event-bus 配置 smoke 断言 + 既有 step（25/26）不退化 — verified by **TEST-26.3.1**（events 6/6 + drain 5/5 + smoke v16 step 35）
+- [x] **AC2**: v0.19.0 release docs 齐备（`docs/releases/v0.19.0-{evidence,artifacts}.md` + `README.md` v0.19 段 + `RELEASE_NOTES.md` v0.19.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback / §tag-backfill 待回填段 — verified by **TEST-26.3.2**
+- [x] **AC3**: ADR-031 据 task-26.1/26.2 真实结果 Status `Proposed → Accepted`（SSE live-server e2e 维度记录维持）+ §Ratification 回填真实依据；ADR-021/015 add-only Amendment 记推进结果（events-replay 兑现 + event-bus 配置兑现 Rollback path 预见 + SSE add-only，不溯改正文）；phase-26 §6 AC1-5 全 `[x]` + Status `Draft → Done`；adapter Phase 26 `Draft → Done` + Tasks `0 → 3` + ADR-031 索引 + ADR-021 预留兑现注 — verified by **TEST-26.3.3**
+- [x] **AC4**: 既有不退化 — 默认 `cargo test --workspace` + `go test ./...` 全 PASS（trace FTS / VACUUM / SSE 帧 / 重放 / event-bus 配置单测）；0 新依赖 / 0 network — verified by **TEST-26.3.4** + §10
+- [x] **AC5**: ADR-014 D1-D5 第十七次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-25 不溯改）— verified by **TEST-26.3.5** + 本 closeout PR body
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-26.3.1 | event-bus 配置（容量 / 分区 / drain）单测 + 默认等价 + smoke v16 `bash -n` + SSE/FTS/event-bus 断言 | `core/src/data_plane/events.rs`（`mod tests`）+ `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Planned |
-| TEST-26.3.2 | v0.19.0 release docs 齐备 + 结构校验 | `docs/releases/v0.19.0-*.md` + README + RELEASE_NOTES | Planned |
-| TEST-26.3.3 | ADR-031 ratify + ADR-021/015 Amendment + phase-26 闭合 + adapter | `docs/decisions/adr-031-*.md` + phase-26 spec + s2v-adapter | Planned |
-| TEST-26.3.4 | 默认 `cargo test --workspace` + `go test ./...` + 0 新依赖 0 failed | 全 Rust + Go | Planned |
-| TEST-26.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Planned |
+| TEST-26.3.1 | event-bus 配置（容量 / 分区 / drain）单测 + 默认等价 + smoke v16 `bash -n` + SSE/FTS/event-bus 断言 | `core/src/data_plane/events.rs`（`mod tests`）+ `internal/consoleapi/grpcclient/grpcclient_test.go` + `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Done |
+| TEST-26.3.2 | v0.19.0 release docs 齐备 + 结构校验 | `docs/releases/v0.19.0-*.md` + README + RELEASE_NOTES | Done |
+| TEST-26.3.3 | ADR-031 ratify + ADR-021/015 Amendment + phase-26 闭合 + adapter | `docs/decisions/adr-031-*.md` + `adr-021-*.md` + phase-26 spec + s2v-adapter | Done |
+| TEST-26.3.4 | 默认 `cargo test --workspace` + `go test ./...` + 0 新依赖 0 failed | 全 Rust + Go | Done |
+| TEST-26.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Done |
 
 ## 8. Risks
 
@@ -134,4 +134,22 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件（含 event-bus 配置 + smoke v16 + release docs + ADR-031 ratify + ADR-021/015 Amendment + phase/adapter/feature）/ commit 列表（配置 + smoke v16 + syntax test → docs）/ §9 Verification 实测结果（ADR-013 真实非合成；含上游 task-26.1/26.2 真实凭据引用 + SSE live-server 若受阻如实标 stop-condition）/ 设计取舍（event-bus 配置默认值 + ADR-031 ratify 维度 + Amendment 口径）/ 剩余风险 + 下游影响（indexing 事件重放 / SSE 背压 / 分布式 event-bus 各 `[SPEC-DEFER:phase-future.*]` + tag push 授权 / 自治 + tag/release backfill）。
+- **Status**: Done（2026-06-01）。
+- **完成日期**：2026-06-01。
+- **改动文件**：
+  - `core/src/data_plane/events.rs`——`EventBusConfig{capacity, partitioned}` + `Default`/`from_env` + `Partition` + `partition_of` + `EventBus::from_config`（单/分区 channel）+ `capacity`/`partitioned`/`subscribe_all`/`subscribe_partition` + `send` 分区路由 + `EventsServer.subscribe` 多 channel forward + 3 配置单测。
+  - `core/src/server.rs`——`EventBus::from_config(EventBusConfig::from_env())`（`CF_EVENT_BUS_CAPACITY`/`CF_EVENT_BUS_PARTITION`）。
+  - `internal/consoleapi/grpcclient/grpcclient.go`——`eventsDrainTimeout` 经 `drainTimeoutFromEnv()`（`CONSOLE_EVENTS_DRAIN_TIMEOUT`，默认 100ms）；`grpcclient_test.go` 5 子例。
+  - `scripts/console_smoke.sh`——v16 注释段 + `[35/35]` step 35；`internal/cli/smoke_syntax_test.go`——`TestTask263_SmokeV16ObservabilityHardeningStep`。
+  - `docs/releases/v0.19.0-{evidence,artifacts}.md`（新增）+ `README.md` v0.19 段 + `RELEASE_NOTES.md` v0.19.0 段。
+  - `docs/decisions/adr-031-observability-hardening.md`（Proposed→Accepted + §Ratification D1-D6 + ADR-021/015 Amendment 记录）+ `docs/decisions/adr-021-memory-event-bus-bridge.md`（§Amendment Phase 26 / v0.19.0 add-only）。
+  - `docs/specs/phases/phase-26-observability-hardening.md`（§6 AC1-5 全 `[x]` + Status Done）+ `docs/s2v-adapter.md`（Phase 26 Draft→Done + Tasks 0→3 + 26.1-26.3 Done + ADR-031 Accepted）。
+- **commit 列表**：RED `test(events): TEST-26.3.1 RED`（EventBusConfig + 方法 todo!() + 3 测试）→ GREEN `feat(events): event-bus 容量/分区/drain 配置`（from_config/subscribe_all/分区路由 + grpcclient drain + server.rs from_env）→ `test(smoke): console_smoke v16 step 35` → docs（本回填）。
+- **§9 Verification 实测结果（ADR-013 真实非合成）**：
+  - `cargo test -p contextforge-core --lib data_plane::events` → **6 passed**（默认单 channel 等价 / 容量可配 / 分区路由隔离 + replay + keepalive + partition_of）。
+  - `go test ./internal/consoleapi/grpcclient/... -run DrainTimeout` → **5/5 子例**（默认 100ms / 解析 / 非法回退）。
+  - `cargo test --workspace` + `go test ./...` → 0 failed（含 EventsServer 多 channel forward 重构后既有 events/memory 测试不退化）。
+  - `bash -n scripts/console_smoke.sh` → exit 0（`TestTask263` marker + 语法门）。
+  - 上游真实凭据：task-26.1 search_persist 10/10 + task-26.2 events replay 2/2 + Go SSE 4 契约（见各 task §10 + v0.19.0-evidence §3）。
+- **设计取舍**：(1) `EventBus` 改为持 default + 可选 memory/indexing channel；`subscribe()` 保留单 channel 契约（既有 memory.rs 测试 + 默认模式不破坏），新增 `subscribe_all()`（EventsServer 并发 forward 全 channel 进单流）+ `subscribe_partition()`；保守默认（1000/不分区/100ms）使 task-11.4 行为默认不变。(2) ADR-031 据 D1-D6 真实非合成验证 Accepted；**SSE live-server 端到端**据 CI 无 running daemon **记录维持**（不强 ratify、不伪造 live 通过，ADR-013）。(3) ADR-021/015 add-only Amendment 记推进结果（events-replay + event-bus 容量/分区兑现 + SSE add-only），不溯改正文（ADR-014 D5）。
+- **剩余风险 + 下游影响**：indexing 事件重放 `[SPEC-DEFER:phase-future.indexing-event-persistence]` / SSE 多客户端背压 `[SPEC-DEFER:phase-future.sse-backpressure-tuning]` / 分布式 event-bus `[SPEC-DEFER:phase-future.distributed-event-bus]` / 真实 daemon SSE e2e `[SPEC-DEFER:phase-future.sse-live-server-e2e]` 留 backlog；v0.19.0 tag push 据 ADR-012 主 agent 自治 + post-tag-push backfill 回填 tag SHA / run ID / 镜像 digest。
