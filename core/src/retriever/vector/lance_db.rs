@@ -20,10 +20,46 @@ use lancedb::{Connection, DistanceType, Table};
 
 use crate::retriever::vector::traits::{VectorBackend, VectorIndexer, VectorSearcher};
 use crate::retriever::vector::types::{
-    ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorScore,
+    ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorMetric,
+    VectorScore,
 };
 
 const TABLE: &str = "spike";
+
+// ---- task-25.2: ANN 索引调参参数（IVF_PQ / HNSW）+ compaction 触发口径，可校验配置面 ----
+
+/// ANN 索引类型 + 调参参数。真实建索引 + 性能测量 [SPEC-DEFER:phase-future.lancedb-index-tuning]；
+/// 本枚举是参数契约层（validate 不建真实索引）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LanceAnnIndex {
+    /// IVF_PQ：`num_partitions`（IVF 簇数）+ `num_sub_vectors`（PQ 子向量数，须整除 dim）。
+    IvfPq {
+        num_partitions: usize,
+        num_sub_vectors: usize,
+    },
+    /// HNSW：`m`（每节点边数）+ `ef_construction`（建图候选数）。
+    Hnsw {
+        m: usize,
+        ef_construction: usize,
+    },
+}
+
+/// lancedb 索引调参配置（参数契约层）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LanceIndexTuning {
+    pub index: LanceAnnIndex,
+    pub metric: VectorMetric,
+    /// compaction 触发行数阈值（>0）。
+    pub compaction_threshold_rows: usize,
+}
+
+impl LanceIndexTuning {
+    /// 参数范围校验（不建真实索引）：partitions>0 / sub_vectors>0 且整除 dim / m>0 / ef>0 /
+    /// 阈值>0 / metric 受支持。
+    pub fn validate(&self, dim: usize) -> Result<(), VectorError> {
+        todo!("task-25.2 GREEN")
+    }
+}
 
 fn to_backend_err<E: std::error::Error + Send + Sync + 'static>(e: E) -> VectorError {
     VectorError::Backend { source: Box::new(e) }
@@ -250,5 +286,93 @@ impl VectorSearcher for LanceDbBackend {
 
     fn is_indexed(&self) -> bool {
         !self.id_map.lock().unwrap().is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::retriever::vector::traits::{VectorIndexer, VectorSearcher};
+    use crate::retriever::vector::types::ChunkId;
+
+    fn tuning_ivf(parts: usize, subs: usize) -> LanceIndexTuning {
+        LanceIndexTuning {
+            index: LanceAnnIndex::IvfPq {
+                num_partitions: parts,
+                num_sub_vectors: subs,
+            },
+            metric: VectorMetric::Cosine,
+            compaction_threshold_rows: 1000,
+        }
+    }
+
+    // ---- TEST-25.2.3 (AC3) — 索引调参参数范围校验（纯函数，不建真实索引）----
+    #[test]
+    fn test_25_2_3_index_tuning_validate() {
+        // 合法 IVF_PQ：dim=384, sub_vectors=8 → 384 % 8 == 0
+        assert!(tuning_ivf(256, 8).validate(384).is_ok(), "合法 IVF_PQ 应 Ok");
+        // partitions=0 → Err
+        assert!(tuning_ivf(0, 8).validate(384).is_err(), "partitions=0 应 Err");
+        // sub_vectors 不整除 dim（384 % 7 != 0）→ Err
+        assert!(tuning_ivf(256, 7).validate(384).is_err(), "sub_vectors 不整除 dim 应 Err");
+        // sub_vectors=0 → Err
+        assert!(tuning_ivf(256, 0).validate(384).is_err(), "sub_vectors=0 应 Err");
+        // dim=0 → Err
+        assert!(tuning_ivf(256, 8).validate(0).is_err(), "dim=0 应 Err");
+        // compaction 阈值=0 → Err
+        let mut t = tuning_ivf(256, 8);
+        t.compaction_threshold_rows = 0;
+        assert!(t.validate(384).is_err(), "阈值=0 应 Err");
+        // 合法 HNSW
+        let hnsw = LanceIndexTuning {
+            index: LanceAnnIndex::Hnsw { m: 16, ef_construction: 100 },
+            metric: VectorMetric::L2,
+            compaction_threshold_rows: 500,
+        };
+        assert!(hnsw.validate(384).is_ok(), "合法 HNSW 应 Ok");
+        // HNSW m=0 → Err
+        let bad = LanceIndexTuning {
+            index: LanceAnnIndex::Hnsw { m: 0, ef_construction: 100 },
+            metric: VectorMetric::L2,
+            compaction_threshold_rows: 500,
+        };
+        assert!(bad.validate(384).is_err(), "HNSW m=0 应 Err");
+    }
+
+    // ---- TEST-25.2.4 (AC4) — 既有 lancedb backend 契约不退化（open→index→search KNN + dim mismatch）----
+    #[test]
+    fn test_25_2_4_backend_contract_roundtrip() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("cf-lancedb-test-{}-{nanos}", std::process::id()));
+        std::env::set_var("LANCEDB_DIR", &dir);
+        let be = LanceDbBackend::new().expect("lancedb connect");
+        be.open(VectorIndexConfig {
+            dim: 4,
+            metric: VectorMetric::Cosine,
+            persistence_path: None,
+            collection_id: "t".to_string(),
+        })
+        .expect("open");
+        let chunks = vec![
+            VectorChunk { chunk_id: ChunkId("a".into()), embedding: vec![1.0, 0.0, 0.0, 0.0], metadata: None },
+            VectorChunk { chunk_id: ChunkId("b".into()), embedding: vec![0.0, 1.0, 0.0, 0.0], metadata: None },
+            VectorChunk { chunk_id: ChunkId("c".into()), embedding: vec![0.0, 0.0, 1.0, 0.0], metadata: None },
+        ];
+        assert_eq!(be.index_batch(&chunks).unwrap(), 3);
+        let hits = be.search(&[1.0, 0.0, 0.0, 0.0], 2, None).unwrap();
+        assert!(!hits.is_empty(), "KNN 应命中");
+        assert_eq!(hits[0].chunk_id.0, "a", "最近邻应为 a");
+        // dim mismatch
+        let bad = vec![VectorChunk {
+            chunk_id: ChunkId("x".into()),
+            embedding: vec![1.0, 2.0],
+            metadata: None,
+        }];
+        assert!(
+            matches!(be.index_batch(&bad), Err(VectorError::DimMismatch { .. })),
+            "dim mismatch 应返 DimMismatch"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
