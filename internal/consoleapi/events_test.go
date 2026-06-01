@@ -8,6 +8,8 @@
 package consoleapi
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -224,6 +226,231 @@ func TestMemStore_Recent_NonEmptyBuffer_DoesNotSleep(t *testing.T) {
 	}
 	if elapsed > 100*time.Millisecond {
 		t.Errorf("elapsed %v — non-empty buffer should not sleep", elapsed)
+	}
+}
+
+// =====================================================================
+// task-26.2 (Phase 26 / ADR-031 D3/D4) — SSE push + audit replay contract.
+// =====================================================================
+
+// fakeStreamer is a deterministic EventsStreamer test double: it emits the
+// configured events in order then closes the channel (unless blockForever, in
+// which case it waits on ctx after emitting so disconnect can be exercised).
+// It records the StreamOptions it received and whether ctx was observed done.
+type fakeStreamer struct {
+	events       []contractv1.ObservabilityEvent
+	blockForever bool
+	mu           sync.Mutex
+	gotCtxDone   bool
+	lastOpts     StreamOptions
+}
+
+func (f *fakeStreamer) Stream(ctx context.Context, opts StreamOptions) (<-chan contractv1.ObservabilityEvent, error) {
+	f.mu.Lock()
+	f.lastOpts = opts
+	f.mu.Unlock()
+	ch := make(chan contractv1.ObservabilityEvent)
+	go func() {
+		defer close(ch)
+		for _, e := range f.events {
+			select {
+			case ch <- e:
+			case <-ctx.Done():
+				f.mu.Lock()
+				f.gotCtxDone = true
+				f.mu.Unlock()
+				return
+			}
+		}
+		if f.blockForever {
+			<-ctx.Done()
+			f.mu.Lock()
+			f.gotCtxDone = true
+			f.mu.Unlock()
+		}
+	}()
+	return ch, nil
+}
+
+func evt(id, etype string) contractv1.ObservabilityEvent {
+	return contractv1.ObservabilityEvent{
+		EventID:   id,
+		EventType: etype,
+		Severity:  "info",
+		Source:    "contextforge-core",
+		Message:   "memory " + id,
+		Timestamp: time.Unix(1_700_000_000, 0).UTC(),
+	}
+}
+
+func newStreamTestRouter(t *testing.T, es EventsStreamer) http.Handler {
+	t.Helper()
+	store := NewMemStore()
+	deps := Deps{
+		Workspace:    WorkspaceAdapter{S: store},
+		Job:          JobAdapter{S: store},
+		Search:       store,
+		Events:       store,
+		EventsStream: es,
+	}
+	return NewRouter(deps)
+}
+
+// parseSSEFrames splits an SSE response body into frames (split on blank line)
+// and returns each frame's id/event/data line values.
+func parseSSEFrames(body string) []map[string]string {
+	var frames []map[string]string
+	for _, block := range strings.Split(strings.TrimRight(body, "\n"), "\n\n") {
+		if strings.TrimSpace(block) == "" {
+			continue
+		}
+		f := map[string]string{}
+		for _, line := range strings.Split(block, "\n") {
+			if k, v, ok := strings.Cut(line, ": "); ok {
+				f[k] = v
+			}
+		}
+		frames = append(frames, f)
+	}
+	return frames
+}
+
+// TEST-26.2.1 / AC1: SSE endpoint encodes each event as an id/event/data frame
+// in order; data is a valid JSON ObservabilityEvent.
+func TestEventsStream_SSEFrameEncodingAndOrder(t *testing.T) {
+	router := newStreamTestRouter(t, &fakeStreamer{events: []contractv1.ObservabilityEvent{
+		evt("e1", "memory.pin"),
+		evt("e2", "memory.deprecate"),
+		evt("e3", "memory.soft_delete"),
+	}})
+	req := httptest.NewRequest("GET", "/v1/observability/events/stream", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200; body=%s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("Content-Type: got %q want text/event-stream", ct)
+	}
+	frames := parseSSEFrames(w.Body.String())
+	if len(frames) != 3 {
+		t.Fatalf("got %d frames want 3; body=%q", len(frames), w.Body.String())
+	}
+	wantIDs := []string{"e1", "e2", "e3"}
+	wantTypes := []string{"memory.pin", "memory.deprecate", "memory.soft_delete"}
+	for i, f := range frames {
+		if f["id"] != wantIDs[i] {
+			t.Errorf("frame %d id: got %q want %q", i, f["id"], wantIDs[i])
+		}
+		if f["event"] != wantTypes[i] {
+			t.Errorf("frame %d event: got %q want %q", i, f["event"], wantTypes[i])
+		}
+		var got contractv1.ObservabilityEvent
+		if err := json.Unmarshal([]byte(f["data"]), &got); err != nil {
+			t.Errorf("frame %d data not valid JSON ObservabilityEvent: %v (%q)", i, err, f["data"])
+			continue
+		}
+		if got.EventID != wantIDs[i] {
+			t.Errorf("frame %d data event_id: got %q want %q", i, got.EventID, wantIDs[i])
+		}
+	}
+}
+
+// TEST-26.2.2 / AC2: SSE is add-only — the existing long-poll endpoint still
+// returns 200 + [], and the stream endpoint is nil-safe (503 without a streamer).
+func TestEventsStream_AddOnly_LongPollUnchanged_NilSafe(t *testing.T) {
+	// Long-poll endpoint unchanged (Events client present, EventsStream nil).
+	router := newStreamTestRouter(t, nil)
+	req := httptest.NewRequest("GET", "/v1/observability/events?wait=1s", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("long-poll status: got %d want 200", w.Code)
+	}
+	if b := strings.TrimSpace(w.Body.String()); b != "[]" {
+		t.Errorf("long-poll body: got %q want []", b)
+	}
+	// Stream endpoint with no streamer → 503 (preserves long-poll-only contract).
+	req2 := httptest.NewRequest("GET", "/v1/observability/events/stream", nil)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusServiceUnavailable {
+		t.Errorf("stream nil-streamer status: got %d want 503", w2.Code)
+	}
+}
+
+// TEST-26.2.3 / AC3: replay-then-live splice dedups by event_id at the boundary
+// (a duplicate id is emitted once); ?since_ts= is forwarded to the streamer.
+func TestEventsStream_ReplayThenLive_DedupAndSinceTS(t *testing.T) {
+	fs := &fakeStreamer{events: []contractv1.ObservabilityEvent{
+		evt("evt-audit-1", "memory.pin"),       // replay
+		evt("evt-audit-2", "memory.deprecate"), // replay
+		evt("evt-audit-2", "memory.deprecate"), // boundary duplicate → skipped
+		evt("evt-live-9", "memory.pin"),        // live
+	}}
+	router := newStreamTestRouter(t, fs)
+	req := httptest.NewRequest("GET", "/v1/observability/events/stream?since_ts=1700000000", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	frames := parseSSEFrames(w.Body.String())
+	ids := make([]string, len(frames))
+	for i, f := range frames {
+		ids[i] = f["id"]
+	}
+	want := []string{"evt-audit-1", "evt-audit-2", "evt-live-9"}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Errorf("frame ids: got %v want %v (boundary dup must be deduped)", ids, want)
+	}
+	fs.mu.Lock()
+	gotTS := fs.lastOpts.SinceTS
+	fs.mu.Unlock()
+	if gotTS != 1_700_000_000 {
+		t.Errorf("since_ts not forwarded: got %d want 1700000000", gotTS)
+	}
+}
+
+// TEST-26.2.4 / AC4: client disconnect (ctx cancel) ends the handler promptly
+// and the streamer observes ctx.Done() (no goroutine leak / subscription release).
+func TestEventsStream_ClientDisconnect_ReleasesStream(t *testing.T) {
+	fs := &fakeStreamer{
+		events:       []contractv1.ObservabilityEvent{evt("e1", "memory.pin")},
+		blockForever: true,
+	}
+	router := newStreamTestRouter(t, fs)
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/v1/observability/events/stream", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		router.ServeHTTP(w, req)
+		close(done)
+	}()
+	// Give the handler a moment to emit the first frame + block, then disconnect.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+		// handler returned on ctx cancel.
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not return after client disconnect (goroutine leak)")
+	}
+	// Streamer observed cancellation (released the subscription).
+	deadline := time.After(time.Second)
+	for {
+		fs.mu.Lock()
+		ok := fs.gotCtxDone
+		fs.mu.Unlock()
+		if ok {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("streamer did not observe ctx.Done() (subscription not released)")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 

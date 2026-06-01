@@ -12,6 +12,7 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
+use crate::memoryops::audit::AuditLogEntry;
 use crate::pb_console::events_service_server::EventsService;
 use crate::pb_console::{ObservabilityEvent as PbEvent, SubscribeEventsRequest};
 
@@ -170,6 +171,38 @@ pub fn build_error_event(job_id: &str, error: &str) -> PbEvent {
     }
 }
 
+/// task-26.2 / ADR-031 D4: map a persisted audit-log operation string to the
+/// `(event_type, op)` pair used when replaying it as an `ObservabilityEvent`.
+/// Mirrors `data_plane::memory::audit_op_to_event_type` (Pin/Unpin share the
+/// `memory.pin` event_type; `op` in payload disambiguates). Non-memory audit
+/// operations return `None` (no persistent observability replay source).
+fn audit_op_str_to_event(op: &str) -> Option<(&'static str, &'static str)> {
+    match op {
+        "memory_pin" => Some(("memory.pin", "pin")),
+        "memory_unpin" => Some(("memory.pin", "unpin")),
+        "memory_deprecate" => Some(("memory.deprecate", "deprecate")),
+        "memory_soft_delete" => Some(("memory.soft_delete", "soft_delete")),
+        _ => None,
+    }
+}
+
+/// task-26.2 / ADR-031 D4: rebuild the `ObservabilityEvent` sequence for memory
+/// state-op events from the persistent `audit_log` (ADR-021 D1 桥接源), so a
+/// subscriber can replay events it missed before subscribing (兑现 ADR-021
+/// `[SPEC-DEFER:phase-future.events-replay-from-audit]`).
+///
+/// `entries` MUST be `id ASC` (as returned by `AuditSink::list()`); the output
+/// preserves that order. `since_ts > 0` filters to entries at/after the cutoff
+/// (unix seconds); `since_ts == 0` replays all. Non-memory operations
+/// (`import` / `search` / ...) are skipped — only memory state-op events have a
+/// persistent replay source (indexing events lack one,
+/// `[SPEC-DEFER:phase-future.indexing-event-persistence]`). Each event_id is the
+/// deterministic `evt-audit-{audit_id}` so the replay→live splice can dedup.
+pub fn replay_events_from_audit(entries: &[AuditLogEntry], since_ts: i64) -> Vec<PbEvent> {
+    let _ = (entries, since_ts, audit_op_str_to_event("memory_pin"));
+    todo!("task-26.2 GREEN: rebuild memory state-op events from audit id ASC + since_ts filter")
+}
+
 fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -213,6 +246,64 @@ mod tests {
         EventsServer::new(DataPlaneStores::new(ws, js))
     }
 
+    // =====================================================================
+    // task-26.2 (Phase 26 / ADR-031 D4) — audit-log replay reconstruction.
+    // =====================================================================
+
+    fn audit_entry(id: i64, op: &str, memory_id: &str, ts: &str) -> AuditLogEntry {
+        AuditLogEntry {
+            id,
+            operation: op.to_string(),
+            collection: "memory".to_string(),
+            source: "console-api".to_string(),
+            result_count: 1,
+            redaction_count: 0,
+            timestamp: ts.to_string(),
+            query_hash: None,
+            query_length: None,
+            redacted_terms: vec![],
+            chunk_ids: if memory_id.is_empty() {
+                vec![]
+            } else {
+                vec![memory_id.to_string()]
+            },
+            export_total_byte_count: None,
+        }
+    }
+
+    /// TEST-26.2.3 (Rust): replay rebuilds memory state-op events in audit
+    /// `id ASC` order with the ADR-021 D3 field mapping; non-memory ops are
+    /// skipped; `since_ts` filters by cutoff.
+    #[test]
+    fn test_replay_events_from_audit_id_asc_mapping_and_since_ts() {
+        let entries = vec![
+            audit_entry(1, "memory_pin", "m1", "100"),
+            audit_entry(2, "search", "", "150"), // non-memory → skipped
+            audit_entry(3, "memory_unpin", "m1", "200"),
+            audit_entry(4, "memory_soft_delete", "m2", "300"),
+        ];
+        let evs = replay_events_from_audit(&entries, 0);
+        assert_eq!(evs.len(), 3, "search op skipped (no replay source)");
+        // id ASC order preserved.
+        assert_eq!(evs[0].event_id, "evt-audit-1");
+        assert_eq!(evs[0].event_type, "memory.pin");
+        assert_eq!(evs[0].source, "contextforge-core");
+        assert_eq!(evs[0].severity, "info");
+        assert_eq!(evs[0].ts_unix, 100);
+        assert!(evs[0].payload_json.contains("\"op\":\"pin\""));
+        assert!(evs[0].payload_json.contains("\"memory_id\":\"m1\""));
+        // Unpin shares memory.pin event_type (ADR-021 D2); op disambiguates.
+        assert_eq!(evs[1].event_type, "memory.pin");
+        assert!(evs[1].payload_json.contains("\"op\":\"unpin\""));
+        assert_eq!(evs[2].event_type, "memory.soft_delete");
+        assert_eq!(evs[2].ts_unix, 300);
+        // since_ts cutoff: only ts >= 200.
+        let recent = replay_events_from_audit(&entries, 200);
+        assert_eq!(recent.len(), 2, "only ts>=200 (unpin@200 + soft_delete@300)");
+        assert_eq!(recent[0].event_id, "evt-audit-3");
+        assert_eq!(recent[1].event_id, "evt-audit-4");
+    }
+
     #[tokio::test]
     async fn test_events_server_keepalive() {
         let server = fresh_server();
@@ -220,6 +311,8 @@ mod tests {
             .subscribe(Request::new(SubscribeEventsRequest {
                 job_id: None,
                 workspace_id: None,
+                since_ts: 0,
+                last_event_id: String::new(),
             }))
             .await
             .expect("subscribe ok");

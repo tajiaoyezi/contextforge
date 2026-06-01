@@ -675,6 +675,16 @@ func handleEvents(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleEventsStream — GET /v1/observability/events/stream (task-26.2 / ADR-031
+// D3): Server-Sent-Events real-time push, add-only alongside the existing
+// long-poll handleEvents. RED stub — GREEN implements SSE framing + audit replay.
+func handleEventsStream(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED",
+			"SSE stream not implemented yet (task-26.2 GREEN pending)")
+	}
+}
+
 // parseWaitParam reads ?wait=30s; default 30s; clamped to [1s, 60s].
 func parseWaitParam(r *http.Request) time.Duration {
 	raw := r.URL.Query().Get("wait")

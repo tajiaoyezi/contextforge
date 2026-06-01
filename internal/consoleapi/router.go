@@ -30,6 +30,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /v1/source-chunks/{id}", handleGetSourceChunk(deps))
 	mux.HandleFunc("GET /v1/search/{query_id}/trace", handleGetSearchTrace(deps))
 	mux.HandleFunc("GET /v1/observability/events", handleEvents(deps))
+	// task-26.2 (ADR-031 D3): SSE real-time push, add-only alongside the
+	// existing long-poll endpoint above (既有路由 / 22-endpoint 契约不动).
+	mux.HandleFunc("GET /v1/observability/events/stream", handleEventsStream(deps))
 	// task-15.3 (Phase 15 P1 #3): Dashboard "已索引块" stats endpoint.
 	// Non-destructive — no confirmMiddleware. Optional ?workspace_id= query.
 	mux.HandleFunc("GET /v1/stats/chunks", handleGetChunksStats(deps))

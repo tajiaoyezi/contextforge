@@ -13,6 +13,7 @@
 package consoleapi
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -87,6 +88,25 @@ type EventsClient interface {
 	Recent(limit int, wait time.Duration) ([]contractv1.ObservabilityEvent, error)
 }
 
+// StreamOptions carries the SSE replay parameters (task-26.2 / ADR-031 D3/D4).
+// SinceTS > 0 requests replay of memory state-op events from the persistent
+// audit log at/after the cutoff (unix seconds) before splicing the live stream;
+// LastEventID is the client's last-seen SSE id for boundary dedup (advisory).
+type StreamOptions struct {
+	SinceTS     int64
+	LastEventID string
+}
+
+// EventsStreamer backs GET /v1/observability/events/stream (task-26.2 / ADR-031
+// D3): an add-only Server-Sent-Events surface alongside the existing long-poll
+// EventsClient. Stream returns a channel of events (audit replay first when
+// SinceTS > 0, then the live broadcast). The channel is closed — and the
+// underlying gRPC subscription released — when ctx is cancelled (client
+// disconnect) or the upstream stream ends.
+type EventsStreamer interface {
+	Stream(ctx context.Context, opts StreamOptions) (<-chan contractv1.ObservabilityEvent, error)
+}
+
 // MemoryListFilter — task-13.2 (ADR-017 D1 Wave 3) filter struct mirroring
 // the Rust ListMemoryRequest 4 fields. AgentID prefix matches agent_scope;
 // Namespace suffix matches agent_scope; Scope exact-matches agent_scope.
@@ -138,8 +158,12 @@ type Deps struct {
 	Job         JobClient
 	Search      SearchClient
 	Events      EventsClient
-	Memory      MemoryClient
-	Eval        EvalClient
+	// task-26.2 (ADR-031 D3): optional SSE streaming surface. May be nil —
+	// handleEventsStream returns 503 when absent (preserves the long-poll-only
+	// contract for backends without a streaming entry).
+	EventsStream EventsStreamer
+	Memory       MemoryClient
+	Eval         EvalClient
 	// task-15.6 (Phase 15 P2 #7): optional HealthClient for ?detailed=true.
 	// May be nil — handleHealth falls back to a synthetic 5-component
 	// response if so (preserves v0.7 contract).
