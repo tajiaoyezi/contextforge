@@ -1,6 +1,6 @@
 # Task `26.1`: `tracestore-fts-and-vacuum — core/src/data_plane/search_persist.rs SqliteTracePersist 加 FTS5 全文检索（按内容查 trace）+ 周期 VACUUM（抑制 search_traces.db 无界膨胀）+ core/migrations/0016_*.sql FTS 影子表 + deterministic 测试`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -82,21 +82,21 @@ ADR-031 D1/D2 记录硬化策略：FTS5 影子表（按内容检索）+ 周期 V
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: `search_fts(query_text, limit)` FTS5 按内容命中——`put` 若干含确定 term 的 trace → `search_fts("known-term", k)` 返回含该 term 的 trace 投影序（`QueryRecord`），limit clamp 1..=100 — verified by **TEST-26.1.1**
-- [ ] **AC2**: FTS miss 不误命中——`search_fts("absent-term", k)` 对不含该 term 的库返 `Ok(vec![])`（不报错、不误命中） — verified by **TEST-26.1.2**
-- [ ] **AC3**: `vacuum()` + `prune_older_than(cutoff)` 回收空间且数据完好——插入 N 行 → `prune_older_than` 删旧行（返删除行数）→ `vacuum()` → `row_count` 与剩余行一致 + 保留行 `get`/`list` 仍正确（VACUUM 不破坏数据，不 panic） — verified by **TEST-26.1.3**
-- [ ] **AC4**: 既有 `put`/`get`/`list`/`load_warm` 签名与语义不变 + `0016_*.sql` 幂等回填——旧库（仅 0015）`open` 后回填 FTS 表不破坏既有行；既有 task-16.1 单测不退化 — verified by **TEST-26.1.4**
-- [ ] **AC5**: 既有不退化 + 0 新依赖 — 默认 `cargo test --workspace` 全 PASS + 无 Cargo.toml 改动（FTS5 / VACUUM 复用 rusqlite bundled）；`go test ./...` 不受影响（本 PR 零 Go delta）；D2 lint `--touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-26.1.5** + §10 实测
+- [x] **AC1**: `search_fts(query_text, limit)` FTS5 按内容命中——`put` 若干含确定 term 的 trace → `search_fts("known-term", k)` 返回含该 term 的 trace 投影序（`QueryRecord`），limit clamp 1..=100 — verified by **TEST-26.1.1**
+- [x] **AC2**: FTS miss 不误命中——`search_fts("absent-term", k)` 对不含该 term 的库返 `Ok(vec![])`（不报错、不误命中） — verified by **TEST-26.1.2**
+- [x] **AC3**: `vacuum()` + `prune_older_than(cutoff)` 回收空间且数据完好——插入 N 行 → `prune_older_than` 删旧行（返删除行数）→ `vacuum()` → `row_count` 与剩余行一致 + 保留行 `get`/`list` 仍正确（VACUUM 不破坏数据，不 panic） — verified by **TEST-26.1.3**
+- [x] **AC4**: 既有 `put`/`get`/`list`/`load_warm` 签名与语义不变 + `0016_*.sql` 幂等回填——旧库（仅 0015）`open` 后回填 FTS 表不破坏既有行；既有 task-16.1 单测不退化 — verified by **TEST-26.1.4**
+- [x] **AC5**: 既有不退化 + 0 新依赖 — 默认 `cargo test --workspace` 全 PASS + 无 Cargo.toml 改动（FTS5 / VACUUM 复用 rusqlite bundled）；`go test ./...` 不受影响（本 PR 零 Go delta）；D2 lint `--touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-26.1.5** + §10 实测
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-26.1.1 | `search_fts` FTS5 按内容命中含 term 的 trace + limit clamp | `core/src/data_plane/search_persist.rs`（`mod tests`） | Planned |
-| TEST-26.1.2 | `search_fts` miss 返 `Ok(vec![])` 不误命中不报错 | `core/src/data_plane/search_persist.rs`（`mod tests`） | Planned |
-| TEST-26.1.3 | `prune_older_than` + `vacuum` 回收空间 + 数据完好 + row_count 一致 | `core/src/data_plane/search_persist.rs`（`mod tests`） | Planned |
-| TEST-26.1.4 | 既有 put/get/list/load_warm 不变 + 0016 幂等回填旧库 | `core/src/data_plane/search_persist.rs`（`mod tests`）+ `core/migrations/0016_*.sql` | Planned |
-| TEST-26.1.5 | 默认 `cargo test --workspace` 0 failed + 0 新依赖 + D2 lint 0 未标注 | 全 Rust + `scripts/spec_drift_lint.sh` | Planned |
+| TEST-26.1.1 | `search_fts` FTS5 按内容命中含 term 的 trace + limit clamp | `core/src/data_plane/search_persist.rs`（`mod tests`） | Done |
+| TEST-26.1.2 | `search_fts` miss 返 `Ok(vec![])` 不误命中不报错 | `core/src/data_plane/search_persist.rs`（`mod tests`） | Done |
+| TEST-26.1.3 | `prune_older_than` + `vacuum` 回收空间 + 数据完好 + row_count 一致 | `core/src/data_plane/search_persist.rs`（`mod tests`） | Done |
+| TEST-26.1.4 | 既有 put/get/list/load_warm 不变 + 0016 幂等回填旧库（+ 26.1.4b put-replace FTS 同步） | `core/src/data_plane/search_persist.rs`（`mod tests`）+ `core/migrations/0016_search_traces_fts.sql` | Done |
+| TEST-26.1.5 | 默认 `cargo test --workspace` 0 failed + 0 新依赖 + D2 lint 0 未标注 | 全 Rust + `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -125,4 +125,18 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件（含 `0016_*.sql` 路径选型 A vs B 结论）/ commit 列表（RED→GREEN）/ §9 Verification 实测结果（ADR-013 真实非合成）/ 设计取舍（FTS5 同步路径 + VACUUM 触发口径核实结论）/ 剩余风险 + 下游影响（FTS 经 console-api 暴露由 task-26.3 据实评估 + indexing 事件 FTS 留 backlog）。
+- **Status**: Done（2026-06-01）。
+- **完成日期**：2026-06-01。
+- **改动文件**：
+  - `core/migrations/0016_search_traces_fts.sql`（新增）——FTS5 影子虚表 `search_traces_fts(query_id UNINDEXED, query_text)`，`IF NOT EXISTS` 幂等。
+  - `core/src/data_plane/search_persist.rs`——`MIGRATION_FTS_SQL` const + `open()` 追加 FTS migration + `backfill_fts_if_empty()` boot 回填 + `put()` 显式 FTS 同步（delete+insert 镜像 INSERT OR REPLACE）+ `search_fts` / `vacuum` / `prune_older_than` 三方法 + 6 同源测试（含 26.1.4b put-replace FTS 同步）。
+  - 无 `Cargo.toml` 改动（FTS5 / VACUUM 复用 rusqlite bundled SQLite）。零 Go delta。
+- **commit 列表（RED→GREEN）**：
+  - RED `test(data_plane): TEST-26.1.1~26.1.4 RED`（0016 migration + 方法签名 todo!() + 5 测试；新测试 panic at todo!()，5 既有不退化）。
+  - GREEN `feat(data_plane): SqliteTracePersist FTS5 内容检索 + VACUUM/prune`（三方法实现 + open/put 接线；10/10 search_persist 单测通过）。
+- **§9 Verification 实测结果（ADR-013 真实非合成）**：
+  - `cargo test -p contextforge-core --lib data_plane::search_persist` → **10 passed; 0 failed**（5 新 + 5 既有不退化）。
+  - `cargo test --workspace` → 全 PASS（0 failed）；无新依赖（无 Cargo.toml diff）。
+  - FTS 命中确定性：含 "rotate" 的 2 trace 命中、含 "deploy" 不命中（TEST-26.1.1）；miss 返空（TEST-26.1.2）；prune+vacuum 后 row_count=3、保留行 get/list/FTS 正确、pruned 行 FTS 不再命中（TEST-26.1.3）；旧 0015-only 库 boot 回填 + 幂等 re-open 不重复（TEST-26.1.4）；put-replace 同步 FTS（TEST-26.1.4b）。
+- **设计取舍（FTS5 同步路径 + VACUUM 触发口径）**：trace 可读文本（`RetrievalTrace.query`）位于 base64 编码的 `trace_json` blob 内，SQL 触发器无法解码提取——故未采用 §5.2 路径 A（trigger-synced 独立内容表）或路径 B（external-content `content=`），改用 **Rust 侧显式同步**（`put` / `prune` 内同步 FTS）+ **boot 一次性回填**（`open` 解码存量 trace_json 填 FTS），是稳妥的 0-dep 实现（neither A nor B，hybrid）。`search_fts` 把调用方文本作 **quoted phrase**（双引号包裹 + 内部引号 doubling）传 FTS5 MATCH，使 `-`/`:` 等标点被分词而非解读为 FTS5 查询语法算子（避免 "no such column" 解析错误）。`vacuum()` 经 `execute_batch("VACUUM")`（不在 hot path；`Mutex<Connection>` 串行化保证独占）。
+- **剩余风险 + 下游影响**：FTS 经 console-api REST endpoint 暴露由 task-26.3 据实评估（本 task 仅落 Rust 层 `search_fts` + 单测）；`indexing.*` 事件 / trace 跨库 FTS schema 迁移留 backlog（`[SPEC-DEFER:phase-future.tracestore-fts-schema-migration]`）；多词查询当前作 ordered-phrase 匹配（单 term 等价 contains，多 term 要求相邻有序），足够覆盖 deterministic 契约断言（ADR-013）。
