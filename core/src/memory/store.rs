@@ -258,8 +258,42 @@ impl SqliteMemoryStore {
         &self,
         entries: &[AuditLogEntry],
     ) -> Result<usize, MemoryStoreError> {
-        let _ = entries;
-        todo!("task-27.3 GREEN: last memory_pin/unpin event wins → correct is_pinned")
+        // Last pin/unpin event per memory_id wins (entries are id ASC).
+        let mut last_pin: HashMap<String, bool> = HashMap::new();
+        for e in entries {
+            let pinned = match e.operation.as_str() {
+                "memory_pin" => true,
+                "memory_unpin" => false,
+                _ => continue, // non-pin ops (deprecate/soft_delete/...) ignored
+            };
+            if let Some(mid) = e.chunk_ids.first() {
+                last_pin.insert(mid.clone(), pinned);
+            }
+        }
+        let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
+        let now = now_unix();
+        let mut reconciled = 0usize;
+        for (mid, want) in last_pin {
+            // Only correct rows that exist AND whose is_pinned differs. Touch
+            // is_pinned (+ updated_at) only — actor/timestamp are not fabricated.
+            let current: Option<i64> = conn
+                .query_row(
+                    "SELECT is_pinned FROM memory_items WHERE memory_id = ?",
+                    params![mid],
+                    |r| r.get(0),
+                )
+                .ok();
+            let Some(cur) = current else { continue }; // no such item → skip
+            if (cur != 0) == want {
+                continue; // already correct
+            }
+            conn.execute(
+                "UPDATE memory_items SET is_pinned = ?, updated_at_unix = ? WHERE memory_id = ?",
+                params![want as i64, now, mid],
+            )?;
+            reconciled += 1;
+        }
+        Ok(reconciled)
     }
 
     /// Bulk-insert helper used by unit + integration test fixtures.
