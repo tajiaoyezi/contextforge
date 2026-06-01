@@ -1,0 +1,52 @@
+name: "[TEMP] task-28.1 multi-arch build + anon-pull validation"
+
+# TEMPORARY validation workflow for task-28.1 (Phase 28). NOT a permanent CI guard.
+# Proves, WITHOUT any outward-facing GHCR push:
+#   1. multi-arch (linux/amd64 + linux/arm64) image BUILDS via QEMU emulation (push:false) + time it.
+#   2. anonymous (logged-out) pull of the current public :latest succeeds (anon-pull logic).
+# Removed before task-28.1 PR merge (the deliverable is release.yml + verify-image.yml only).
+# Per user decision: one-off dispatch validation, no permanent CI guard (keep PR CI fast).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      LATEST_IMAGE: ghcr.io/${{ github.repository_owner }}/contextforge-daemon:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Multi-arch build (push:false, timed) — proves arm64 emulation builds
+        run: |
+          set -euo pipefail
+          echo "Starting multi-arch build at $(date -u +%H:%M:%S)"
+          START=$(date +%s)
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --file ./Dockerfile \
+            --output type=image,push=false \
+            .
+          END=$(date +%s)
+          echo "✅ multi-arch build (amd64+arm64) succeeded in $((END-START))s"
+          echo "multi_arch_build_seconds=$((END-START))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Anonymous (logged-out) pull of public :latest
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io || true
+          echo "Anonymous pull of $LATEST_IMAGE ..."
+          docker pull "$LATEST_IMAGE"
+          echo "✅ anonymous pull of :latest succeeded — public pullability confirmed"
