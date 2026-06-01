@@ -332,12 +332,30 @@ message SoftDeleteMemoryRequest {
 
 message SoftDeleteMemoryResponse {}
 
+// task-27.2 / ADR-032 D2 (add-only): explicit Unpin (vs the Pin{bool pin} toggle)
+// + hard-delete (physical row removal vs soft-delete status flip). Existing 5
+// RPC + PinMemoryRequest{bool pin} unchanged (proto-freeze guard).
+message UnpinMemoryRequest {
+  string memory_id = 1;
+}
+
+message UnpinMemoryResponse {}
+
+message HardDeleteMemoryRequest {
+  string memory_id = 1;
+}
+
+message HardDeleteMemoryResponse {}
+
 service MemoryService {
   rpc List(ListMemoryRequest) returns (ListMemoryResponse);
   rpc Get(GetMemoryRequest) returns (MemoryItem);
   rpc Pin(PinMemoryRequest) returns (PinMemoryResponse);
   rpc Deprecate(DeprecateMemoryRequest) returns (DeprecateMemoryResponse);
   rpc SoftDelete(SoftDeleteMemoryRequest) returns (SoftDeleteMemoryResponse);
+  // task-27.2 / ADR-032 D2 (add-only RPC).
+  rpc Unpin(UnpinMemoryRequest) returns (UnpinMemoryResponse);
+  rpc HardDelete(HardDeleteMemoryRequest) returns (HardDeleteMemoryResponse);
 }
 
 // =====================================================================

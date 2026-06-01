@@ -628,6 +628,34 @@ func (s *MemMemoryStore) SoftDelete(id string) error {
 	return nil
 }
 
+// task-27.2 (ADR-032 D2): explicit Unpin (idempotent; clears the pin snapshot).
+func (s *MemMemoryStore) Unpin(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.items[id]
+	if !ok {
+		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
+	}
+	item.IsPinned = false
+	item.PinnedBy = ""
+	item.PinnedAtUnix = 0
+	item.UpdatedAt = time.Now().UTC()
+	s.items[id] = item
+	return nil
+}
+
+// task-27.2 (ADR-032 D2): hard-delete physically removes the item (vs
+// soft-delete's status flip) — Get afterwards returns nil.
+func (s *MemMemoryStore) HardDelete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.items[id]; !ok {
+		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
+	}
+	delete(s.items, id)
+	return nil
+}
+
 // =====================================================================
 // task-14.2 (ADR-017 D1 Wave 4) — MemEvalStore fallback impl.
 // In-memory only; status auto-advances to "succeeded" after 2s with mock

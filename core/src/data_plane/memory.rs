@@ -26,9 +26,10 @@ use crate::memory::{MemoryItem as RustMemoryItem, MemoryListFilter, MemoryStoreE
 use crate::memoryops::audit::{AuditEvent, AuditOperation, AuditSink};
 use crate::pb_console::memory_service_server::MemoryService;
 use crate::pb_console::{
-    DeprecateMemoryRequest, DeprecateMemoryResponse, GetMemoryRequest, ListMemoryRequest,
-    ListMemoryResponse, MemoryItem as PbMemoryItem, ObservabilityEvent as PbEvent,
-    PinMemoryRequest, PinMemoryResponse, SoftDeleteMemoryRequest, SoftDeleteMemoryResponse,
+    DeprecateMemoryRequest, DeprecateMemoryResponse, GetMemoryRequest, HardDeleteMemoryRequest,
+    HardDeleteMemoryResponse, ListMemoryRequest, ListMemoryResponse, MemoryItem as PbMemoryItem,
+    ObservabilityEvent as PbEvent, PinMemoryRequest, PinMemoryResponse, SoftDeleteMemoryRequest,
+    SoftDeleteMemoryResponse, UnpinMemoryRequest, UnpinMemoryResponse,
 };
 
 use super::DataPlaneStores;
@@ -85,6 +86,9 @@ fn audit_op_to_event_type(op: AuditOperation) -> Option<&'static str> {
         AuditOperation::MemoryPin | AuditOperation::MemoryUnpin => Some("memory.pin"),
         AuditOperation::MemoryDeprecate => Some("memory.deprecate"),
         AuditOperation::MemorySoftDelete => Some("memory.soft_delete"),
+        // task-27.2 (ADR-032 D2): physical delete gets its own event_type to
+        // distinguish from soft_delete (status flip vs row removal).
+        AuditOperation::MemoryHardDelete => Some("memory.hard_delete"),
         // Non-memory ops should never reach this bridge; returning None
         // causes `emit_audit_and_event` to skip EventBus emission without
         // panicking.
@@ -103,6 +107,7 @@ fn build_memory_event(op: AuditOperation, memory_id: &str) -> Option<PbEvent> {
         AuditOperation::MemoryUnpin => "unpin",
         AuditOperation::MemoryDeprecate => "deprecate",
         AuditOperation::MemorySoftDelete => "soft_delete",
+        AuditOperation::MemoryHardDelete => "hard_delete",
         _ => return None,
     };
     let payload_json = format!(
@@ -266,6 +271,44 @@ impl MemoryService for MemoryServer {
             .map_err(mem_err_to_status)?;
         self.emit_audit_and_event(AuditOperation::MemorySoftDelete, &id);
         Ok(Response::new(SoftDeleteMemoryResponse {}))
+    }
+
+    /// task-27.2 (ADR-032 D2): explicit Unpin = `set_pinned(id, false)` made
+    /// semantically explicit + idempotent (unpin already-unpinned item is Ok).
+    /// Emits `MemoryUnpin` (既有 audit op 复用). The Pin{bool pin} toggle stays.
+    async fn unpin(
+        &self,
+        req: Request<UnpinMemoryRequest>,
+    ) -> Result<Response<UnpinMemoryResponse>, Status> {
+        let id = req.into_inner().memory_id;
+        let memory = self
+            .stores
+            .memory
+            .as_ref()
+            .ok_or_else(|| Status::failed_precondition("memory store not configured"))?;
+        memory
+            .set_pinned_with_actor(&id, false, "console-api")
+            .map_err(mem_err_to_status)?;
+        self.emit_audit_and_event(AuditOperation::MemoryUnpin, &id);
+        Ok(Response::new(UnpinMemoryResponse {}))
+    }
+
+    /// task-27.2 (ADR-032 D2): hard-delete physically removes the row (vs
+    /// soft-delete's status flip). Emits `MemoryHardDelete`. console-api gates
+    /// this behind `confirmMiddleware` (X-Confirm, ADR-017 D2).
+    async fn hard_delete(
+        &self,
+        req: Request<HardDeleteMemoryRequest>,
+    ) -> Result<Response<HardDeleteMemoryResponse>, Status> {
+        let id = req.into_inner().memory_id;
+        let memory = self
+            .stores
+            .memory
+            .as_ref()
+            .ok_or_else(|| Status::failed_precondition("memory store not configured"))?;
+        memory.hard_delete(&id).map_err(mem_err_to_status)?;
+        self.emit_audit_and_event(AuditOperation::MemoryHardDelete, &id);
+        Ok(Response::new(HardDeleteMemoryResponse {}))
     }
 }
 
@@ -645,7 +688,67 @@ mod tests {
             audit_op_to_event_type(AuditOperation::MemorySoftDelete),
             Some("memory.soft_delete")
         );
+        assert_eq!(
+            audit_op_to_event_type(AuditOperation::MemoryHardDelete),
+            Some("memory.hard_delete")
+        );
         assert_eq!(audit_op_to_event_type(AuditOperation::Import), None);
         assert_eq!(audit_op_to_event_type(AuditOperation::Search), None);
+    }
+
+    /// TEST-27.2.3: explicit unpin RPC = set_pinned(false) + emit MemoryUnpin;
+    /// idempotent (unpin already-unpinned item Ok); pin toggle unaffected.
+    #[tokio::test]
+    async fn test_memory_server_unpin_explicit_and_idempotent() {
+        let (server, mem_store) = fresh_server();
+        mem_store.seed_for_tests(vec![mem("u", "s", "active")]).unwrap();
+        // pin then explicit unpin.
+        server
+            .pin(Request::new(PinMemoryRequest { memory_id: "u".into(), pin: true }))
+            .await
+            .unwrap();
+        server
+            .unpin(Request::new(UnpinMemoryRequest { memory_id: "u".into() }))
+            .await
+            .expect("unpin ok");
+        let got = mem_store.get("u").unwrap().unwrap();
+        assert!(!got.is_pinned);
+        assert_eq!(got.pinned_by, "");
+        // idempotent: unpin already-unpinned → still Ok.
+        server
+            .unpin(Request::new(UnpinMemoryRequest { memory_id: "u".into() }))
+            .await
+            .expect("idempotent unpin ok");
+        let audit = server.stores.audit.as_ref().unwrap().lock().unwrap();
+        assert!(
+            audit.count_by_operation(AuditOperation::MemoryUnpin).unwrap() >= 2,
+            "two unpin audit events expected"
+        );
+    }
+
+    /// TEST-27.2.2: hard_delete RPC physically removes the row (get-by-id None
+    /// afterwards) + emits MemoryHardDelete audit.
+    #[tokio::test]
+    async fn test_memory_server_hard_delete_physical_and_audit() {
+        let (server, mem_store) = fresh_server();
+        mem_store.seed_for_tests(vec![mem("h", "s", "active")]).unwrap();
+        server
+            .hard_delete(Request::new(HardDeleteMemoryRequest { memory_id: "h".into() }))
+            .await
+            .expect("hard_delete ok");
+        // physically gone.
+        assert!(mem_store.get("h").unwrap().is_none(), "row physically removed");
+        // RPC get → NotFound.
+        let err = server
+            .get(Request::new(GetMemoryRequest { memory_id: "h".into() }))
+            .await
+            .expect_err("expect not_found");
+        assert_eq!(err.code(), tonic::Code::NotFound);
+        // audit emitted.
+        let audit = server.stores.audit.as_ref().unwrap().lock().unwrap();
+        assert!(
+            audit.count_by_operation(AuditOperation::MemoryHardDelete).unwrap() >= 1,
+            "MemoryHardDelete audit event expected"
+        );
     }
 }

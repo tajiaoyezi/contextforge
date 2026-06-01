@@ -20,6 +20,8 @@ pub enum AuditOperation {
     MemoryUnpin,
     MemoryDeprecate,
     MemorySoftDelete,
+    // task-27.2 (ADR-032 D2): physical (hard) delete audit op.
+    MemoryHardDelete,
 }
 
 impl AuditOperation {
@@ -33,6 +35,7 @@ impl AuditOperation {
             AuditOperation::MemoryUnpin => "memory_unpin",
             AuditOperation::MemoryDeprecate => "memory_deprecate",
             AuditOperation::MemorySoftDelete => "memory_soft_delete",
+            AuditOperation::MemoryHardDelete => "memory_hard_delete",
         }
     }
 }
