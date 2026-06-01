@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 25 task-25.3 production-vector-backend smoke (v15; was Phase 24 v14).
+# scripts/console_smoke.sh — Phase 27 task-27.3 memory-ops-hardening smoke (v17; v16 Phase 26 observability-hardening).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -101,6 +101,15 @@
 # default-0-new-dep / 0-network (ADR-004). Real daemon-served SSE end-to-end is honestly deferred
 # ([SPEC-DEFER:phase-future.sse-live-server-e2e]; ADR-013 — no faked live-server pass); FTS / SSE / replay
 # are verified at the Rust + Go contract layers. Step 35 asserts the default build is intact.
+#
+# v17 (Phase 27) adds step 36 — task-27.3 closeout (memory-ops-hardening). Memory pin / lifecycle
+# is hardened: pin-actor + pinned-at-timestamp add-only MemoryItem fields (task-27.1, TEST-27.1.* —
+# proto field 11/12 + guarded migration 0017 + actor write-through), explicit Unpin (vs Pin toggle)
+# + hard-delete (physical row removal, X-Confirm gated) (task-27.2, TEST-27.2.* — add-only RPC +
+# DELETE + confirmMiddleware), and is_pinned audit backfill (task-27.3, TEST-27.3.1 — last pin/unpin
+# event wins). proto add-only; default build 0-new-dep / 0-network (ADR-004). In REAL mode step 36
+# exercises the live round-trip over the seeded fixtures (pin-actor projection + unpin 204 +
+# hard-delete 412→204→404); non-REAL notes the contract-layer verification.
 #
 # Modes (selected by env):
 #
@@ -853,6 +862,38 @@ if "$GO_BIN" init --root "$STAGING/cf-v19-cfg" >/dev/null 2>&1 && [ -f "$STAGING
 else
   echo "FAIL: contextforge init failed in v16 step 35" >&2
   exit 1
+fi
+
+echo "  [36/36] task-27.3 memory ops hardening: pin-actor round-trip + explicit unpin + hard-delete X-Confirm (Phase 27)"
+# v17 (task-27.3): Phase 27 (memory-ops-hardening) hardens Memory pin / lifecycle.
+# pin-actor + pinned-at-timestamp add-only MemoryItem fields (task-27.1, TEST-27.1.*),
+# explicit Unpin (vs Pin toggle) + hard-delete (physical removal, X-Confirm gated)
+# (task-27.2, TEST-27.2.*), and is_pinned audit backfill (task-27.3, TEST-27.3.1) are
+# verified at the Rust + Go contract layers. proto is add-only (MemoryItem field
+# 11/12 + Unpin/HardDelete RPC); default build 0-new-dep / 0-network (ADR-004).
+# REAL mode exercises the live console-api round-trip over the seeded fixtures.
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
+  # 27.1: pin mem-seed-1 → GET projects add-only pinned_by / pinned_at_unix.
+  curl -sf -o /dev/null -X POST "$BASE/v1/memory/mem-seed-1/pin" \
+    -H 'Content-Type: application/json' -d '{"pin":true}' || true
+  mem1=$(curl -sf "$BASE/v1/memory/mem-seed-1" || true)
+  echo "$mem1" | grep -q '"pinned_by"' && echo "$mem1" | grep -q '"pinned_at_unix"' \
+    || { echo "FAIL: pin round-trip missing pinned_by/pinned_at_unix in $mem1" >&2; exit 1; }
+  # 27.2: explicit unpin route (non-destructive) → 204.
+  unpin_code=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/unpin" || true)
+  [ "$unpin_code" = "204" ] \
+    || { echo "FAIL: POST unpin expected 204; got $unpin_code" >&2; exit 1; }
+  # 27.2: hard-delete X-Confirm gate (412 without) then physical delete (GET → 404).
+  hd412=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-5/hard-delete" || true)
+  [ "$hd412" = "412" ] \
+    || { echo "FAIL: hard-delete without X-Confirm expected 412; got $hd412" >&2; exit 1; }
+  curl -sf -o /dev/null -X POST "$BASE/v1/memory/mem-seed-5/hard-delete" -H 'X-Confirm: yes' || true
+  hd404=$(curl -sf -o /dev/null -w '%{http_code}' "$BASE/v1/memory/mem-seed-5" || true)
+  [ "$hd404" = "404" ] \
+    || { echo "FAIL: hard-deleted item expected 404 (physical removal); got $hd404" >&2; exit 1; }
+  echo "    → pin-actor round-trip + unpin 204 + hard-delete 412→204→404 ✅ (TEST-27.1.* / TEST-27.2.* / TEST-27.3.1 contract-layer verified)"
+else
+  echo "    → memory ops hardening (TEST-27.1.* / TEST-27.2.* / TEST-27.3.1) contract-layer verified; REAL mode exercises live pin-actor / unpin / hard-delete round-trip"
 fi
 
 echo

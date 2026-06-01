@@ -1,6 +1,6 @@
 # ADR `032`: `memory-ops-hardening`
 
-**Status**: Proposed (2026-05-31。task-27.3 将据 task-27.1/27.2 真实非合成验证于 v0.20.0 closeout ratify Proposed→Accepted，ADR-013。见 §Ratification（待回填）。)
+**Status**: Accepted (2026-06-01。v0.20.0 closeout（task-27.3）据 task-27.1/27.2/27.3 真实非合成验证 ratify Proposed→Accepted，ADR-013。见 §Ratification。)
 **Category**: 数据平面 / Memory 生命周期 / 协议契约演进（add-only）
 **Date**: 2026-05-31
 **Decided By**: 主 agent（ADR-012 自治）；tajiaoyezi ratification at v0.20.0 closeout
@@ -63,6 +63,23 @@ Memory ops 硬化采用 **add-only 协议演进、显式生命周期 RPC、destr
 - **Ratification**: 本 ADR **Proposed**。task-27.1（actor+timestamp 真实写穿 round-trip）+ task-27.2（Pin/Unpin 拆分 + hard-delete 真实物理删除 + X-Confirm 412 兜底）通过后，于 v0.20.0 closeout（task-27.3）据真实非合成验证 ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）；某维度受阻则据「已达维度 ratify + 受阻维度如实记录」处理，不强 ratify。
 - **Follow-ups**: ADR-022 §Trade-offs 三条 marker（`pin_actor` / `memory-pinned-at-timestamp` / `is-pinned-backfill-from-audit`）经本 phase 落地——以 ADR-022 add-only Amendment 记录（task-27.3 D5，不溯改 ADR-022 正文 D1-D5）；per-user actor 透传（console-api source 写死 `"console-api"` → 真实用户身份）`[SPEC-DEFER:phase-future.memory-actor-propagation]`；hard-delete 的级联清理（向量索引 / 引用该 memory 的 trace）`[SPEC-DEFER:phase-future.memory-hard-delete-cascade]`。
 
-## Ratification（待 v0.20.0 / task-27.3 据真实非合成验证回填）
+## Ratification（v0.20.0 / task-27.3，2026-06-01）
 
-> 本节在 v0.20.0 closeout 由 task-27.3 据 task-27.1/27.2 的真实非合成验证回填（ADR-013：禁据合成 / 伪造 ratify）。回填时逐条记录 D1-D4 的真实验证依据（actor+timestamp 写穿 round-trip / Pin·Unpin 拆分 + hard-delete 物理删除 + X-Confirm 412 / is_pinned backfill 重放 / 默认构建 0 新 dep），并把 §Status 由 Proposed 改为 Accepted。受阻维度据「已达维度 ratify + 受阻维度如实记录」处理。证据见 `docs/releases/v0.20.0-evidence.md`。
+v0.20.0 closeout（task-27.3）据 task-27.1/27.2/27.3 的**真实非合成验证** ratify `Proposed → Accepted`（ADR-013：禁据合成 / 伪造 ratify）。逐 D 项真实依据：
+
+- **D1（pin-actor + pinned-at-timestamp）— Accepted**：`MemoryItem` add-only proto field 11 `pinned_by` + field 12 `pinned_at_unix` + migration `0017`（`ensure_pin_actor_columns` 守护幂等 ALTER）+ `set_pinned_with_actor` 写穿 真实落地；`cargo test -p contextforge-core --lib memory::store` **15 passed**——pin=true 写 `pinned_by=actor`+`pinned_at_unix>0`、pin=false 归 `''`/0、get+list round-trip 投影、`pinned_at` 独立于 `updated_at`（TEST-27.1.2）；`data_plane::memory` pin RPC 传 `"console-api"` + `memory_to_pb` 投影（TEST-27.1.3）；`proto_contract` MemoryItem field 11/12 superset freeze（TEST-27.1.1）。actor 来源 = console-api source（真实 per-user 透传 `[SPEC-DEFER:phase-future.memory-actor-propagation]` 如实延后）。
+- **D2（Pin/Unpin 拆分 + hard-delete）— Accepted**：proto add-only `rpc Unpin`/`rpc HardDelete` + 4 message + `store.hard_delete`（`DELETE FROM memory_items`，0 行 NotFound）+ `AuditOperation::MemoryHardDelete`（event_type `memory.hard_delete`）真实落地；`data_plane::memory` **14 passed**——unpin 显式 + 幂等 + emit `MemoryUnpin`（TEST-27.2.3）/ hard_delete 物理删除后 get None + emit `MemoryHardDelete`（TEST-27.2.2）；`go test ./internal/consoleapi/...` console-api `hard-delete` 缺 X-Confirm → **412**、带 confirm → 204、后续 GET → **404**（物理删除坐实）+ `unpin` → 204 + 既有 destructive 412 不退化（TEST-27.2.4）；`proto_contract` MemoryService superset freeze（TEST-27.2.1）。复用既有 `confirmMiddleware`（ADR-017 D2），不引入新确认机制。
+- **D3（is_pinned backfill from audit）— Accepted**：`SqliteMemoryStore::reconcile_is_pinned_from_audit(&[AuditLogEntry])` 真实落地；`memory::store` 15/15——按 memory_id 分组 `memory_pin`/`memory_unpin` 事件、last 胜、仅修正不一致的存在行（不臆造无事件 item，TEST-27.3.1）。opt-in 一次性 reconcile（非热路径）；仅修正 `is_pinned`（+ updated_at），不伪造历史 actor/timestamp（legacy audit 未记 actor——这正是 §Context 1 的缺口）。backfill 覆盖率 caveat：仅能重建有 audit 记录的 item（被裁剪 / 缺失的 legacy item 无法回填，如实记录）。
+- **D4（默认构建不变 + 全 add-only + X-Confirm 复用）— Accepted**：proto 全 add-only（既有 field 1-10 + 5 RPC 不动，proto-freeze guard 过）；SQLite migration add-only column with default（既有行缺省 backfill，0 迁移风险）；`cargo test --workspace` + `go test ./...` 全 PASS、既有 `Pin`/`Deprecate`/`SoftDelete` + `confirmMiddleware` 行为不变；0 新依赖（`rusqlite`/`serde`，无 `Cargo.toml`/`Cargo.lock` 改动）+ 0 网络（ADR-004 / ADR-008 无 Amendment）。
+
+证据见 `docs/releases/v0.20.0-evidence.md`。
+
+### ADR-022 add-only Amendment（推进 §Trade-offs 三条 marker，不溯改正文 D1-D5，ADR-014 D5）
+
+ADR-022 §Trade-offs / Conscious limitations 三条刻意缩范围延后的 marker 经本 phase 落地，以 ADR-022 add-only Amendment 记录推进结果（不溯改 ADR-022 正文 D1-D5 + §Trade-offs）：
+
+- `pin_actor` 不引入 → task-27.1 `pinned_by`（field 11）落地。
+- `[SPEC-DEFER:phase-future.memory-pinned-at-timestamp]` → task-27.1 `pinned_at_unix`（field 12）落地。
+- `[SPEC-DEFER:phase-future.is-pinned-backfill-from-audit]` → task-27.3 `reconcile_is_pinned_from_audit` 落地。
+
+详见 `docs/decisions/adr-022-memory-is-pinned-field-amendment.md` §Amendment (Phase 27 / v0.20.0)。

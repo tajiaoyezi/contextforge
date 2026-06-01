@@ -9,11 +9,14 @@
 //!   - `set_status(memory_id, status)` — drives Deprecate / SoftDelete (CHECK constraint rejects invalid status)
 //!   - `seed_for_tests(items)` — bulk-insert helper for unit/integration fixtures
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, params_from_iter, Connection, Error as RusqliteError};
+
+use crate::memoryops::audit::AuditLogEntry;
 
 const MIGRATION_SQL: &str = include_str!("../../migrations/0013_memory_items.sql");
 // task-27.1 (ADR-032 D1): add-only pin-actor + pinned-at-timestamp columns.
@@ -240,6 +243,57 @@ impl SqliteMemoryStore {
         } else {
             Ok(())
         }
+    }
+
+    /// task-27.3 (ADR-032 D3): opt-in one-time reconcile of `is_pinned` from the
+    /// audit log. For each memory_id with `memory_pin`/`memory_unpin` audit events
+    /// (entries MUST be `id ASC`), the last such event wins (pin → true, unpin →
+    /// false); rows whose current `is_pinned` differs are corrected. Only
+    /// `is_pinned` (+ `updated_at_unix`) is touched — the historical actor /
+    /// timestamp are NOT fabricated (audit pre-v0.20 did not record an actor;
+    /// backfill recovers the pin *state*, not its provenance). Memory items with
+    /// no pin/unpin audit events are left untouched (not invented). Returns the
+    /// number of rows reconciled. Non-hot-path (explicit maintenance call).
+    pub fn reconcile_is_pinned_from_audit(
+        &self,
+        entries: &[AuditLogEntry],
+    ) -> Result<usize, MemoryStoreError> {
+        // Last pin/unpin event per memory_id wins (entries are id ASC).
+        let mut last_pin: HashMap<String, bool> = HashMap::new();
+        for e in entries {
+            let pinned = match e.operation.as_str() {
+                "memory_pin" => true,
+                "memory_unpin" => false,
+                _ => continue, // non-pin ops (deprecate/soft_delete/...) ignored
+            };
+            if let Some(mid) = e.chunk_ids.first() {
+                last_pin.insert(mid.clone(), pinned);
+            }
+        }
+        let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
+        let now = now_unix();
+        let mut reconciled = 0usize;
+        for (mid, want) in last_pin {
+            // Only correct rows that exist AND whose is_pinned differs. Touch
+            // is_pinned (+ updated_at) only — actor/timestamp are not fabricated.
+            let current: Option<i64> = conn
+                .query_row(
+                    "SELECT is_pinned FROM memory_items WHERE memory_id = ?",
+                    params![mid],
+                    |r| r.get(0),
+                )
+                .ok();
+            let Some(cur) = current else { continue }; // no such item → skip
+            if (cur != 0) == want {
+                continue; // already correct
+            }
+            conn.execute(
+                "UPDATE memory_items SET is_pinned = ?, updated_at_unix = ? WHERE memory_id = ?",
+                params![want as i64, now, mid],
+            )?;
+            reconciled += 1;
+        }
+        Ok(reconciled)
     }
 
     /// Bulk-insert helper used by unit + integration test fixtures.
@@ -560,5 +614,53 @@ mod tests {
         // missing id → NotFound.
         let err = s.hard_delete("nope").expect_err("expect NotFound");
         assert!(matches!(err, MemoryStoreError::NotFound));
+    }
+
+    /// TEST-27.3.1: is_pinned audit backfill — last memory_pin/unpin event wins;
+    /// items with no audit events keep their state (not invented).
+    #[test]
+    fn test_reconcile_is_pinned_from_audit_last_event_wins() {
+        use crate::memoryops::audit::AuditLogEntry;
+        fn ev(id: i64, op: &str, mid: &str) -> AuditLogEntry {
+            AuditLogEntry {
+                id,
+                operation: op.to_string(),
+                collection: "memory".to_string(),
+                source: "console-api".to_string(),
+                result_count: 1,
+                redaction_count: 0,
+                timestamp: (1_700_000_000 + id).to_string(),
+                query_hash: None,
+                query_length: None,
+                redacted_terms: vec![],
+                chunk_ids: vec![mid.to_string()],
+                export_total_byte_count: None,
+            }
+        }
+        let s = fresh_store();
+        // Two legacy items, both is_pinned=false (pre-v0.10 default).
+        s.seed_for_tests(vec![
+            mem("leg-1", "scope", "active"),
+            mem("leg-2", "scope", "active"),
+            mem("no-audit", "scope", "active"),
+        ])
+        .unwrap();
+        // Audit history (id ASC): leg-1 pin→unpin→pin (last=pin→true);
+        // leg-2 pin→unpin (last=unpin→false, already false → no change).
+        let entries = vec![
+            ev(1, "memory_pin", "leg-1"),
+            ev(2, "memory_pin", "leg-2"),
+            ev(3, "memory_unpin", "leg-1"),
+            ev(4, "memory_unpin", "leg-2"),
+            ev(5, "memory_deprecate", "leg-1"), // non-pin op ignored
+            ev(6, "memory_pin", "leg-1"),
+        ];
+        let reconciled = s.reconcile_is_pinned_from_audit(&entries).unwrap();
+        // leg-1 corrected false→true; leg-2 last=unpin (already false) no change.
+        assert_eq!(reconciled, 1, "only leg-1 needed correction");
+        assert!(s.get("leg-1").unwrap().unwrap().is_pinned, "leg-1 last event = pin");
+        assert!(!s.get("leg-2").unwrap().unwrap().is_pinned, "leg-2 last event = unpin");
+        // no-audit item untouched.
+        assert!(!s.get("no-audit").unwrap().unwrap().is_pinned, "no audit → unchanged");
     }
 }

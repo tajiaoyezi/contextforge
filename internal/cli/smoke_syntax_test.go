@@ -225,6 +225,44 @@ func TestTask263_SmokeV16ObservabilityHardeningStep(t *testing.T) {
 	}
 }
 
+// TEST-27.3.1 / AC1: smoke v17 adds step 36 (task-27.3 closeout) — documents that Phase 27
+// memory-ops hardening (pin-actor + pinned-at-timestamp, task-27.1; explicit Unpin + hard-delete,
+// task-27.2; is_pinned audit backfill, task-27.3) is verified at the Rust + Go contract layers
+// (TEST-27.1.* / TEST-27.2.* / TEST-27.3.1). In REAL mode step 36 exercises the live console-api
+// round-trip (pin-actor projection + unpin 204 + hard-delete 412→204→404). ADR-013.
+func TestTask273_SmokeV17MemoryOpsHardeningStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v17") {
+		t.Fatalf("console_smoke.sh missing v17 header (task-27.3 closeout)")
+	}
+	for _, marker := range []string{"[36/36]", "memory ops hardening", "TEST-27.1.", "TEST-27.2.", "TEST-27.3.1", "/hard-delete"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v17 step 36 must document memory-ops hardening status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v16 blocks intact; denominators untouched per ADR-014 D5 —
+	// only the newest step carries the running total, matching the v14/v15/v16 precedent).
+	for _, marker := range []string{"[33/33]", "[34/34]", "[35/35]", "observability hardening", "production vector backend", "--hybrid"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v17 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
 // real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
 // step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),

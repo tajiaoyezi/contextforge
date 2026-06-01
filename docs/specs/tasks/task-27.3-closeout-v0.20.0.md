@@ -1,6 +1,6 @@
 # Task `27.3`: `closeout-v0.20.0 — is-pinned-backfill-from-audit（按 memory_pin/memory_unpin audit 事件时序重放重建 legacy item 的 is_pinned）+ scripts/console_smoke.sh v17 memory ops 硬化 smoke + v0.20.0 release docs（README/RELEASE_NOTES/evidence/artifacts）+ ADR-032 据真实结果 ratify + ADR-022 add-only Amendment（推进 §Trade-offs 三条 marker，不溯改正文 D5）+ phase-27 §6 闭合 + adapter`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -83,21 +83,21 @@ task-27.1 已让 `MemoryItem` 有 `pinned_by` + `pinned_at_unix` add-only 字段
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: is_pinned audit backfill 落地——按 `memory_pin`/`memory_unpin` 事件时序重放、以末次事件重建 legacy item 当前 `is_pinned`，opt-in 一次性 reconcile（非热路径）；deterministic 单测可断言（构造 audit 序 → backfill → is_pinned 与重放末态一致 + 无 audit 事件 item 保持原态）；`scripts/console_smoke.sh` v17 通过 `bash -n`（exit 0）+ memory ops 硬化 smoke 断言 + 既有 step 不退化 — verified by **TEST-27.3.1**
-- [ ] **AC2**: v0.20.0 release docs 齐备（`docs/releases/v0.20.0-{evidence,artifacts}.md` + `README.md` v0.20 段 + `RELEASE_NOTES.md` v0.20.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback / §tag-backfill 待回填段 — verified by **TEST-27.3.2**
-- [ ] **AC3**: ADR-032 据 task-27.1/27.2 真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）+ §Ratification 回填；ADR-022 add-only Amendment 记推进 §Trade-offs 三条 marker（不溯改正文 D1-D5）；phase-27 §6 AC1-5 全 `[x]` + Status `Draft → Done`；adapter Phase 27 `Draft → Done` + Tasks `0 → 3` + ADR-032 索引 + ADR-022 Trade-offs marker 推进注 — verified by **TEST-27.3.3**
-- [ ] **AC4**: 既有不退化 — 默认 `cargo test --workspace`（0 新依赖）+ `go test ./...` 全 PASS；既有 5 memory RPC + `confirmMiddleware` destructive 412 + proto-freeze guard 不退化 — verified by **TEST-27.3.4** + §10
-- [ ] **AC5**: ADR-014 D1-D5 第十八次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-26 不溯改）— verified by **TEST-27.3.5** + 本 closeout PR body
+- [x] **AC1**: is_pinned audit backfill 落地——按 `memory_pin`/`memory_unpin` 事件时序重放、以末次事件重建 legacy item 当前 `is_pinned`，opt-in 一次性 reconcile（非热路径）；deterministic 单测可断言（构造 audit 序 → backfill → is_pinned 与重放末态一致 + 无 audit 事件 item 保持原态）；`scripts/console_smoke.sh` v17 通过 `bash -n`（exit 0）+ memory ops 硬化 smoke 断言 + 既有 step 不退化 — verified by **TEST-27.3.1**
+- [x] **AC2**: v0.20.0 release docs 齐备（`docs/releases/v0.20.0-{evidence,artifacts}.md` + `README.md` v0.20 段 + `RELEASE_NOTES.md` v0.20.0 段）；evidence 含 task 表 / CI / AC 达成 / 平台矩阵 / upgrade-rollback / §tag-backfill 待回填段 — verified by **TEST-27.3.2**
+- [x] **AC3**: ADR-032 据 task-27.1/27.2 真实结果 Status `Proposed → Accepted`（或受阻维度记录维持）+ §Ratification 回填；ADR-022 add-only Amendment 记推进 §Trade-offs 三条 marker（不溯改正文 D1-D5）；phase-27 §6 AC1-5 全 `[x]` + Status `Draft → Done`；adapter Phase 27 `Draft → Done` + Tasks `0 → 3` + ADR-032 索引 + ADR-022 Trade-offs marker 推进注 — verified by **TEST-27.3.3**
+- [x] **AC4**: 既有不退化 — 默认 `cargo test --workspace`（0 新依赖）+ `go test ./...` 全 PASS；既有 5 memory RPC + `confirmMiddleware` destructive 412 + proto-freeze guard 不退化 — verified by **TEST-27.3.4** + §10
+- [x] **AC5**: ADR-014 D1-D5 第十八次激活全通过（D1 phase§6↔task§6 mapping 表 + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-26 不溯改）— verified by **TEST-27.3.5** + 本 closeout PR body
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-27.3.1 | is_pinned audit backfill 重放末态一致 + 无事件保持原态 + smoke v17 `bash -n` + memory ops 硬化断言 | `core/src/memoryops/`（或 `core/src/memory/`）+ `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Planned |
-| TEST-27.3.2 | v0.20.0 release docs 齐备 + 结构校验 | `docs/releases/v0.20.0-*.md` + README + RELEASE_NOTES | Planned |
-| TEST-27.3.3 | ADR-032 ratify + ADR-022 add-only Amendment + phase-27 闭合 + adapter | `docs/decisions/adr-032-*.md` + `adr-022-*.md` + phase-27 spec + s2v-adapter | Planned |
-| TEST-27.3.4 | 默认 `cargo test --workspace` + `go test ./...` 0 failed + 既有 memory RPC/confirm/proto-freeze 不退化 | 全 Rust + Go | Planned |
-| TEST-27.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Planned |
+| TEST-27.3.1 | is_pinned audit backfill 重放末态一致 + 无事件保持原态 + smoke v17 `bash -n` + memory ops 硬化断言 | `core/src/memoryops/`（或 `core/src/memory/`）+ `internal/cli/smoke_syntax_test.go` + `scripts/console_smoke.sh` | Done |
+| TEST-27.3.2 | v0.20.0 release docs 齐备 + 结构校验 | `docs/releases/v0.20.0-*.md` + README + RELEASE_NOTES | Done |
+| TEST-27.3.3 | ADR-032 ratify + ADR-022 add-only Amendment + phase-27 闭合 + adapter | `docs/decisions/adr-032-*.md` + `adr-022-*.md` + phase-27 spec + s2v-adapter | Done |
+| TEST-27.3.4 | 默认 `cargo test --workspace` + `go test ./...` 0 failed + 既有 memory RPC/confirm/proto-freeze 不退化 | 全 Rust + Go | Done |
+| TEST-27.3.5 | ADR-014 D1-D5 record（mapping + D2 lint） | 本 closeout PR body | Done |
 
 ## 8. Risks
 
@@ -134,4 +134,15 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件 / commit 列表 / §9 Verification 实测结果（ADR-013 真实非合成）/ 设计取舍（is_pinned backfill 落点 memoryops vs memory + smoke v17 step 内容 + ADR-032 ratify 据真实结果 + ADR-022 Amendment 三条 marker 推进 + tag push 自主决断）/ 剩余风险 + 下游影响（backfill 覆盖率 caveat + per-user actor 透传 + hard-delete 级联 + tag/release backfill）。
+- **Status**: Done（2026-06-01）。
+- **完成日期**：2026-06-01。
+- **改动文件**：
+  - `core/src/memory/store.rs`——`reconcile_is_pinned_from_audit(&[AuditLogEntry])`（按 memory_id 分组 `memory_pin`/`memory_unpin`，last 胜，仅修正不一致的存在行，无事件 item 保持原态）+ 同源测试。
+  - `scripts/console_smoke.sh`——v17 注释段 + banner line2 + `[36/36]` step 36（REAL mode pin-actor round-trip + unpin 204 + hard-delete 412→204→404）；`internal/cli/smoke_syntax_test.go`——`TestTask273_*`。
+  - `docs/releases/v0.20.0-{evidence,artifacts}.md`（新增）+ `README.md` v0.20 段 + `RELEASE_NOTES.md` v0.20.0 段。
+  - `docs/decisions/adr-032-memory-ops-hardening.md`（Proposed→Accepted + §Ratification D1-D4）+ `docs/decisions/adr-022-memory-is-pinned-field-amendment.md`（§Amendment Phase 27 add-only）。
+  - `docs/specs/phases/phase-27-memory-ops-hardening.md`（§6 AC1-5 全 `[x]` + Status Done）+ `docs/s2v-adapter.md`（Phase 27 Draft→Done + Tasks 0→3 + 27.1-27.3 Done + ADR-032 Accepted）。
+- **commit 列表（RED→GREEN）**：RED `test(memory): TEST-27.3.1 RED`（`reconcile_is_pinned_from_audit` todo!() + 测试）→ GREEN `feat(memory): is_pinned 从 audit log 回填`（last-event-wins 实现）→ `test(smoke): console_smoke v17 step 36` → docs（本回填）。
+- **§9 Verification 实测结果（ADR-013 真实非合成）**：`cargo test -p contextforge-core --lib memory::store` **15 passed**（含 backfill last-event-wins / 无事件不变 / 非 pin op 忽略）；`cargo test --workspace` + `go test ./...` 0 failed；`bash -n scripts/console_smoke.sh` exit 0（`TestTask273` marker + 语法门）；上游真实凭据：task-27.1 store 15/15 + data_plane 14/14 + proto_contract（#181）+ task-27.2 store/data_plane 14/14 + go consoleapi 412→204→404（#183）。
+- **设计取舍**：(1) **backfill 落点 `core/src/memory/store.rs`**（store-level reconcile，取 `&[AuditLogEntry]` 解耦 AuditSink，可直接单测）；按 memory_id 分组 pin/unpin（id ASC，last 胜），**仅修正 `is_pinned`（+ updated_at）不臆造历史 actor/timestamp**（legacy audit 未记 actor——即缺口本身）；无 pin/unpin 事件的 item 保持原态（不臆造）；opt-in 一次性（非热路径自动跑）。(2) **smoke v17 step 36** REAL mode 活跃断言 console-api memory ops live round-trip（复用 `mem-seed-*` fixtures：pin-actor 投影 + unpin 204 + hard-delete 412→204→404 物理删除坐实）；非 REAL 注 contract-layer 验证。(3) **ADR-032 据 D1-D4 真实非合成验证 Accepted**；actor 真实来源 + backfill 覆盖率据真实受限**如实记录**不伪造。(4) **ADR-022 add-only Amendment** 推进三条 marker（不溯改正文 D1-D5，D5）。(5) **tag push 据 ADR-012 主 agent 自主决断**（无人值守授权）。
+- **剩余风险 + 下游影响**：backfill 覆盖率 caveat（仅有 audit 记录的 item，`[SPEC-DEFER:phase-future.is-pinned-backfill-from-audit]` 完整覆盖延后）+ per-user actor 透传 `[SPEC-DEFER:phase-future.memory-actor-propagation]` + hard-delete 级联清理 `[SPEC-DEFER:phase-future.memory-hard-delete-cascade]` 留 backlog；v0.20.0 tag push + post-tag-push backfill 回填 tag SHA / run ID / 镜像 digest。
