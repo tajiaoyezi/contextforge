@@ -7,6 +7,23 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.20.0
+
+📌 **v0.20.0 memory-ops-hardening** — hardens the Memory pin / lifecycle semantics from Phase 13 / 17, delivering the three ADR-022 deferred markers. **pin-actor + pinned-at-timestamp** become first-class `MemoryItem` fields; **Pin/Unpin** is split explicitly (vs the `Pin{bool pin}` toggle) and a **hard-delete** strategy (physical removal, X-Confirm gated) is added; **is_pinned** can be **backfilled from the audit log**. The **default build stays 0-new-dependency, 0-network**; all proto changes are add-only and the existing 5 Memory RPC + `Pin` toggle do not regress.
+
+- **pin-actor + pinned-at-timestamp** (task-27.1): add-only `MemoryItem.pinned_by` (proto field 11) + `pinned_at_unix` (field 12) + migration `0017` (guarded `ALTER ADD COLUMN`). `set_pinned_with_actor` writes the actor + timestamp on pin, clears on unpin; `pinned_at_unix` is independent of `updated_at_unix`. Audit never recorded the calling actor, so these become first-class fields. proto-freeze guard passes. TEST-27.1.* (store 15/15 + data_plane 14/14).
+- **Pin/Unpin split + hard-delete** (task-27.2): add-only `Unpin` RPC (explicit + idempotent, beside the `Pin{bool pin}` toggle) + `HardDelete` RPC (`DELETE FROM memory_items` — physical removal, get-by-id returns None afterwards, vs soft-delete's status flip). console-api `POST /v1/memory/{id}/unpin` (204) + `POST /v1/memory/{id}/hard-delete` (confirmMiddleware-gated: 412 without X-Confirm, 204 with, then GET → 404). New `memory.hard_delete` event_type + `MemoryHardDelete` audit op. TEST-27.2.*.
+- **is_pinned audit backfill** (task-27.3): `reconcile_is_pinned_from_audit` replays `memory_pin`/`memory_unpin` audit events (last wins) to rebuild legacy items' `is_pinned`, opt-in one-time reconcile (corrects only `is_pinned`, does not fabricate actor/timestamp). **ADR-032 → Accepted**; **ADR-022** add-only Amendment (three markers). **ADR-014 cross-validation gate — 18th activation**.
+
+```bash
+# pin-actor/timestamp + hard-delete + is_pinned backfill (default build, 0 new dep)
+cargo test -p contextforge-core --lib memory::store
+# console-api unpin / hard-delete X-Confirm
+go test ./internal/consoleapi/... -run 'Memory'
+```
+
+详 `RELEASE_NOTES.md` v0.20.0 段 + [Phase 27 spec](docs/specs/phases/phase-27-memory-ops-hardening.md) + [ADR-032](docs/decisions/adr-032-memory-ops-hardening.md)。
+
 ## What's new in v0.19.0
 
 🔭 **v0.19.0 observability-hardening** — hardens the two observability signal paths landed in Phase 16. **TraceStore** gains FTS5 content search + periodic VACUUM/prune; **events** gain an SSE real-time push endpoint (add-only beside the long-poll) + replay of missed memory state-op events from the persistent audit log; the **EventBus** gains capacity / partition / drain-timeout config. The **default build stays 0-new-dependency, 0-network** (FTS5/VACUUM reuse rusqlite bundled, SSE uses Go stdlib `http.Flusher`, replay reads the existing `audit_log`).

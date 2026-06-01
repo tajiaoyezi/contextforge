@@ -201,3 +201,13 @@ ADR-022 D1-D5 实施路径 **end-to-end verified**:
 
 - 升级 ContextForge v0.9 → v0.10: SQLite migration `0017_memory_items_add_is_pinned.sql` 自动应用；既有 memory items 全部 backfill 为 `is_pinned = 0`（false）
 - 后续 Pin RPC 调用正常写穿 `is_pinned` 列 + emit event + audit log
+
+## Amendment (Phase 27 / v0.20.0 — add-only, 不溯改 D1-D5 + §Trade-offs)
+
+> ADR-032 (memory-ops-hardening) 在 v0.20.0 推进了本 ADR §Trade-offs / Conscious limitations 三条刻意缩范围延后的 marker。以 add-only Amendment 记录推进结果，**不溯改正文 D1-D5 + §Trade-offs**（ADR-014 D5）。本 ADR 仍 Accepted；`is_pinned` 字段（field 10）+ Pin RPC 写穿语义不变。
+
+- **`pin_actor` 不引入（§Trade-offs 1）→ 落地**：task-27.1 加 `MemoryItem.pinned_by`（add-only proto field 11 + `memory_items` 列 + `set_pinned_with_actor` 写穿）。理由更新：audit log 当时不记调用 actor（`core/src/data_plane/memory.rs` 只填 `chunk_ids=[memory_id]`），故「谁 pin」事实上无处可查；改为一手字段比「查 audit 推断」可靠。
+- **`[SPEC-DEFER:phase-future.memory-pinned-at-timestamp]`（§Trade-offs 2）→ 落地**：task-27.1 加 `MemoryItem.pinned_at_unix`（add-only proto field 12 + 列），独立于 `updated_at_unix`（deprecate/soft_delete 不覆盖），解除「何时 pin 不可恢复」缺口。
+- **`[SPEC-DEFER:phase-future.is-pinned-backfill-from-audit]`（§Trade-offs 5）→ 落地**：task-27.3 `SqliteMemoryStore::reconcile_is_pinned_from_audit`——按 `memory_pin`/`memory_unpin` audit 事件时序重放、last 胜，opt-in 一次性 reconcile legacy item 的 `is_pinned`（覆盖率 caveat：仅有 audit 记录的 item，如实记录）。
+
+此外 task-27.2 加显式 `Unpin` RPC（vs `Pin{bool pin}` toggle，既有 toggle 保留向后兼容）+ `HardDelete`（物理删除，X-Confirm gated）。全 add-only，proto-freeze guard 过。详见 `docs/decisions/adr-032-memory-ops-hardening.md`（D1-D4 + §Ratification）+ `docs/releases/v0.20.0-evidence.md`。

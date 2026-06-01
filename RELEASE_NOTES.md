@@ -1,5 +1,19 @@
 # ContextForge Release Notes
 
+## v0.20.0 (2026-06-01) — memory-ops-hardening (pin-actor + pinned-at-timestamp + Pin/Unpin split + hard-delete + is_pinned audit backfill + ADR-032 ratified)
+
+Phase 27 硬化 Phase 13 / Phase 17 落地的 Memory pin / 生命周期语义，兑现 ADR-022 §Trade-offs 三条刻意缩范围延后的 marker。proto 全 add-only（既有 field 1-10 + 5 RPC + `Pin{bool pin}` 不动，proto-freeze guard 过）；默认构建恒 0 新依赖 / 0 network（ADR-004）；既有 5 Memory RPC + `confirmMiddleware` 不退化。
+
+| task | 交付 |
+|---|---|
+| 27.1 (#181) | `MemoryItem` add-only proto `pinned_by`(field 11) + `pinned_at_unix`(field 12) + migration `0017`（`ensure_pin_actor_columns` 守护幂等 ALTER）+ `set_pinned_with_actor`（pin 写 actor+now / unpin 归 ''+0，`pinned_at` 独立于 `updated_at`，`set_pinned` 委托向后兼容）+ pin RPC 传 `"console-api"` + `memory_to_pb`/Go 投影；`console_message_fields` freeze guard；TEST-27.1.1-5（store 15/15 + data_plane 14/14 + proto_contract） |
+| 27.2 (#183) | proto add-only `MemoryService.Unpin`/`HardDelete` RPC + 4 message + `store.hard_delete`（物理删除，0 行 NotFound）+ `AuditOperation::MemoryHardDelete`（event_type `memory.hard_delete`）+ console-api `POST /v1/memory/{id}/unpin`（204）+ `.../hard-delete`（confirmMiddleware gated 412→204→404）；TEST-27.2.1-5 |
+| 27.3 (this) | is_pinned audit backfill `reconcile_is_pinned_from_audit`（last `memory_pin`/`memory_unpin` 事件胜，opt-in 一次性，仅修正 is_pinned 不臆造 actor/timestamp）+ smoke v17 step 36（REAL mode live round-trip）+ v0.20.0 release docs + ADR-032 ratify + ADR-022 add-only Amendment + phase-27 §6 闭合；TEST-27.3.1 |
+
+**ADR**：ADR-032 (memory-ops-hardening) 据 D1-D4 真实非合成验证 `Proposed → Accepted`（actor 真实来源 + backfill 覆盖率据真实受限如实记录，不伪造，ADR-013）；ADR-022 add-only Amendment 兑现 §Trade-offs 三条 marker（`pin_actor`→`pinned_by` / `memory-pinned-at-timestamp`→`pinned_at_unix` / `is-pinned-backfill-from-audit`→`reconcile_is_pinned_from_audit`，不溯改正文 D1-D5）；ADR-017 X-Confirm 复用；ADR-015 全 add-only。
+
+**Upgrade / Rollback**：默认行为不变，无强制迁移。`memory.db` boot 时经 `ensure_pin_actor_columns` 幂等 ALTER 加 `pinned_by`/`pinned_at_unix`（既有行缺省 backfill，add-only）。新 `Unpin`/`HardDelete` RPC + unpin/hard-delete 路由 add-only；is_pinned backfill 是 opt-in。Rollback：`git tag -d v0.20.0` + 删 Release / ghcr tag；与 v0.19.0 行为兼容。**hard-delete 物理删除不可恢复**（隐私基线设计意图，X-Confirm 兜底防误触）。
+
 ## v0.19.0 (2026-06-01) — observability-hardening (TraceStore FTS5 + VACUUM + events SSE/重放 + event-bus 配置 + ADR-031 ratified)
 
 Phase 26 硬化 Phase 16 落地的两条可观测性信号路径（TraceStore 持久化 + events 实时面）。默认构建恒 0 新依赖 / 0 network（FTS5/VACUUM 复用 rusqlite bundled，SSE 用 Go stdlib `http.Flusher`，重放查既有 `audit_log`，event-bus 配置复用 `with_capacity` seam）；既有 long-poll endpoint + 22-endpoint 契约 + `put`/`get`/`list`/`load_warm` 签名不退化（add-only，ADR-015 D1）。
