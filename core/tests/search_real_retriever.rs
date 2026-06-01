@@ -239,6 +239,8 @@ async fn test_progress_event_emitted() {
         .subscribe(SubscribeEventsRequest {
             job_id: None,
             workspace_id: None,
+            since_ts: 0,
+            last_event_id: String::new(),
         })
         .await
         .expect("subscribe ok")

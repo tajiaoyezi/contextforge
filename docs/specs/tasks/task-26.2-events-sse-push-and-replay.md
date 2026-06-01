@@ -1,6 +1,6 @@
 # Task `26.2`: `events-sse-push-and-replay — internal/consoleapi 加 SSE 实时推送 endpoint（text/event-stream，旁挂既有 long-poll，add-only）+ 从 audit log 重放订阅前漏失事件 + deterministic 契约测试（SSE 帧编码 + 重放顺序，不依赖实时 timing）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -85,21 +85,21 @@ ADR-031 D3/D4 记录硬化策略：SSE 实时推送（旁挂 long-poll，add-onl
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**: SSE 实时推送 endpoint（`text/event-stream`）注入确定事件序 → 响应体含正确 SSE 帧（`id:`/`event:`/`data:` 行 + 空行分隔）+ 顺序与注入序一致；`data:` 是合法 JSON `ObservabilityEvent` — verified by **TEST-26.2.1**
-- [ ] **AC2**: SSE endpoint 是 add-only——既有 `GET /v1/observability/events` long-poll endpoint + 路由 + `eventsClient.Recent(limit, wait)` 签名不退化；既有 22-endpoint 契约 + events_test 不退化 — verified by **TEST-26.2.2**
-- [ ] **AC3**: 从 audit log 重放——给定 audit 历史（memory state-op `id ASC`）+ `?since_ts=` → 重放段按 audit `id` 升序重建 `ObservabilityEvent`（`event_type` `memory.*` 等 D3 映射）+ 与实时流拼接边界以 `event_id`/`ts_unix` 去重不重复不乱序，deterministic（不依赖墙钟） — verified by **TEST-26.2.3**
-- [ ] **AC4**: client 断开释放 gRPC 订阅 + 重放 scope 诚实——`r.Context().Done()` 退出 SSE handler 不泄漏 goroutine；重放覆盖 audit 已持久 memory state-op，indexing 事件重放如实延后（`[SPEC-DEFER:phase-future.indexing-event-persistence]`） — verified by **TEST-26.2.4**
-- [ ] **AC5**: 既有不退化 + 0 新依赖 — 默认 `go test ./...` 全 PASS + SSE 用标准库 `http.Flusher`（0 新 dep）；`cargo test --workspace`（重放查询面单测）不退化；D2 lint `--touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-26.2.5** + §10 实测
+- [x] **AC1**: SSE 实时推送 endpoint（`text/event-stream`）注入确定事件序 → 响应体含正确 SSE 帧（`id:`/`event:`/`data:` 行 + 空行分隔）+ 顺序与注入序一致；`data:` 是合法 JSON `ObservabilityEvent` — verified by **TEST-26.2.1**
+- [x] **AC2**: SSE endpoint 是 add-only——既有 `GET /v1/observability/events` long-poll endpoint + 路由 + `eventsClient.Recent(limit, wait)` 签名不退化；既有 22-endpoint 契约 + events_test 不退化 — verified by **TEST-26.2.2**
+- [x] **AC3**: 从 audit log 重放——给定 audit 历史（memory state-op `id ASC`）+ `?since_ts=` → 重放段按 audit `id` 升序重建 `ObservabilityEvent`（`event_type` `memory.*` 等 D3 映射）+ 与实时流拼接边界以 `event_id`/`ts_unix` 去重不重复不乱序，deterministic（不依赖墙钟） — verified by **TEST-26.2.3**
+- [x] **AC4**: client 断开释放 gRPC 订阅 + 重放 scope 诚实——`r.Context().Done()` 退出 SSE handler 不泄漏 goroutine；重放覆盖 audit 已持久 memory state-op，indexing 事件重放如实延后（`[SPEC-DEFER:phase-future.indexing-event-persistence]`） — verified by **TEST-26.2.4**
+- [x] **AC5**: 既有不退化 + 0 新依赖 — 默认 `go test ./...` 全 PASS + SSE 用标准库 `http.Flusher`（0 新 dep）；`cargo test --workspace`（重放查询面单测）不退化；D2 lint `--touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-26.2.5** + §10 实测
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-26.2.1 | SSE 帧编码 — 注入确定事件序断言 `id:`/`event:`/`data:` 帧 + 顺序 + data JSON 合法 | `internal/consoleapi/events_test.go` | Planned |
-| TEST-26.2.2 | SSE add-only — 既有 long-poll endpoint + Recent 签名 + 22-endpoint 不退化 | `internal/consoleapi/events_test.go` + `router_test.go` | Planned |
-| TEST-26.2.3 | audit 重放顺序 — `id ASC` 升序重建 + 拼接边界去重不重复不乱序（deterministic） | `internal/consoleapi/events_test.go` + `core/src/data_plane/events.rs`（`mod tests`） | Planned |
-| TEST-26.2.4 | client 断开释放订阅不泄漏 goroutine + 重放 scope 诚实（memory state-op 覆盖） | `internal/consoleapi/events_test.go` | Planned |
-| TEST-26.2.5 | 默认 `go test ./...` + `cargo test --workspace` 0 failed + 0 新依赖 + D2 lint 0 未标注 | 全 Go + Rust + `scripts/spec_drift_lint.sh` | Planned |
+| TEST-26.2.1 | SSE 帧编码 — 注入确定事件序断言 `id:`/`event:`/`data:` 帧 + 顺序 + data JSON 合法 | `internal/consoleapi/events_test.go` | Done |
+| TEST-26.2.2 | SSE add-only — 既有 long-poll endpoint + Recent 签名 + 22-endpoint 不退化 + nil-safe 503 | `internal/consoleapi/events_test.go` | Done |
+| TEST-26.2.3 | audit 重放顺序 — `id ASC` 升序重建 + 拼接边界去重不重复不乱序 + `?since_ts=` 透传（deterministic） | `internal/consoleapi/events_test.go` + `core/src/data_plane/events.rs`（`mod tests`） | Done |
+| TEST-26.2.4 | client 断开释放订阅不泄漏 goroutine + 重放 scope 诚实（memory state-op 覆盖） | `internal/consoleapi/events_test.go` | Done |
+| TEST-26.2.5 | 默认 `go test ./...` + `cargo test --workspace` 0 failed + 0 新依赖 + D2 lint 0 未标注 | 全 Go + Rust + `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -131,4 +131,26 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: 待实施（Draft）。实施完成后按 6 项回填：完成日期 / 改动文件（含 SSE 路由 + handler + grpcclient streaming 入口 + Rust 重放查询面）/ commit 列表（RED→GREEN）/ §9 Verification 实测结果（ADR-013 真实非合成；SSE 帧契约 + 重放顺序 deterministic 结果 + 真实起服 SSE 若受阻如实标 stop-condition）/ 设计取舍（SSE 帧编码 + audit 重放接续边界去重策略 + 重放 scope 诚实记录）/ 剩余风险 + 下游影响（indexing 事件重放 / SSE 背压 / event-bus 容量缓解归 task-26.3，各 `[SPEC-DEFER:phase-future.*]`）。
+- **Status**: Done（2026-06-01）。
+- **完成日期**：2026-06-01。
+- **改动文件**：
+  - `proto/contextforge/console_data_plane/v1/console_data_plane.proto`——`SubscribeEventsRequest` add-only `int64 since_ts = 3` + `string last_event_id = 4`（既有 field 1/2 不动；regen Go pb.go + Rust prost）。
+  - `core/src/data_plane/events.rs`——`replay_events_from_audit(entries, since_ts)`（从 `AuditSink::list()` id ASC 重建 memory state-op `ObservabilityEvent` 序）+ `audit_op_str_to_event` 字符串映射 + `EventsServer.subscribe` 接线（since_ts>0 先回放 audit 再接 live；先 subscribe 后建回放批避免漏 live）+ Rust 重放序单测。
+  - `internal/consoleapi/types.go`——`StreamOptions` + `EventsStreamer` 接口 + `Deps.EventsStream`（optional）。
+  - `internal/consoleapi/handlers.go`——`handleEventsStream`（`text/event-stream` 帧 + `http.Flusher` 持续推 + event_id 拼接边界去重 + `r.Context().Done()` 释放；nil streamer → 503）+ `parseSinceTSParam` / `streamLastEventID`。
+  - `internal/consoleapi/router.go`——add-only `GET /v1/observability/events/stream` 路由（既有 long-poll endpoint 不动）。
+  - `internal/consoleapi/grpcclient/grpcclient.go`——`eventsClient.Stream`（订阅 `Subscribe` 转 channel，ctx 释放）+ `Client.EventsStream()` 访问器。
+  - `internal/cli/console_api_serve.go`——gRPC Deps 接 `EventsStream: cli.EventsStream()`（fallback/degraded 留 nil → SSE 503）。
+  - `internal/consoleapi/events_test.go`——4 SSE 契约测试 + helper（fakeStreamer / parseSSEFrames）。
+  - `core/tests/{data_plane_integration,search_real_retriever}.rs`——`SubscribeEventsRequest` 字段补全（add-only 字段连带）。
+  - 0 新依赖（SSE 用 Go 标准库 `http.Flusher`；重放查既有 `audit_log`）。
+- **commit 列表（RED→GREEN）**：
+  - RED `test(events): TEST-26.2.1~26.2.4 RED`（proto+regen + replay `todo!()` + handler 返 501 + 4 Go 测试 + Rust 测试；Rust replay panic + 4 Go SSE FAIL）。
+  - GREEN `feat(events): events SSE 实时推送 + 从 audit log 重放`（replay 实现 + subscribe 接线 + 真实 SSE handler + grpcclient.Stream）。
+- **§9 Verification 实测结果（ADR-013 真实非合成）**：
+  - `cargo test -p contextforge-core --lib data_plane::events` → **2 passed**（replay 序 + keepalive 不退化）。
+  - `go test ./internal/consoleapi/...` → consoleapi + grpcclient 全 PASS（4 SSE 契约：帧编码 / add-only nil-safe / 重放拼接去重 + since_ts 透传 / 断开释放）。
+  - `cargo test --workspace` + `go test ./...` → 0 failed（既有 long-poll + 22-endpoint + keepalive 不退化）。
+  - D2 lint 本机 scoped 触及行 0 未标注命中（CI spec-lint 权威）。
+- **设计取舍**：(1) SSE 帧 `id:`/`event:`/`data:`（data = JSON `ObservabilityEvent`）+ 空行结束帧；(2) 重放在 Rust `subscribe` 内**先 subscribe live channel 后建 audit 回放批**，确保回放与 live 之间无 live 事件丢失；(3) 重放 event_id = `evt-audit-{audit_id}` 确定性，SSE handler 以 event_id 去重拼接边界（seen set 随会话内 distinct id 增长，单用户 local-first 可接受）；(4) **重放 scope 诚实**：仅覆盖 audit_log 已持久的 memory state-op（pin/unpin/deprecate/soft_delete），`indexing.*` 无 audit 持久源 → 重放延后 `[SPEC-DEFER:phase-future.indexing-event-persistence]`；(5) **真实起服 SSE 端到端**（running daemon curl）属 live-server 验证，本 task 用 contract 层 deterministic 测试（注入事件序 + 构造 audit）断言帧 + 重放顺序，live e2e 诚实延后 `[SPEC-DEFER:phase-future.sse-live-server-e2e]`，由 task-26.3 据合规环境评估，不伪造 live 通过。
+- **剩余风险 + 下游影响**：`indexing.*` 重放 / SSE 多客户端背压 `[SPEC-DEFER:phase-future.sse-backpressure-tuning]` / event-bus 容量缓解归 task-26.3；SSE handler dedup seen-set 长会话内存随 distinct event_id 增长（缓解归背压调优）。

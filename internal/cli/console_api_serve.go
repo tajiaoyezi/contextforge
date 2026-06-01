@@ -136,13 +136,14 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 	}
 	fmt.Fprintf(stdout, "console-api: gRPC backend connected at %s (ADR-016 §D2 cross-process bridge)\n", grpcAddr)
 	return consoleapi.Deps{
-		Workspace: cli.Workspace(),
-		Job:       cli.Job(),
-		Search:    cli.Search(),
-		Events:    cli.Events(),
-		Memory:    cli.Memory(),
-		Eval:      cli.Eval(),
-		Health:    cli.Health(), // task-15.6 (Phase 15 P2 #7)
+		Workspace:    cli.Workspace(),
+		Job:          cli.Job(),
+		Search:       cli.Search(),
+		Events:       cli.Events(),
+		EventsStream: cli.EventsStream(), // task-26.2 (ADR-031 D3): SSE push
+		Memory:       cli.Memory(),
+		Eval:         cli.Eval(),
+		Health:       cli.Health(), // task-15.6 (Phase 15 P2 #7)
 	}, "grpc", func() { _ = cli.Close() }
 }
 

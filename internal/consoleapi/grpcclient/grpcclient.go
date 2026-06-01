@@ -101,6 +101,13 @@ func (c *Client) Search() consoleapi.SearchClient { return c.search }
 // Events returns the consoleapi.EventsClient wrapper.
 func (c *Client) Events() consoleapi.EventsClient { return c.events }
 
+// EventsStream returns the consoleapi.EventsStreamer wrapper (task-26.2 / ADR-031
+// D3). The same eventsClient backs both the long-poll Recent and the SSE Stream.
+func (c *Client) EventsStream() consoleapi.EventsStreamer {
+	es, _ := c.events.(consoleapi.EventsStreamer)
+	return es
+}
+
 // Memory returns the consoleapi.MemoryClient wrapper.
 func (c *Client) Memory() consoleapi.MemoryClient { return c.memory }
 
@@ -490,6 +497,45 @@ func (e *eventsClient) Recent(
 	}
 
 	return batch, nil
+}
+
+// Stream implements the SSE streaming entry (task-26.2 / ADR-031 D3/D4). It
+// opens a single `Subscribe` server-stream carrying the replay params
+// (since_ts / last_event_id), and forwards each received event onto a buffered
+// channel. The forwarding goroutine exits — closing the channel and releasing
+// the gRPC stream — when ctx is cancelled (SSE client disconnect) or the
+// upstream Recv ends (EOF / error). The Rust EventsServer replays missed
+// memory state-op events from the audit log first (when since_ts > 0), then
+// splices the live broadcast; live end-to-end verification is deferred
+// (see task-26.2 §10 / [SPEC-DEFER:phase-future.sse-live-server-e2e]).
+func (e *eventsClient) Stream(
+	ctx context.Context,
+	opts consoleapi.StreamOptions,
+) (<-chan contractv1.ObservabilityEvent, error) {
+	stream, err := e.c.Subscribe(ctx, &pb.SubscribeEventsRequest{
+		SinceTs:     opts.SinceTS,
+		LastEventId: opts.LastEventID,
+	})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	ch := make(chan contractv1.ObservabilityEvent, 64)
+	go func() {
+		defer close(ch)
+		for {
+			evt, rErr := stream.Recv()
+			if rErr != nil {
+				// EOF / ctx cancelled / transport error → end the stream.
+				return
+			}
+			select {
+			case ch <- protoToObservabilityEvent(evt):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
 }
 
 // =====================================================================

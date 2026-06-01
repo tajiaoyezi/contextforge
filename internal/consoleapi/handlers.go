@@ -675,6 +675,98 @@ func handleEvents(deps Deps) http.HandlerFunc {
 	}
 }
 
+// handleEventsStream — GET /v1/observability/events/stream (task-26.2 / ADR-031
+// D3): Server-Sent-Events real-time push, add-only alongside the existing
+// long-poll handleEvents (既有路由 / 22-endpoint 契约不动).
+//
+// Each event is written as an SSE frame (`id:` event_id / `event:` event_type /
+// `data:` JSON ObservabilityEvent + blank-line terminator) and flushed. With
+// `?since_ts=` the Rust EventsServer replays missed memory state-op events from
+// the audit log first (ADR-031 D4), then splices the live broadcast; the handler
+// dedups by event_id at the splice boundary. The handler exits — releasing the
+// underlying gRPC subscription — when the client disconnects (r.Context().Done())
+// or the stream ends. Live end-to-end (running daemon) verification is deferred
+// [SPEC-DEFER:phase-future.sse-live-server-e2e]; framing + replay ordering are
+// covered by deterministic contract tests (task-26.2 §6).
+func handleEventsStream(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.EventsStream == nil {
+			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "INTERNAL", "streaming unsupported by ResponseWriter")
+			return
+		}
+		opts := StreamOptions{
+			SinceTS:     parseSinceTSParam(r),
+			LastEventID: streamLastEventID(r),
+		}
+		ch, err := deps.EventsStream.Stream(r.Context(), opts)
+		if err != nil {
+			mapStorageError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		// Boundary dedup by event_id (replay→live splice may resend the same
+		// event_id). The set is bounded by the SSE session's distinct event_ids
+		// (single-user local-first observability); fan-out / backpressure tuning
+		// is deferred [SPEC-DEFER:phase-future.sse-backpressure-tuning].
+		seen := make(map[string]bool)
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case e, ok := <-ch:
+				if !ok {
+					return
+				}
+				if e.EventID != "" {
+					if seen[e.EventID] {
+						continue
+					}
+					seen[e.EventID] = true
+				}
+				data, mErr := json.Marshal(e)
+				if mErr != nil {
+					continue
+				}
+				fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.EventID, e.EventType, data)
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+// parseSinceTSParam reads ?since_ts=<unix-seconds>; 0 (no replay) when missing
+// or invalid.
+func parseSinceTSParam(r *http.Request) int64 {
+	raw := r.URL.Query().Get("since_ts")
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// streamLastEventID reads the client's last-seen SSE id from ?last_event_id=
+// or the standard Last-Event-ID header (advisory boundary dedup hint).
+func streamLastEventID(r *http.Request) string {
+	if v := r.URL.Query().Get("last_event_id"); v != "" {
+		return v
+	}
+	return r.Header.Get("Last-Event-ID")
+}
+
 // parseWaitParam reads ?wait=30s; default 30s; clamped to [1s, 60s].
 func parseWaitParam(r *http.Request) time.Duration {
 	raw := r.URL.Query().Get("wait")

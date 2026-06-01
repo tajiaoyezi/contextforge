@@ -448,6 +448,13 @@ message ObservabilityEvent {
 message SubscribeEventsRequest {
   optional string job_id = 1;   // optional filter
   optional string workspace_id = 2;
+  // task-26.2 / ADR-031 D4 (add-only): replay missed memory state-op events
+  // from the persistent audit_log before splicing the live broadcast stream.
+  // since_ts = replay events at/after this unix-second cutoff (0 = no replay);
+  // last_event_id = client's last-seen SSE id for boundary dedup (advisory).
+  // Existing subscribers (job_id/workspace_id only) are unaffected.
+  int64 since_ts = 3;
+  string last_event_id = 4;
 }
 
 service EventsService {
