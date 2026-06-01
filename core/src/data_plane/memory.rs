@@ -217,8 +217,11 @@ impl MemoryService for MemoryServer {
             .memory
             .as_ref()
             .ok_or_else(|| Status::failed_precondition("memory store not configured"))?;
+        // task-27.1 (ADR-032 D1): write the calling actor through to the store.
+        // console-api source is currently "console-api" (real per-user actor
+        // propagation is [SPEC-DEFER:phase-future.memory-actor-propagation]).
         memory
-            .set_pinned(&req.memory_id, req.pin)
+            .set_pinned_with_actor(&req.memory_id, req.pin, "console-api")
             .map_err(mem_err_to_status)?;
         self.emit_audit_and_event(
             if req.pin {
@@ -414,6 +417,46 @@ mod tests {
             .count_by_operation(AuditOperation::MemoryPin)
             .expect("count ok");
         assert!(count >= 1, "MemoryPin audit event expected");
+    }
+
+    /// TEST-27.1.3: pin RPC writes the actor ("console-api") through to the
+    /// store + memory_to_pb projects pinned_by / pinned_at_unix on get.
+    #[tokio::test]
+    async fn test_memory_server_pin_writes_actor_and_projects() {
+        let (server, mem_store) = fresh_server();
+        mem_store.seed_for_tests(vec![mem("pa", "s", "active")]).unwrap();
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "pa".into(),
+                pin: true,
+            }))
+            .await
+            .expect("pin ok");
+        // Store wrote the actor + timestamp.
+        let stored = mem_store.get("pa").unwrap().unwrap();
+        assert_eq!(stored.pinned_by, "console-api");
+        assert!(stored.pinned_at_unix > 0);
+        // RPC get projects the add-only fields onto the wire MemoryItem.
+        let pb = server
+            .get(Request::new(GetMemoryRequest {
+                memory_id: "pa".into(),
+            }))
+            .await
+            .expect("get ok")
+            .into_inner();
+        assert_eq!(pb.pinned_by, "console-api");
+        assert!(pb.pinned_at_unix > 0);
+        // unpin clears.
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "pa".into(),
+                pin: false,
+            }))
+            .await
+            .expect("unpin ok");
+        let cleared = mem_store.get("pa").unwrap().unwrap();
+        assert_eq!(cleared.pinned_by, "");
+        assert_eq!(cleared.pinned_at_unix, 0);
     }
 
     #[tokio::test]

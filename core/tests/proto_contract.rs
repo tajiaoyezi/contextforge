@@ -69,6 +69,23 @@ fn test_search_contract() {
     );
 }
 
+// TEST-27.1.1 / AC1 — console MemoryItem 加 add-only pin-actor + pinned-at-timestamp
+// 字段为既有字段集合的 superset 追加（只增不删不改 tag；ADR-032 D1 / ADR-015 D5 冻结）。
+#[test]
+fn test_27_1_memory_item_pin_actor_superset() {
+    assert_superset(
+        &contract::console_message_fields("MemoryItem"),
+        &[
+            // 既有 field 1-10（task-13.1 / task-17.1）不退化。
+            "memory_id", "agent_scope", "content_preview", "source_type", "source_ref",
+            "created_at_unix", "updated_at_unix", "hit_count", "status", "is_pinned",
+            // task-27.1 add-only field 11-12。
+            "pinned_by", "pinned_at_unix",
+        ],
+        "AC1 MemoryItem add-only pin-actor/timestamp superset",
+    );
+}
+
 // TEST-1.1.4 / SCEN-1.1.4 / AC4 — Rust 侧 tonic/prost codegen 成功（无 FFI）。
 #[test]
 fn test_rust_codegen_succeeds() {

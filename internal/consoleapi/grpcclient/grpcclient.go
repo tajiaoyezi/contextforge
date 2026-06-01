@@ -745,6 +745,8 @@ func protoToMemoryItem(p *pb.MemoryItem) contractv1.MemoryItem {
 		HitCount:       int(p.HitCount),
 		Status:         p.Status,
 		IsPinned:       p.IsPinned,
+		PinnedBy:       p.PinnedBy,     // task-27.1 (ADR-032 D1) add-only
+		PinnedAtUnix:   p.PinnedAtUnix, // task-27.1 (ADR-032 D1) add-only
 		Availability:   contractv1.FieldAvailability{Object: "MemoryItem"},
 	}
 }

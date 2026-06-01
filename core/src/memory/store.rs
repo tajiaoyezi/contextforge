@@ -164,33 +164,43 @@ impl SqliteMemoryStore {
 
     /// Toggle is_pinned (true → 1, false → 0). Also bumps updated_at_unix.
     /// Returns NotFound when the memory_id does not exist.
+    ///
+    /// task-27.1: backward-compatible delegate to `set_pinned_with_actor` with an
+    /// empty actor (preserves the task-17.1 signature + behavior).
     pub fn set_pinned(&self, memory_id: &str, pinned: bool) -> Result<(), MemoryStoreError> {
-        let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
-        let now = now_unix();
-        let n = conn.execute(
-            "UPDATE memory_items SET is_pinned = ?, updated_at_unix = ? WHERE memory_id = ?",
-            params![pinned as i64, now, memory_id],
-        )?;
-        if n == 0 {
-            Err(MemoryStoreError::NotFound)
-        } else {
-            Ok(())
-        }
+        self.set_pinned_with_actor(memory_id, pinned, "")
     }
 
     /// task-27.1 (ADR-032 D1): actor-aware pin. pin=true writes `pinned_by=actor`
     /// + `pinned_at_unix=now`; pin=false clears both to defaults (`''` / 0).
     /// Also bumps `updated_at_unix` and toggles `is_pinned` (superset of
-    /// `set_pinned`, which delegates here with an empty actor). NotFound when
-    /// the memory_id does not exist.
+    /// `set_pinned`, which delegates here with an empty actor). `pinned_at_unix`
+    /// is independent of `updated_at_unix` — later non-pin updates (deprecate /
+    /// soft_delete) bump `updated_at_unix` only. NotFound when the memory_id
+    /// does not exist.
     pub fn set_pinned_with_actor(
         &self,
         memory_id: &str,
         pinned: bool,
         actor: &str,
     ) -> Result<(), MemoryStoreError> {
-        let _ = (memory_id, pinned, actor);
-        todo!("task-27.1 GREEN: UPDATE is_pinned + pinned_by/pinned_at_unix write-through")
+        let conn = self.conn.lock().map_err(|e| MemoryStoreError::Invalid(format!("lock: {e}")))?;
+        let now = now_unix();
+        let (pinned_by, pinned_at): (String, i64) = if pinned {
+            (actor.to_string(), now)
+        } else {
+            (String::new(), 0)
+        };
+        let n = conn.execute(
+            "UPDATE memory_items SET is_pinned = ?, pinned_by = ?, pinned_at_unix = ?, \
+             updated_at_unix = ? WHERE memory_id = ?",
+            params![pinned as i64, pinned_by, pinned_at, now, memory_id],
+        )?;
+        if n == 0 {
+            Err(MemoryStoreError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
     /// Set status to one of {active, deprecated, soft_deleted}; bumps updated_at_unix.
