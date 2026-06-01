@@ -103,41 +103,45 @@ impl EventBus {
     /// Default capacity = 1000 (task-11.4 §3: matches v0.3 internal evt
     /// convention; Kafka/NATS replacement is OOS per ADR-004 local-first).
     pub fn new() -> Arc<Self> {
-        let (tx, _) = broadcast::channel(1000);
-        Arc::new(Self {
-            tx,
-            memory_tx: None,
-            indexing_tx: None,
-            config: EventBusConfig::default(),
-        })
+        Self::from_config(EventBusConfig::default())
     }
 
     pub fn with_capacity(cap: usize) -> Arc<Self> {
-        let (tx, _) = broadcast::channel(cap);
-        Arc::new(Self {
-            tx,
-            memory_tx: None,
-            indexing_tx: None,
-            config: EventBusConfig {
-                capacity: cap,
-                partitioned: false,
-            },
+        Self::from_config(EventBusConfig {
+            capacity: cap,
+            partitioned: false,
         })
     }
 
-    /// task-26.3 (ADR-031 D5): build from config — RED stub.
-    pub fn from_config(_config: EventBusConfig) -> Arc<Self> {
-        todo!("task-26.3 GREEN: build single or partitioned channels per config")
+    /// task-26.3 (ADR-031 D5): build from config. Single mode → one channel
+    /// (capacity from config). Partitioned → independent `memory` / `indexing`
+    /// channels (each at the configured capacity) beside the default channel,
+    /// so a high-volume namespace cannot lag-evict the other (ADR-021 D4).
+    pub fn from_config(config: EventBusConfig) -> Arc<Self> {
+        let (tx, _) = broadcast::channel(config.capacity);
+        let (memory_tx, indexing_tx) = if config.partitioned {
+            let (m, _) = broadcast::channel(config.capacity);
+            let (i, _) = broadcast::channel(config.capacity);
+            (Some(m), Some(i))
+        } else {
+            (None, None)
+        };
+        Arc::new(Self {
+            tx,
+            memory_tx,
+            indexing_tx,
+            config,
+        })
     }
 
-    /// task-26.3: configured ring capacity per channel — RED stub.
+    /// task-26.3: configured ring capacity per channel.
     pub fn capacity(&self) -> usize {
-        todo!("task-26.3 GREEN: return config.capacity")
+        self.config.capacity
     }
 
-    /// task-26.3: whether memory/indexing are on independent channels — RED stub.
+    /// task-26.3: whether memory/indexing are on independent channels.
     pub fn partitioned(&self) -> bool {
-        todo!("task-26.3 GREEN: return config.partitioned")
+        self.config.partitioned
     }
 
     /// Best-effort emit. Returns `usize` subscriber count on success, or
@@ -148,6 +152,21 @@ impl EventBus {
     /// task-26.3 (ADR-031 D5): when partitioned, route `memory.*` / `indexing.*`
     /// to their channel; everything else to the default channel.
     pub fn send(&self, evt: PbEvent) -> Result<usize, broadcast::error::SendError<PbEvent>> {
+        if self.config.partitioned {
+            match partition_of(&evt.event_type) {
+                Partition::Memory => {
+                    if let Some(tx) = &self.memory_tx {
+                        return tx.send(evt);
+                    }
+                }
+                Partition::Indexing => {
+                    if let Some(tx) = &self.indexing_tx {
+                        return tx.send(evt);
+                    }
+                }
+                Partition::Other => {}
+            }
+        }
         self.tx.send(evt)
     }
 
@@ -157,15 +176,28 @@ impl EventBus {
         self.tx.subscribe()
     }
 
-    /// task-26.3 (ADR-031 D5): subscribe to all underlying channels — RED stub.
-    /// Single mode → 1 receiver; partitioned → default + memory + indexing.
+    /// task-26.3 (ADR-031 D5): subscribe to all underlying channels. Single mode
+    /// → 1 receiver (default); partitioned → default + memory + indexing. The
+    /// `EventsServer` forwards every returned receiver into one subscriber stream.
     pub fn subscribe_all(&self) -> Vec<broadcast::Receiver<PbEvent>> {
-        todo!("task-26.3 GREEN: return receivers for all channels")
+        let mut v = vec![self.tx.subscribe()];
+        if let Some(m) = &self.memory_tx {
+            v.push(m.subscribe());
+        }
+        if let Some(i) = &self.indexing_tx {
+            v.push(i.subscribe());
+        }
+        v
     }
 
-    /// task-26.3 (ADR-031 D5): subscribe to one partition's channel — RED stub.
-    pub fn subscribe_partition(&self, _p: Partition) -> broadcast::Receiver<PbEvent> {
-        todo!("task-26.3 GREEN: return the channel for the partition (or default)")
+    /// task-26.3 (ADR-031 D5): subscribe to one partition's channel. In single
+    /// mode (no partition channel) falls back to the default channel.
+    pub fn subscribe_partition(&self, p: Partition) -> broadcast::Receiver<PbEvent> {
+        match p {
+            Partition::Memory => self.memory_tx.as_ref().unwrap_or(&self.tx).subscribe(),
+            Partition::Indexing => self.indexing_tx.as_ref().unwrap_or(&self.tx).subscribe(),
+            Partition::Other => self.tx.subscribe(),
+        }
     }
 }
 
@@ -194,9 +226,10 @@ impl EventsService for EventsServer {
 
         // task-11.4 §6 AC3/AC4: real broadcast subscription.
         if let Some(event_bus) = self.stores.event_bus.as_ref() {
-            // Subscribe to the live broadcast FIRST so no event emitted after
-            // this point is lost while we build the replay batch below.
-            let mut sub = event_bus.subscribe();
+            // Subscribe to ALL live channels FIRST (task-26.3: default + memory +
+            // indexing when partitioned; just default otherwise) so no event
+            // emitted after this point is lost while we build the replay batch.
+            let subs = event_bus.subscribe_all();
             // task-26.2 / ADR-031 D4: when `since_ts > 0`, replay the memory
             // state-op events the subscriber missed from the persistent audit
             // log (id ASC) before splicing the live stream. Replay event_ids
@@ -219,23 +252,35 @@ impl EventsService for EventsServer {
                         return;
                     }
                 }
-                // 2. then forward the live broadcast.
-                loop {
-                    match sub.recv().await {
-                        Ok(evt) => {
-                            if tx.send(Ok(evt)).await.is_err() {
-                                // Subscriber gRPC stream dropped — exit loop.
-                                break;
+                // 2. forward every live channel concurrently into the one stream.
+                let mut handles = Vec::with_capacity(subs.len());
+                for mut sub in subs {
+                    let txc = tx.clone();
+                    handles.push(tokio::spawn(async move {
+                        loop {
+                            match sub.recv().await {
+                                Ok(evt) => {
+                                    if txc.send(Ok(evt)).await.is_err() {
+                                        // Subscriber gRPC stream dropped — exit.
+                                        break;
+                                    }
+                                }
+                                Err(broadcast::error::RecvError::Lagged(n)) => {
+                                    eprintln!(
+                                        "WARN events subscriber lagged by {n} events; continuing"
+                                    );
+                                    continue;
+                                }
+                                Err(broadcast::error::RecvError::Closed) => break,
                             }
                         }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            eprintln!(
-                                "WARN events subscriber lagged by {n} events; continuing"
-                            );
-                            continue;
-                        }
-                        Err(broadcast::error::RecvError::Closed) => break,
-                    }
+                    }));
+                }
+                // Drop the original sender so the stream closes once every
+                // forwarder has ended (all channels closed / subscriber gone).
+                drop(tx);
+                for h in handles {
+                    let _ = h.await;
                 }
             });
             return Ok(Response::new(ReceiverStream::new(rx)));
