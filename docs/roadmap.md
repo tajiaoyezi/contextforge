@@ -236,6 +236,21 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-034 production-vector-live-recall**（Proposed，D1 backend 工厂 + 热路径注入 / D2 qdrant live KNN 无 server 诚实延后 / D3 lancedb 真实 ANN 索引 / D4 选择矩阵真实测量 add-only Amendment / D5 默认 0 vector dep baseline 不变；真实 live KNN / 真实索引召回 / 真实矩阵测量出来才 ratify，受阻维度据已达维度 ratify 不强翻）。
 
+### 3.12 v0.23.0 / Phase 30 — cjk-true-segmenter（承 Phase 24，post-v0.20.0 add-only 排期）
+
+**目标**：把 Phase 24（code-and-cjk-tokenizer, Done）的务实 **CJK 重叠 bigram**（`配置加载` → `配置`/`置加`/`加载`）升级为**真分词器**（true word segmenter，`配置加载` → `配置`/`加载`），评估把 tokenizer 由 opt-in 翻为**默认开启**（含既有索引 reindex/migration 工具），并在扩展后的 CJK golden 上量出**真实召回 delta**。真分词器 feature-gated（默认 0-dep，bigram 保留作 fallback）。
+
+**来源 marker（ADR-029:54 Follow-ups + phase-24 spec :41/:42）**：
+- `[SPEC-DEFER:phase-future.cjk-true-segmenter]`（CJK 真正分词器替/补 bigram）。
+- `[SPEC-DEFER:phase-future.tokenizer-default-on]`（tokenizer 默认开启 + 既有索引迁移工具）。
+
+**候选 task 拆分**：
+- **task-30.1** cjk-true-segmenter：新 `cjk-segmenter` feature（默认 off，镜像 `vector-lancedb` gating）+ optional dep（jieba-rs/lindera，经主 agent R7 chore + ADR-008 add-only）+ 并行 analyzer 名 `cjk_segmenter` + 双站点注册（index `:442` + query `:250`）对称；bigram 保留 0-dep fallback；deterministic 真词边界单测。🟢 分词单测 / 🔴 重词典 dep。
+- **task-30.2** tokenizer-default-on + 既有索引迁移 + 真实 CJK recall delta：reindex/migration 工具 + `RetrieverConfig.tokenizer`（现 vestigial）路由接线或文档化 schema-driven + 扩展 CJK golden（Go `ValidateGoldenSemantic` 校验）+ phase24-harness 量 default vs bigram vs 真分词真实 delta（不预填，ADR-013）；迁移过重则诚实延后 default flip。🟡 recall / 🟢 wiring。
+- **task-30.3** v0.23.0 closeout：smoke v20 step + release docs + ADR-035 ratify + ADR-029 add-only Amendment + adapter + feature。🟢。
+
+**ADR**：**ADR-035 cjk-true-segmenter-and-tokenizer-default**（Proposed，D1 真分词 feature-gated / D2 并行 analyzer 名 + 双站点注册对称 / D3 tokenizer-default-on 评估 + 迁移工具 + config 路由接线 / D4 扩展 CJK golden 真实 recall delta 不预填 / D5 默认 tokenization 不变；真实分词单测 / 真实 recall delta 出来才 ratify，重词典 dep / 小语料受阻维度据已达维度 ratify）。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
@@ -256,6 +271,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > **v0.17.0 / Phase 24 推进记录（已落地 2026-05-31，add-only）**：`cjk-and-code-tokenizer` → ✅ opt-in code/CJK `TextAnalyzer`（纯 std，task-24.1）；`eval-dataset-validation` → ✅ `ValidateGoldenSemantic`（task-24.2）；`semantic-golden-dataset` → ✅ `golden-semantic.jsonl` 代码/CJK 扩充（task-24.2）；`rust-native-eval-runner` → 🟡 真实评估后**诚实延后**（Go harness 续为单一事实源，`[SPEC-DEFER:phase-future.rust-native-eval-runner]`，task-24.3）。真实 before/after recall delta = +0.0909（default 0.9091 → code/CJK 1.0000）over task-24.2 golden（ADR-029 Accepted；详 `docs/spikes/phase-24-tokenizer-recall.md`）。CJK 真正分词器 `[SPEC-DEFER:phase-future.cjk-true-segmenter]` + tokenizer 默认开启 `[SPEC-DEFER:phase-future.tokenizer-default-on]` 续 backlog。
 >
 > **v0.22.0 / Phase 29 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.11 把上方「向量 backend 细化」段的 `qdrant-deployment-topology`（残留 live-server KNN 维度承 `qdrant-server-lifecycle`）/ `lancedb-index-tuning` / `lancedb-schema-compaction` / `multi-backend-production` + phase-25 spec line 44 的 `[SPEC-DEFER:phase-future.vector-retrieval-integration]` 排入 **v0.22.0 / Phase 29 — live-vector-recall**（task-29.1 工厂 + server.rs 热路径注入 / task-29.2 qdrant live KNN 真实兑现（无 server 诚实延后）/ task-29.3 lancedb 真实 ANN 索引 + 选择矩阵真实测量 → ADR-030/023 add-only Amendment / task-29.4 closeout）。真实 live KNN / 真实索引召回 / 真实矩阵测量数值一律真实跑出后回填（ADR-013，不预填）。`lancedb-schema-compaction` / `qdrant-deployment-topology`（集群拓扑）/ `lancedb-build-prereq-ci`（CI 构建 ICE 前置）很可能续 backlog 诚实延后。ADR-034 Proposed。
+>
+> **v0.23.0 / Phase 30 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.12 把上方「检索 tokenizer」段承 Phase 24 的两项 follow-up marker `[SPEC-DEFER:phase-future.cjk-true-segmenter]` + `[SPEC-DEFER:phase-future.tokenizer-default-on]`（出处 ADR-029:54 + phase-24 spec :41/:42，**非** §4 既有 `cjk-and-code-tokenizer` —— 后者已于 v0.17.0 闭合）排入 **v0.23.0 / Phase 30 — cjk-true-segmenter**（task-30.1 真分词器 feature-gated + 双站点注册 / task-30.2 tokenizer-default-on 评估 + 既有索引迁移 + 真实 CJK recall delta / task-30.3 closeout）。真分词器引入 optional dep（jieba-rs/lindera）经主 agent R7 chore + ADR-008 add-only；默认构建仍 0 新 dep + 默认 tokenization 不变（ADR-004）。真实 recall delta 真实跑出后回填（ADR-013，不预填）；若全量 default-on 迁移过重则诚实延后 default flip 续 backlog。ADR-035 Proposed。
 
 ---
 
