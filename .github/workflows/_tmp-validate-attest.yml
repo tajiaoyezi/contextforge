@@ -1,10 +1,12 @@
-name: "[TEMP] task-28.2 attestation validation (local registry)"
+name: "[TEMP] task-28.2 cosign sign/attest validation (local registry)"
 
-# TEMPORARY validation for task-28.2. NOT a permanent guard. Proves the GitHub-native
-# signed-attestation mechanism (actions/attest-build-provenance + actions/attest-sbom +
-# gh attestation verify) end-to-end against a LOCAL registry + tiny test image — WITHOUT
-# any outward-facing GHCR push and without the ~20min real Rust build. Removed before merge.
-# Per user decision: GitHub-native attestation; one-off validation, no permanent CI guard.
+# TEMPORARY validation for task-28.2. NOT a permanent guard. Proves the cosign keyless
+# supply-chain mechanism (cosign sign + cosign attest SBOM + cosign verify +
+# cosign verify-attestation) end-to-end against a LOCAL registry + tiny test image —
+# WITHOUT any outward-facing GHCR push and without the ~20min real Rust build.
+# (GitHub-native attestation was blocked: actions/attest-* not available on user-owned
+# PRIVATE repos — run 26789731232 failure. cosign uses public Sigstore + GHCR OCI artifacts,
+# independent of repo visibility.) Removed before merge.
 
 on:
   push:
@@ -14,8 +16,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write       # Sigstore OIDC (keyless attestation signing)
-  attestations: write   # write to GitHub attestation store
+  id-token: write       # Sigstore OIDC (keyless cosign signing)
 
 jobs:
   validate:
@@ -48,39 +49,40 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "built ${IMAGE}@${DIGEST}"
 
-      - name: Attest build provenance (signed SLSA)
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
 
-      - name: Generate SBOM (SPDX-JSON)
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Attest SBOM (signed)
-        uses: actions/attest-sbom@v4
-        with:
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          sbom-path: sbom.spdx.json
-          push-to-registry: true
-
-      - name: gh attestation verify (provenance + SBOM)
+      - name: cosign sign (keyless, local registry)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          REPO="${{ github.repository }}"
-          REF="${IMAGE}@${{ steps.build.outputs.digest }}"
-          echo "::group::provenance"
-          gh attestation verify "oci://${REF}" -R "$REPO"
+          cosign sign --yes --allow-insecure-registry "${IMAGE}@${DIGEST}"
+
+      - name: SBOM (syft SPDX) + cosign attest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "${IMAGE}@${DIGEST}"           # localhost → docker treats as insecure by default
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft "docker:${IMAGE}@${DIGEST}" -o spdx-json=sbom.spdx.json
+          cosign attest --yes --allow-insecure-registry --type spdxjson \
+            --predicate sbom.spdx.json "${IMAGE}@${DIGEST}"
+
+      - name: cosign verify + verify-attestation
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          ID="^https://github.com/${{ github.repository }}/\.github/workflows/.*$"
+          ISS="https://token.actions.githubusercontent.com"
+          echo "::group::cosign verify"
+          cosign verify --allow-insecure-registry "${IMAGE}@${DIGEST}" \
+            --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISS"
           echo "::endgroup::"
-          echo "::group::SBOM (SPDX)"
-          gh attestation verify "oci://${REF}" -R "$REPO" --predicate-type https://spdx.dev/Document/v2.3
+          echo "::group::cosign verify-attestation (spdxjson)"
+          cosign verify-attestation --allow-insecure-registry --type spdxjson "${IMAGE}@${DIGEST}" \
+            --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISS"
           echo "::endgroup::"
-          echo "✅ provenance + SBOM attestations produced + verified (local registry)"
+          echo "✅ cosign sign + SBOM attest + verify + verify-attestation OK (local registry)"

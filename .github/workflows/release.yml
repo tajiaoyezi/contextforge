@@ -13,9 +13,8 @@ on:
 
 permissions:
   contents: read
-  packages: write
-  id-token: write       # Sigstore OIDC token for keyless attestation signing (task-28.2)
-  attestations: write   # write signed provenance + SBOM to the GitHub attestation store
+  packages: write       # push image + cosign signature/attestation OCI artifacts to GHCR
+  id-token: write       # Sigstore OIDC token for keyless cosign signing (task-28.2)
 
 jobs:
   build-and-push:
@@ -57,21 +56,26 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
+          provenance: mode=max          # SLSA build provenance attached to the image index
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.ref.outputs.tag }}
             ${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # --- Supply-chain attestations (task-28.2): signed SLSA provenance + SPDX SBOM,
-      # bound to the pushed manifest digest, stored in the GitHub attestation store +
-      # GHCR OCI referrer. Verified downstream via `gh attestation verify` (verify-image.yml).
-      - name: Attest build provenance (signed SLSA)
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
+      # --- Supply-chain proof (task-28.2): keyless cosign signature + signed SPDX SBOM
+      # attestation, both bound to the pushed manifest DIGEST and stored as OCI artifacts in
+      # GHCR (Sigstore Fulcio cert + Rekor log; independent of repo visibility). Verified
+      # downstream by cosign in verify-image.yml.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image (keyless, by digest)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE_NAME}@${DIGEST}"
 
       - name: Generate SBOM (SPDX-JSON) from pushed image
         uses: anchore/sbom-action@v0
@@ -80,13 +84,12 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
 
-      - name: Attest SBOM (signed)
-        uses: actions/attest-sbom@v4
-        with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          sbom-path: sbom.spdx.json
-          push-to-registry: true
+      - name: Attest SBOM (keyless cosign attestation)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE_NAME}@${DIGEST}"
 
       - name: Image summary
         run: |
