@@ -1,8 +1,9 @@
-name: "[TEMP] diagnose cosign verify hang (fix/verify-image)"
+name: "[TEMP] confirm fixed cosign verify (resolve digest from tag → verify by digest)"
 
-# TEMPORARY diagnostic for the verify-image.yml cosign-verify hang (task-28.2 follow-up).
-# Tests multiple hypotheses against the REAL signed v0.21.0 GHCR image, each timeout-bounded +
-# continue-on-error so all run in one pass. Read-only (verify only; no push). Removed before merge.
+# TEMPORARY confirmation for the verify-image.yml fix: mirror the FIXED step exactly —
+# resolve the digest FROM THE TAG (as verify-image.yml does), then cosign verify + verify-
+# attestation by digest with timeout. Proves the resolve-from-tag → verify-by-digest chain
+# works end-to-end against the real signed v0.21.0 image. Removed before merge.
 
 on:
   push:
@@ -15,14 +16,11 @@ permissions:
   packages: read
 
 jobs:
-  diagnose:
+  confirm:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
-      REPO: ${{ github.repository }}
-      DIGEST_REF: ghcr.io/${{ github.repository_owner }}/contextforge-daemon@sha256:f2cb3aadd5608a42e247aad562cb64f1c260dee1a5f4909c862e6484044d1e46
-      IDENTITY: ^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@.*$
-      ISSUER: https://token.actions.githubusercontent.com
+      IMAGE: ghcr.io/${{ github.repository_owner }}/contextforge-daemon:v0.21.0
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -34,50 +32,22 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: cosign version
-        run: cosign version
-
-      - name: A — cosign verify by digest (plain, timeout 120)
-        continue-on-error: true
+      - name: Verify (resolve digest from tag → verify by digest) — mirrors verify-image.yml fix
         run: |
-          set -x
-          timeout 120 cosign verify "$DIGEST_REF" \
+          set -euo pipefail
+          IDENTITY="^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@.*$"
+          ISSUER="https://token.actions.githubusercontent.com"
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')
+          REF="ghcr.io/${{ github.repository_owner }}/contextforge-daemon@${DIGEST}"
+          echo "resolved $IMAGE -> $REF"
+          echo "::group::cosign verify"
+          timeout 180 cosign verify "$REF" \
             --certificate-identity-regexp "$IDENTITY" \
             --certificate-oidc-issuer "$ISSUER" -o text
-          echo "A exit=$?"
-
-      - name: B — cosign verify --insecure-ignore-tlog (timeout 120) [tests if Rekor is the hang]
-        continue-on-error: true
-        run: |
-          set -x
-          timeout 120 cosign verify "$DIGEST_REF" \
-            --insecure-ignore-tlog=true \
+          echo "::endgroup::"
+          echo "::group::cosign verify-attestation (spdxjson)"
+          timeout 180 cosign verify-attestation --type spdxjson "$REF" \
             --certificate-identity-regexp "$IDENTITY" \
-            --certificate-oidc-issuer "$ISSUER" -o text
-          echo "B exit=$?"
-
-      - name: C — cosign verify --private-infrastructure / offline tlog? (timeout 120) [tries --offline]
-        continue-on-error: true
-        run: |
-          set -x
-          timeout 120 cosign verify "$DIGEST_REF" \
-            --offline=true \
-            --certificate-identity-regexp "$IDENTITY" \
-            --certificate-oidc-issuer "$ISSUER" -o text
-          echo "C exit=$?"
-
-      - name: D — cosign verify-attestation spdxjson (timeout 120)
-        continue-on-error: true
-        run: |
-          set -x
-          timeout 120 cosign verify-attestation --type spdxjson "$DIGEST_REF" \
-            --certificate-identity-regexp "$IDENTITY" \
-            --certificate-oidc-issuer "$ISSUER" -o text | head -c 400
-          echo ""
-          echo "D done"
-
-      - name: E — does the .sig exist? (crane/cosign triangulate)
-        continue-on-error: true
-        run: |
-          set -x
-          timeout 60 cosign triangulate "$DIGEST_REF" || echo "triangulate exit=$?"
+            --certificate-oidc-issuer "$ISSUER" -o text >/dev/null
+          echo "::endgroup::"
+          echo "✅ resolve-from-tag → verify-by-digest chain OK (digest ${DIGEST})"

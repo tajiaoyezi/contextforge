@@ -64,22 +64,27 @@ jobs:
         run: |
           set -euo pipefail
           # From v0.21.0 the release keyless-signs the image + attaches a signed SPDX SBOM
-          # attestation (task-28.2). Verify both, requiring the Sigstore cert identity to be
-          # THIS repo's release workflow. (Pre-v0.21.0 images are unsigned and expected to
-          # fail this — supply-chain proof lands in task-28.2 + the v0.21.0 release.)
+          # attestation (task-28.2). Verify BOTH by IMMUTABLE DIGEST, not by tag: cosign verify
+          # by tag hung for 10min against the GHCR image (run 26823246086 timed out); by-digest
+          # is fast (run 26824642258 diagnosis) and matches how release.yml signs (the digest).
+          # Require the Sigstore cert identity to be THIS repo's release workflow. (Pre-v0.21.0
+          # images are unsigned and expected to fail this.) `timeout` bounds any future hang.
           IDENTITY="^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@.*$"
           ISSUER="https://token.actions.githubusercontent.com"
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')
+          REF="ghcr.io/${{ github.repository_owner }}/contextforge-daemon@${DIGEST}"
+          echo "verifying $REF"
           echo "::group::cosign verify (image signature)"
-          cosign verify "$IMAGE" \
+          timeout 180 cosign verify "$REF" \
             --certificate-identity-regexp "$IDENTITY" \
-            --certificate-oidc-issuer "$ISSUER"
+            --certificate-oidc-issuer "$ISSUER" -o text
           echo "::endgroup::"
           echo "::group::cosign verify-attestation (SPDX SBOM)"
-          cosign verify-attestation --type spdxjson "$IMAGE" \
+          timeout 180 cosign verify-attestation --type spdxjson "$REF" \
             --certificate-identity-regexp "$IDENTITY" \
-            --certificate-oidc-issuer "$ISSUER"
+            --certificate-oidc-issuer "$ISSUER" -o text >/dev/null
           echo "::endgroup::"
-          echo "✅ cosign signature + SBOM attestation verified"
+          echo "✅ cosign signature + SBOM attestation verified (by digest ${DIGEST})"
 
       - name: docker run + curl /v1/health (fallback in-mem opt-in)
         run: |
