@@ -6,6 +6,7 @@
 //! scan/parse/chunk/index/retrieve modules behind this same crate.
 
 /// tonic/prost generated bindings for `package contextforge.v1`.
+#[allow(clippy::all)]
 pub mod pb {
     tonic::include_proto!("contextforge.v1");
 }
@@ -13,6 +14,7 @@ pub mod pb {
 /// task-11.1 (Phase 11): tonic/prost generated bindings for
 /// `package contextforge.console_data_plane.v1` (ADR-016 §D2).
 /// Separated from `pb` to keep Phase 9 Index gRPC contract frozen.
+#[allow(clippy::all)]
 pub mod pb_console {
     tonic::include_proto!("contextforge.console_data_plane.v1");
 }

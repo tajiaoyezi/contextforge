@@ -98,7 +98,7 @@ pub fn console_message_fields(msg: &str) -> Vec<String> {
         let Some((decl, _tag)) = line.split_once('=') else {
             continue;
         };
-        if let Some(name) = decl.trim().split_whitespace().last() {
+        if let Some(name) = decl.split_whitespace().last() {
             if name.chars().all(|c| c.is_alphanumeric() || c == '_') && !name.is_empty() {
                 fields.push(name.to_string());
             }

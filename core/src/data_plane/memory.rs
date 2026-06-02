@@ -545,11 +545,8 @@ mod tests {
         rx: &mut tokio::sync::broadcast::Receiver<PbEvent>,
     ) -> Vec<PbEvent> {
         let mut out = Vec::new();
-        loop {
-            match rx.try_recv() {
-                Ok(evt) => out.push(evt),
-                Err(_) => break,
-            }
+        while let Ok(evt) = rx.try_recv() {
+            out.push(evt);
         }
         out
     }

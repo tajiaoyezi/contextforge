@@ -50,7 +50,7 @@ pub fn recall_rate(got: &[Vec<ChunkId>], truths: &[ChunkId], k: usize) -> f64 {
 }
 
 /// p-th percentile of latencies in milliseconds (nearest-rank). `p` in [0.0, 1.0].
-pub fn percentile_ms(durations: &mut Vec<Duration>, p: f64) -> f64 {
+pub fn percentile_ms(durations: &mut [Duration], p: f64) -> f64 {
     if durations.is_empty() {
         return 0.0;
     }

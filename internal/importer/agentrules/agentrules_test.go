@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/tajiaoyezi/contextforge/internal/importer"
+	_ "github.com/tajiaoyezi/contextforge/internal/importer/agentrules"  // ensure registry has it for Resolve tests
 	ar "github.com/tajiaoyezi/contextforge/internal/importer/agentrules" // for New + init side-effect
-	_ "github.com/tajiaoyezi/contextforge/internal/importer/agentrules" // ensure registry has it for Resolve tests
 )
 
 // TEST-3.4.1 / SCEN-3.4.1 / AC1: AGENTS.md / CLAUDE.md 作为 agent_rule 导入

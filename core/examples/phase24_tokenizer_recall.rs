@@ -169,8 +169,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let before = run(&data_before, "tok", RetrieverConfig::default(), &queries)?;
-    let mut cfg_after = RetrieverConfig::default();
-    cfg_after.tokenizer = "code_cjk".to_string();
+    let cfg_after = RetrieverConfig {
+        tokenizer: "code_cjk".to_string(),
+        ..Default::default()
+    };
     let after = run(&data_after, "tok", cfg_after, &queries)?;
 
     println!("=== task-24.3 REAL tokenizer before/after recall (BM25 file-level over task-24.2 golden) ===");

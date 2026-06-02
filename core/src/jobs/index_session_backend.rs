@@ -232,7 +232,7 @@ impl IndexerBackend for IndexSessionBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jobs::{JobError, JobStore, SqliteJobStore};
+    use crate::jobs::{JobError, SqliteJobStore};
     use crate::workspace::{SqliteWorkspaceStore, WorkspaceCreate, WorkspaceStore};
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
@@ -264,7 +264,7 @@ mod tests {
     }
 
     fn ensure_workspace(
-        data_dir: &PathBuf,
+        data_dir: &Path,
         workspace_id: &str,
     ) -> Result<(SqliteWorkspaceStore, SqliteJobStore), JobError> {
         let ws = SqliteWorkspaceStore::open(data_dir).expect("ws open");

@@ -52,3 +52,44 @@ jobs:
           fetch-depth: 0  # for git diff against origin/master
       - name: spec drift lint --touched
         run: bash scripts/spec_drift_lint.sh --touched origin/master
+
+  # task-28.3 (Phase 28): strict code lint gate — clippy + gofmt + go vet, all blocking.
+  # Backlog (CI/LF authoritative — local Windows CRLF masked the real gofmt count):
+  # gofmt 15 files / go vet 0 / clippy ~33 — all fixed in task-28.3 before turning red.
+  lint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.93'
+          components: clippy
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo clippy (-D warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: gofmt check
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt — these files need formatting:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+          echo "gofmt clean"
+      - name: go vet
+        run: go vet ./...

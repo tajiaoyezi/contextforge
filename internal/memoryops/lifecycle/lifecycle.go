@@ -97,13 +97,18 @@ func (SystemOracle) ModTime(path string) (time.Time, bool) {
 // Mark — 主入口（AC1 stale 三触发 + AC2 基础冲突检测 + AC3 反指标守护）.
 //
 // AC1: 对每条 record 跑 expires_at / source-deleted / source-modified 三触发；
-//      任一命中即追加 StaleMark（同一 record 每种 reason 至多 1 条，避免多 provenance
-//      行重复刷屏；时间用 oracle.Now() 统一）.
+//
+//	任一命中即追加 StaleMark（同一 record 每种 reason 至多 1 条，避免多 provenance
+//	行重复刷屏；时间用 oracle.Now() 统一）.
+//
 // AC2: 跨全集按 source_uri 与 file_path 两种 group key 分组；
-//      group 内 >=2 条且 content_hash 不全相同 → ConflictReport 追加；
-//      group key 为空字符串的 record 不参与分组（避免空键聚成巨型 conflict）.
+//
+//	group 内 >=2 条且 content_hash 不全相同 → ConflictReport 追加；
+//	group key 为空字符串的 record 不参与分组（避免空键聚成巨型 conflict）.
+//
 // AC3: 不调用任何 LLM / embedding API（仅 oracle + 字面字段比较；
-//      TestMark_DoesNotPerformSemanticAnalysis regression guard）.
+//
+//	TestMark_DoesNotPerformSemanticAnalysis regression guard）.
 func Mark(records []*contextforgev1.ContextRecord, oracle Oracle) Result {
 	now := oracle.Now()
 	staleMarks := make([]StaleMark, 0)

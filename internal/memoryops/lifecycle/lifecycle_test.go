@@ -99,9 +99,9 @@ func TestMark_StaleThreeTriggers(t *testing.T) {
 			"/repo/healthy.md":  true,
 		},
 		modTimes: map[string]time.Time{
-			"/repo/expired.md":  oldModTime,    // mtime 不影响
-			"/repo/modified.md": newerModTime,  // fs mtime 比 record source_modified 新
-			"/repo/healthy.md":  oldModTime,    // mtime 等于 record source_modified
+			"/repo/expired.md":  oldModTime,   // mtime 不影响
+			"/repo/modified.md": newerModTime, // fs mtime 比 record source_modified 新
+			"/repo/healthy.md":  oldModTime,   // mtime 等于 record source_modified
 		},
 	}
 

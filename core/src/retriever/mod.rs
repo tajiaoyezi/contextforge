@@ -460,7 +460,7 @@ impl Retriever {
         // Results are NOT merged into the BM25 set — `retrieval_method` stays "bm25" here; semantic
         // results go via `search_semantic`, and hybrid fusion is [SPEC-DEFER:phase-future.hybrid-scoring].
         if let (Some(embedder), Some(searcher)) = (&self.embedder, &self.vector_searcher) {
-            if let Ok(vecs) = embedder.embed(&[opts.query.clone()]) {
+            if let Ok(vecs) = embedder.embed(std::slice::from_ref(&opts.query)) {
                 if let Some(qv) = vecs.into_iter().next() {
                     let _vector_hits = searcher.search(&qv, opts.top_k, None).unwrap_or_default();
                 }
@@ -809,14 +809,11 @@ impl Retriever {
     /// Returns 0 when SQLite query fails so health/stats don't 503 over a
     /// transient lock — fallback safety aligns with [SPEC-OWNER:task-15.3].
     pub fn count_indexed_since(&self, since_iso: &str) -> i64 {
-        match self.sqlite.query_row(
+        self.sqlite.query_row(
             "SELECT COUNT(*) FROM chunks WHERE indexed_at >= ?1",
             params![since_iso],
             |r| r.get::<_, i64>(0),
-        ) {
-            Ok(n) => n,
-            Err(_) => 0,
-        }
+        ).unwrap_or_default()
     }
 
     pub fn data_dir(&self) -> &Path {

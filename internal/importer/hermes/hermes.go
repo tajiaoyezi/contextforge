@@ -6,9 +6,10 @@
 // NewFileFallbackImporter + warning. Otherwise build hermes-specific record.
 //
 // Canonical record key fields (BINDING):
-//   source_provider="hermes" / agent_scope=["hermes"] / provenance.importer="hermes-memory"
-//   source_type="memory" / language="markdown" / redaction_status="pending"
-//   (task-3.1 §10 Waiver — 下游 scanner/indexer 脱敏)
+//
+//	source_provider="hermes" / agent_scope=["hermes"] / provenance.importer="hermes-memory"
+//	source_type="memory" / language="markdown" / redaction_status="pending"
+//	(task-3.1 §10 Waiver — 下游 scanner/indexer 脱敏)
 package hermes
 
 import (

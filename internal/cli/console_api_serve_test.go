@@ -16,12 +16,12 @@ import (
 // --fallback-inmem, and --auth-token flag parsing + env override path.
 func TestConsoleApiServeFlags(t *testing.T) {
 	tests := []struct {
-		name             string
-		args             []string
-		env              map[string]string
-		expectFallback   bool
-		expectGrpcAddr   string
-		expectAuthToken  string
+		name            string
+		args            []string
+		env             map[string]string
+		expectFallback  bool
+		expectGrpcAddr  string
+		expectAuthToken string
 	}{
 		{
 			name:           "defaults",

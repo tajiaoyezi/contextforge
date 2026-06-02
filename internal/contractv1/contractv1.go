@@ -112,18 +112,18 @@ type IndexJob struct {
 // SearchRequest — PRD must-have: query/workspace_id/agent_scope/
 // retrieval_method/top_k/config_snapshot.
 type SearchRequest struct {
-	Query           string            `json:"query"`
-	WorkspaceID     string            `json:"workspace_id"`
-	AgentScope      string            `json:"agent_scope"`
-	RetrievalMethod string            `json:"retrieval_method"`
-	TopK            int               `json:"top_k"`
-	ConfigSnapshot  json.RawMessage   `json:"config_snapshot"`
+	Query           string          `json:"query"`
+	WorkspaceID     string          `json:"workspace_id"`
+	AgentScope      string          `json:"agent_scope"`
+	RetrievalMethod string          `json:"retrieval_method"`
+	TopK            int             `json:"top_k"`
+	ConfigSnapshot  json.RawMessage `json:"config_snapshot"`
 	// Semantic — task-20.1 (Phase 20): add-only opt-in semantic-search flag.
 	// OR-merged from the `?semantic=true` query param or this body field by
 	// handleSearch, then forwarded to gRPC SearchRequest.Semantic. Default false
 	// → BM25 (backward-compatible, ADR-015 add-only).
-	Semantic        bool              `json:"semantic"`
-	Availability    FieldAvailability `json:"field_availability"`
+	Semantic     bool              `json:"semantic"`
+	Availability FieldAvailability `json:"field_availability"`
 }
 
 // SearchResult — PRD must-have: result_id/query_id/workspace_id/
@@ -204,22 +204,22 @@ type Citation struct {
 // daemon responses lacking the key unmarshal to bool zero value (false),
 // preserving forward / backward compatibility (ADR-022 D4).
 type MemoryItem struct {
-	MemoryID       string            `json:"memory_id"`
-	AgentScope     string            `json:"agent_scope"`
-	ContentPreview string            `json:"content_preview"`
-	SourceType     string            `json:"source_type"`
-	SourceRef      string            `json:"source_ref"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	HitCount       int               `json:"hit_count"`
-	Status         string            `json:"status"`
-	IsPinned       bool              `json:"is_pinned"`
+	MemoryID       string    `json:"memory_id"`
+	AgentScope     string    `json:"agent_scope"`
+	ContentPreview string    `json:"content_preview"`
+	SourceType     string    `json:"source_type"`
+	SourceRef      string    `json:"source_ref"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	HitCount       int       `json:"hit_count"`
+	Status         string    `json:"status"`
+	IsPinned       bool      `json:"is_pinned"`
 	// task-27.1 / ADR-032 D1: add-only pin-actor + pinned-at-timestamp. v0.19
 	// and earlier daemon responses lacking the keys unmarshal to zero values
 	// ("" / 0), preserving forward / backward compatibility.
-	PinnedBy       string            `json:"pinned_by"`
-	PinnedAtUnix   int64             `json:"pinned_at_unix"`
-	Availability   FieldAvailability `json:"field_availability"`
+	PinnedBy     string            `json:"pinned_by"`
+	PinnedAtUnix int64             `json:"pinned_at_unix"`
+	Availability FieldAvailability `json:"field_availability"`
 }
 
 // MemoryOperation — schema_version field aligns with the Console D3 schema

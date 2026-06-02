@@ -151,6 +151,8 @@ impl EventBus {
     ///
     /// task-26.3 (ADR-031 D5): when partitioned, route `memory.*` / `indexing.*`
     /// to their channel; everything else to the default channel.
+    // clippy: error type intentionally not boxed — mirrors tokio's broadcast::SendError public API; boxing would ripple to every caller.
+    #[allow(clippy::result_large_err)]
     pub fn send(&self, evt: PbEvent) -> Result<usize, broadcast::error::SendError<PbEvent>> {
         if self.config.partitioned {
             match partition_of(&evt.event_type) {
@@ -334,7 +336,7 @@ pub fn build_cancelled_event(job_id: &str) -> PbEvent {
         event_type: "indexing.cancelled".to_string(),
         severity: "info".to_string(),
         source: "contextforge-core".to_string(),
-        message: format!("indexing cancelled by user request"),
+        message: "indexing cancelled by user request".to_string(),
         ts_unix: now_unix(),
         trace_id: None,
         job_id: Some(job_id.to_string()),

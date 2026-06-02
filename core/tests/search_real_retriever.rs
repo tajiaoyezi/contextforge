@@ -1,5 +1,5 @@
-//! task-11.4 integration: SearchService.Query 真接 Retriever (Tantivy + SQLite)
-//! + EventsService.Subscribe 真接 EventBus broadcast + JobRunner progress emit
+//! task-11.4 integration: SearchService.Query 真接 Retriever (Tantivy + SQLite) +
+//! EventsService.Subscribe 真接 EventBus broadcast + JobRunner progress emit
 //! `indexing.progress` events end-to-end.
 
 use contextforge_core::data_plane::events::EventBus;

@@ -585,12 +585,12 @@ func (f *fakeSearchTraceServer) GetSearchTrace(_ context.Context, req *pb.GetSea
 		return nil, f.traceErr
 	}
 	return &pb.RetrievalTrace{
-		TraceId:                "trace-xyz",
-		Query:                  "hello",
+		TraceId:                  "trace-xyz",
+		Query:                    "hello",
 		CandidateGenerationSteps: []string{"bm25"},
-		LexicalCandidatesCount: 0,
-		ScopeFilterResult:      "no-op",
-		FinalContextCount:      0,
+		LexicalCandidatesCount:   0,
+		ScopeFilterResult:        "no-op",
+		FinalContextCount:        0,
 	}, nil
 }
 
@@ -721,7 +721,7 @@ func TestEventsClient_PhaseOneTimeout_ReturnsEmpty(t *testing.T) {
 func TestEventsClient_PhaseTwoBatchesFollowupEvents(t *testing.T) {
 	fake := &fakeEventsServer{
 		eventsByCall: [][]*pb.ObservabilityEvent{
-			{fakeEvt("evt-1", "indexing.progress")},                                          // phase-1 call → 1 event
+			{fakeEvt("evt-1", "indexing.progress")},                                         // phase-1 call → 1 event
 			{fakeEvt("evt-2", "indexing.progress"), fakeEvt("evt-3", "indexing.cancelled")}, // phase-2 call → 2 events
 		},
 		blockOnLastCall: true,

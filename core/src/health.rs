@@ -77,12 +77,13 @@ impl HealthChecker {
     /// without aborting the sweep.
     pub fn check_all(&self) -> DetailedHealth {
         let started = Instant::now();
-        let mut components = Vec::with_capacity(5);
-        components.push(self.probe_db());
-        components.push(self.probe_index());
-        components.push(self.probe_embed());
-        components.push(self.probe_retriever());
-        components.push(self.probe_eval());
+        let components = vec![
+            self.probe_db(),
+            self.probe_index(),
+            self.probe_embed(),
+            self.probe_retriever(),
+            self.probe_eval(),
+        ];
         let overall = aggregate_status(&components);
         DetailedHealth {
             overall,

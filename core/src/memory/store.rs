@@ -174,8 +174,8 @@ impl SqliteMemoryStore {
         self.set_pinned_with_actor(memory_id, pinned, "")
     }
 
-    /// task-27.1 (ADR-032 D1): actor-aware pin. pin=true writes `pinned_by=actor`
-    /// + `pinned_at_unix=now`; pin=false clears both to defaults (`''` / 0).
+    /// task-27.1 (ADR-032 D1): actor-aware pin. pin=true writes `pinned_by=actor` +
+    /// `pinned_at_unix=now`; pin=false clears both to defaults (`''` / 0).
     /// Also bumps `updated_at_unix` and toggles `is_pinned` (superset of
     /// `set_pinned`, which delegates here with an empty actor). `pinned_at_unix`
     /// is independent of `updated_at_unix` — later non-pin updates (deprecate /
