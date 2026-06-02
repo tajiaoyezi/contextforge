@@ -1,5 +1,20 @@
 # ContextForge Release Notes
 
+## v0.21.0 (2026-06-02) — release-ci-hardening (anonymous-pull guard + cosign 签名/SBOM/provenance + CI strict-lint + multi-arch arm64 DEFERRED + ADR-033 ratified)
+
+Phase 28 硬化发布 / CI 流水线。**全部改动为 `.github/workflows/*` + surgical clippy/gofmt 修复**；镜像运行时行为 + 默认构建 0-network / 0 新依赖 baseline **不变**（ADR-004），既有 cargo-test/go-test/spec-lint 三门不退化，0 新代码依赖。诚实口径：**arm64 multi-arch 延后**（QEMU emulation 实测不可行）、**真实 GHCR 签名于已授权 v0.21.0 release run 产生**（机制已 CI 端到端验证）。
+
+| task | 交付 |
+|---|---|
+| 28.1 (#188) | `verify-image.yml` 未鉴权（`docker logout` 后）匿名 pull 守护（守 v0.10.0 GHCR-PRIVATE→403 回归，run 26788773926 ✅）；**multi-arch（arm64）实测不可行 DEFERRED**——run 26757640892 `platforms: amd64,arm64` `push:false` 构建 45min 超时（arm64 QEMU emulation 仍编译 Rust 依赖），`release.yml` 保持单架构 amd64 + arm64 `[SPEC-DEFER:phase-future.multi-arch-native-runner]`；TEST-28.1.* |
+| 28.2 (#189) | `release.yml` cosign keyless sign（签 digest）+ `cosign attest` SPDX SBOM（syft）+ build-push `provenance:max` + `verify-image.yml` cosign verify + verify-attestation；GitHub 原生 attestation 私有仓库不可用（run 26789731232 failure）→ 改 cosign（ADR-033 §D2 原文，公共 Sigstore + GHCR OCI 工件与 repo 可见性无关）；全机制本地 registry run 26799480280 ✅ 端到端验证，真实 GHCR 签名于 v0.21.0 release run；TEST-28.2.* |
+| 28.3 (#190) | `ci.yml` add-only `lint` job（clippy `-D warnings` + gofmt + go vet 三阻断，既有三门不退化）；先实测存量（CI/LF 权威：gofmt 15 真实 / go vet 0 / clippy ~33；本机 96 系 Windows CRLF 假阳性，初判误断 0 经 CI 纠正）→ 全修到全绿（gofmt -w+strip / clippy fix+手动+2 targeted allow），`cargo test` 187 passed；TEST-28.3.* |
+| 28.4 (this) | v0.21.0 release docs + smoke v18 step 37（发布硬化状态）+ ADR-033 ratify（D1 arm64 DEFERRED / D2 cosign 机制验证·真签在 release / D3 lint 门绿，逐维如实）+ ADR-007 add-only Amendment + phase-28 §6 闭合；TEST-28.4 |
+
+**ADR**：ADR-033 (release-ci-hardening) 据 D1-D4 真实 CI / release run 产物 `Proposed → Accepted`（D1 arm64 emulation 不可行 DEFERRED + anon-pull 达成、D2 cosign 机制验证·真实 GHCR 签名于 release run、D3 lint 门绿、D4 baseline 不变，逐维如实不伪造，ADR-013）；ADR-007 add-only Amendment（部署发布面扩展到 cosign 签名 OCI 镜像 + SBOM + provenance，arm64 延后，不溯改正文 D5）；ADR-004 守线（镜像运行时 + 默认 0-network/0-dep baseline 不变）。**ADR-014 cross-validation gate — 第十九次激活**。
+
+**Upgrade / Rollback**：纯 CI/release 配置 + lint 修复，无运行时行为变更、无强制迁移。消费方可经 `cosign verify` + `cosign verify-attestation` 验 v0.21.0+ 镜像签名/SBOM（`--certificate-identity-regexp` 锚 release.yml + `--certificate-oidc-issuer` GitHub Actions）。Rollback：`git tag -d v0.21.0` + 删 Release / ghcr tag；与 v0.20.0 行为兼容（默认构建不变）。
+
 ## v0.20.0 (2026-06-01) — memory-ops-hardening (pin-actor + pinned-at-timestamp + Pin/Unpin split + hard-delete + is_pinned audit backfill + ADR-032 ratified)
 
 Phase 27 硬化 Phase 13 / Phase 17 落地的 Memory pin / 生命周期语义，兑现 ADR-022 §Trade-offs 三条刻意缩范围延后的 marker。proto 全 add-only（既有 field 1-10 + 5 RPC + `Pin{bool pin}` 不动，proto-freeze guard 过）；默认构建恒 0 新依赖 / 0 network（ADR-004）；既有 5 Memory RPC + `confirmMiddleware` 不退化。
