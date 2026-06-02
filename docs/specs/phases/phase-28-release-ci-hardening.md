@@ -1,6 +1,6 @@
 # Phase 28 · release-ci-hardening
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 硬化 v0.1-v0.20 一路沿用的发布 / CI 流水线，兑现 `docs/roadmap.md §3.9` 与 PRD §524 / RELEASE_NOTES §451 一路 `[SPEC-DEFER:phase-future.*]` 延后的四项发布硬化 marker：**multi-arch 镜像**（`release.yml` 现 linux/amd64 only → +linux/arm64 manifest list）、**匿名可拉取验证**（`verify-image.yml` 现仅鉴权 pull → 加未鉴权 pull 守 v0.10.0「shipped PRIVATE → 403」回归）、**镜像供应链证明**（cosign keyless 签名 + SBOM + provenance attestation，现全空白）、**CI 强 lint**（clippy / gofmt 卡红，现完全缺失非阻断；须先测存量再定卡红时机）。全部为 `.github/workflows/*` 配置层 + 必要 lint 修复改动；镜像运行时行为 + 默认构建 0-network / 0 新依赖 baseline 不变（ADR-004），🟢 可在真实 CI / release run 验证。v0.21.0 收口。对应 `docs/roadmap.md §3.9`。
 >
@@ -99,11 +99,11 @@ v0.20.0 ship 后，ContextForge 的发布 / CI 流水线具备**多架构分发*
 
 **阶段级验收标准（每条 AC 含 ADR-014 D3 verified by 显式 owner；Draft 阶段未勾选，实施后逐条置 `[x]`）**：
 
-- [ ] **AC1**：`release.yml` 经 `docker/setup-qemu-action` + `platforms: linux/amd64,linux/arm64` 推出多架构 manifest list（`:tag` + `:latest` 均 OCI index）到 GHCR，真实 release run 可验 manifest list 含 amd64 + arm64 digest；`verify-image.yml` add-only 未鉴权（logged-out）匿名 pull 步断言 GHCR 包公开可拉取（守 v0.10.0 PRIVATE → 403 回归）— verified by task-28.1 §6 AC1-2 + phase-smoke step 1
-- [ ] **AC2**：`release.yml` 加 `id-token: write` + cosign keyless 签 manifest digest + SBOM（syft / build-push-action）+ provenance attestation；真实 release run 产 `.sig` / SBOM / attestation 且 `cosign verify` 通过 — verified by task-28.2 §6 AC1-2 + phase-smoke step 2
-- [ ] **AC3**：CI 强 lint——先实测 `cargo clippy --workspace -- -D warnings` + `gofmt -l` + `go vet` 真实存量计数（ADR-013 非合成），据存量加阻断 `lint` job（存量清零）或 warn-first + 文档化存量 + `[SPEC-DEFER:phase-future.lint-backlog-cleanup]`（存量大）；`lint` job 入 `ci.yml` 且既有 `cargo-test`/`go-test`/`spec-lint` 三门不退化；卡红 / warn-first 结论如实记录 — verified by task-28.3 §6 AC1-2 + phase-smoke step 3
-- [ ] **AC4**：v0.21.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ `scripts/console_smoke.sh` v18（发布硬化 smoke + 既有 step 不退化）+ ADR-033 据真实 CI / release run 产物 ratify 或受阻如实记录维持 + ADR-007 add-only Amendment（部署发布面扩展，不溯改正文 D5）+ phase §6 闭合 — verified by task-28.4 §6 AC2-3
-- [ ] **AC5**：ADR-014 cross-validation gate 全套通过（第十九次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-27 不溯改 — verified by task-28.4 closeout PR body
+- [x] **AC1**（匿名 pull 达成；arm64 multi-arch 实测不可行 DEFERRED）：`verify-image.yml` add-only 未鉴权（logged-out）匿名 pull 步断言 GHCR 包公开可拉取（守 v0.10.0 PRIVATE → 403 回归）真实达成（run 26788773926 success）；**multi-arch（arm64）经实测不可行**——run 26757640892 `platforms: amd64,arm64` `push:false` 构建 45min 超时，arm64 QEMU emulation 不实用 → `release.yml` 保持单架构 amd64 + arm64 `[SPEC-DEFER:phase-future.multi-arch-native-runner]`（R1 stop-condition，不伪造「multi-arch 成功」）— verified by task-28.1 §6 AC1-2 + phase-smoke step 1
+- [x] **AC2**（cosign 机制已验证；真实 GHCR 签名于 v0.21.0 release）：GitHub 原生 attestation 私有仓库不可用（run 26789731232）→ 改 cosign-为中心（ADR-033 §D2 原文）；`release.yml` + `id-token: write` + cosign keyless sign（签 digest）+ cosign attest SPDX SBOM（syft）+ build-push provenance:max；`verify-image.yml` cosign verify + verify-attestation；全机制经本地 registry run 26799480280 success 端到端验证，真实 GHCR 签名于已授权 v0.21.0 release run 产生 — verified by task-28.2 §6 AC1-2 + phase-smoke step 2
+- [x] **AC3**：CI 强 lint——先实测真实存量（CI/LF 权威：gofmt 15 真实 / go vet 0 / clippy ~33；本机 96 系 CRLF 假阳性，初判误断 0 经 CI 纠正）→ 全修到全绿（gofmt -w+strip / clippy fix+手动+2 targeted allow）；`lint` job（clippy `-D warnings` + gofmt + go vet 三阻断）入 `ci.yml`，既有三门不退化（PR #190 四门绿）；存量小修完即卡红 — verified by task-28.3 §6 AC1-2 + phase-smoke step 3
+- [x] **AC4**：v0.21.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ `scripts/console_smoke.sh` v18 step 37（发布硬化状态 + 既有 step 不退化）+ ADR-033 据真实 CI / release run 产物 ratify（D1 arm64 DEFERRED / D2 机制验证·真签在 release / D3 全达成，逐维如实）+ ADR-007 add-only Amendment（部署发布面扩展，不溯改正文 D5）+ phase §6 闭合 — verified by task-28.4 §6 AC2-3
+- [x] **AC5**：ADR-014 cross-validation gate 全套通过（第十九次激活）— D1 mapping + D2 lint `--touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-27 不溯改 — verified by task-28.4 closeout PR body
 
 **端到端 smoke（C1 集成兜底）**：(1) 真实 release run 推出 multi-arch manifest list（amd64+arm64）+ 未鉴权匿名 pull exit 0；(2) cosign keyless 签名 + SBOM + attestation 产出且 `cosign verify` 通过；(3) CI `lint` job 入门 + 真实 clippy/gofmt 存量结论（阻断 / warn-first）如实记录、既有三门不退化 全 PASS（受阻如实标注）。
 

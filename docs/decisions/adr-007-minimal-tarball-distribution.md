@@ -42,3 +42,13 @@ v0.1 极简分发：GitHub Release Linux x86_64 tarball（contextforge + context
 
 - 关联 PRD §Constraints 发布后续路线（v0.2/v0.3/v1.0）。
 - 关联 PRD §Implementation Phases Phase 8（release smoke test）。
+
+## Amendment (Phase 28 / v0.21.0 — release-ci-hardening, add-only, 不溯改 §Decision/§Consequences)
+
+Phase 28（release-ci-hardening，v0.21.0）据 `docs/decisions/adr-033-release-ci-hardening.md` 扩展部署发布面。本 Amendment **add-only 记录扩展结果，不溯改本 ADR §Decision/§Rationale/§Consequences 正文**（ADR-014 D5）；§Decision L39「加法式演进，演进时新开 ADR」已预见此演进（ADR-033 即该新 ADR）：
+
+- **发布面扩展**：v0.1 的「最小 x86_64 tarball + 单架构镜像」基线**不变**；在其上加 **cosign keyless 签名 + SPDX SBOM（syft）+ SLSA provenance** 的 OCI 镜像（task-28.2，公共 Sigstore + GHCR OCI 工件，与 repo 私有无关）+ **匿名可拉取守护**（task-28.1，守 v0.10.0 GHCR-PRIVATE→403 回归）。
+- **multi-arch 延后**：arm64 多架构镜像经实测 QEMU emulation 不可行（task-28.1，run 26757640892 45min 超时）→ 单架构 amd64 保底 + arm64 延后原生 runner / 交叉编译 `[SPEC-DEFER:phase-future.multi-arch-native-runner]`（如实记录，不伪造）。
+- **CI 质量门**：发布配套加 CI 强 lint（clippy + gofmt + go vet 卡红，task-28.3）。
+
+详见 `docs/decisions/adr-033-release-ci-hardening.md §Ratification`。

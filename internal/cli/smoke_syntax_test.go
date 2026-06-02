@@ -263,6 +263,45 @@ func TestTask273_SmokeV17MemoryOpsHardeningStep(t *testing.T) {
 	}
 }
 
+// TEST-28.4 / AC4: smoke v18 adds step 37 (task-28.4 closeout) — documents that Phase 28
+// release-ci-hardening (anon-pull guard + multi-arch arm64 DEFERRED, task-28.1; cosign keyless
+// sign + SBOM attest + provenance, task-28.2; CI strict-lint clippy+gofmt+go vet, task-28.3) is
+// verified on CI + local registry. step 37 is a documentation/status step (release/CI hardening
+// has no console-api runtime surface); it checks the default build still scaffolds (baseline
+// unchanged, ADR-004). ADR-013: arm64 honestly DEFERRED, cosign real sign at the v0.21.0 release.
+func TestTask284_SmokeV18ReleaseCiHardeningStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v18") {
+		t.Fatalf("console_smoke.sh missing v18 header (task-28.4 closeout)")
+	}
+	for _, marker := range []string{"[37/37]", "release-ci-hardening", "TEST-28.1.", "TEST-28.2.", "TEST-28.3.", "cosign", "anon-pull"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v18 step 37 must document release-ci-hardening status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v17 blocks intact; denominators untouched per ADR-014 D5 —
+	// only the newest step carries the running total [37/37], matching the v14-v17 precedent).
+	for _, marker := range []string{"[33/33]", "[34/34]", "[35/35]", "[36/36]", "memory ops hardening"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v18 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
 // real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
 // step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),

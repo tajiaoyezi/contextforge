@@ -7,6 +7,26 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.21.0
+
+📌 **v0.21.0 release-ci-hardening** — hardens the release / CI pipeline. **All changes are CI/release config** (plus surgical clippy/gofmt fixes); the **image runtime + default 0-network / 0-dependency baseline are unchanged** (ADR-004). Adds an **anonymous-pull guard** (regression protection for public GHCR pullability), **supply-chain proof** (cosign keyless signature + SPDX SBOM attestation + SLSA provenance), and a **strict CI lint gate** (clippy + gofmt + go vet, blocking). Honest scope: **multi-arch arm64 is DEFERRED** (QEMU emulation infeasible — build timed out), and the **real GHCR signing happens at the v0.21.0 release run** (the mechanism is CI-verified end-to-end).
+
+- **anonymous-pull guard + multi-arch (deferred)** (task-28.1): `verify-image.yml` adds an unauthenticated (logged-out) `docker pull` step asserting the GHCR package is publicly pullable — guarding the v0.10.0 `PRIVATE → 403` regression (run 26788773926 ✅). multi-arch (linux/arm64) was attempted but **deferred**: arm64 QEMU emulation build is infeasible (run 26757640892 cancelled at 45 min, still compiling Rust deps); `release.yml` stays single-arch `linux/amd64`. arm64 → `[SPEC-DEFER:phase-future.multi-arch-native-runner]` (native runner / cross-compile).
+- **supply-chain proof: cosign + SBOM + provenance** (task-28.2): `release.yml` keyless-signs the image digest (`cosign sign`), attests an SPDX SBOM (syft → `cosign attest`), and attaches SLSA provenance (`provenance: mode=max`); `verify-image.yml` runs `cosign verify` + `cosign verify-attestation`. GitHub-native attestation (`actions/attest-*`) is unavailable on user-owned private repos, so cosign (public Sigstore + GHCR OCI artifacts, repo-visibility-independent) is used. Mechanism verified end-to-end against a local registry (run 26799480280 ✅); real GHCR signing lands at the v0.21.0 release run.
+- **strict CI lint gate** (task-28.3): `ci.yml` adds a `lint` job — `cargo clippy --workspace --all-targets -- -D warnings` + `gofmt` check + `go vet`, all blocking. Backlog measured first (CI/LF authoritative: gofmt 15 / go vet 0 / clippy ~33) then fixed (clippy `-D warnings` clean, `cargo test` 187 passed). **ADR-033 → Accepted** (D1 arm64 deferred / D2 cosign mechanism-verified, real sign at release / D3 lint gate green). **ADR-007** add-only Amendment (distribution surface extended). **ADR-014 cross-validation gate — 19th activation**.
+
+```bash
+# CI strict-lint gate (clippy + gofmt + go vet, all blocking)
+cargo clippy --workspace --all-targets -- -D warnings
+gofmt -l . && go vet ./...
+# supply-chain verify (against a real v0.21.0+ signed image)
+cosign verify ghcr.io/tajiaoyezi/contextforge-daemon:v0.21.0 \
+  --certificate-identity-regexp '^https://github.com/tajiaoyezi/contextforge/.github/workflows/release.yml@.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+详 `RELEASE_NOTES.md` v0.21.0 段 + [Phase 28 spec](docs/specs/phases/phase-28-release-ci-hardening.md) + [ADR-033](docs/decisions/adr-033-release-ci-hardening.md)。
+
 ## What's new in v0.20.0
 
 📌 **v0.20.0 memory-ops-hardening** — hardens the Memory pin / lifecycle semantics from Phase 13 / 17, delivering the three ADR-022 deferred markers. **pin-actor + pinned-at-timestamp** become first-class `MemoryItem` fields; **Pin/Unpin** is split explicitly (vs the `Pin{bool pin}` toggle) and a **hard-delete** strategy (physical removal, X-Confirm gated) is added; **is_pinned** can be **backfilled from the audit log**. The **default build stays 0-new-dependency, 0-network**; all proto changes are add-only and the existing 5 Memory RPC + `Pin` toggle do not regress.
