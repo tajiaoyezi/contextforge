@@ -9,6 +9,8 @@ pub mod types;
 pub mod noop;
 // task-19.3: default-available exact-cosine searcher (0 dep) for the opt-in semantic path.
 pub mod brute_force;
+// task-29.1: vector backend selection factory (mirrors embedding::factory::select_provider).
+pub mod factory;
 
 #[cfg(feature = "vector-hnsw")]
 pub mod hnsw;
@@ -29,6 +31,7 @@ pub use traits::{VectorBackend, VectorIndexer, VectorSearcher};
 pub use types::{ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorMetric, VectorScore};
 pub use noop::NoopVectorBackend;
 pub use brute_force::BruteForceVectorBackend;
+pub use factory::select_vector_backend;
 
 #[cfg(feature = "vector-hnsw")]
 pub use hnsw::HnswBackend;
