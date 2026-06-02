@@ -9,7 +9,7 @@
 
 ## 1. Background
 
-Phase 30 两个实现 task 全 Done：30.1（真 CJK 词分词器 analyzer 落在新 `cjk-segmenter` feature 后、默认 off → 0 新 dep；PARALLEL analyzer 名 + 在 `IndexSession::open_with_tokenizer` 与 `Retriever::open_with_config` 双站点注册保对称；保留 Phase 24 bigram 作 0-dep fallback）/ 30.2（评估 tokenizer 从 opt-in 翻为 default-on、配套既有索引 reindex/migration 工具 + `RetrieverConfig.tokenizer` 路由接线或 schema-driven 对称文档化；扩 `golden-semantic.jsonl` CJK case 后跑真实 before/after/segmenter recall delta）。本 task 收口 v0.23.0：smoke v20 step 39 + release docs + ADR-035 据真实结果逐 D 项 ratify + ADR-029 add-only Amendment + phase §6 闭合 + adapter + feature。
+Phase 30 两个实现 task 全 Done：30.1（真 CJK 词分词器 analyzer 落在新 `cjk-segmenter` feature 后、默认 off → 0 新 dep；PARALLEL analyzer 名 + 在 `IndexSession::open_with_tokenizer` 与 `Retriever::open_with_config` 双站点注册保对称；沿用 Phase 24 bigram 作 0-dep fallback）/ 30.2（评估 tokenizer 从 opt-in 翻为 default-on、配套既有索引 reindex/migration 工具 + `RetrieverConfig.tokenizer` 路由接线或 schema-driven 对称文档化；扩 `golden-semantic.jsonl` CJK case 后跑真实 before/after/segmenter recall delta）。本 task 收口 v0.23.0：smoke v20 step 39 + release docs + ADR-035 据真实结果逐 D 项 ratify + ADR-029 add-only Amendment + phase §6 闭合 + adapter + feature。
 
 ## 2. Goal
 
