@@ -246,9 +246,9 @@ func TestPatchWorkspaceConfig_404(t *testing.T) {
 func TestListJobs_ActiveFilter(t *testing.T) {
 	router, store := newTestRouter(t, "")
 	ws, _ := store.CreateWorkspace(contractv1.WorkspaceCreate{Name: "list-demo", RootPath: "/tmp/list"})
-	jobA, _ := store.EnqueueJob(ws.WorkspaceID, "test")        // queued
-	jobB, _ := store.EnqueueJob(ws.WorkspaceID, "test")        // queued
-	if err := store.CancelJob(jobB.JobID); err != nil {        // → cancelled (terminal)
+	jobA, _ := store.EnqueueJob(ws.WorkspaceID, "test") // queued
+	jobB, _ := store.EnqueueJob(ws.WorkspaceID, "test") // queued
+	if err := store.CancelJob(jobB.JobID); err != nil { // → cancelled (terminal)
 		t.Fatalf("cancel seed job: %v", err)
 	}
 	req := httptest.NewRequest("GET", "/v1/index-jobs?status=active", nil)

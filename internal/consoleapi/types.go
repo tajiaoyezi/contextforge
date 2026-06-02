@@ -52,7 +52,7 @@ type WorkspaceClient interface {
 type JobClient interface {
 	Enqueue(workspaceID, triggerSource string) (contractv1.IndexJob, error)
 	Get(jobID string) (*contractv1.IndexJob, error) // nil if not found
-	Cancel(jobID string) error                       // returns ErrJobTerminal if already terminal; ErrNotFound if missing
+	Cancel(jobID string) error                      // returns ErrJobTerminal if already terminal; ErrNotFound if missing
 	// task-12.1: ListActive returns queued + running jobs (v1.0 scope).
 	// Non-active filters (succeeded/failed/cancelled) [SPEC-DEFER:console-list-all-jobs] 留 v1.x.
 	ListActive() ([]contractv1.IndexJob, error)
@@ -121,7 +121,7 @@ type MemoryListFilter struct {
 type MemoryClient interface {
 	List(filter MemoryListFilter) ([]contractv1.MemoryItem, error)
 	Get(memoryID string) (*contractv1.MemoryItem, error) // nil if not found
-	Pin(memoryID string, pin bool) error                  // pin=false = unpin (toggle)
+	Pin(memoryID string, pin bool) error                 // pin=false = unpin (toggle)
 	Deprecate(memoryID string) error
 	SoftDelete(memoryID string) error
 	// task-27.2 (ADR-032 D2, add-only): explicit Unpin (non-destructive) +
@@ -159,10 +159,10 @@ type HealthClient interface {
 // state — "grpc" (default, healthy), "inmem-fallback" (degraded, MemStore
 // fallback active), or "degraded" (data plane unreachable, 503).
 type Deps struct {
-	Workspace   WorkspaceClient
-	Job         JobClient
-	Search      SearchClient
-	Events      EventsClient
+	Workspace WorkspaceClient
+	Job       JobClient
+	Search    SearchClient
+	Events    EventsClient
 	// task-26.2 (ADR-031 D3): optional SSE streaming surface. May be nil —
 	// handleEventsStream returns 503 when absent (preserves the long-poll-only
 	// contract for backends without a streaming entry).

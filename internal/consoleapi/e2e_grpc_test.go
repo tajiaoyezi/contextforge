@@ -176,21 +176,21 @@ func doJSONHeaders(t *testing.T, srv *httptest.Server, method, path, body string
 // TestRESTEndpoints_E2E_GrpcBacked verifies the full Console REST → Go
 // grpcclient → Rust daemon path end-to-end (task-11.2 §6 AC5).
 //
-//	1. cargo-build + spawn ./target/debug/contextforge-core at 127.0.0.1:N1
-//	2. start in-process console-api-serve router pointed at :N1 via grpcclient
-//	3. GET /v1/health → 200 + status=healthy + contract_version=v1
-//	4. POST /v1/workspaces → 200 + workspace_id present
-//	5. GET /v1/workspaces → 200 + list contains the workspace
-//	6. GET /v1/workspaces/<id> → 200 + same workspace
-//	7. POST /v1/index-jobs → 200 + job status=queued
-//	8. GET /v1/index-jobs/<id> → 200 + same job
-//	9. POST /v1/index-jobs/<id>/cancel → 204 (task-12.1 / ADR-017 D3)
-//	10. POST /v1/search → 200 + nested {result, trace} (results empty per
-//	    task-11.1 [SPEC-OWNER:task-11.4])
-//	11. GET /v1/observability/events → 200 + [] (only keepalive emitted
-//	    per task-11.1 [SPEC-OWNER:task-11.4])
-//	12. kill daemon + restart with same data_dir → GET /v1/workspaces
-//	    still returns the workspace (persistence proof)
+//  1. cargo-build + spawn ./target/debug/contextforge-core at 127.0.0.1:N1
+//  2. start in-process console-api-serve router pointed at :N1 via grpcclient
+//  3. GET /v1/health → 200 + status=healthy + contract_version=v1
+//  4. POST /v1/workspaces → 200 + workspace_id present
+//  5. GET /v1/workspaces → 200 + list contains the workspace
+//  6. GET /v1/workspaces/<id> → 200 + same workspace
+//  7. POST /v1/index-jobs → 200 + job status=queued
+//  8. GET /v1/index-jobs/<id> → 200 + same job
+//  9. POST /v1/index-jobs/<id>/cancel → 204 (task-12.1 / ADR-017 D3)
+//  10. POST /v1/search → 200 + nested {result, trace} (results empty per
+//     task-11.1 [SPEC-OWNER:task-11.4])
+//  11. GET /v1/observability/events → 200 + [] (only keepalive emitted
+//     per task-11.1 [SPEC-OWNER:task-11.4])
+//  12. kill daemon + restart with same data_dir → GET /v1/workspaces
+//     still returns the workspace (persistence proof)
 func TestRESTEndpoints_E2E_GrpcBacked(t *testing.T) {
 	if os.Getenv("CF_SKIP_RUST_E2E") == "1" {
 		t.Skip("CF_SKIP_RUST_E2E=1; skipping Rust daemon spawn E2E")

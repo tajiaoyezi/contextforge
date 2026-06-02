@@ -22,7 +22,7 @@ type MemStore struct {
 	mu         sync.Mutex
 	workspaces map[string]contractv1.Workspace
 	jobs       map[string]contractv1.IndexJob
-	jobOrder   []string                       // insertion order
+	jobOrder   []string                        // insertion order
 	events     []contractv1.ObservabilityEvent // append-only ring (capped at 1000)
 	// Optional injected Search backend (production wires to retriever / Rust
 	// CoreService::search). Tests provide a fake.
@@ -34,11 +34,11 @@ type MemStore struct {
 	// preserve the most recent search outputs with FIFO eviction at
 	// cacheCapacity. Cache miss falls through to the v0.7 ErrDataPlaneUnavailable
 	// path (deep-defense unchanged).
-	chunkCache       map[string]contractv1.SourceChunk
-	chunkCacheOrder  []string
-	traceCache       map[string]contractv1.RetrievalTrace
-	traceCacheOrder  []string
-	cacheCapacity    int
+	chunkCache      map[string]contractv1.SourceChunk
+	chunkCacheOrder []string
+	traceCache      map[string]contractv1.RetrievalTrace
+	traceCacheOrder []string
+	cacheCapacity   int
 	// monotonic id seed for jobs.
 	jobSeq uint64
 }
@@ -100,13 +100,13 @@ func (s *MemStore) cacheTraceUnlocked(traceKey string, t contractv1.RetrievalTra
 // emitEvent records an ObservabilityEvent (capped at 1000 most-recent).
 func (s *MemStore) emitEvent(eventType, severity, source, message string, jobID *string) {
 	s.events = append(s.events, contractv1.ObservabilityEvent{
-		EventID:   fmt.Sprintf("evt-%d", time.Now().UnixNano()),
-		EventType: eventType,
-		Severity:  severity,
-		Source:    source,
-		Message:   message,
-		Timestamp: time.Now().UTC(),
-		JobID:     jobID,
+		EventID:      fmt.Sprintf("evt-%d", time.Now().UnixNano()),
+		EventType:    eventType,
+		Severity:     severity,
+		Source:       source,
+		Message:      message,
+		Timestamp:    time.Now().UTC(),
+		JobID:        jobID,
 		Availability: contractv1.FieldAvailability{Object: "ObservabilityEvent"},
 	})
 	if len(s.events) > 1000 {

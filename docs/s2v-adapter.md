@@ -373,7 +373,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 27.3 | console_smoke v17 + v0.20.0 closeout + ADR-032 ratify | docs/specs/tasks/task-27.3-closeout-v0.20.0.md | Done | Phase27 #3（dep 27.1+27.2；收口）| master（is_pinned audit backfill reconcile_is_pinned_from_audit + smoke v17 step 36 + v0.20.0 release docs + ADR-032 Accepted + ADR-022 add-only Amendment + phase-27 §6 闭合）|
 | 28.1 | `verify-image.yml` 未鉴权（logout 后）匿名 pull 守护（守 v0.10.0 PRIVATE→403，run 26788773926 verified）+ multi-arch（arm64）emulation 实测不可行（run 26757640892 45min 超时）→ 延后原生 runner，release.yml 净零回退 | docs/specs/tasks/task-28.1-multi-arch-image-and-anonymous-pull.md | Done | Phase28 #1 | master |
 | 28.2 | `release.yml` cosign keyless sign（签 digest）+ cosign attest SPDX SBOM（syft）+ build-push SLSA provenance:max + `verify-image.yml` cosign verify + verify-attestation（GitHub 原生 attestation 因私有仓库不可用 run 26789731232→改 cosign，ADR-033 §D2 原文；机制 run 26799480280 verified，真签 @ v0.21.0 release） | docs/specs/tasks/task-28.2-image-signing-sbom-provenance.md | Done | Phase28 #2 | master |
-| 28.3 | `ci.yml` 加 lint job（clippy -D warnings + gofmt + go vet 三阻断）；先实测存量 gofmt 0(CI/LF，本机 96 系 CRLF 假阳性)/go vet 0/clippy ~33→修到全绿（fix+手动+2 targeted allow）+ cargo test 不退化 | docs/specs/tasks/task-28.3-ci-strict-lint.md | Done | Phase28 #3 | master |
+| 28.3 | `ci.yml` 加 lint job（clippy -D warnings + gofmt + go vet 三阻断）；实测存量 gofmt **15 真实**(CI/LF 暴露；本机 96=15 真实+81 CRLF，初判误断 0 被 CI 纠正)/go vet 0/clippy ~33 → 全修到全绿（gofmt -w+strip管道 / clippy fix+手动+2 targeted allow）+ cargo test 不退化 | docs/specs/tasks/task-28.3-ci-strict-lint.md | Done | Phase28 #3 | master |
 
 ## ADR 索引
 

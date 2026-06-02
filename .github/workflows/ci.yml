@@ -54,7 +54,8 @@ jobs:
         run: bash scripts/spec_drift_lint.sh --touched origin/master
 
   # task-28.3 (Phase 28): strict code lint gate — clippy + gofmt + go vet, all blocking.
-  # Backlog measured before turning red: gofmt 0 / go vet 0 / clippy ~33 (fixed in task-28.3).
+  # Backlog (CI/LF authoritative — local Windows CRLF masked the real gofmt count):
+  # gofmt 15 files / go vet 0 / clippy ~33 — all fixed in task-28.3 before turning red.
   lint:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
