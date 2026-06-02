@@ -318,18 +318,22 @@ mod tests {
         let units = vec![unit("go", 1, 200, &big, None)];
 
         // policy A: code 50 行/chunk
-        let mut policy_a = ChunkPolicy::default();
-        policy_a.code = ChunkConfig {
-            max_chunk_lines: 50,
-            overlap_lines: 0,
-            respect_parsed_units: false,
+        let policy_a = ChunkPolicy {
+            code: ChunkConfig {
+                max_chunk_lines: 50,
+                overlap_lines: 0,
+                respect_parsed_units: false,
+            },
+            ..Default::default()
         };
         // policy B: code 100 行/chunk
-        let mut policy_b = ChunkPolicy::default();
-        policy_b.code = ChunkConfig {
-            max_chunk_lines: 100,
-            overlap_lines: 0,
-            respect_parsed_units: false,
+        let policy_b = ChunkPolicy {
+            code: ChunkConfig {
+                max_chunk_lines: 100,
+                overlap_lines: 0,
+                respect_parsed_units: false,
+            },
+            ..Default::default()
         };
 
         let a = chunk_units(&units, Path::new("big.go"), &policy_a, vec![]).unwrap();
@@ -347,16 +351,18 @@ mod tests {
         let md_body =
             (1..=100).map(|i| format!("- item {}", i)).collect::<Vec<_>>().join("\n");
         let md_units = vec![unit("markdown", 1, 100, &md_body, None)];
-        let mut policy_c = ChunkPolicy::default();
-        policy_c.code = ChunkConfig {
-            max_chunk_lines: 10,
-            overlap_lines: 0,
-            respect_parsed_units: false,
-        };
-        policy_c.markdown = ChunkConfig {
-            max_chunk_lines: 50,
-            overlap_lines: 0,
-            respect_parsed_units: false,
+        let policy_c = ChunkPolicy {
+            code: ChunkConfig {
+                max_chunk_lines: 10,
+                overlap_lines: 0,
+                respect_parsed_units: false,
+            },
+            markdown: ChunkConfig {
+                max_chunk_lines: 50,
+                overlap_lines: 0,
+                respect_parsed_units: false,
+            },
+            ..Default::default()
         };
         let md_chunks = chunk_units(&md_units, Path::new("a.md"), &policy_c, vec![]).unwrap();
         assert!(
@@ -376,11 +382,13 @@ mod tests {
             .join("\n");
         let units = vec![unit("log", 1, 10_000, &big_body, None)];
 
-        let mut policy = ChunkPolicy::default();
-        policy.log = ChunkConfig {
-            max_chunk_lines: 200,
-            overlap_lines: 0,
-            respect_parsed_units: false,
+        let policy = ChunkPolicy {
+            log: ChunkConfig {
+                max_chunk_lines: 200,
+                overlap_lines: 0,
+                respect_parsed_units: false,
+            },
+            ..Default::default()
         };
         let chunks = chunk_units(&units, Path::new("big.log"), &policy, vec![]).unwrap();
 

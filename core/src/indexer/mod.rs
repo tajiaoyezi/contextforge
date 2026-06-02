@@ -488,8 +488,10 @@ impl IndexSession {
         F: FnMut(&IndexProgressSnapshot<'_>),
     {
         let report = scan_path(root, scan_options).map_err(|e| IndexError::Scan(e.to_string()))?;
-        let mut stats = IndexStats::default();
-        stats.files_skipped_denied = report.skipped.len();
+        let mut stats = IndexStats {
+            files_skipped_denied: report.skipped.len(),
+            ..Default::default()
+        };
 
         for sf in &report.files {
             // BINDING (task-3.1 §10 Waiver): consume only redacted_content; original
@@ -560,8 +562,10 @@ impl IndexSession {
         F: FnMut(&IndexProgressSnapshot<'_>),
     {
         let report = scan_path(root, scan_options).map_err(|e| IndexError::Scan(e.to_string()))?;
-        let mut stats = IndexStats::default();
-        stats.files_skipped_denied = report.skipped.len();
+        let mut stats = IndexStats {
+            files_skipped_denied: report.skipped.len(),
+            ..Default::default()
+        };
 
         for sf in &report.files {
             if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {

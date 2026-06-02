@@ -316,7 +316,7 @@ impl ContextService for CoreService {
                 .iter()
                 .map(|r| {
                     let mut pr = search_result_to_proto(r);
-                    pr.hybrid_score = r.score as f32;
+                    pr.hybrid_score = r.score;
                     pr
                 })
                 .collect();
@@ -356,7 +356,7 @@ impl ContextService for CoreService {
                 .iter()
                 .map(|r| {
                     let mut pr = search_result_to_proto(r);
-                    pr.vector_score = r.score as f32;
+                    pr.vector_score = r.score;
                     pr.embedding_provider = provider.clone();
                     pr
                 })

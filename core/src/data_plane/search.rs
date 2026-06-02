@@ -561,9 +561,9 @@ fn seconds_to_iso(unix_secs: i64) -> String {
     // Civil-date arithmetic (no chrono dep). Days since 1970-01-01.
     let days = unix_secs.div_euclid(86_400);
     let secs_of_day = unix_secs.rem_euclid(86_400);
-    let hour = (secs_of_day / 3600) as i64;
-    let minute = ((secs_of_day % 3600) / 60) as i64;
-    let second = (secs_of_day % 60) as i64;
+    let hour = secs_of_day / 3600;
+    let minute = (secs_of_day % 3600) / 60;
+    let second = secs_of_day % 60;
     // Convert days since epoch to civil date (Howard Hinnant algorithm).
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;

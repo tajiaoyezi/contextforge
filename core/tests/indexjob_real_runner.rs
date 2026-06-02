@@ -11,7 +11,7 @@ use contextforge_core::pb_console::{
     CancelJobRequest, CreateWorkspaceRequest, EnqueueJobRequest, GetJobRequest,
 };
 use contextforge_core::workspace::{SqliteWorkspaceStore, WorkspaceCreate, WorkspaceStore};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
@@ -330,7 +330,7 @@ async fn spawn_server_simple(
 async fn create_workspace_via_grpc(
     addr: std::net::SocketAddr,
     workspace_id: &str,
-    root: &PathBuf,
+    root: &Path,
 ) {
     let mut ws_client = WorkspaceServiceClient::connect(format!("http://{addr}"))
         .await

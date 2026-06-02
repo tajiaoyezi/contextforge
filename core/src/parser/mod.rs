@@ -1,5 +1,5 @@
-//! task-2.2: Real parser — tree-sitter (code: go/rs/py/ts/tsx/js/jsx) + pulldown-cmark (Markdown)
-//! + line/JSONL (logs). Replaces honest stub post PR#11 (deps). Matches §5.3 contract exactly.
+//! task-2.2: Real parser — tree-sitter (code: go/rs/py/ts/tsx/js/jsx) + pulldown-cmark (Markdown) +
+//! line/JSONL (logs). Replaces honest stub post PR#11 (deps). Matches §5.3 contract exactly.
 //! AC1-3 implementation; TEST-2.2.1-3 un-ignored in follow-up commit.
 
 use std::collections::HashMap;
@@ -163,7 +163,7 @@ fn extract_json_top_keys(line: &str) -> Option<String> {
         if c == '"' {
             let mut k = String::new();
             let mut closed = false;
-            while let Some(nc) = chars.next() {
+            for nc in chars.by_ref() {
                 if nc == '"' { closed = true; break; }
                 k.push(nc);
             }
