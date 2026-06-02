@@ -57,6 +57,30 @@ jobs:
           docker images --digests "$IMAGE"
           echo "::endgroup::"
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify supply-chain proof (cosign signature + SBOM attestation)
+        run: |
+          set -euo pipefail
+          # From v0.21.0 the release keyless-signs the image + attaches a signed SPDX SBOM
+          # attestation (task-28.2). Verify both, requiring the Sigstore cert identity to be
+          # THIS repo's release workflow. (Pre-v0.21.0 images are unsigned and expected to
+          # fail this — supply-chain proof lands in task-28.2 + the v0.21.0 release.)
+          IDENTITY="^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@.*$"
+          ISSUER="https://token.actions.githubusercontent.com"
+          echo "::group::cosign verify (image signature)"
+          cosign verify "$IMAGE" \
+            --certificate-identity-regexp "$IDENTITY" \
+            --certificate-oidc-issuer "$ISSUER"
+          echo "::endgroup::"
+          echo "::group::cosign verify-attestation (SPDX SBOM)"
+          cosign verify-attestation --type spdxjson "$IMAGE" \
+            --certificate-identity-regexp "$IDENTITY" \
+            --certificate-oidc-issuer "$ISSUER"
+          echo "::endgroup::"
+          echo "✅ cosign signature + SBOM attestation verified"
+
       - name: docker run + curl /v1/health (fallback in-mem opt-in)
         run: |
           set -euo pipefail
