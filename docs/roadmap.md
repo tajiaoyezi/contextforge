@@ -218,6 +218,24 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 - `[SPEC-OWNER:phase-future.console-semantic-explain]`：ContextForge-Console 是**独立仓库**，语义召回 explain 面板属 Console 领域。本仓职责限于：(a) 确保 `/v1/search` 语义响应携带 `vector_score` / `embedding_provider` provenance（v0.12 已加，v0.13 贯通 console-api）；(b) 跨仓库通知 + 契约对齐文档（仿 ADR-022 D4 cross-repo signal 模式）。🔴 本仓不实现 UI，规划中仅记协调项。
 
+### 3.11 v0.22.0 / Phase 29 — live-vector-recall（承 Phase 25，post-v0.20.0 add-only 排期）
+
+**目标**：把 Phase 25（production-vector-backend, Done）推到「契约层 / 参数校验层」的 qdrant / lancedb backend **真实跑通为 live 向量召回**，并把真实 backend 工厂化注入生产热路径 `core/src/server.rs`（现 `:302` hybrid / `:341` semantic 仍硬编码 `BruteForceVectorBackend`）。
+
+**来源 marker（§4 向量 backend 细化段 + phase-25 spec line 44）**：
+- `[SPEC-DEFER:phase-future.vector-retrieval-integration]`（phase-25 spec line 44——qdrant/lancedb 接入 server.rs 语义热路径）。
+- `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`（残留 live-server KNN 维度）/ `qdrant-deployment-topology`。
+- `[SPEC-DEFER:phase-future.lancedb-index-tuning]`（真实 ANN 索引建图 + 性能）/ `lancedb-schema-compaction` / `lancedb-build-prereq-ci`。
+- `multi-backend-production`（选择矩阵真实测量校准）。
+
+**候选 task 拆分**：
+- **task-29.1** vector backend 工厂 + server.rs 热路径注入：`select_vector_backend(name, dim) -> Result<Arc<dyn VectorSearcher>, VectorError>`（仿 `embedding/factory.rs::select_provider`）+ 替换 `server.rs:302/341` 硬编码 BruteForce；默认仍 BruteForce、feature 关闭诚实 Err。🟢 deterministic（不连 server）。
+- **task-29.2** qdrant live KNN + 真实召回 harness：克隆 `phase20_recall_via_retriever.rs`，对真实 qdrant server 跑 connect→ensure-create→upsert→KNN；CI 无 server `health()==Unreachable` 时 honest-defer。🔴 live server（真实召回数真实跑出后回填，不伪造）/ 🟢 wiring。
+- **task-29.3** lancedb 真实 ANN 索引调参 + 多 backend 选择矩阵：用 `LanceIndexTuning` 在内嵌 dataset 真建 IVF_PQ/HNSW 索引并实测召回 + 真实跨 backend 选择矩阵测量 → ADR-030 D3 / ADR-023 tier add-only Amendment。🟡 feature build / 🔴 大语料 / compaction 诚实延后。
+- **task-29.4** v0.22.0 closeout：smoke v19 + release docs + ADR-034 ratify + ADR-030/023 add-only Amendment + adapter + feature。🟢。
+
+**ADR**：**ADR-034 production-vector-live-recall**（Proposed，D1 backend 工厂 + 热路径注入 / D2 qdrant live KNN 无 server 诚实延后 / D3 lancedb 真实 ANN 索引 / D4 选择矩阵真实测量 add-only Amendment / D5 默认 0 vector dep baseline 不变；真实 live KNN / 真实索引召回 / 真实矩阵测量出来才 ratify，受阻维度据已达维度 ratify 不强翻）。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
@@ -236,6 +254,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > **v0.17–v0.20 排期更新（add-only，不删上方历史条目）**：上方部分 backlog 已据 §3.5-§3.8 排入对应版本——`cjk-and-code-tokenizer` + eval 三 marker（`eval-dataset-validation` / `semantic-golden-dataset` / `rust-native-eval-runner`）→ **v0.17.0 / Phase 24**；`qdrant-server-lifecycle` / `lancedb-build-prereq-ci` / `lancedb-index-tuning`（+ `qdrant-deployment-topology` / `multi-backend-production` 部分）→ **v0.18.0 / Phase 25**；`tracestore-fts` / `tracestore-sqlite-vacuum` / `events-sse-push` / `events-replay-from-audit`（+ `event-bus-capacity` / `events-drain-timeout-config` 部分）→ **v0.19.0 / Phase 26**；`memory-pin-actor` / `memory-pinned-at-timestamp` / `is-pinned-backfill-from-audit` / `memory-pin-unpin-split` / `hard-delete-policy`（+ `handle-memory-pin-strict-body` 部分）→ **v0.20.0 / Phase 27**。未点名的 marker（如 `lancedb-schema-compaction` / `tracestore-multi-workspace-strict` / `event-bus-partition` / `memstore-event-emit` / `case-results-subtable` / `cache-lru` / `cache-cap-configurable` / `compose-*`）续留 backlog，由各 phase `[SPEC-DEFER]` 如实承接，真正落地或延后以对应版本数据决定。
 >
 > **v0.17.0 / Phase 24 推进记录（已落地 2026-05-31，add-only）**：`cjk-and-code-tokenizer` → ✅ opt-in code/CJK `TextAnalyzer`（纯 std，task-24.1）；`eval-dataset-validation` → ✅ `ValidateGoldenSemantic`（task-24.2）；`semantic-golden-dataset` → ✅ `golden-semantic.jsonl` 代码/CJK 扩充（task-24.2）；`rust-native-eval-runner` → 🟡 真实评估后**诚实延后**（Go harness 续为单一事实源，`[SPEC-DEFER:phase-future.rust-native-eval-runner]`，task-24.3）。真实 before/after recall delta = +0.0909（default 0.9091 → code/CJK 1.0000）over task-24.2 golden（ADR-029 Accepted；详 `docs/spikes/phase-24-tokenizer-recall.md`）。CJK 真正分词器 `[SPEC-DEFER:phase-future.cjk-true-segmenter]` + tokenizer 默认开启 `[SPEC-DEFER:phase-future.tokenizer-default-on]` 续 backlog。
+>
+> **v0.22.0 / Phase 29 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.11 把上方「向量 backend 细化」段的 `qdrant-deployment-topology`（残留 live-server KNN 维度承 `qdrant-server-lifecycle`）/ `lancedb-index-tuning` / `lancedb-schema-compaction` / `multi-backend-production` + phase-25 spec line 44 的 `[SPEC-DEFER:phase-future.vector-retrieval-integration]` 排入 **v0.22.0 / Phase 29 — live-vector-recall**（task-29.1 工厂 + server.rs 热路径注入 / task-29.2 qdrant live KNN 真实兑现（无 server 诚实延后）/ task-29.3 lancedb 真实 ANN 索引 + 选择矩阵真实测量 → ADR-030/023 add-only Amendment / task-29.4 closeout）。真实 live KNN / 真实索引召回 / 真实矩阵测量数值一律真实跑出后回填（ADR-013，不预填）。`lancedb-schema-compaction` / `qdrant-deployment-topology`（集群拓扑）/ `lancedb-build-prereq-ci`（CI 构建 ICE 前置）很可能续 backlog 诚实延后。ADR-034 Proposed。
 
 ---
 

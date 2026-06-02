@@ -1,0 +1,59 @@
+# ADR `034`: `production-vector-live-recall`
+
+**Status**: Proposed
+**Category**: 检索 / 向量 backend / 召回质量
+**Date**: 2026-06-02
+**Decided By**: 主 agent（ADR-012 自治）；tajiaoyezi ratification at v0.22.0 closeout
+**Related**: ADR-030 (production-vector-backend — 本 phase 在其 qdrant 生命周期契约层 / lancedb 索引调参参数之上做真实 live KNN / ANN，选择矩阵以 add-only Amendment 校准，不溯改 D1-D4 正文，ADR-014 D5) / ADR-023 (vector-backend-default — D1-D6 tier 经真实测量以 add-only Amendment 校准) / ADR-028 (vector-persistence — 持久化 seam 复用) / ADR-027 (embedding-provider-selection — 仿 `select_provider` 工厂 pattern) / ADR-004 (local-first-privacy-baseline — 默认构建仍 0 vector dep + BruteForce baseline) / ADR-013 (禁伪造红线 — live-server / 大语料召回数真实跑出后回填，不伪造) / ADR-012 (main-agent-governance-autonomy — tag/release outward-facing 须用户显式授权) / ADR-014 (D1-D5，第二十次激活) / roadmap §3.11
+
+## Context
+
+ContextForge 截至 Phase 25（production-vector-backend, Done）已把生产向量 backend 推进到**契约层 / 参数层**：qdrant 有 connect/health/`decide_ensure`/ensure-create 的生命周期契约层（`core/src/retriever/vector/qdrant.rs:152-270`，真实单测不连 server），lancedb 有可构建性结论 + `LanceIndexTuning`/`LanceAnnIndex` 索引调参参数校验层（`core/src/retriever/vector/lance_db.rs:33-108`，参数校验真实单测不建真实索引）。但三处真实「跑通」仍缺：
+
+- **server.rs 热路径仍硬编码 BruteForce**：语义路径（`core/src/server.rs:341`）与 hybrid 路径（`core/src/server.rs:302`）均直接 `BruteForceVectorBackend::new()`，无工厂注入——`select_provider`（embedding）已工厂化（`core/src/embedding/factory.rs:27-30` + `server.rs:339`），向量侧对称的 `select_vector_backend` **缺**。真实 backend（qdrant/lancedb）即便 feature 编译通过也进不了生产热路径，`[SPEC-DEFER:phase-future.vector-retrieval-integration]`（phase-25 spec line 44）未兑现。
+- **qdrant live KNN 从未真实跑过**：`qdrant.rs:330-371` 的 live search 读路径在契约层之上，但 `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]` 的端到端 connect→ensure-create→upsert→KNN over **live server** 仍属诚实延后（CI 无在跑的 qdrant server，ADR-030 D1）。
+- **lancedb 真实 ANN 索引 + 召回从未实测**：`lance_db.rs:270-332` live search 在参数层之上，但 `[SPEC-DEFER:phase-future.lancedb-index-tuning]` 的真实 IVF_PQ/HNSW 建图 + 召回测量未做（ADR-030 D2 ratify 时如实延后）。
+- **生产 backend 选择矩阵尚无真实测量校准**：ADR-030 D3（`adr-030:42-44` matrix + `:57-66` Ratification）与 ADR-023 D1-D6 tier 当前据 tier 推理 + 可构建性结论给出，未据**真实跨 backend 召回/延迟测量**校准。
+
+本 ADR 记录把上述延后的契约层 / 参数层**真实跑通为 live 向量召回**、并把真实 backend 接入生产热路径的策略。全程守 ADR-013：live-server / 大语料的真实召回 / 延迟数字一律**真实跑出后回填**到 §10 + v0.22.0 evidence，不在 spec / ADR 预填。默认构建仍 0 vector dep + BruteForce 语义 baseline（ADR-004 / ADR-023 D5），feature-gated backend 默认不编译不引入供应链面。
+
+## Decision
+
+生产向量 live 召回采用 **工厂化热路径注入 + qdrant live KNN 真实兑现（无 server 诚实延后）+ lancedb 真实 ANN 索引调参 + 真实测量校准选择矩阵（add-only Amendment）+ 默认构建零依赖守线** 策略：
+
+### D1 — vector backend factory + server.rs 热路径注入（task-29.1）
+
+新增 `select_vector_backend(name, dim) -> Result<Arc<dyn VectorSearcher>, VectorError>` 工厂，对称仿 `core/src/embedding/factory.rs::select_provider`（`factory.rs:27-30`）：`""`/`"brute"` → `BruteForceVectorBackend`（始终可用，默认 0-dep）；`"qdrant"` → `QdrantBackend`（`vector-qdrant` feature 下，否则返回可识别 `Err`，不静默成功）；`"lancedb"` → `LanceDbBackend`（`vector-lancedb` feature 下，否则可识别 `Err`）。把它接入 `core/src/server.rs` 替换 `server.rs:302`（hybrid 路径）+ `server.rs:341`（语义路径）的硬编码 `BruteForceVectorBackend::new()`。默认构建（无 vector feature）语义 + hybrid 仍经 BruteForce 工作，`cargo test --workspace` 不受影响。
+
+**理由**：消除 `server.rs:302/341` 硬编码 BruteForce，把真实 backend 经工厂注入生产热路径，兑现 `[SPEC-DEFER:phase-future.vector-retrieval-integration]`（phase-25 spec line 44）。仿 `select_provider` 工厂 pattern 与 embedding 侧对称、最 surgical（不改 `VectorSearcher` trait 签名 `traits.rs:38-46`）；默认仍 BruteForce 守 ADR-004 0-dep。备选「server.rs 直接 `#[cfg]` 分支」会把 feature-gate 逻辑散在热路径、与 embedding 侧不对称且难单测，故不取——工厂集中决策、可 deterministic 单测（无 feature 默认分支 / 缺 feature 诚实 Err）。
+
+### D2 — qdrant live-server 端到端 KNN + 真实召回 harness；无 server 诚实延后（task-29.2）
+
+首次真实兑现 `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`：克隆 `core/examples/phase20_recall_via_retriever.rs` 为 phase29 harness，把 BruteForce 换为 `QdrantBackend::connect(QdrantConnConfig::from_env())`，guard 在 `vector-qdrant` + `embedding-fastembed` feature 下，对一台 **live qdrant server** 跑 connect→ensure-create→upsert→KNN（live 读路径 `qdrant.rs:330-371`）。CI 无 server → 当 `backend.health() == Unreachable`（`qdrant.rs:184-189`）时诚实延后（`eprintln` + `exit 0`，不伪造 KNN 通过，ADR-013）。文档化单机部署 baseline；集群/复制拓扑 → `[SPEC-DEFER:phase-future.qdrant-deployment-topology]`。
+
+**理由**：这是 qdrant 契约层（Phase 25 已真实单测 `decide_ensure`/health/ensure-create）之上**首次真实 live KNN**——契约正确不等于 live 跑通，需对真实 server 兑现。CI 无 server 是结构性约束（ADR-030 D1 已识别），honest-defer（health 探活 → 可达才跑，不可达干净退出）既证明 wiring 又不伪造召回，真实召回数 manual/dev-box 跑出后回填 §10 + v0.22.0 evidence。备选「CI spin up qdrant container」超出本 phase 范围（引入 CI service 编排面），单机 baseline 先兑现、拓扑延后是诚实的渐进。
+
+### D3 — lancedb 真实 ANN 索引调参建图 + 性能（task-29.3）
+
+用 `LanceIndexTuning`/`LanceAnnIndex` 参数契约（`lance_db.rs:33-108`）在一个嵌入式 Lance 数据集上真实建 IVF_PQ/HNSW 索引并测量召回（`vector-lancedb` feature，in-process，n 仍 modest），兑现 `[SPEC-DEFER:phase-future.lancedb-index-tuning]`。lancedb feature 构建 caveat：broad `cargo test` 触 rustc ICE → 用 `cargo build` + `--lib` scoped 测试 `[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]`（承 ADR-030 D2 真实凭据 + Phase 23 sqlite-vec MSVC 先例）。lancedb compaction 执行 → `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`（很可能诚实延后）。
+
+**理由**：在参数契约层（Phase 25 真实单测 `validate`）之上真实建 IVF_PQ/HNSW 索引并实测召回，是「参数可校验」到「索引真能召回」的兑现。大语料性能受 toolchain（rustc 1.95.0 ICE on broad test target，ADR-030 D2 已记）+ 资源限，故 n 取 modest、broad test → scoped `--lib`，受阻维度（compaction / 大语料 / CI 构建）如实记录不伪造。备选「合成召回数充门」违 ADR-013，故真实跑出后回填。
+
+### D4 — 多 backend 选择矩阵真实测量 → ADR-030 D3 / ADR-023 tier 的 add-only Amendment（task-29.3）
+
+产出一份**真实**多 backend 选择矩阵测量（brute / sqlite-vec / lancedb / qdrant，可跑的真测、不可跑的诚实延后），用真实召回/延迟数据校准选择矩阵，feed 给 ADR-030 D3（`adr-030:42-44`）+ ADR-023 tier（`adr-023:44-82` D1-D4）的 **add-only Amendment**（不编辑其 D 正文，ADR-014 D5）。
+
+**理由**：ADR-030 D3 / ADR-023 tier 当前据 tier 推理 + 可构建性结论给出，用真实跨 backend 测量校准提升可信度。add-only Amendment 守 ADR-014 D5——既往 ratify 过的 D 正文不溯改，只追加「Phase 29 真实测量校准」结果。某 backend 不可跑（qdrant 无 server / lancedb 平台受阻）则该格如实延后，矩阵据已达格校准，不伪造全格。
+
+### D5 — 默认构建不变：0 vector dep + BruteForce 语义 baseline（all tasks）
+
+`select_vector_backend` 默认分支 + 缺 feature Err 路径不引入任何 vector 依赖；`QdrantBackend`/`LanceDbBackend` 仍各自 `vector-qdrant`（`core/Cargo.toml:119`）/ `vector-lancedb`（`Cargo.toml:120`）feature 下编译；默认构建语义 + hybrid 路径仍经 0-dep `BruteForceVectorBackend`（ADR-023 D5）。harness 在 `vector-qdrant` + `embedding-fastembed`（`Cargo.toml:123`）/ `vector-lancedb` feature 下，默认 `cargo test --workspace` 不编译它们。本 ADR 不改 `VectorBackend`/`VectorIndexer`/`VectorSearcher` 三 trait 签名（`traits.rs:11-46`）。
+
+**理由**：ADR-004 local-first——默认构建 0-network / 0 新依赖 / 0 供应链面是不可让渡的 baseline。feature-gated backend 是「按需启用的生产能力」而非「默认引入的成本」，与 D1-D4 的真实兑现正交：工厂注入 + live KNN + 真实索引都在 feature 边界内，默认路径与 Phase 19 语义 baseline 字节等价。
+
+## Consequences
+
+- **Positive**: server.rs 热路径从硬编码 BruteForce 推进到工厂注入真实 backend（兑现 `[SPEC-DEFER:phase-future.vector-retrieval-integration]`）；qdrant 契约层首次真实 live KNN 兑现（有 server 真跑、无 server 诚实退出）；lancedb 参数层首次真实 ANN 索引建图 + 召回测量；生产 backend 选择矩阵据真实测量校准（add-only，不溯改 ADR-030/023 正文）；默认构建 0 vector dep + BruteForce 语义 baseline 不变（ADR-004 / ADR-023 D5），`cargo test --workspace` 不退化，三 trait 签名不变。
+- **Negative / open**（受阻维度如实，不伪造）：qdrant live KNN 依赖 live server，CI 无 server → D2 集成维度诚实延后（health Unreachable 时 `exit 0`，真实召回 manual/dev-box 跑出后回填，绝不预填）；lancedb feature 构建受 rustc 1.95.0 broad-test ICE 限（→ `cargo build` + `--lib` scoped，CI 默认不构建该 feature `[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]`），大语料性能 + compaction 受 toolchain/资源限如实延后；选择矩阵不可跑格（qdrant 无 server / lancedb 平台受阻）据已达格校准，不伪造全格；qdrant 集群/复制拓扑超本 phase 范围延后。
+- **Ratification**: 本 ADR Proposed。task-29.1..29.3 通过后于 v0.22.0 closeout 据真实 CI / 实测产物 ratify；live-server / 大语料受阻维度据已达维度 ratify + 如实记录，不强 ratify。
+- **Follow-ups**: qdrant 集群/复制部署拓扑 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]`；lancedb schema compaction 真实执行 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`；lancedb feature 在 CI 真实构建（toolchain ICE 解除后）`[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]`；CI 内置 qdrant service 跑 live KNN 回归 `[SPEC-DEFER:phase-future.qdrant-ci-service]`；ADR-030 D3 选择矩阵 + ADR-023 D1-D6 tier 经真实测量以 add-only Amendment 记录（task-29.4，不溯改其正文，ADR-014 D5）。
