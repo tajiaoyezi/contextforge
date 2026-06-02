@@ -251,6 +251,23 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-035 cjk-true-segmenter-and-tokenizer-default**（Proposed，D1 真分词 feature-gated / D2 并行 analyzer 名 + 双站点注册对称 / D3 tokenizer-default-on 评估 + 迁移工具 + config 路由接线 / D4 扩展 CJK golden 真实 recall delta 不预填 / D5 默认 tokenization 不变；真实分词单测 / 真实 recall delta 出来才 ratify，重词典 dep / 小语料受阻维度据已达维度 ratify）。
 
+### 3.13 v0.24.0 / Phase 31 — governance-debt-cleanup（清长尾 backlog + Phase 28 follow-up + 旧 nits，post-v0.20.0 add-only 排期）
+
+**目标**：清理跨 Phase 累积的治理债——§4 长尾 backlog 中真正开放的 code-local 项 + Phase 28 follow-up + 旧 nits。多为 🟢 可单测；compose TLS 真实 cert 🟡；github-native-attestation 私有仓库 🔴。含一项**诚实校正**：经核 `event-bus-partition` / `event-bus-capacity` 已在 Phase 26 交付（非债），本 phase verify-only + §4 add-only 更正剔除（ADR-013，不重复实现）。
+
+**来源 marker（§4 backlog 真实开放项 + Phase 28 follow-up + 旧 nits）**：
+- `memstore-event-emit`（Go fallback memory 变更未 emit event）/ `cache-lru` / `cache-cap-configurable` / `compose-resource-limits` / `compose-tls-termination` / `case-results-subtable`。
+- Phase 28 follow-up 诚实重申：`multi-arch-native-runner` / `github-native-attestation`（私有仓库受阻）/ `rust-native-eval-runner`（无 consumer）。
+- 旧 nits：task-6.3 exporter `content=""`（根因 v1 search proto 无 chunk 全文）+ PR #48 3 个 MCP nits。
+
+**候选 task 拆分**：
+- **task-31.1** observability + memstore event parity：Go fallback `MemMemoryStore` Pin/Deprecate/SoftDelete/Unpin/HardDelete emit `memory.*` event（与 workspace/job + Rust 路径对齐）+ event-bus partition/capacity verify-only + §4 add-only 更正（经核 Phase 26 已交付）。🟢。
+- **task-31.2** cache + deploy hardening：embedding-cache LRU（`cache.rs:23` 无界）+ Go memstore cap 可配置（`memstore.go:49` 硬编码 256）+ compose `mem_limit`/`cpus` + 可选 TLS proxy。🟢 / 🟡（真实 cert）。
+- **task-31.3** eval case-results 子表（add-only migration 0018）+ exporter `content=""` 经新 `ListAllChunks` RPC 真实全文 + 3 MCP nits（protocolVersion 白名单 / audit.Write err 不吞 / allowlist 文件 mode warn）+ C2/C3/C4 诚实延后重申。🟢。
+- **task-31.4** v0.24.0 closeout：smoke v21 + release docs + ADR-036 ratify + ADR-021/027/029/033 add-only Amendment + §4 event-bus 更正 + adapter + feature。🟢。
+
+**ADR**：**ADR-036 governance-debt-cleanup**（Proposed，D1 memstore-event-emit Go parity + event-bus verify-only 更正 / D2 cache + deploy 硬化 / D3 eval 子表 + exporter 全文 + MCP nits / D4 honest defer 重申 / D5 默认行为 + 既有契约不变；真实测试 / 实测出来才 ratify，TLS cert / native runner / attestation 受阻维度据已达维度 ratify）。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
@@ -273,6 +290,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > **v0.22.0 / Phase 29 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.11 把上方「向量 backend 细化」段的 `qdrant-deployment-topology`（残留 live-server KNN 维度承 `qdrant-server-lifecycle`）/ `lancedb-index-tuning` / `lancedb-schema-compaction` / `multi-backend-production` + phase-25 spec line 44 的 `[SPEC-DEFER:phase-future.vector-retrieval-integration]` 排入 **v0.22.0 / Phase 29 — live-vector-recall**（task-29.1 工厂 + server.rs 热路径注入 / task-29.2 qdrant live KNN 真实兑现（无 server 诚实延后）/ task-29.3 lancedb 真实 ANN 索引 + 选择矩阵真实测量 → ADR-030/023 add-only Amendment / task-29.4 closeout）。真实 live KNN / 真实索引召回 / 真实矩阵测量数值一律真实跑出后回填（ADR-013，不预填）。`lancedb-schema-compaction` / `qdrant-deployment-topology`（集群拓扑）/ `lancedb-build-prereq-ci`（CI 构建 ICE 前置）很可能续 backlog 诚实延后。ADR-034 Proposed。
 >
 > **v0.23.0 / Phase 30 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.12 把上方「检索 tokenizer」段承 Phase 24 的两项 follow-up marker `[SPEC-DEFER:phase-future.cjk-true-segmenter]` + `[SPEC-DEFER:phase-future.tokenizer-default-on]`（出处 ADR-029:54 + phase-24 spec :41/:42，**非** §4 既有 `cjk-and-code-tokenizer` —— 后者已于 v0.17.0 闭合）排入 **v0.23.0 / Phase 30 — cjk-true-segmenter**（task-30.1 真分词器 feature-gated + 双站点注册 / task-30.2 tokenizer-default-on 评估 + 既有索引迁移 + 真实 CJK recall delta / task-30.3 closeout）。真分词器引入 optional dep（jieba-rs/lindera）经主 agent R7 chore + ADR-008 add-only；默认构建仍 0 新 dep + 默认 tokenization 不变（ADR-004）。真实 recall delta 真实跑出后回填（ADR-013，不预填）；若全量 default-on 迁移过重则诚实延后 default flip 续 backlog。ADR-035 Proposed。
+>
+> **v0.24.0 / Phase 31 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.13 把上方 backlog 中真正开放的 code-local 项排入 **v0.24.0 / Phase 31 — governance-debt-cleanup**：`memstore-event-emit`（task-31.1）/ `cache-lru` + `cache-cap-configurable` + `compose-resource-limits` + `compose-tls-termination`（task-31.2）/ `case-results-subtable` + exporter `content=""`（task-6.3 旧 nit，经新 `ListAllChunks` RPC）+ PR #48 3 MCP nits（task-31.3）。Phase 28 follow-up `multi-arch-native-runner` / `github-native-attestation`（私有仓库受阻）/ `rust-native-eval-runner`（无 consumer）经核受阻 / 无驱动 → task-31.3 诚实重申延后续 backlog（不伪造完成，ADR-013）。**诚实校正（add-only，不删上方条目）**：上方 trace/events 段所列 `event-bus-partition` + `event-bus-capacity` 经核**已在 v0.19.0 / Phase 26（task-26.3 / ADR-031 D5）交付**（`core/src/data_plane/events.rs` `EventBusConfig`/`Partition`/`from_config` + `server.rs` 生产接线 + TEST-26.3.1a/b/c）——非开放债，自开放 backlog 剔除，Phase 31 仅 verify-only（task-31.1）。ADR-036 Proposed。
 
 ---
 
