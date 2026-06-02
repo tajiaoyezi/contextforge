@@ -1,0 +1,86 @@
+name: "[TEMP] task-28.2 attestation validation (local registry)"
+
+# TEMPORARY validation for task-28.2. NOT a permanent guard. Proves the GitHub-native
+# signed-attestation mechanism (actions/attest-build-provenance + actions/attest-sbom +
+# gh attestation verify) end-to-end against a LOCAL registry + tiny test image — WITHOUT
+# any outward-facing GHCR push and without the ~20min real Rust build. Removed before merge.
+# Per user decision: GitHub-native attestation; one-off validation, no permanent CI guard.
+
+on:
+  push:
+    branches:
+      - task/task-28.2-image-signing-sbom-provenance
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write       # Sigstore OIDC (keyless attestation signing)
+  attestations: write   # write to GitHub attestation store
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    env:
+      IMAGE: localhost:5000/cf-attest-test
+    steps:
+      - name: Set up Buildx (host network → reach localhost:5000 service)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Build + push tiny test image to local registry
+        id: build
+        run: |
+          set -euo pipefail
+          printf 'FROM alpine:3.20\nCMD ["true"]\n' > Dockerfile.attest-test
+          docker buildx build --push \
+            -t "${IMAGE}:v0" \
+            -f Dockerfile.attest-test \
+            --metadata-file /tmp/meta.json \
+            .
+          DIGEST=$(jq -r '."containerimage.digest"' /tmp/meta.json)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "built ${IMAGE}@${DIGEST}"
+
+      - name: Attest build provenance (signed SLSA)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM (SPDX-JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Attest SBOM (signed)
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
+
+      - name: gh attestation verify (provenance + SBOM)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          REF="${IMAGE}@${{ steps.build.outputs.digest }}"
+          echo "::group::provenance"
+          gh attestation verify "oci://${REF}" -R "$REPO"
+          echo "::endgroup::"
+          echo "::group::SBOM (SPDX)"
+          gh attestation verify "oci://${REF}" -R "$REPO" --predicate-type https://spdx.dev/Document/v2.3
+          echo "::endgroup::"
+          echo "✅ provenance + SBOM attestations produced + verified (local registry)"

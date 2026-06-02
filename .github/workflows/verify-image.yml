@@ -57,6 +57,26 @@ jobs:
           docker images --digests "$IMAGE"
           echo "::endgroup::"
 
+      - name: Verify supply-chain attestations (gh attestation verify)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # From v0.21.0 the release attaches signed SLSA provenance + SPDX SBOM
+          # (task-28.2). Verify both are present, signed by THIS repo's release workflow,
+          # and bound to the image. (Pre-v0.21.0 images carry no attestations and are
+          # expected to fail this — supply-chain proof lands in task-28.2 + v0.21.0.)
+          REPO="${{ github.repository }}"
+          echo "::group::provenance"
+          gh attestation verify "oci://$IMAGE" -R "$REPO" \
+            --signer-workflow "$REPO/.github/workflows/release.yml"
+          echo "::endgroup::"
+          echo "::group::SBOM (SPDX)"
+          gh attestation verify "oci://$IMAGE" -R "$REPO" \
+            --predicate-type https://spdx.dev/Document/v2.3
+          echo "::endgroup::"
+          echo "✅ provenance + SBOM attestations verified"
+
       - name: docker run + curl /v1/health (fallback in-mem opt-in)
         run: |
           set -euo pipefail

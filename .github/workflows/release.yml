@@ -14,6 +14,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write       # Sigstore OIDC token for keyless attestation signing (task-28.2)
+  attestations: write   # write signed provenance + SBOM to the GitHub attestation store
 
 jobs:
   build-and-push:
@@ -48,6 +50,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -59,6 +62,31 @@ jobs:
             ${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # --- Supply-chain attestations (task-28.2): signed SLSA provenance + SPDX SBOM,
+      # bound to the pushed manifest digest, stored in the GitHub attestation store +
+      # GHCR OCI referrer. Verified downstream via `gh attestation verify` (verify-image.yml).
+      - name: Attest build provenance (signed SLSA)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM (SPDX-JSON) from pushed image
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Attest SBOM (signed)
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
 
       - name: Image summary
         run: |
