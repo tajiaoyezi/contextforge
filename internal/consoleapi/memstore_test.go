@@ -2,7 +2,6 @@ package consoleapi
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
@@ -206,40 +205,103 @@ func TestMemStore_GetChunksStats_Stub(t *testing.T) {
 	}
 }
 
-// TestMemStore_CacheEviction_FIFO — AC2: 257th Search evicts oldest entry.
-func TestMemStore_CacheEviction_FIFO(t *testing.T) {
-	s := NewMemStore()
-	cap := s.cacheCapacity
-	if cap != memStoreCacheDefaultCapacity {
-		t.Fatalf("unexpected default cache capacity: got %d want %d", cap, memStoreCacheDefaultCapacity)
+// assertNoCacheOrderDup fails if the eviction-order slice contains a duplicate
+// key (a move-to-front bug that forgot to remove the prior position desyncs the
+// order slice from the map and corrupts eviction — task-33.2 R1).
+func assertNoCacheOrderDup(t *testing.T, order []string) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, k := range order {
+		if seen[k] {
+			t.Errorf("duplicate key %q in cache order slice %v", k, order)
+		}
+		seen[k] = true
 	}
-	// Synthesize cap+1 cache writes via the unlocked helper to avoid the stub
-	// Search collision (all stub responses share chunk_id="chunk-1"); FIFO
-	// eviction is a property of the helper, not Search.
-	first := "ck-0000"
+}
+
+// TestMemStore_CacheEviction_LRU — TEST-33.2.1 (task-33.2 B1): the chunk cache is
+// access-order LRU, not FIFO. Filling cap then *reading* the oldest key
+// (GetSourceChunk) makes it most-recently-used, so the next insert evicts the
+// least-recently-used key — not the first-inserted one (which FIFO would evict).
+func TestMemStore_CacheEviction_LRU(t *testing.T) {
+	s := NewMemStore()
+	if s.cacheCapacity != memStoreCacheDefaultCapacity {
+		t.Fatalf("unexpected default cache capacity: got %d want %d", s.cacheCapacity, memStoreCacheDefaultCapacity)
+	}
+	s.cacheCapacity = 3 // small cap for deterministic eviction
 	s.mu.Lock()
-	for i := 0; i < cap+1; i++ {
-		id := fmt.Sprintf("ck-%04d", i)
+	for _, id := range []string{"a", "b", "c"} {
 		s.cacheChunkUnlocked(id, contractv1.SourceChunk{ChunkID: id})
 	}
 	s.mu.Unlock()
-	// First entry should now be evicted.
-	if _, ok := s.chunkCache[first]; ok {
-		t.Errorf("FIFO eviction broken: oldest chunk %q still cached after %d writes", first, cap+1)
+	// Read "a" via the public path → "a" becomes most-recently-used.
+	// (FIFO would not reorder, leaving "a" first in the eviction order.)
+	if _, err := s.GetSourceChunk("a"); err != nil {
+		t.Fatalf("expected cached hit for 'a'; got %v", err)
 	}
-	// Last entry should remain.
-	last := fmt.Sprintf("ck-%04d", cap)
-	if _, ok := s.chunkCache[last]; !ok {
-		t.Errorf("expected newest chunk %q to be cached", last)
+	// Insert "d" → over cap → evict least-recently-used = "b" (NOT "a").
+	s.mu.Lock()
+	s.cacheChunkUnlocked("d", contractv1.SourceChunk{ChunkID: "d"})
+	s.mu.Unlock()
+	if _, ok := s.chunkCache["a"]; !ok {
+		t.Errorf("LRU broken: recently-read 'a' was evicted")
 	}
-	// Total entries should equal capacity.
-	if got := len(s.chunkCache); got != cap {
-		t.Errorf("expected cache size = cap=%d; got %d", cap, got)
+	if _, ok := s.chunkCache["b"]; ok {
+		t.Errorf("LRU broken: least-recently-used 'b' should have been evicted")
 	}
-	// chunkCacheOrder length must equal cap (drift signal).
-	if got := len(s.chunkCacheOrder); got != cap {
-		t.Errorf("expected chunkCacheOrder length = cap=%d; got %d", cap, got)
+	// Drift signals: cache size and order length both equal cap; no dup in order.
+	if got := len(s.chunkCache); got != 3 {
+		t.Errorf("expected cache size = cap=3; got %d", got)
 	}
+	if got := len(s.chunkCacheOrder); got != 3 {
+		t.Errorf("expected chunkCacheOrder length = cap=3; got %d", got)
+	}
+	assertNoCacheOrderDup(t, s.chunkCacheOrder)
+}
+
+// TestMemStore_CacheEviction_LRU_Trace — TEST-33.2.2 (task-33.2 B1): the trace
+// cache is access-order LRU. Both an existing-key overwrite (cacheTraceUnlocked)
+// and a read hit (GetSearchTrace) move the key to most-recently-used; eviction
+// drops the least-recently-used key.
+func TestMemStore_CacheEviction_LRU_Trace(t *testing.T) {
+	s := NewMemStore()
+	s.cacheCapacity = 3
+	s.mu.Lock()
+	for _, id := range []string{"a", "b", "c"} {
+		s.cacheTraceUnlocked(id, contractv1.RetrievalTrace{TraceID: id})
+	}
+	// Overwrite existing key "a" → move-to-front (FIFO would leave it first in
+	// the eviction order).
+	s.cacheTraceUnlocked("a", contractv1.RetrievalTrace{TraceID: "a", Query: "updated"})
+	s.mu.Unlock()
+	// Insert "d" → evict least-recently-used = "b" ("a" survives the overwrite).
+	s.mu.Lock()
+	s.cacheTraceUnlocked("d", contractv1.RetrievalTrace{TraceID: "d"})
+	s.mu.Unlock()
+	if _, ok := s.traceCache["a"]; !ok {
+		t.Errorf("LRU broken: overwritten 'a' was evicted")
+	}
+	if _, ok := s.traceCache["b"]; ok {
+		t.Errorf("LRU broken: least-recently-used 'b' should have been evicted")
+	}
+	// Read hit also moves to front: "c" is now LRU after the "d" insert; reading
+	// it makes "a" the least-recently-used, so the next insert evicts "a".
+	if _, err := s.GetSearchTrace("c"); err != nil {
+		t.Fatalf("expected cached hit for 'c'; got %v", err)
+	}
+	s.mu.Lock()
+	s.cacheTraceUnlocked("e", contractv1.RetrievalTrace{TraceID: "e"})
+	s.mu.Unlock()
+	if _, ok := s.traceCache["c"]; !ok {
+		t.Errorf("LRU broken: recently-read 'c' was evicted")
+	}
+	if _, ok := s.traceCache["a"]; ok {
+		t.Errorf("LRU broken: least-recently-used 'a' should have been evicted after 'c' was read")
+	}
+	if got := len(s.traceCacheOrder); got != 3 {
+		t.Errorf("expected traceCacheOrder length = cap=3; got %d", got)
+	}
+	assertNoCacheOrderDup(t, s.traceCacheOrder)
 }
 
 // TestMemMemoryStore_EventParity — task-31.1 AC1: memory write ops emit memory.* events into the

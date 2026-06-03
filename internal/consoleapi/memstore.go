@@ -33,9 +33,10 @@ type MemStore struct {
 	// emits a stub SearchResult; without persisting it, subsequent
 	// GetSourceChunk / GetSearchTrace hit a 503 path that breaks Console UI
 	// drill-down flow under CONSOLE_API_FALLBACK_INMEM=1. The two caches
-	// preserve the most recent search outputs with FIFO eviction at
-	// cacheCapacity. Cache miss falls through to the v0.7 ErrDataPlaneUnavailable
-	// path (deep-defense unchanged).
+	// preserve the most recent search outputs with access-order LRU eviction at
+	// cacheCapacity (read hits + overwrites move-to-front; the eviction victim is
+	// the least-recently-used key). Cache miss falls through to the v0.7
+	// ErrDataPlaneUnavailable path (deep-defense unchanged).
 	chunkCache      map[string]contractv1.SourceChunk
 	chunkCacheOrder []string
 	traceCache      map[string]contractv1.RetrievalTrace
@@ -71,14 +72,30 @@ func NewMemStore() *MemStore {
 	}
 }
 
-// cacheChunkUnlocked records sc under chunkID with FIFO eviction at
-// cacheCapacity. Caller must hold s.mu.
+// moveToMRU removes key from order (if present) and appends it to the back,
+// marking it most-recently-used. Front of the slice is therefore the
+// least-recently-used key (the eviction victim). O(n) over a slice capped at
+// cacheCapacity (default 256). Returns the updated slice; caller reassigns.
+func moveToMRU(order []string, key string) []string {
+	for i, k := range order {
+		if k == key {
+			order = append(order[:i], order[i+1:]...)
+			break
+		}
+	}
+	return append(order, key)
+}
+
+// cacheChunkUnlocked records sc under chunkID with access-order LRU eviction at
+// cacheCapacity (an existing-key overwrite counts as a use → move-to-front).
+// Caller must hold s.mu.
 func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk) {
 	if chunkID == "" {
 		return
 	}
 	if _, exists := s.chunkCache[chunkID]; exists {
 		s.chunkCache[chunkID] = sc
+		s.chunkCacheOrder = moveToMRU(s.chunkCacheOrder, chunkID)
 		return
 	}
 	s.chunkCache[chunkID] = sc
@@ -91,14 +108,16 @@ func (s *MemStore) cacheChunkUnlocked(chunkID string, sc contractv1.SourceChunk)
 }
 
 // cacheTraceUnlocked records trace under traceKey (set to QueryID by the
-// MemStore.Search stub so GetSearchTrace can lookup by query_id). FIFO
-// eviction at cacheCapacity. Caller must hold s.mu.
+// MemStore.Search stub so GetSearchTrace can lookup by query_id). Access-order
+// LRU eviction at cacheCapacity (an existing-key overwrite counts as a use →
+// move-to-front). Caller must hold s.mu.
 func (s *MemStore) cacheTraceUnlocked(traceKey string, t contractv1.RetrievalTrace) {
 	if traceKey == "" {
 		return
 	}
 	if _, exists := s.traceCache[traceKey]; exists {
 		s.traceCache[traceKey] = t
+		s.traceCacheOrder = moveToMRU(s.traceCacheOrder, traceKey)
 		return
 	}
 	s.traceCache[traceKey] = t
@@ -341,6 +360,7 @@ func (s *MemStore) CancelJob(jobID string) error {
 func (s *MemStore) GetSourceChunk(chunkID string) (contractv1.SourceChunk, error) {
 	s.mu.Lock()
 	if sc, ok := s.chunkCache[chunkID]; ok {
+		s.chunkCacheOrder = moveToMRU(s.chunkCacheOrder, chunkID) // access-order LRU: a read is a use
 		s.mu.Unlock()
 		return sc, nil
 	}
@@ -357,6 +377,7 @@ func (s *MemStore) GetSourceChunk(chunkID string) (contractv1.SourceChunk, error
 func (s *MemStore) GetSearchTrace(queryID string) (contractv1.RetrievalTrace, error) {
 	s.mu.Lock()
 	if t, ok := s.traceCache[queryID]; ok {
+		s.traceCacheOrder = moveToMRU(s.traceCacheOrder, queryID) // access-order LRU: a read is a use
 		s.mu.Unlock()
 		return t, nil
 	}
