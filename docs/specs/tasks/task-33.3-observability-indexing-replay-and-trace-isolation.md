@@ -1,6 +1,6 @@
 # Task `33.3`: `observability-indexing-replay-and-trace-isolation — (a) indexing.* 事件持久化（add-only migration 0019_indexing_events）+ replay mapper 扩展（mapper 🟢 / e2e 🟡）；(b) TraceStore 严格多-workspace 隔离（add-only proto workspace_id + SQL WHERE filter + handler/store 接线，empty workspace_id = aggregate-all 向后兼容 ADR-004）；(c) events-drain-timeout VERIFY-ONLY（Phase 26 已交付，引证既有测试）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -88,21 +88,21 @@ pass bar：indexing replay mapper 纯函数单测（add-only migration round-tri
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（indexing 事件持久化 + replay mapper 🟢 / e2e 🟡）: add-only migration `0019_indexing_events`（`job_id`/`stage`/`processed`/`total`/`ts_unix`，`include_str!` 编译）+ `index_session_backend.rs` 三 emit 点（`:157-168`/`:182-193`/`:210-218`）就地额外持久写 + `events.rs` 新 indexing replay mapper（`indexing_rows_to_pb_events`，id/ts ASC 重建 indexing.* `PbEvent`，真实 job_id/processed/total 取自持久行、确定性 `evt-idx-{id}`，非合成 ADR-013）；端到端 restart-then-replay 🟡 `[SPEC-DEFER:phase-future.indexing-replay-e2e]` — verified by **TEST-33.3.1**（mapper 纯函数，mirror TEST-26.2.3）+ **TEST-33.3.2**（persist round-trip：emit → 0019 行 → 读回 → mapper 重建）
-- [ ] **AC2**（TraceStore 多-workspace 隔离 add-only proto + SQL filter 🟢 / e2e 🟡）: `GetSearchTraceRequest`（`:237-239`）+ `ListQueriesRequest`（`:255-257`）add-only `string workspace_id = 2`（buf generate 重生 binding）+ `search_persist.rs` get/list/search_fts + in-mem `TraceStore` 加 `WHERE workspace_id` filter + handler（`search.rs:460-502`）透传；**empty workspace_id = aggregate-all 既有行为 byte-equiv**（ADR-004 向后兼容）；e2e console 隔离 🟡 `[SPEC-DEFER:phase-future.tracestore-multi-workspace-strict]` — verified by **TEST-33.3.3**（SQL：空=aggregate-all byte-equiv / 非空=workspace 隔离）+ **TEST-33.3.4**（handler：request workspace_id 透传到 store，空保旧路径）
-- [ ] **AC3**（events-drain-timeout VERIFY-ONLY 🟢）: `CONSOLE_EVENTS_DRAIN_TIMEOUT` 已于 Phase 26 交付（`grpcclient.go:405`/`:407-419` `drainTimeoutFromEnv` default 100ms），本 task 0 代码改动，引证既有 `TestDrainTimeoutFromEnv`（`grpcclient_test.go:867-895`）断言绿（reframe add→verify，同 Phase 31 event-bus-partition 校正）；ADR-031 add-only Amendment 记 verify-only — verified by **TEST-33.3.5**（引证既有 `TestDrainTimeoutFromEnv` 绿）
-- [ ] **AC4**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-33.3.6**（= LAST）
+- [x] **AC1**（indexing 事件持久化 + replay mapper 🟢 / e2e 🟡）: add-only migration `0019_indexing_events`（`job_id`/`stage`/`processed`/`total`/`message`/`ts_unix`，`include_str!` 编译）+ 新 `SqliteIndexingEventStore`（`data_plane/indexing_events.rs`，append/list）+ `index_session_backend.rs` 三 emit 点（progress/error×2/cancelled）就地额外 best-effort 持久写（注入 add-only `indexing_event_store` Option 字段 + `with_event_bus_and_indexing_store` 构造 + server.rs 生产接线）+ `events.rs` 新 `indexing_rows_to_pb_events`（id ASC 重建 indexing.* `PbEvent`，真实 job_id/processed/total 取自持久行、确定性 `evt-idx-{id}`，非合成 ADR-013）；端到端 restart-then-replay 🟡 `[SPEC-DEFER:phase-future.indexing-replay-e2e]` — verified by **TEST-33.3.1**（mapper 纯函数，mirror TEST-26.2.3）+ **TEST-33.3.2**（persist round-trip：store append→list→mapper 重建 + fixture index emit 点真实持久）。实证：`cargo test -p contextforge-core --lib`（data_plane::events / data_plane::indexing_events / jobs::index_session_backend）3 新测试 PASS。
+- [x] **AC2**（TraceStore 多-workspace 隔离 add-only proto + SQL filter 🟢 / e2e 🟡）: `GetSearchTraceRequest` + `ListQueriesRequest` add-only `string workspace_id = 2`（buf generate 重生 Go binding；Rust tonic include_proto! 编译期重生；无关 churn 已 revert）+ `search_persist.rs` get/list/search_fts 加 `workspace_id` 形参 + `WHERE workspace_id` filter + in-mem `TraceStore` get/list 同义谓词 + handler（`get_search_trace`/`list_queries`）透传；**empty workspace_id = aggregate-all 既有行为 byte-equiv**（ADR-004；空路径 SQL 与改前完全一致）；e2e console 隔离 🟡 `[SPEC-DEFER:phase-future.tracestore-multi-workspace-strict]` — verified by **TEST-33.3.3**（SQL：空=aggregate-all / 非空=workspace 隔离 / unknown=empty）+ **TEST-33.3.4**（handler：request workspace_id 透传到 store，跨 workspace not_found，空保 aggregate-all）。实证：`cargo test -p contextforge-core --lib` 2 新测试 PASS。
+- [x] **AC3**（events-drain-timeout VERIFY-ONLY 🟢）: `CONSOLE_EVENTS_DRAIN_TIMEOUT` 已于 Phase 26 交付（`grpcclient.go:405`/`:407-419` `drainTimeoutFromEnv` default 100ms），本 task **0 代码改动**，引证既有 `TestDrainTimeoutFromEnv`（`grpcclient_test.go:870-895`）断言绿（reframe add→verify，同 Phase 31 event-bus-partition 校正）；ADR-031 add-only Amendment 记 verify-only @ ADR-038 D3 — verified by **TEST-33.3.5**（引证既有 `TestDrainTimeoutFromEnv` 绿）。实证：`go test ./internal/consoleapi/grpcclient/ -run TestDrainTimeoutFromEnv` PASS（5 子用例）。
+- [x] **AC4**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中（CI spec-lint 权威）— verified by **TEST-33.3.6**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-33.3.1 | indexing replay mapper 纯函数：给定 `Vec<IndexingEventRow>`（id ASC）→ 重建 indexing.* `PbEvent`（`indexing.progress`/`.cancelled`/`.error` + 真实 job_id/processed/total + 确定性 `evt-idx-{id}` + id/ts ASC），mirror TEST-26.2.3 | `core/src/data_plane/events.rs`（单测 mod） | Planned |
-| TEST-33.3.2 | indexing persist round-trip：emit 点写 0019_indexing_events 行 → store 读回 → mapper 重建，字段（job_id/stage/processed/total/ts）与写入一致；migration `IF NOT EXISTS` 幂等 | `core/src/jobs/index_session_backend.rs` + 新 `SqliteIndexingEventStore` + `core/migrations/0019_indexing_events.sql` | Planned |
-| TEST-33.3.3 | TraceStore SQL workspace filter：空 workspace_id → get/list/search_fts 与改前 aggregate-all byte-equiv；非空 workspace_id=A → 只返回 workspace A trace（跨 workspace 隔离） | `core/src/data_plane/search_persist.rs` + `core/src/data_plane/search.rs`（in-mem TraceStore） | Planned |
-| TEST-33.3.4 | handler workspace 透传：`GetSearchTraceRequest`/`ListQueriesRequest` add-only `workspace_id=2` → handler 读并透传 store；既有 client 不传（空）保 aggregate-all 旧路径 | `core/src/data_plane/search.rs:460-502` + `proto/.../console_data_plane.proto:237-239/:255-257`（buf generate binding） | Planned |
-| TEST-33.3.5 | drain-timeout VERIFY-ONLY：引证既有 `TestDrainTimeoutFromEnv`（default 100ms / env override / 非法回落）绿，本 task 0 改动（Phase 26 已交付） | `internal/consoleapi/grpcclient/grpcclient_test.go:867-895`（既有） | Planned |
-| TEST-33.3.6 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-33.3.1 | indexing replay mapper 纯函数：给定 `Vec<IndexingEventRow>`（id ASC）→ 重建 indexing.* `PbEvent`（`indexing.progress`/`.cancelled`/`.error` + 真实 job_id/processed/total + 确定性 `evt-idx-{id}` + id ASC），mirror TEST-26.2.3 | `core/src/data_plane/events.rs`（单测 mod） | Done |
+| TEST-33.3.2 | indexing persist round-trip：store append→list→mapper 重建（字段与写入一致、re-open 幂等）+ fixture index 经 emit 点真实持久（job_id/total>0 真实非合成） | `core/src/data_plane/indexing_events.rs` + `core/src/jobs/index_session_backend.rs` + `core/migrations/0019_indexing_events.sql` | Done |
+| TEST-33.3.3 | TraceStore SQL workspace filter：空 workspace_id → get/list/search_fts 与改前 aggregate-all byte-equiv；非空 workspace_id=A → 只返回 workspace A trace（跨 workspace 隔离）；unknown=empty | `core/src/data_plane/search_persist.rs` | Done |
+| TEST-33.3.4 | handler workspace 透传：`GetSearchTraceRequest`/`ListQueriesRequest` add-only `workspace_id=2` → handler 读并透传 store（跨 workspace not_found）；既有 client 不传（空）保 aggregate-all 旧路径 | `core/src/data_plane/search.rs` + `proto/.../console_data_plane.proto`（buf generate binding） | Done |
+| TEST-33.3.5 | drain-timeout VERIFY-ONLY：引证既有 `TestDrainTimeoutFromEnv`（default 100ms / env override / 非法回落）绿，本 task 0 改动（Phase 26 已交付） | `internal/consoleapi/grpcclient/grpcclient_test.go:870-895`（既有） | Done |
+| TEST-33.3.6 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -147,21 +147,25 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`cargo test -p contextforge-core data_plane::events:: / jobs::index_session_backend` —— indexing replay mapper 纯函数（id/ts ASC 重建 indexing.* PbEvent，真实 job_id/processed/total，确定性 `evt-idx-{id}`，mirror TEST-26.2.3）+ persist round-trip（emit → 0019 行 → 读回 → mapper 重建一致；migration `IF NOT EXISTS` 幂等）；端到端 restart-replay 🟡 `[SPEC-DEFER:phase-future.indexing-replay-e2e]`（真实测试结果待实施回填，ADR-013 不伪造）。
-- AC2：`cargo test -p contextforge-core data_plane::search_persist / data_plane::search` —— add-only proto `workspace_id=2`（buf generate）+ get/list/search_fts + in-mem TraceStore WHERE workspace filter + handler 透传；空 workspace_id → aggregate-all byte-equiv（既有行为不变）/ 非空 → workspace 隔离；e2e console 隔离 🟡 `[SPEC-DEFER:phase-future.tracestore-multi-workspace-strict]`。真实结果待实施回填。
-- AC3：`go test ./internal/consoleapi/grpcclient/ -run TestDrainTimeoutFromEnv` —— VERIFY-ONLY（Phase 26 已交付 `drainTimeoutFromEnv` `grpcclient.go:407-419`，0 代码改动，引证既有测试绿）；ADR-031 add-only Amendment 记 verify-only 校正。真实结果待实施回填。
+**§9 Verification 实证**（real evidence，本地全绿）：
+- AC1：`cargo test -p contextforge-core --lib` —— `test_33_3_1_indexing_rows_to_pb_events_id_asc_and_real_fields`（mapper 纯函数，id ASC 重建 indexing.* PbEvent，真实 job_id/processed/total、确定性 `evt-idx-{id}`、empty→empty，mirror TEST-26.2.3）+ `test_33_3_2_store_roundtrip_and_mapper_rebuild`（store append→list→mapper 重建 + re-open `IF NOT EXISTS` 幂等）+ `test_33_3_2_emit_points_persist_on_fixture_index`（fixture index 经 progress emit 点真实持久 job_id/total>0，mapper 重建 indexing.progress）三测试 PASS；端到端 restart-replay 🟡 `[SPEC-DEFER:phase-future.indexing-replay-e2e]`（CI 默认不闭环，不伪造数值 ADR-013）。
+- AC2：`cargo test -p contextforge-core --lib` —— `test_33_3_3_workspace_filter_empty_aggregates_nonempty_isolates`（get/list/search_fts：空=aggregate-all / 非空=隔离 / unknown=empty）+ `test_33_3_4_handlers_thread_workspace_id`（handler 读 req.workspace_id 透传 store，跨 workspace not_found，空保 aggregate-all）二测试 PASS；空路径 SQL 与改前 byte-equiv（既有 search_persist 全部测试不退化）；e2e console 隔离 🟡 `[SPEC-DEFER:phase-future.tracestore-multi-workspace-strict]`。
+- AC3：`go test ./internal/consoleapi/grpcclient/ -run TestDrainTimeoutFromEnv` PASS（5 子用例：default 100ms / 150ms / 1s / 非法回落 / 非正回落）—— VERIFY-ONLY（Phase 26 已交付 `drainTimeoutFromEnv` `grpcclient.go:407-419`，本 task 0 代码改动）；ADR-031 add-only Amendment 记 verify-only 校正 @ ADR-038 D3。
+- 不退化：`cargo test --workspace` 全 PASS（lib 207 + 全 integration 含 `search_persist_integration`）；`cargo clippy --workspace --all-targets -- -D warnings` 0 warning；`go test ./...` 全 PASS（pb.go 重生编译通过）。
 - AC4：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-- 0 新 dep / 默认行为不变（empty=aggregate-all byte-equiv）/ 既有契约不变（proto add-only field、migration 0019 add-only）/ honest（真实 job_id/processed/total 非合成、e2e 维度据实 defer）真实结果待实施回填（ADR-013 受阻 / 数值不预填，真实跑出才记数）。
+- 0 新 dep（migration `include_str!` 编译、proto add-only field 经 buf generate、drain-timeout 0 改动）/ 默认行为不变（empty=aggregate-all byte-equiv、indexing 持久写为额外写不替换 eb.send 广播）/ 既有契约不变（proto add-only `workspace_id=2`、migration 0019 add-only、store API add-only 形参）/ honest（真实 job_id/processed/total 非合成、e2e 维度据实 defer 不预填）。
 
-**实际改动文件**（计划，待实施回填）：
-- `core/migrations/0019_indexing_events.sql`——新增专用表 `indexing_events`（`job_id`/`stage`/`processed`/`total`/`ts_unix`，CREATE TABLE IF NOT EXISTS + index），`include_str!` 编译入二进制（镜像 0015 pattern）。
-- `core/src/jobs/index_session_backend.rs`——三 emit 点（`:157-168`/`:182-193`/`:210-218`）就地额外 best-effort 持久写 indexing lifecycle 行 + 注入持久 sink（add-only 字段 / Option，既有构造兼容）。
-- `core/src/data_plane/events.rs`——新 `indexing_rows_to_pb_events`（或 `replay_indexing_events_from_store`）纯 mapper（id/ts ASC 重建 indexing.* PbEvent，真实字段 + 确定性 `evt-idx-{id}`）；`:389` marker 措辞更新（持久源已落地 0019，e2e `[SPEC-DEFER:phase-future.indexing-replay-e2e]`）+ 同源单测（mirror TEST-26.2.3）。
-- `proto/contextforge/console_data_plane/v1/console_data_plane.proto`——`GetSearchTraceRequest`（`:237-239`）+ `ListQueriesRequest`（`:255-257`）add-only `string workspace_id = 2`（buf generate 重生 Go/Rust binding）。
-- `core/src/data_plane/search_persist.rs`——`get`/`list`/`search_fts` 加 `workspace_id` 形参 + `WHERE workspace_id` filter（空=不加谓词 aggregate-all byte-equiv）。
-- `core/src/data_plane/search.rs`——in-mem `TraceStore` get/list 加 workspace 谓词 + handler `get_search_trace`（`:460-480`）/ `list_queries`（`:486-502`）从 request 读并透传 workspace_id。
-- `internal/consoleapi/grpcclient/grpcclient.go`——**0 改动**（drain-timeout verify-only，引证既有 `TestDrainTimeoutFromEnv` `grpcclient_test.go:867-895`）。
+**实际改动文件**：
+- `core/migrations/0019_indexing_events.sql`——新增专用表 `indexing_events`（`id` PK / `job_id` / `stage` / `processed` / `total` / `message` / `ts_unix` / `created_at`，CREATE TABLE IF NOT EXISTS + `idx_indexing_events_job_id`），`include_str!` 编译入二进制（镜像 0015 pattern）。
+- `core/src/data_plane/indexing_events.rs`（新）——`IndexingEventRow` + `SqliteIndexingEventStore`（open/append/list，id ASC）+ `IndexingEventStoreError`；`data_plane/mod.rs` 注册 `pub mod indexing_events;`。
+- `core/src/jobs/index_session_backend.rs`——add-only `indexing_event_store: Option<Arc<SqliteIndexingEventStore>>` 字段 + `with_event_bus_and_indexing_store` 构造（Default/with_event_bus 设 None）；progress（closure）+ error×2 + cancelled 四 emit 点就地额外 best-effort 持久写（不替换 eb.send 广播路径）。
+- `core/src/data_plane/events.rs`——新 `indexing_rows_to_pb_events` 纯 mapper（id ASC 重建 indexing.* PbEvent，真实字段 + 确定性 `evt-idx-{id}`，payload 镜像 build_progress_event 形状）；marker 措辞更新（持久源已落地 0019，e2e `[SPEC-DEFER:phase-future.indexing-replay-e2e]`）+ 同源单测。
+- `proto/contextforge/console_data_plane/v1/console_data_plane.proto`——`GetSearchTraceRequest` + `ListQueriesRequest` add-only `string workspace_id = 2`；`console_data_plane.pb.go` buf generate 重生（无关 churn search/service*.pb.go + _grpc.pb.go EOL churn 已 revert）。
+- `core/src/data_plane/search_persist.rs`——`get`/`list`/`search_fts` 加 `workspace_id` 形参 + `WHERE workspace_id` filter（空=不加谓词 aggregate-all byte-equiv）+ `row_to_record_tuple` helper；既有测试调用同步加 `""`。
+- `core/src/data_plane/search.rs`——in-mem `TraceStore` get/list 加 workspace 谓词 + handler `get_search_trace` / `list_queries` 从 request 读并透传 workspace_id；既有测试调用 + proto 请求 literal 同步加字段。
+- `core/src/server.rs`——生产 JobRunner 接线：开 `<data_dir>/indexing_events.db` 经 `with_event_bus_and_indexing_store` 注入 backend。
+- `core/tests/search_persist_integration.rs`——既有调用同步加 `""`。
+- `internal/consoleapi/grpcclient/grpcclient.go`——**0 改动**（drain-timeout verify-only，引证既有 `TestDrainTimeoutFromEnv` `grpcclient_test.go:870-895`）。
 - ADR-031 add-only Amendment（indexing replay 持久源 + drain-timeout verify-only 校正）+ ADR-016 trace isolation proto add-only field 引用——落点在 ADR-038 D3 / task-33.4 closeout（非本 task body）。

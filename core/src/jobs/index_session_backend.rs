@@ -42,6 +42,12 @@ pub struct IndexSessionBackend {
     /// task-11.4: job_id used for event_bus event payload tagging. Set by
     /// `with_job_context` before each index() call.
     pub job_id_context: parking_lot_like::Mutex<String>,
+    /// task-33.3 (ADR-038 D3): optional persistent indexing-event sink. When
+    /// Some, each emit point ALSO best-effort persists a lifecycle row (replay
+    /// source) in addition to the in-memory `event_bus` broadcast. None (tests
+    /// / task-11.4 baseline) → broadcast-only, behavior unchanged.
+    pub indexing_event_store:
+        Option<Arc<crate::data_plane::indexing_events::SqliteIndexingEventStore>>,
 }
 
 /// Tiny parking_lot-like Mutex shim built on std (we already depend on std::
@@ -57,6 +63,7 @@ impl Default for IndexSessionBackend {
             chunk_policy_override: None,
             event_bus: None,
             job_id_context: parking_lot_like::Mutex::new(String::new()),
+            indexing_event_store: None,
         }
     }
 }
@@ -74,6 +81,23 @@ impl IndexSessionBackend {
             chunk_policy_override: None,
             event_bus: Some(event_bus),
             job_id_context: parking_lot_like::Mutex::new(String::new()),
+            indexing_event_store: None,
+        })
+    }
+
+    /// task-33.3 (ADR-038 D3): build with both the broadcast EventBus and a
+    /// persistent indexing-event sink (replay source). Add-only superset of
+    /// `with_event_bus`; emit points additionally persist a lifecycle row.
+    pub fn with_event_bus_and_indexing_store(
+        event_bus: Arc<crate::data_plane::events::EventBus>,
+        indexing_event_store: Arc<crate::data_plane::indexing_events::SqliteIndexingEventStore>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            scan_options_override: None,
+            chunk_policy_override: None,
+            event_bus: Some(event_bus),
+            job_id_context: parking_lot_like::Mutex::new(String::new()),
+            indexing_event_store: Some(indexing_event_store),
         })
     }
 
@@ -134,6 +158,9 @@ impl IndexerBackend for IndexSessionBackend {
         let mut total_estimate: i64 = 0;
 
         let event_bus = self.event_bus.clone();
+        // task-33.3: clone the persistent sink handle for the progress closure
+        // (terminal emits below use self.indexing_event_store directly).
+        let indexing_store = self.indexing_event_store.clone();
         let job_id_context = self.current_job_id();
         let on_inner = |snap: &IndexProgressSnapshot<'_>| {
             // Sum of all seen file outcomes (indexed + denied + redaction skip)
@@ -166,6 +193,20 @@ impl IndexerBackend for IndexSessionBackend {
                     let _ = eb.send(pb_evt);
                 }
             }
+            // task-33.3 (ADR-038 D3): additionally persist a progress row as a
+            // replay source (best-effort — write failure does not block
+            // indexing, mirroring the eb.send best-effort above).
+            if let Some(store) = &indexing_store {
+                if !job_id_context.is_empty() {
+                    let _ = store.append(
+                        &job_id_context,
+                        "indexing",
+                        evt.processed_files,
+                        evt.total_files,
+                        "",
+                    );
+                }
+            }
             if matches!(on_progress(&evt), ProgressDecision::Cancel) {
                 cancel_for_closure.store(true, std::sync::atomic::Ordering::Relaxed);
             }
@@ -189,6 +230,18 @@ impl IndexerBackend for IndexSessionBackend {
                         let _ = eb.send(pb_evt);
                     }
                 }
+                // task-33.3: persist the error row as a replay source (best-effort).
+                if let Some(store) = &self.indexing_event_store {
+                    if !job_id_for_terminal.is_empty() {
+                        let _ = store.append(
+                            &job_id_for_terminal,
+                            "error",
+                            0,
+                            0,
+                            &format!("IndexSession::index_path_cancellable: {e}"),
+                        );
+                    }
+                }
                 format!("IndexSession::index_path_cancellable: {e}")
             })?;
 
@@ -204,6 +257,12 @@ impl IndexerBackend for IndexSessionBackend {
                     let _ = eb.send(pb_evt);
                 }
             }
+            // task-33.3: persist the commit-error row as a replay source.
+            if let Some(store) = &self.indexing_event_store {
+                if !job_id_for_terminal.is_empty() {
+                    let _ = store.append(&job_id_for_terminal, "error", 0, 0, &format!("commit: {e}"));
+                }
+            }
             format!("commit: {e}")
         })?;
 
@@ -213,6 +272,12 @@ impl IndexerBackend for IndexSessionBackend {
                 if !job_id_for_terminal.is_empty() {
                     let pb_evt = crate::data_plane::events::build_cancelled_event(&job_id_for_terminal);
                     let _ = eb.send(pb_evt);
+                }
+            }
+            // task-33.3: persist the cancelled row as a replay source.
+            if let Some(store) = &self.indexing_event_store {
+                if !job_id_for_terminal.is_empty() {
+                    let _ = store.append(&job_id_for_terminal, "cancelled", 0, 0, "");
                 }
             }
         }
@@ -330,5 +395,51 @@ mod tests {
         // (The IndexSession committed everything indexed before cancel.)
         let _ = outcome;
         let _ = Ordering::Relaxed; // touch for clarity
+    }
+
+    /// TEST-33.3.2 (emit half): when an indexing-event store is wired, the
+    /// progress emit point persists real lifecycle rows (job_id/processed/total)
+    /// as a replay source, and the replay mapper rebuilds indexing.* events
+    /// from them. Proves the emit-point persistence is actually exercised by a
+    /// real index run (not just the store's direct round-trip).
+    #[test]
+    fn test_33_3_2_emit_points_persist_on_fixture_index() {
+        use crate::data_plane::events::indexing_rows_to_pb_events;
+        use crate::data_plane::indexing_events::SqliteIndexingEventStore;
+
+        let data_dir = temp_dir("emit-persist");
+        let workspace_id = "ws-isb-emit";
+        let (_ws, _js) = ensure_workspace(&data_dir, workspace_id).unwrap();
+
+        let store = Arc::new(SqliteIndexingEventStore::open(&data_dir).expect("store open"));
+        // Wire the store (event_bus None — persistence is independent of broadcast).
+        let backend = IndexSessionBackend {
+            scan_options_override: None,
+            chunk_policy_override: None,
+            event_bus: None,
+            job_id_context: std::sync::Mutex::new(String::new()),
+            indexing_event_store: Some(store.clone()),
+        };
+        let mut on_progress =
+            |_evt: &JobProgressEvent| -> ProgressDecision { ProgressDecision::Continue };
+        let outcome = backend
+            .index(&fixture_dir(), &data_dir, workspace_id, "job-emit-1", &mut on_progress)
+            .expect("index ok");
+        assert!(outcome.processed_files >= 5);
+
+        let rows = store.list(1000).expect("list ok");
+        assert!(!rows.is_empty(), "progress emit point persisted at least one row");
+        assert!(
+            rows.iter().all(|r| r.job_id == "job-emit-1"),
+            "rows tagged with the real job_id"
+        );
+        assert!(
+            rows.iter().any(|r| r.stage == "indexing" && r.total > 0),
+            "at least one progress row carries a real total (>0): {rows:?}"
+        );
+        // Replay mapper rebuilds indexing.progress events from the persisted rows.
+        let evs = indexing_rows_to_pb_events(&rows);
+        assert!(evs.iter().all(|e| e.event_type == "indexing.progress"));
+        assert!(evs.iter().all(|e| e.job_id == Some("job-emit-1".to_string())));
     }
 }

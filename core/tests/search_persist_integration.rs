@@ -88,14 +88,14 @@ fn test_tracestore_persists_across_restart() {
 
     // GET via the new Persist also works.
     let got = persist2
-        .get("qry-2")
+        .get("qry-2", "")
         .expect("get ok")
         .expect("qry-2 present after restart");
     assert_eq!(got.query, "beta");
     assert_eq!(got.trace_id, "trace-beta");
 
     // List via the new Persist returns DESC by ts.
-    let listed = persist2.list(10).expect("list ok");
+    let listed = persist2.list(10, "").expect("list ok");
     assert_eq!(listed.len(), 3);
     assert_eq!(listed[0].query_id, "qry-3");
     assert_eq!(listed[0].ts_unix, 300);
