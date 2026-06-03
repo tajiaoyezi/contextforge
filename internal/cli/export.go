@@ -18,6 +18,10 @@ type exportOpts struct {
 	DataDir      string
 	Output       string
 	IncludeStale bool
+	// task-33.4 (ADR-038 D-export): add-only export timeout. Defaults to 60s
+	// (byte-equivalent to the pre-33.4 hardcoded value); covers both sequential
+	// daemon spawns in exporter.Export (loadRecords + chunk loader).
+	Timeout time.Duration
 }
 
 // runExport implements `contextforge export`.
@@ -26,7 +30,7 @@ func runExport(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return 2
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 
 	result, err := exporter.Export(ctx, exporter.Options{
@@ -63,6 +67,8 @@ func parseExportOpts(args []string, stderr io.Writer) (*exportOpts, error) {
 	dataDir := fs.String("data-dir", "", "data root (default ~/.contextforge)")
 	output := fs.String("output", "", "output file path or directory")
 	includeStale := fs.Bool("include-stale", false, "include records marked stale")
+	timeout := fs.Duration("timeout", 60*time.Second,
+		"export timeout (default 60s; covers both sequential daemon spawns)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -87,5 +93,6 @@ func parseExportOpts(args []string, stderr io.Writer) (*exportOpts, error) {
 		DataDir:      *dataDir,
 		Output:       *output,
 		IncludeStale: *includeStale,
+		Timeout:      *timeout,
 	}, nil
 }

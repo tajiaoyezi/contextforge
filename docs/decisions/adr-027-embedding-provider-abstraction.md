@@ -72,3 +72,12 @@ Phase 31（ADR-036 D2）以 add-only 方式给 `CachingEmbeddingProvider` 的 L1
 - **L1 缓存有界化（cache-lru）**：task-31.2（PR #207）`core/src/embedding/cache.rs` 的 L1 由无界 `Mutex<HashMap>` 改为 `BoundedCache`（map + VecDeque，FIFO-on-insert 驱逐，0 新 dep）+ `DEFAULT_EMBEDDING_CACHE_CAP=50_000` + `with_capacity` 构造（`new`/`with_sqlite` 签名兼容，默认 cap 不破现有命中）。长跑 daemon 的 L1 内存随唯一文本数单调无界增长的风险解除。`cargo test embedding::cache` 5 passed（含既有 22.2.* + 新 cap 驱逐测试）。L2 SQLite 上限延后 `[SPEC-DEFER:phase-future.l2-cache-eviction]`。
 
 依赖变更：手写 LRU 0 新 dep。详见 ADR-036 Ratification + `docs/releases/v0.24.0-evidence.md`。
+
+## Amendment (Phase 33 / v0.26.0, 2026-06-03 — add-only, 正文不溯改)
+
+Phase 33（ADR-038 D1）以 add-only 方式给 `CachingEmbeddingProvider` 的 **L2 SQLite 缓存**加容量上界，承 Phase 31 的 L1 `BoundedCache`，**不溯改正文 + 不溯改 Phase 31 Amendment**（ADR-014 D5）：
+
+- **L2 缓存有界化（l2-cache-bound）**：task-33.1（PR #218）`core/src/embedding/cache.rs` 的 L2 `sqlite_put` 在 `INSERT OR REPLACE` 后做 row-count cap + rowid-FIFO 驱逐（`DELETE ... WHERE provider=? AND dim=? AND rowid NOT IN (SELECT rowid ... ORDER BY rowid DESC LIMIT cap)`），`DEFAULT_L2_EMBEDDING_CACHE_CAP=50_000` + add-only `with_sqlite_capacity` 构造（`with_sqlite` 委派，签名兼容）。用隐式 rowid 作 FIFO 序 → **0 新 dep / 0 schema migration**。`cargo test embedding::cache` 7 passed（含既有 + `test_33_1_1_l2_cap_evicts_oldest_fifo` / `test_33_1_2_default_l2_cap_keeps_modest_workload`）。
+- **opt-in-path caveat（ADR-013 据实）**：`with_sqlite`/`with_sqlite_capacity` 无生产调用点（test-only），shipped daemon 走 memory-only L1 → 这是 **opt-in 路径的纵深防御**，据实不夸大为 live leak。带 `created_at` 列的真 LRU 须 `ALTER` 既有用户文件（破 0-migration）→ honest-defer `[SPEC-DEFER:phase-future.l2-cache-true-lru]`。
+
+依赖变更：rowid-FIFO 0 新 dep。详见 ADR-038 Ratification D1 + `docs/releases/v0.26.0-evidence.md`。

@@ -1,6 +1,6 @@
 # Task `33.4`: `export-timeout-and-closeout-v0.26.0 — export --timeout add-only flag（默认 60s byte-equiv，ADR-004）+ v0.26.0 closeout（smoke v23 step [42/42] + TestTask334 + release docs + ADR-038 据 D1-D5 ratify + ADR-031/027 add-only Amendment + roadmap §3.15+§4 + adapter）；§范围外诚实记录三处 grounding 校正（%v→%w non-bug / tracestore-fts already-fixed / datadir env→Options 🟡 honest-defer），不实现`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -96,17 +96,17 @@ pass bar：(A) export `--timeout` add-only flag parse 单测 🟢（默认 60s b
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（export --timeout add-only flag default 60s 🟢）: `internal/cli/export.go` `parseExportOpts`（`:58-91`）注册 add-only `--timeout` flag（default `60*time.Second`）写入 `exportOpts`，`runExport`（`:29`）`context.WithTimeout(ctx, opts.Timeout)` 代替硬编码 `60*time.Second`；未设 → 60s default byte-equivalent（ADR-004 默认行为不变）；设 `--timeout=120s` → 120s；既有 flag parse 不退化；0 新 dep（标准库 `flag`/`time`，ADR-008）— verified by **TEST-33.4.1**
-- [ ] **AC2**（v0.26.0 closeout 🟢🟡）: smoke banner v22→v23 + step `[42/42]`（doc/status 断言 governance-debt-cleanup-2 baseline + default build baseline intact）+ `TestTask334_SmokeV23GovernanceDebtCleanup2Step`（含无回归既有 `[37/37]`..`[41/41]`，denominator 不溯改）；v0.26.0 release docs（`v0.26.0-{evidence,artifacts}.md` `<backfill>` + README v0.26 段 + RELEASE_NOTES v0.26.0 段）+ ADR-038 per-D ratify `Proposed→Accepted`（D1/D2/D5 Accepted；D3 indexing-replay-e2e + tracestore-isolation-e2e 🟡 + D4 dropped-nits/datadir honest-defer PARTIAL）+ ADR-031 add-only Amendment（indexing replay + drain-timeout verify-only）+ ADR-027 add-only Amendment（L2 cache bound）+ roadmap §3.15 + §4 add-only 新 backlog + phase-33 §6 AC `[x]` + Status Done + adapter（Phase 33 Done/Tasks 4/ADR-038 Accepted）+ feature — verified by **TEST-33.4.2**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-33.4.3**（= LAST）
+- [x] **AC1**（export --timeout add-only flag default 60s 🟢）: `internal/cli/export.go` `parseExportOpts` 注册 add-only `--timeout` flag（`fs.Duration("timeout", 60*time.Second, ...)`）写入 `exportOpts.Timeout`，`runExport` `context.WithTimeout(ctx, opts.Timeout)` 代替硬编码 `60*time.Second`；未设 → 60s default byte-equivalent（ADR-004 默认行为不变）；设 `--timeout=120s` → 120s；既有 flag parse 不退化；0 新 dep（标准库 `flag`/`time`，ADR-008）— verified by **TEST-33.4.1**。实证：`go test ./internal/cli/ -run "TestParseExportOpts\|TestTask63_AC5"` PASS（default 60s + 120s override + 既有 format/output/data-dir 不退化）。
+- [x] **AC2**（v0.26.0 closeout 🟢🟡）: smoke banner v22→v23 + step `[42/42]`（governance-debt-cleanup-2 baseline + default build baseline intact，staging `cf-v25-cfg`）+ `TestTask334_SmokeV23GovernanceDebtCleanup2Step`（含无回归既有 `[37/37]`..`[41/41]`，denominator 不溯改）；v0.26.0 release docs（`v0.26.0-{evidence,artifacts}.md` `<backfill>` + README v0.26 段 + RELEASE_NOTES v0.26.0 段）+ ADR-038 per-D ratify `Proposed→Accepted`（D1/D2/D5 Accepted；D3 indexing-replay-e2e + tracestore-isolation-e2e 🟡 + D4 dropped-nits/datadir honest-defer）+ ADR-031 add-only Amendment（indexing replay + drain-timeout verify-only）+ ADR-027 add-only Amendment（L2 cache bound）+ roadmap §3.15 推进记录 + §4 add-only 新 backlog + phase-33 §6 AC `[x]` + Status Done + adapter（Phase 33 Done/Tasks 4/ADR-038 Accepted）+ feature — verified by **TEST-33.4.2**。实证：`bash -n scripts/console_smoke.sh` exit 0 + `go test ./internal/cli/ -run TestTask334` PASS；`cargo test --workspace` + `go test ./...` 不退化。
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中（CI spec-lint 权威）— verified by **TEST-33.4.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-33.4.1 | export `--timeout` add-only flag：未设 → 60s default byte-equiv（ADR-004）；设 `--timeout=120s` → 120s；`runExport` `context.WithTimeout(ctx, opts.Timeout)`；既有 flag parse 不退化；0 新 dep | `internal/cli/export.go` + `internal/cli/export_test.go`（同源 test） | Planned |
-| TEST-33.4.2 | smoke v23 step `[42/42]`（governance-debt-cleanup-2 baseline + L2-cache/memstore-LRU/indexing-replay/export-timeout 标记 + 无回归既有 denominator）+ `bash -n` 过 + `go test -run TestTask334` 过 + v0.26.0 release docs + ADR-038 per-D ratify Accepted（D3 e2e / D4 dropped-nits honest-defer 如实）+ ADR-031/027 add-only Amendment + roadmap §3.15+§4 + phase-33 §6 闭合 + adapter + feature | `scripts/console_smoke.sh` + `internal/cli/smoke_syntax_test.go` + release/ADR-038/ADR-031/ADR-027/roadmap/phase/adapter/feature | Planned |
-| TEST-33.4.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-33.4.1 | export `--timeout` add-only flag：未设 → 60s default byte-equiv（ADR-004）；设 `--timeout=120s` → 120s；`runExport` `context.WithTimeout(ctx, opts.Timeout)`；既有 flag parse 不退化；0 新 dep | `internal/cli/export.go` + `internal/cli/export_test.go`（同源 test） | Done |
+| TEST-33.4.2 | smoke v23 step `[42/42]`（governance-debt-cleanup-2 baseline + L2-cache/memstore-LRU/indexing-replay/export-timeout 标记 + 无回归既有 denominator）+ `bash -n` 过 + `go test -run TestTask334` 过 + v0.26.0 release docs + ADR-038 per-D ratify Accepted（D3 e2e / D4 dropped-nits honest-defer 如实）+ ADR-031/027 add-only Amendment + roadmap §3.15+§4 + phase-33 §6 闭合 + adapter + feature | `scripts/console_smoke.sh` + `internal/cli/smoke_syntax_test.go` + release/ADR-038/ADR-031/ADR-027/roadmap/phase/adapter/feature | Done |
+| TEST-33.4.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -144,13 +144,13 @@ cargo test --workspace && go test ./...
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- `go test ./internal/cli/ -run TestParseExportOpts`（export `--timeout` add-only flag：未设 → 60s default byte-equiv / 设 `--timeout=120s` → 120s / 既有 flag 不退化 / 0 新 dep）——真实跑出后回填，不伪造（ADR-013）。
-- `bash -n scripts/console_smoke.sh` + `go test ./internal/cli/ -run TestTask334`（smoke 语法 + syntax test，`[42/42]` + governance-debt-cleanup-2 标记 + TEST-33.1/33.2/33.3 标记 + 无回归 `[37/37]`..`[41/41]`）——真实跑出后回填。
-- `cargo test --workspace` + `go test ./...`（既有不退化）——真实跑出后回填。
-- `bash scripts/spec_drift_lint.sh --touched origin/master`（D2 lint，CI spec-lint 权威）——真实跑出后回填。
+**§9 Verification 实证**（real evidence，本地全绿）：
+- `go test ./internal/cli/ -run "TestParseExportOpts\|TestTask63_AC5"` PASS——export `--timeout` add-only flag：未设 → 60s default byte-equiv（与改前硬编码 `context.WithTimeout(..., 60*time.Second)` 字节等价）/ 设 `--timeout=120s` → 120s / 既有 `--format`/`--output`/`--data-dir` parse 不退化 / 0 新 dep（标准库 `flag.Duration`+`time`）。
+- `bash -n scripts/console_smoke.sh` exit 0 + `go test ./internal/cli/ -run TestTask334` PASS——smoke v23 step `[42/42]`（governance-debt-cleanup-2 + TEST-33.1.*/33.2.*/33.3.*/33.4.* + `export --timeout`/`migration 0019`/`workspace_id` 标记 + 无回归 `[37/37]`..`[41/41]`，staging `cf-v25-cfg`）。
+- `cargo test --workspace`（lib 207 + 全 integration）+ `go test ./...` 全 PASS（既有不退化）；`cargo clippy --workspace --all-targets -- -D warnings` 0 warning。
+- `bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
 - ADR-038 ratify 逐 D 据 33.1-33.3 真实测试 / 实测结果——待实测回填；D1 L2 cache opt-in-path caveat（`with_sqlite` 无生产调用点）/ true-LRU honest-defer、D2 cascade honest-defer 非问题 + `handleMemoryPin` lenient 保持、D3 indexing-replay-e2e + tracestore-isolation-e2e console 🟡 honest-defer + drain-timeout verify-only、D4 dropped-nits（`%v→%w` non-bug / tracestore-fts already-fixed / datadir env→Options 🟡）如实记录，不强 ratify（ADR-013）。
 - ADR-031 add-only `## Amendment (Phase 33 / v0.26.0)`（indexing.* event 持久化 + replay mapper 新增 / drain-timeout verify-only 校正）+ ADR-027 add-only `## Amendment (Phase 33 / v0.26.0)`（L2 SQLite cache row-count cap + rowid-FIFO）——据真实落地后回填，不溯改 D 正文 + 既有 Amendment 正文（ADR-014 D5）。
 - roadmap §3.15 Phase 33 推进记录 + §4 add-only 新 backlog（l2-cache-true-lru / memory-harddelete-cascade / indexing-replay-e2e / tracestore-multi-workspace-strict-e2e / daemon-options-datadir）——add-only 落地后回填。

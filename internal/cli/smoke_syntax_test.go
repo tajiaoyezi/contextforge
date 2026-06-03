@@ -338,6 +338,43 @@ func TestTask294_SmokeV19LiveVectorRecallStep(t *testing.T) {
 	}
 }
 
+// TEST-33.4.2 / AC2: smoke v23 adds step 42 — task-33.4 closeout (governance-debt-cleanup-2). The L2
+// cache bound / memstore LRU / indexing replay+trace isolation (add-only proto+migration) / export
+// --timeout (add-only flag) all preserve default behavior, so step 42 is a documentation/status step
+// verifying the default build still scaffolds. Asserts the new [42/42] marker + Phase 33 status, and no
+// regression of the prior denominators (ADR-014 D5).
+func TestTask334_SmokeV23GovernanceDebtCleanup2Step(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v23 (task-33.4)") {
+		t.Fatalf("console_smoke.sh missing v23 (task-33.4) header block")
+	}
+	for _, marker := range []string{"[42/42]", "governance-debt-cleanup-2", "TEST-33.1.", "TEST-33.2.", "TEST-33.3.", "TEST-33.4.", "export --timeout", "migration 0019", "workspace_id"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v23 step 42 must document governance-debt-cleanup-2 status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v22 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "vector-backend-config-plumbing"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v23 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-32.4.1 / AC1: smoke v22 adds step 41 — task-32.4 closeout (vector-backend-config-plumbing-and-
 // completeness). The vector backends + sqlite-vec arm are feature-gated and the console vector_score is
 // add-only, so step 41 is a documentation/status step verifying the default build still scaffolds.
