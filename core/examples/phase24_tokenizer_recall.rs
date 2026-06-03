@@ -175,6 +175,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let after = run(&data_after, "tok", cfg_after, &queries)?;
 
+    // task-30.2: third path — jieba true-word segmenter (feature `cjk-segmenter`). Indexes the SAME
+    // corpus under the `cjk_segmenter` analyzer binding, measured through the same BM25 path. Real
+    // numbers only (ADR-013); when the feature is off this block compiles out and the harness reports
+    // default vs bigram only (0-dep).
+    #[cfg(feature = "cjk-segmenter")]
+    {
+        let data_seg = work.join("segmenter");
+        {
+            let mut s = IndexSession::open_with_tokenizer(&data_seg, "tok", "cjk_segmenter")?;
+            s.index_path(&src, &scan_opts, &ChunkPolicy::default(), vec![])?;
+            s.commit()?;
+        }
+        let cfg_seg = RetrieverConfig {
+            tokenizer: "cjk_segmenter".to_string(),
+            ..Default::default()
+        };
+        let seg = run(&data_seg, "tok", cfg_seg, &queries)?;
+        println!("=== task-30.2 REAL true-segmenter (cjk_segmenter) recall (BM25 file-level over extended golden) ===");
+        println!(
+            "before(default):    recall@5={:.4} recall@10={:.4} top1={:.4} mrr={:.4}",
+            before.recall5, before.recall10, before.top1, before.mrr
+        );
+        println!(
+            "bigram(code_cjk):   recall@5={:.4} recall@10={:.4} top1={:.4} mrr={:.4}",
+            after.recall5, after.recall10, after.top1, after.mrr
+        );
+        println!(
+            "segmenter(cjk_seg): recall@5={:.4} recall@10={:.4} top1={:.4} mrr={:.4}",
+            seg.recall5, seg.recall10, seg.top1, seg.mrr
+        );
+        println!(
+            "delta(seg-bigram):  recall@5={:+.4} recall@10={:+.4} top1={:+.4} mrr={:+.4}",
+            seg.recall5 - after.recall5,
+            seg.recall10 - after.recall10,
+            seg.top1 - after.top1,
+            seg.mrr - after.mrr
+        );
+        println!(
+            "delta(seg-default): recall@5={:+.4} recall@10={:+.4} top1={:+.4} mrr={:+.4}",
+            seg.recall5 - before.recall5,
+            seg.recall10 - before.recall10,
+            seg.top1 - before.top1,
+            seg.mrr - before.mrr
+        );
+        println!("--- per-query (cjk cases): default / bigram / segmenter rank ---");
+        let fmt2 = |r: Option<usize>| r.map(|x| x.to_string()).unwrap_or_else(|| "-".to_string());
+        for (i, q) in queries.iter().enumerate() {
+            if q.category == "cjk" {
+                println!(
+                    "  {:<14} default={:>2} bigram={:>2} seg={:>2}  ({})",
+                    q.query,
+                    fmt2(before.ranks[i]),
+                    fmt2(after.ranks[i]),
+                    fmt2(seg.ranks[i]),
+                    q.expected_file_path
+                );
+            }
+        }
+    }
+
     println!("=== task-24.3 REAL tokenizer before/after recall (BM25 file-level over task-24.2 golden) ===");
     println!(
         "corpus_files={} queries={} (code-symbol + cjk)",
