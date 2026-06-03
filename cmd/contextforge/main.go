@@ -18,10 +18,12 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/cli"
+	"github.com/tajiaoyezi/contextforge/internal/config"
 	"github.com/tajiaoyezi/contextforge/internal/daemon"
 	"github.com/tajiaoyezi/contextforge/internal/exporter"
 	"github.com/tajiaoyezi/contextforge/internal/mcpadapter"
@@ -100,6 +102,11 @@ func doServe(_ context.Context, opts *cli.ServeOpts, stdout, stderr io.Writer) e
 	}
 	defer listener.Close()
 
+	// task-34.2: bridge config.toml [vector] → CONTEXTFORGE_VECTOR_BACKEND/_DIM so the spawned
+	// core daemon's resolve_vector_backend picks them up (env-wins; no [vector] → unchanged).
+	restoreVec := setVectorEnv(opts.DataDir)
+	defer restoreVec()
+
 	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
 	if err != nil {
 		return fmt.Errorf("start core daemon: %w", err)
@@ -130,6 +137,9 @@ func doMCP(ctx context.Context, opts cli.MCPOpts, stdin io.Reader, stdout, _ io.
 		return err
 	}
 	defer restoreEnv()
+	// task-34.2: bridge config.toml [vector] → core env (env-wins; no [vector] → unchanged).
+	restoreVec := setVectorEnv(opts.DataDir)
+	defer restoreVec()
 
 	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
 	if err != nil {
@@ -265,4 +275,43 @@ func setDataDirEnv(dataDir string) (func(), error) {
 			_ = os.Unsetenv("CONTEXTFORGE_DATA_DIR")
 		}
 	}, nil
+}
+
+// setVectorEnv (task-34.2 / ADR-039 D2) best-effort loads config.toml from dataDir and bridges its
+// [vector] section to the spawned core daemon via CONTEXTFORGE_VECTOR_BACKEND / CONTEXTFORGE_VECTOR_DIM
+// (the core's resolve_vector_backend reads these), mirroring setDataDirEnv / CONTEXTFORGE_DATA_DIR.
+// ENV WINS: a variable already present in the environment is left untouched (explicit env overrides
+// the config file). A missing/malformed config or an empty [vector] exports nothing, so the core's
+// existing env path is unchanged (no [vector] → BruteForce byte-equivalent, ADR-004). Config-load
+// errors are non-fatal — the [vector] file source is opt-in. Returns a restore closure.
+func setVectorEnv(dataDir string) func() {
+	var restores []func()
+	restore := func() {
+		for _, r := range restores {
+			r()
+		}
+	}
+	if dataDir == "" {
+		return restore
+	}
+	cfg, err := config.Load(dataDir)
+	if err != nil {
+		return restore // best-effort: missing/malformed config → env-only path unchanged
+	}
+	setIfAbsent := func(key, val string) {
+		if val == "" {
+			return
+		}
+		if _, had := os.LookupEnv(key); had {
+			return // env wins: an explicit env var overrides the config file
+		}
+		if os.Setenv(key, val) == nil {
+			restores = append(restores, func() { _ = os.Unsetenv(key) })
+		}
+	}
+	setIfAbsent("CONTEXTFORGE_VECTOR_BACKEND", cfg.Vector.Backend)
+	if cfg.Vector.Dim != 0 {
+		setIfAbsent("CONTEXTFORGE_VECTOR_DIM", strconv.Itoa(cfg.Vector.Dim))
+	}
+	return restore
 }

@@ -228,3 +228,62 @@ func TestTask221EmbeddingConfig(t *testing.T) {
 		}
 	})
 }
+
+// TEST-34.2.1 (task-34.2 / ADR-039 D2): add-only [vector] section Save/Load round-trip; absent
+// section ⇒ zero value (backward-compatible); existing [remote]/[embedding]/[[collections]]
+// sections are unaffected by adding [vector].
+func TestTask342VectorConfig(t *testing.T) {
+	t.Run("TEST-34.2.1: 默认 Vector 空 backend/0 维，显式设置后 Save/Load 保真（既有段不受影响）", func(t *testing.T) {
+		dc := DefaultConfig()
+		if dc.Vector.Backend != "" || dc.Vector.Dim != 0 {
+			t.Errorf("默认 Vector 应为空 backend/0 维，got %+v", dc.Vector)
+		}
+
+		root := t.TempDir()
+		c := dc
+		c.DataDir = root
+		c.Vector = VectorConfig{Backend: "qdrant", Dim: 384}
+		c.Embedding = EmbeddingConfig{Provider: "fastembed", Dim: 512}
+		c.Remote = RemoteProviderConfig{Enabled: true, Provider: "openai-compatible", Endpoint: "http://127.0.0.1:1234"}
+		c.Collections = []CollectionConfig{{ID: "proj_x", Allowlist: []string{"/home/u/proj_x"}, AgentScope: []string{"hermes"}}}
+
+		if err := Save(root, c); err != nil {
+			t.Fatalf("Save error = %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load error = %v", err)
+		}
+		if got.Vector.Backend != "qdrant" || got.Vector.Dim != 384 {
+			t.Errorf("[vector] 段未保真: %+v", got.Vector)
+		}
+		if got.Embedding.Provider != "fastembed" || got.Embedding.Dim != 512 {
+			t.Errorf("[vector] 加入后 [embedding] 段受影响: %+v", got.Embedding)
+		}
+		if !got.Remote.Enabled || len(got.Collections) != 1 || got.Collections[0].ID != "proj_x" {
+			t.Errorf("[vector] 加入后 [remote]/[[collections]] 段受影响: remote=%+v cols=%+v", got.Remote, got.Collections)
+		}
+	})
+
+	t.Run("TEST-34.2.1: 不含 [vector] 段的旧 config 仍合法加载（向后兼容 Backend=\"\"/Dim=0）", func(t *testing.T) {
+		root := t.TempDir()
+		legacy := "schema_version = \"0.1\"\n" +
+			"data_dir = " + tomlQuote(root) + "\n" +
+			"allow_denylist_override = false\n" +
+			"denylist = []\n" +
+			"\n[remote]\n" +
+			"enabled = false\n" +
+			"provider = \"\"\n" +
+			"endpoint = \"\"\n"
+		if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(legacy), 0o600); err != nil {
+			t.Fatalf("write legacy config: %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load legacy (no [vector]) error = %v", err)
+		}
+		if got.Vector.Backend != "" || got.Vector.Dim != 0 {
+			t.Errorf("不含 [vector] 段应得空 backend/0 维，got %+v", got.Vector)
+		}
+	})
+}
