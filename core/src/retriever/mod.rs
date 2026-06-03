@@ -248,6 +248,10 @@ impl Retriever {
         // content 字段绑 "code_cjk"，QueryParser::for_index 据 schema 字段名解析 analyzer；
         // 默认 collection 无字段引用此名 → 无副作用）.
         crate::indexer::register_code_cjk(&tantivy_index);
+        // task-30.1: 真分词 analyzer 对称注册（feature `cjk-segmenter`；与 index 站点
+        // IndexSession::open_with_tokenizer 对称——漏注册 → QueryParser 解析静默失败 → 召回退化）.
+        #[cfg(feature = "cjk-segmenter")]
+        crate::indexer::register_cjk_segmenter(&tantivy_index);
         let tantivy_reader = tantivy_index
             .reader_builder()
             .reload_policy(tantivy::ReloadPolicy::OnCommitWithDelay)

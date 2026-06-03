@@ -152,7 +152,9 @@ fn build_tantivy_schema(tokenizer_name: &str) -> (Schema, [Field; 6]) {
     // task-24.1：opt-in 时 content 绑自定义 code/CJK analyzer；其余（含 "default"）维持
     // `TEXT | STORED`（向后兼容）。opt-in 的索引选项与 `TEXT` 等价（WithFreqsAndPositions
     // + fieldnorms + stored），仅 tokenizer 名不同 → 不改字段集 / 字段类型，只改 analyzer 绑定。
-    let content = if tokenizer_name == CODE_CJK_TOKENIZER {
+    // task-30.1: 真分词 `cjk_segmenter` 与 bigram `code_cjk` 同走 opt-in 自定义 analyzer 绑定分支
+    // （仅 tokenizer 名不同；schema 选项与 `TEXT` 等价）.
+    let content = if tokenizer_name == CODE_CJK_TOKENIZER || tokenizer_name == CJK_SEGMENTER_TOKENIZER {
         let indexing = TextFieldIndexing::default()
             .set_tokenizer(tokenizer_name)
             .set_index_option(IndexRecordOption::WithFreqsAndPositions);
@@ -181,6 +183,10 @@ fn build_tantivy_schema(tokenizer_name: &str) -> (Schema, [Field; 6]) {
 pub(crate) const DEFAULT_TOKENIZER: &str = "default";
 /// 自定义 code/CJK analyzer 注册名 — opt-in 时 `content` 字段绑此名.
 pub(crate) const CODE_CJK_TOKENIZER: &str = "code_cjk";
+/// task-30.1: 真分词 CJK analyzer 注册名（与 `code_cjk` bigram 并列；feature `cjk-segmenter` 下
+/// 注册真分词器，`配置加载` → `配置`/`加载`）. 常量恒在（schema 按名绑定）；analyzer 构建/注册
+/// feature-gated. opt-in 时 `content` 字段绑此名 → 须 `cjk-segmenter` feature 下双站点注册才生效.
+pub(crate) const CJK_SEGMENTER_TOKENIZER: &str = "cjk_segmenter";
 
 /// 判定 char 是否属于按 bigram 切分的 CJK / CJK-adjacent 表意区段（无空格分隔的脚本）.
 fn is_cjk(c: char) -> bool {
@@ -376,6 +382,95 @@ pub(crate) fn register_code_cjk(index: &Index) {
         .register(CODE_CJK_TOKENIZER, build_code_cjk_analyzer());
 }
 
+// ---- task-30.1: 真分词 CJK analyzer（feature `cjk-segmenter`）----
+//
+// 与 `code_cjk` bigram 并列：复用同样的 code-segment 处理（保留原 token + 拆 `_ . -` + camelCase），
+// 仅把 CJK run 的「重叠 bigram」换成 jieba 真分词（`配置加载` → `配置`/`加载`，无 `置加` 噪声）.
+// filter 链与 `build_code_cjk_analyzer` 一致（RemoveLongFilter(40) + LowerCaser）. 默认构建不编译
+// （0 新 dep，ADR-004）；bigram `code_cjk` 保留作 0-dep fallback（ADR-035 §D2）.
+
+/// jieba 真分词 token 化：CJK run 经 jieba 切词，code 段沿用 `emit_code_segment`（offset 真实可用）.
+#[cfg(feature = "cjk-segmenter")]
+fn tokenize_cjk_segmenter(text: &str) -> Vec<Token> {
+    use std::sync::OnceLock;
+    static JIEBA: OnceLock<jieba_rs::Jieba> = OnceLock::new();
+    let jieba = JIEBA.get_or_init(jieba_rs::Jieba::new);
+
+    let mut out = Vec::new();
+    let mut pos = 0usize;
+    let cv: Vec<(usize, char)> = text.char_indices().collect();
+    let n = cv.len();
+    let mut i = 0usize;
+    while i < n {
+        let (bstart, c) = cv[i];
+        if is_cjk(c) {
+            // CJK run → jieba 真分词（输出片段拼接 == run，按序累计 byte offset）.
+            let mut j = i;
+            while j < n && is_cjk(cv[j].1) {
+                j += 1;
+            }
+            let run_end = if j < n { cv[j].0 } else { text.len() };
+            let run = &text[bstart..run_end];
+            let mut cursor = 0usize;
+            for word in jieba.cut(run, false) {
+                let wlen = word.len();
+                if !word.trim().is_empty() {
+                    push_token(&mut out, &mut pos, word, bstart + cursor, bstart + cursor + wlen);
+                }
+                cursor += wlen;
+            }
+            i = j;
+        } else if is_code_char(c) {
+            let mut j = i;
+            while j < n && is_code_char(cv[j].1) {
+                j += 1;
+            }
+            let seg_end = if j < n { cv[j].0 } else { text.len() };
+            emit_code_segment(&text[bstart..seg_end], bstart, &mut pos, &mut out);
+            i = j;
+        } else {
+            i += 1; // 分隔符（空白 / 标点）跳过
+        }
+    }
+    out
+}
+
+/// 真分词 tokenizer（产 owned `Vec<Token>`，token stream 不借用输入文本，镜像 `CodeCjkTokenizer`）.
+#[cfg(feature = "cjk-segmenter")]
+#[derive(Clone, Default)]
+pub(crate) struct CjkSegmenterTokenizer;
+
+#[cfg(feature = "cjk-segmenter")]
+impl Tokenizer for CjkSegmenterTokenizer {
+    type TokenStream<'a> = CodeCjkTokenStream;
+    fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
+        CodeCjkTokenStream {
+            tokens: tokenize_cjk_segmenter(text),
+            idx: 0,
+            token: Token::default(),
+        }
+    }
+}
+
+/// 构建真分词 `TextAnalyzer`（CjkSegmenterTokenizer + RemoveLongFilter(40) + LowerCaser，filter 链
+/// 与 `build_code_cjk_analyzer` 一致，仅底层 tokenizer 换 jieba 真分词）.
+#[cfg(feature = "cjk-segmenter")]
+pub(crate) fn build_cjk_segmenter_analyzer() -> TextAnalyzer {
+    TextAnalyzer::builder(CjkSegmenterTokenizer)
+        .filter(RemoveLongFilter::limit(40))
+        .filter(LowerCaser)
+        .build()
+}
+
+/// 在 index 的 tokenizer manager 上注册真分词 analyzer（名 = `CJK_SEGMENTER_TOKENIZER`）.
+/// 须与 query 站点 `Retriever::open_with_config` 对称注册，否则 query 解析静默失败 → 召回退化.
+#[cfg(feature = "cjk-segmenter")]
+pub(crate) fn register_cjk_segmenter(index: &Index) {
+    index
+        .tokenizers()
+        .register(CJK_SEGMENTER_TOKENIZER, build_cjk_segmenter_analyzer());
+}
+
 // FIX-2 (PR #24 reviewer): 名实不符 — 实际返回 unix epoch seconds (decimal string),
 // 不是 RFC3339。改名 indexed_at_now_str() 避免误导.
 fn indexed_at_now_str() -> String {
@@ -440,6 +535,9 @@ impl IndexSession {
         };
         // index/query 对称：注册 code/CJK analyzer（默认模式下无字段引用 → 无副作用）.
         register_code_cjk(&index);
+        // task-30.1: 真分词 analyzer 同站点注册（feature `cjk-segmenter`；须与 query 站点对称）.
+        #[cfg(feature = "cjk-segmenter")]
+        register_cjk_segmenter(&index);
         let writer: IndexWriter = index.writer(TANTIVY_WRITER_BUDGET)?;
 
         Ok(Self {
@@ -1125,5 +1223,59 @@ mod tests {
             sess2.tantivy_search("置加", 10).unwrap().is_empty(),
             "default: CJK bigram '置加' 不应命中"
         );
+    }
+
+    // ---- TEST-30.1.1 (AC1) — 真分词 token stream（真词边界，区别于 bigram）----
+    #[cfg(feature = "cjk-segmenter")]
+    #[test]
+    fn test_30_1_1_cjk_segmenter_true_word_boundaries() {
+        let mut seg = build_cjk_segmenter_analyzer();
+        let toks = tok_texts(&mut seg, "配置加载");
+        assert!(toks.contains(&"配置".to_string()), "真分词应含真词 配置: {toks:?}");
+        assert!(toks.contains(&"加载".to_string()), "真分词应含真词 加载: {toks:?}");
+        assert!(
+            !toks.contains(&"置加".to_string()),
+            "真分词不应含 bigram 滑窗噪声 置加: {toks:?}"
+        );
+        // 与 bigram baseline 显式区分（同输入，不同 token stream）.
+        let mut bi = build_code_cjk_analyzer();
+        let bigram = tok_texts(&mut bi, "配置加载");
+        assert!(bigram.contains(&"置加".to_string()), "bigram baseline 应含 置加: {bigram:?}");
+        assert_ne!(toks, bigram, "真分词 token stream 应区别于 bigram");
+        // 混合：code 段沿用代码符号切分，CJK 段走真分词.
+        let mixed = tok_texts(&mut seg, "getConfig配置加载");
+        assert!(mixed.contains(&"get".to_string()) && mixed.contains(&"config".to_string()));
+        assert!(mixed.contains(&"配置".to_string()) && mixed.contains(&"加载".to_string()));
+    }
+
+    // ---- TEST-30.1.2 (AC2) — index/query 双站点注册对称 round-trip（index=IndexSession,
+    //      query=Retriever；漏注册任一站点则 QueryParser 解析静默失败 → 召回退化，task-24.1 R4）----
+    #[cfg(feature = "cjk-segmenter")]
+    #[test]
+    fn test_30_1_2_dual_site_register_roundtrip() {
+        use crate::retriever::{Retriever, SearchFilters, SearchOptions};
+        let data_dir = temp_root("cjk-seg-roundtrip");
+        let mut sess =
+            IndexSession::open_with_tokenizer(&data_dir, "c", CJK_SEGMENTER_TOKENIZER).unwrap();
+        write_one_doc(&mut sess, "fn loadConfig() 配置加载模块");
+        sess.commit().unwrap();
+        let schema = sess.tantivy_index.schema();
+        assert_eq!(content_tokenizer_name(&schema), CJK_SEGMENTER_TOKENIZER);
+        // index 站点（IndexSession 自带 tokenizer manager）：真词 配置 命中.
+        assert!(
+            !sess.tantivy_search("配置", 10).unwrap().is_empty(),
+            "index 站点: 真词 '配置' 应命中"
+        );
+        // query 站点（Retriever::open → open_with_config 对称注册 cjk_segmenter）：真词 配置 命中.
+        let retr = Retriever::open(&data_dir, "c").unwrap();
+        let hits = retr
+            .search(&SearchOptions {
+                query: "配置".to_string(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .unwrap();
+        assert!(!hits.is_empty(), "query 站点 (Retriever): 真词 '配置' 应命中（双站点对称）");
     }
 }
