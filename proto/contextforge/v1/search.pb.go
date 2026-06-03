@@ -188,7 +188,8 @@ func (x *SearchRequest) GetHybrid() bool {
 // RetrievalResult — explainable result returned to CLI / REST / MCP.
 // Fields kept identical across REST and MCP (ADR-003 single-source schema).
 // task-19.3 add-only: vector_score = 13 (semantic similarity; 0 for BM25 hits) +
-//   embedding_provider = 14 (provider name that produced the hit; empty for BM25).
+//
+//	embedding_provider = 14 (provider name that produced the hit; empty for BM25).
 type RetrievalResult struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
