@@ -13,6 +13,8 @@ use rusqlite::{params, Connection, Error as RusqliteError};
 use serde::{Deserialize, Serialize};
 
 const MIGRATION_SQL: &str = include_str!("../../migrations/0014_eval_runs.sql");
+/// task-31.3 (ADR-036 D3): add-only per-case results subtable (queryable by case).
+const MIGRATION_0018_SQL: &str = include_str!("../../migrations/0018_eval_case_results.sql");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CaseResult {
@@ -97,6 +99,7 @@ impl SqliteEvalStore {
         std::fs::create_dir_all(data_dir)?;
         let conn = Connection::open(data_dir.join("eval.db"))?;
         conn.execute_batch(MIGRATION_SQL)?;
+        conn.execute_batch(MIGRATION_0018_SQL)?; // task-31.3: add-only per-case subtable
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -174,6 +177,9 @@ impl SqliteEvalStore {
         }
     }
 
+    /// task-31.3 (ADR-036 D3): double-write per-case results — keep the `case_results_json` blob (the
+    /// existing `row_to_run` read path is unchanged) AND replace this run's rows in the queryable
+    /// `eval_case_results` subtable so per-case results can be SQL-filtered/aggregated.
     pub fn update_case_results(
         &self,
         eval_run_id: &str,
@@ -186,10 +192,75 @@ impl SqliteEvalStore {
             params![json, eval_run_id],
         )?;
         if n == 0 {
-            Err(EvalStoreError::NotFound)
-        } else {
-            Ok(())
+            return Err(EvalStoreError::NotFound);
         }
+        // Subtable double-write: clear this run's rows, then insert one row per case.
+        conn.execute(
+            "DELETE FROM eval_case_results WHERE eval_run_id = ?",
+            params![eval_run_id],
+        )?;
+        for c in &results {
+            conn.execute(
+                "INSERT INTO eval_case_results \
+                 (eval_run_id, case_id, query, expected_chunks_json, actual_chunks_json, score, passed) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                params![
+                    eval_run_id,
+                    c.case_id,
+                    c.query,
+                    serde_json::to_string(&c.expected_chunks)?,
+                    serde_json::to_string(&c.actual_chunks)?,
+                    c.score,
+                    c.passed as i64,
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// task-31.3 (ADR-036 D3): read per-case results for a run from the queryable subtable (vs
+    /// deserializing the whole `case_results_json` blob via `get`). Ordered by insertion.
+    pub fn query_case_results(&self, eval_run_id: &str) -> Result<Vec<CaseResult>, EvalStoreError> {
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(
+            "SELECT case_id, query, expected_chunks_json, actual_chunks_json, score, passed \
+             FROM eval_case_results WHERE eval_run_id = ? ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![eval_run_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, f64>(4)?,
+                r.get::<_, i64>(5)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (case_id, query, exp_json, act_json, score, passed) = row?;
+            out.push(CaseResult {
+                case_id,
+                query,
+                expected_chunks: serde_json::from_str(&exp_json)?,
+                actual_chunks: serde_json::from_str(&act_json)?,
+                score,
+                passed: passed != 0,
+            });
+        }
+        Ok(out)
+    }
+
+    /// task-31.3 (ADR-036 D3): cross-run aggregate enabled by the subtable — (passed, total) for a
+    /// `case_id` over all runs. Demonstrates SQL-dimension queryability the JSON blob couldn't.
+    pub fn case_pass_ratio(&self, case_id: &str) -> Result<(i64, i64), EvalStoreError> {
+        let conn = self.lock()?;
+        let (passed, total): (i64, i64) = conn.query_row(
+            "SELECT COALESCE(SUM(passed), 0), COUNT(*) FROM eval_case_results WHERE case_id = ?",
+            params![case_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok((passed, total))
     }
 
     pub fn mark_finished(
@@ -374,6 +445,56 @@ mod tests {
         assert_eq!(got.case_results.len(), 1);
         assert_eq!(got.case_results[0].case_id, "c-1");
         assert!(got.case_results[0].passed);
+    }
+
+    // TEST-31.3.1 (AC1) — per-case results are queryable via the add-only eval_case_results subtable;
+    // the existing eval_runs / row_to_run (JSON blob) read path is unaffected (double-write).
+    #[test]
+    fn test_31_3_1_case_results_subtable_queryable() {
+        let s = fresh_store();
+        s.create(make_create("er-sub")).unwrap();
+        let cases = vec![
+            CaseResult {
+                case_id: "c-1".into(),
+                query: "alpha".into(),
+                expected_chunks: vec!["chk-1".into()],
+                actual_chunks: vec!["chk-1".into()],
+                score: 0.9,
+                passed: true,
+            },
+            CaseResult {
+                case_id: "c-2".into(),
+                query: "beta".into(),
+                expected_chunks: vec!["chk-9".into()],
+                actual_chunks: vec!["chk-2".into()],
+                score: 0.1,
+                passed: false,
+            },
+        ];
+        s.update_case_results("er-sub", cases.clone()).unwrap();
+
+        // Subtable read returns per-case rows (queryable dimension).
+        let sub = s.query_case_results("er-sub").unwrap();
+        assert_eq!(sub.len(), 2);
+        assert_eq!(sub[0].case_id, "c-1");
+        assert!(sub[0].passed);
+        assert_eq!(sub[1].case_id, "c-2");
+        assert!(!sub[1].passed);
+        assert_eq!(sub[1].expected_chunks, vec!["chk-9".to_string()]);
+
+        // Existing JSON-blob read path (row_to_run via get) is unchanged.
+        let got = s.get("er-sub").unwrap().unwrap();
+        assert_eq!(got.case_results.len(), 2);
+        assert_eq!(got.case_results[0].case_id, "c-1");
+
+        // Cross-run aggregate over the subtable (SQL dimension the blob couldn't do).
+        assert_eq!(s.case_pass_ratio("c-1").unwrap(), (1, 1));
+        assert_eq!(s.case_pass_ratio("c-2").unwrap(), (0, 1));
+
+        // Re-write replaces this run's subtable rows (no duplicate accumulation).
+        s.update_case_results("er-sub", vec![cases[0].clone()]).unwrap();
+        assert_eq!(s.query_case_results("er-sub").unwrap().len(), 1);
+        assert_eq!(s.case_pass_ratio("c-2").unwrap(), (0, 0), "c-2 removed on rewrite");
     }
 
     #[test]

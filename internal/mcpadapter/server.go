@@ -6,12 +6,37 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/memoryops/audit"
 	contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"
 )
+
+// task-31.3 (ADR-036 D3, nit 1): MCP protocol versions are YYYY-MM-DD dates. The old check used a
+// raw lexicographic `<`, which compared malformed/unexpected strings unpredictably. This parses both
+// sides as dates and accepts any well-formed version >= the locked SupportedProtocolVersion
+// (forward-compatible with newer clients, preserving the task-7.1 negotiation contract); a malformed
+// version string is rejected cleanly rather than ordered by byte value.
+func isSupportedProtocolVersion(v string) bool {
+	got, ok := parseProtocolDate(v)
+	if !ok {
+		return false
+	}
+	min, ok := parseProtocolDate(SupportedProtocolVersion)
+	return ok && got >= min
+}
+
+// parseProtocolDate parses a YYYY-MM-DD MCP protocol version into a comparable int (YYYYMMDD),
+// returning ok=false for any malformed string.
+func parseProtocolDate(v string) (int, bool) {
+	t, err := time.Parse("2006-01-02", strings.TrimSpace(v))
+	if err != nil {
+		return 0, false
+	}
+	return t.Year()*10000 + int(t.Month())*100 + t.Day(), true
+}
 
 // Searcher is the daemon.Search-compatible boundary consumed by MCP tools.
 // Production wires *daemon.Daemon from cmd/contextforge/main.go; tests use a
@@ -184,7 +209,7 @@ func (s *Server) handleInitialize(_ context.Context, params InitializeParams) (I
 		s.writeAudit("mcp:initialize", 400, "missing protocol version")
 		return InitializeResult{}, newRPCError(codeInvalidParams, "missing protocolVersion", nil)
 	}
-	if params.ProtocolVersion < SupportedProtocolVersion {
+	if !isSupportedProtocolVersion(params.ProtocolVersion) {
 		s.writeAudit("mcp:initialize", 400, "unsupported protocol version")
 		return InitializeResult{}, newRPCError(codeInvalidParams, "unsupported protocol version", map[string]any{
 			"supported": []string{SupportedProtocolVersion},
@@ -267,12 +292,17 @@ func (s *Server) writeAudit(endpoint string, status int, reason string) {
 	if s.DataDir == "" {
 		return
 	}
-	_ = audit.Write(s.DataDir, audit.Event{
+	// task-31.3 (ADR-036 D3, nit 2): surface audit-write failures to stderr instead of swallowing
+	// (`_ =`). Audit is best-effort (does not change the RPC happy-path), but a silent audit failure
+	// hid a security-relevant signal.
+	if err := audit.Write(s.DataDir, audit.Event{
 		Endpoint:  endpoint,
 		Status:    status,
 		Timestamp: time.Now().UTC(),
 		Reason:    reason,
-	})
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mcp: audit write failed (endpoint=%s status=%d): %v\n", endpoint, status, err)
+	}
 }
 
 func asRPCError(err error) *rpcError {

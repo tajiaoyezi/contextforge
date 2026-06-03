@@ -187,3 +187,19 @@ func TestTask71_AC2_FourToolsAreReal(t *testing.T) {
 		t.Fatalf("TEST-7.1.2: collections=%#v want two entries", collectionsBody["collections"])
 	}
 }
+
+// TestTask313_ProtocolVersionParse — task-31.3 AC3 nit 1: protocol version is parsed as a YYYY-MM-DD
+// date (not fragile lexicographic `<`). The locked SupportedProtocolVersion + any well-formed newer
+// date are accepted (forward-compat preserved); older dates and malformed strings are rejected.
+func TestTask313_ProtocolVersionParse(t *testing.T) {
+	for _, v := range []string{SupportedProtocolVersion, "2025-11-25", "9999-12-31"} {
+		if !isSupportedProtocolVersion(v) {
+			t.Errorf("well-formed version >= supported %q must be accepted", v)
+		}
+	}
+	for _, v := range []string{"", "2024-01-01", "not-a-version", "2025-06-18-extra", "2025-13-01"} {
+		if isSupportedProtocolVersion(v) {
+			t.Errorf("version %q must be rejected (older or malformed)", v)
+		}
+	}
+}

@@ -28,6 +28,36 @@ var searchBackendState struct {
 	backend SearchBackend
 }
 
+// ChunkLoader is the task-31.3 bridge to daemon.ListAllChunks: returns chunk_id → full content for a
+// collection, so the exporter can fill real ContextRecord.Content + a real ContentHash (vs the prior
+// content=""). Injectable for the same import-cycle reason as SearchBackend; nil → content stays "".
+type ChunkLoader func(ctx context.Context, dataDir, collection string) (map[string]string, error)
+
+var chunkLoaderState struct {
+	sync.Mutex
+	loader ChunkLoader
+}
+
+// SetChunkLoader wires the daemon.ListAllChunks-backed full-text loader (task-31.3) and returns a
+// restore function for tests.
+func SetChunkLoader(l ChunkLoader) func() {
+	chunkLoaderState.Lock()
+	prev := chunkLoaderState.loader
+	chunkLoaderState.loader = l
+	chunkLoaderState.Unlock()
+	return func() {
+		chunkLoaderState.Lock()
+		chunkLoaderState.loader = prev
+		chunkLoaderState.Unlock()
+	}
+}
+
+func currentChunkLoader() ChunkLoader {
+	chunkLoaderState.Lock()
+	defer chunkLoaderState.Unlock()
+	return chunkLoaderState.loader
+}
+
 // SetSearchBackend wires the daemon.Search-backed loader and returns a restore
 // function for tests.
 func SetSearchBackend(b SearchBackend) func() {
@@ -68,6 +98,16 @@ func loadRecords(ctx context.Context, dataDir, collection string) ([]*contextfor
 		return nil, err
 	}
 
+	// task-31.3: fetch real chunk full text (SearchResponse carries none) so records get real
+	// content + a real ContentHash. Best-effort: a nil loader (e.g. unit tests not wiring it) or a
+	// load error leaves content="" (backward-compatible with the prior behavior).
+	var chunkText map[string]string
+	if loader := currentChunkLoader(); loader != nil {
+		if m, lerr := loader(ctx, dataDir, collection); lerr == nil {
+			chunkText = m
+		}
+	}
+
 	now := timestamppb.Now()
 	out := make([]*contextforgev1.ContextRecord, 0, len(resp.GetResults()))
 	for _, r := range resp.GetResults() {
@@ -82,7 +122,7 @@ func loadRecords(ctx context.Context, dataDir, collection string) ([]*contextfor
 		if title == "." || title == string(filepath.Separator) || title == "" {
 			title = id
 		}
-		content := ""
+		content := chunkText[r.GetChunkId()]
 		rec := &contextforgev1.ContextRecord{
 			Id:              id,
 			SchemaVersion:   "0.1",

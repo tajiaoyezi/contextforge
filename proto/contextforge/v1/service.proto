@@ -23,4 +23,6 @@ service ContextService {
   rpc Health(HealthRequest) returns (HealthResponse);
   // Phase 9 task-9.1: server-streaming indexing RPC (ADR-013 §Decision #1).
   rpc Index(IndexRequest) returns (stream IndexProgress);
+  // task-31.3 (ADR-036 D3) add-only: full-text chunk listing for the exporter (real content/hash).
+  rpc ListAllChunks(ListAllChunksRequest) returns (ListAllChunksResponse);
 }
