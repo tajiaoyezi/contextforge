@@ -114,6 +114,16 @@ func (s *MemStore) emitEvent(eventType, severity, source, message string, jobID 
 	}
 }
 
+// EmitEvent is a thread-safe observability-event sink for sibling fallback stores
+// (task-31.1: MemMemoryStore memory ops emit memory.* events here for parity with the
+// workspace/job paths + the Rust data plane). Best-effort; takes its own lock (the
+// unexported emitEvent assumes the caller already holds s.mu).
+func (s *MemStore) EmitEvent(eventType, severity, source, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emitEvent(eventType, severity, source, message, nil)
+}
+
 // ---- WorkspaceClient + JobClient adapters (split to avoid method collision) ----
 
 // WorkspaceAdapter wraps MemStore for WorkspaceClient interface.
@@ -513,10 +523,29 @@ func (s *MemStore) Recent(limit int, wait time.Duration) ([]contractv1.Observabi
 type MemMemoryStore struct {
 	mu    sync.Mutex
 	items map[string]contractv1.MemoryItem
+	// task-31.1: optional best-effort observability sink. When wired (SetEventSink), memory write
+	// ops emit memory.* events for parity with the workspace/job fallback paths + the Rust data
+	// plane (core/src/data_plane/memory.rs). nil → no-op (observation != authority, ADR-021).
+	emit func(eventType, severity, source, message string)
 }
 
 func NewMemMemoryStore() *MemMemoryStore {
 	return &MemMemoryStore{items: map[string]contractv1.MemoryItem{}}
+}
+
+// SetEventSink wires the fallback observability ring (task-31.1). Typically MemStore.EmitEvent,
+// so memory ops appear in GET /v1/observability/events under CONSOLE_API_FALLBACK_INMEM=1.
+func (s *MemMemoryStore) SetEventSink(emit func(eventType, severity, source, message string)) {
+	s.emit = emit
+}
+
+// emitMemoryEvent is a best-effort observability emit (no-op when no sink wired). event_type names
+// mirror the Rust audit_op_to_event_type mapping (memory.pin / memory.deprecate / memory.soft_delete
+// / memory.hard_delete; Unpin shares memory.pin with op=unpin in the message).
+func (s *MemMemoryStore) emitMemoryEvent(eventType, message string) {
+	if s.emit != nil {
+		s.emit(eventType, "info", "consoleapi", message)
+	}
 }
 
 // SeedFixtures populates 5 hard-coded memory items for fallback demo mode.
@@ -599,6 +628,7 @@ func (s *MemMemoryStore) Pin(id string, pin bool) error {
 	item.IsPinned = pin
 	item.UpdatedAt = time.Now().UTC()
 	s.items[id] = item
+	s.emitMemoryEvent("memory.pin", fmt.Sprintf("memory %s pin=%t", id, pin))
 	return nil
 }
 
@@ -612,6 +642,7 @@ func (s *MemMemoryStore) Deprecate(id string) error {
 	item.Status = "deprecated"
 	item.UpdatedAt = time.Now().UTC()
 	s.items[id] = item
+	s.emitMemoryEvent("memory.deprecate", "memory deprecated: "+id)
 	return nil
 }
 
@@ -625,6 +656,7 @@ func (s *MemMemoryStore) SoftDelete(id string) error {
 	item.Status = "soft_deleted"
 	item.UpdatedAt = time.Now().UTC()
 	s.items[id] = item
+	s.emitMemoryEvent("memory.soft_delete", "memory soft-deleted: "+id)
 	return nil
 }
 
@@ -641,6 +673,8 @@ func (s *MemMemoryStore) Unpin(id string) error {
 	item.PinnedAtUnix = 0
 	item.UpdatedAt = time.Now().UTC()
 	s.items[id] = item
+	// op=unpin shares the memory.pin event_type (Rust MemoryPin | MemoryUnpin → memory.pin).
+	s.emitMemoryEvent("memory.pin", "memory "+id+" op=unpin")
 	return nil
 }
 
@@ -653,6 +687,7 @@ func (s *MemMemoryStore) HardDelete(id string) error {
 		return fmt.Errorf("%w: memory %s", ErrNotFound, id)
 	}
 	delete(s.items, id)
+	s.emitMemoryEvent("memory.hard_delete", "memory hard-deleted: "+id)
 	return nil
 }
 

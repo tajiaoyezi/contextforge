@@ -213,3 +213,67 @@ func TestMemStore_CacheEviction_FIFO(t *testing.T) {
 		t.Errorf("expected chunkCacheOrder length = cap=%d; got %d", cap, got)
 	}
 }
+
+// TestMemMemoryStore_EventParity — task-31.1 AC1: memory write ops emit memory.* events into the
+// wired fallback ring (parity with workspace/job + the Rust data plane), with Rust-aligned
+// event_type names; the five write ops keep their return/error contract.
+func TestMemMemoryStore_EventParity(t *testing.T) {
+	store := NewMemStore()
+	mem := NewMemMemoryStore()
+	mem.SetEventSink(store.EmitEvent)
+	mem.SeedFixtures()
+
+	// 5 successful write ops on a seeded item → 5 events with the expected event_type names.
+	if err := mem.Pin("mem-fixture-2", true); err != nil {
+		t.Fatalf("Pin: %v", err)
+	}
+	if err := mem.Deprecate("mem-fixture-2"); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+	if err := mem.Unpin("mem-fixture-2"); err != nil {
+		t.Fatalf("Unpin: %v", err)
+	}
+	if err := mem.SoftDelete("mem-fixture-2"); err != nil {
+		t.Fatalf("SoftDelete: %v", err)
+	}
+	if err := mem.HardDelete("mem-fixture-2"); err != nil {
+		t.Fatalf("HardDelete: %v", err)
+	}
+
+	evts, err := store.Recent(100, 0)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	got := map[string]int{}
+	for _, e := range evts {
+		got[e.EventType]++
+	}
+	// Pin + Unpin both map to memory.pin (Rust MemoryPin | MemoryUnpin → memory.pin).
+	for et, want := range map[string]int{
+		"memory.pin":         2, // Pin + Unpin
+		"memory.deprecate":   1,
+		"memory.soft_delete": 1,
+		"memory.hard_delete": 1,
+	} {
+		if got[et] != want {
+			t.Errorf("event_type %q: got %d, want %d (all events: %v)", et, got[et], want, got)
+		}
+	}
+
+	// Error path (missing item) emits nothing + returns ErrNotFound.
+	before := len(evts)
+	if err := mem.Pin("does-not-exist", true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Pin(missing) expected ErrNotFound, got %v", err)
+	}
+	after, _ := store.Recent(100, 0)
+	if len(after) != before {
+		t.Errorf("error path must not emit an event: ring grew %d → %d", before, len(after))
+	}
+
+	// No sink wired → no panic, ops still succeed (observation != authority).
+	noSink := NewMemMemoryStore()
+	noSink.SeedFixtures()
+	if err := noSink.Pin("mem-fixture-1", false); err != nil {
+		t.Fatalf("Pin without sink should still succeed: %v", err)
+	}
+}
