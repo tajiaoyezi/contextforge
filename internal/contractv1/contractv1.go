@@ -132,22 +132,28 @@ type SearchRequest struct {
 // reason/citation. rank_after_rerank uses *int (R7: not reranked is not
 // rank 0).
 type SearchResult struct {
-	ResultID         string            `json:"result_id"`
-	QueryID          string            `json:"query_id"`
-	WorkspaceID      string            `json:"workspace_id"`
-	SourceFilePath   string            `json:"source_file_path"`
-	SourceFileType   string            `json:"source_file_type"`
-	ChunkID          string            `json:"chunk_id"`
-	ChunkTextPreview string            `json:"chunk_text_preview"`
-	LineStart        int               `json:"line_start"`
-	LineEnd          int               `json:"line_end"`
-	Score            float64           `json:"score"`
-	RankBeforeRerank int               `json:"rank_before_rerank"`
-	RankAfterRerank  *int              `json:"rank_after_rerank"`
-	RetrievalMethod  string            `json:"retrieval_method"`
-	Reason           string            `json:"reason"`
-	Citation         Citation          `json:"citation"`
-	Availability     FieldAvailability `json:"field_availability"`
+	ResultID         string  `json:"result_id"`
+	QueryID          string  `json:"query_id"`
+	WorkspaceID      string  `json:"workspace_id"`
+	SourceFilePath   string  `json:"source_file_path"`
+	SourceFileType   string  `json:"source_file_type"`
+	ChunkID          string  `json:"chunk_id"`
+	ChunkTextPreview string  `json:"chunk_text_preview"`
+	LineStart        int     `json:"line_start"`
+	LineEnd          int     `json:"line_end"`
+	Score            float64 `json:"score"`
+	RankBeforeRerank int     `json:"rank_before_rerank"`
+	RankAfterRerank  *int    `json:"rank_after_rerank"`
+	RetrievalMethod  string  `json:"retrieval_method"`
+	// VectorScore — task-32.3 (Phase 32) add-only: semantic similarity provenance (0 for BM25 hits),
+	// parity with the data-plane v1 search proto vector_score (carried end-to-end, not inferred from
+	// score+method). Backward-compatible additive field (ADR-015 add-only, mirroring the task-20.1
+	// Semantic precedent); the ContextForge-Console contractv1.go mirror should add the same field
+	// (cross-repo add-only signal, ADR-014 D4) — not a breaking change to existing clients.
+	VectorScore  float32           `json:"vector_score"`
+	Reason       string            `json:"reason"`
+	Citation     Citation          `json:"citation"`
+	Availability FieldAvailability `json:"field_availability"`
 }
 
 // RetrievalTrace — PRD must-have: trace_id/query/expanded_query/

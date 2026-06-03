@@ -620,6 +620,7 @@ func protoToSearchResult(p *pb.SearchResultItem) contractv1.SearchResult {
 		Score:            p.Score,
 		RankBeforeRerank: int(p.RankBeforeRerank),
 		RetrievalMethod:  p.RetrievalMethod,
+		VectorScore:      p.VectorScore,
 		Reason:           p.Reason,
 		Availability:     contractv1.FieldAvailability{Object: "SearchResult"},
 	}

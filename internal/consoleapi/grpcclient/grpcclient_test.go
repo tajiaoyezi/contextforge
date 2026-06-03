@@ -594,6 +594,29 @@ func (f *fakeSearchTraceServer) GetSearchTrace(_ context.Context, req *pb.GetSea
 	}, nil
 }
 
+// TEST-32.3.1 — protoToSearchResult carries the add-only vector_score provenance: a semantic hit's
+// real vector_score maps through to the contract; a BM25 hit's vector_score stays 0. Proves the
+// console data-plane SearchResultItem.vector_score (add-only field 16) is plumbed end-to-end (the
+// real value, not inferred from score + retrieval_method).
+func TestTask323_ProtoToSearchResult_CarriesVectorScore(t *testing.T) {
+	sem := protoToSearchResult(&pb.SearchResultItem{
+		ChunkId:         "chk_sem_0",
+		RetrievalMethod: "vector",
+		VectorScore:     0.83,
+	})
+	if sem.VectorScore != 0.83 {
+		t.Errorf("semantic hit VectorScore = %v, want 0.83 (provenance carried, not inferred)", sem.VectorScore)
+	}
+	bm25 := protoToSearchResult(&pb.SearchResultItem{
+		ChunkId:         "chk_bm25_0",
+		RetrievalMethod: "bm25",
+		VectorScore:     0,
+	})
+	if bm25.VectorScore != 0 {
+		t.Errorf("BM25 hit VectorScore = %v, want 0", bm25.VectorScore)
+	}
+}
+
 func TestGrpcClient_GetSourceChunk_Maps_NotFound(t *testing.T) {
 	fake := &fakeSearchServer{chunkErr: status.Error(codes.NotFound, "missing")}
 	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
