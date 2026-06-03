@@ -7,6 +7,25 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.22.0
+
+📌 **v0.22.0 live-vector-recall** — redeems Phase 25's qdrant/lancedb contract & parameter layers into **real live vector recall**, and factory-injects the real backend into the production hot path (`core/src/server.rs` previously hardcoded `BruteForceVectorBackend` at the hybrid `:302` / semantic `:341` paths). The **default build stays 0-new-dependency, 0-network** — the default semantic+hybrid path still runs the 0-dep `BruteForceVectorBackend` (ADR-004 / ADR-023 D5). Honest scope: **qdrant live KNN honest-defers when no server is running** (`health()==Unreachable` → exit 0, no fabricated recall, ADR-013); lancedb real ANN indexes are feature-gated and verified `--lib` scoped.
+
+- **vector backend factory + hot-path injection** (task-29.1, #197): `select_vector_backend(name, dim) -> Result<Arc<dyn VectorStore>, VectorError>` mirrors `embedding::factory::select_provider` — `""`/`"brute"` → BruteForce (0-dep, byte-equivalent), `"qdrant"`/`"lancedb"` feature-gated (honest `Err` otherwise). An add-only combined trait `VectorStore: VectorIndexer + VectorSearcher` lets one handle both index and search; the three base trait signatures are unchanged. `server.rs:302/341` now inject via the factory. factory 4/4 + `cargo test --workspace` 191 lib + integration 0 failed.
+- **qdrant live KNN harness + honest-defer** (task-29.2, #198): `core/examples/phase29_recall_via_qdrant.rs` (feature `vector-qdrant`+`embedding-fastembed`) runs connect→ensure-create→upsert→KNN through the production `Retriever::search_semantic` path against a real single-node qdrant; no server → `health()==Unreachable` → eprintln + exit 0 with zero fabricated recall (real recall backfilled from a dev-box server).
+- **lancedb real ANN index + compaction + backend matrix** (task-29.3, #199): `LanceDbBackend::create_ann_index` builds real `Index::IvfPq` / `Index::IvfHnswSq` via Lance `create_index`; `compact()` runs real `OptimizeAction::All`. Measured (n=1024, dim=384): **IVF_HNSW_SQ recall@10≈0.90 (~0.25 s build, ~3.5 ms/q)**, IVF_PQ≈0.44, brute-force exact fastest at modest n. **ADR-034 → Accepted** (per-D; D2 live-server honest-defer partial). **ADR-030 / ADR-023** add-only Phase-29 Amendment (real matrix). **ADR-014 cross-validation gate — 20th activation**.
+
+```bash
+# vector backend factory contract (deterministic, no server)
+cargo test -p contextforge-core --lib retriever::vector::factory      # 4 passed
+# qdrant live KNN harness (no server → honest-defer exit 0, no fabricated recall)
+cargo run -p contextforge-core --example phase29_recall_via_qdrant --features vector-qdrant,embedding-fastembed
+# lancedb real IVF_PQ/IVF_HNSW_SQ index + compaction + recall matrix (--lib scoped)
+cargo test -p contextforge-core --features vector-lancedb --lib retriever::vector::lance_db -- --nocapture
+```
+
+详 `RELEASE_NOTES.md` v0.22.0 段 + [Phase 29 spec](docs/specs/phases/phase-29-live-vector-recall.md) + [ADR-034](docs/decisions/adr-034-production-vector-live-recall.md)。
+
 ## What's new in v0.21.0
 
 📌 **v0.21.0 release-ci-hardening** — hardens the release / CI pipeline. **All changes are CI/release config** (plus surgical clippy/gofmt fixes); the **image runtime + default 0-network / 0-dependency baseline are unchanged** (ADR-004). Adds an **anonymous-pull guard** (regression protection for public GHCR pullability), **supply-chain proof** (cosign keyless signature + SPDX SBOM attestation + SLSA provenance), and a **strict CI lint gate** (clippy + gofmt + go vet, blocking). Honest scope: **multi-arch arm64 is DEFERRED** (QEMU emulation infeasible — build timed out), and the **real GHCR signing happens at the v0.21.0 release run** (the mechanism is CI-verified end-to-end).

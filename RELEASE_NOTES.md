@@ -1,5 +1,20 @@
 # ContextForge Release Notes
 
+## v0.22.0 (2026-06-03) — live-vector-recall (vector backend 工厂 + server.rs 热路径注入 + qdrant live KNN honest-defer + lancedb 真实 IVF_PQ/IVF_HNSW_SQ 索引 + compaction + 多 backend 选择矩阵 + ADR-034 ratified)
+
+Phase 29 把 Phase 25 的 qdrant/lancedb 契约层 / 参数层兑现为**真实 live 向量召回**，并把真实 backend 工厂化注入生产热路径（`server.rs:302` hybrid / `:341` semantic 此前硬编码 `BruteForceVectorBackend`）。**默认构建 0-network / 0 新依赖 baseline 不变**（ADR-004 / ADR-023 D5），默认 semantic+hybrid 仍走 0-dep BruteForce，三门 + lint 不退化。诚实口径：**qdrant live KNN 无 server 时 honest-defer**（`health()==Unreachable` → exit 0，零伪造召回，ADR-013）；lancedb 真实 ANN 索引 feature-gated `--lib` scoped 实测。
+
+| task | 交付 |
+|---|---|
+| 29.1 (#197) | `select_vector_backend(name, dim) -> Result<Arc<dyn VectorStore>, VectorError>` 工厂（仿 `select_provider`：`""`/`"brute"`→BruteForce 0-dep byte-equivalent、qdrant/lancedb feature-gated 否则诚实 Err）+ add-only 组合 trait `VectorStore: VectorIndexer + VectorSearcher`（三 base trait 签名不动）+ `server.rs:302/341` 经工厂注入；兑现 `[SPEC-DEFER:phase-future.vector-retrieval-integration]`；factory 4/4 + `cargo test --workspace` 191 lib + 全集成 0 failed；TEST-29.1.* |
+| 29.2 (#198) | `core/examples/phase29_recall_via_qdrant.rs`（双 gate vector-qdrant+embedding-fastembed）`QdrantBackend::connect(from_env)` + `health()` 守门 → 无 server `Unreachable` 实测 eprintln + exit 0（零召回数、不伪造，ADR-013）；Ready 分支经 `Retriever::search_semantic` 量真实 recall；单节点部署基线文档化，集群/复制 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]`；首次兑现 `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]` 驱动维度；TEST-29.2.* |
+| 29.3 (#199) | `LanceDbBackend::create_ann_index`（Lance `create_index` 真建 `Index::IvfPq`/`Index::IvfHnswSq`，兑现 `[SPEC-DEFER:phase-future.lancedb-index-tuning]`）+ `compact()`（`OptimizeAction::All`，兑现 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`，1536 行不丢）+ 真实多 backend 选择矩阵（n=1024 dim=384：IVF_HNSW_SQ recall@10≈0.90 / IVF_PQ≈0.44 / brute exact 最快）→ ADR-030/023 add-only Amendment；`--lib` scoped 4/4（规避 broad-test rustc 1.95.0 ICE）；TEST-29.3.* |
+| 29.4 (this) | v0.22.0 release docs + smoke v19 step 38（live-vector-recall 状态）+ ADR-034 据 D1-D5 per-D ratify（D2 live-server honest-defer 部分 ratify，逐维如实）+ ADR-030/023 add-only Amendment + phase-29 §6 闭合；TEST-29.4 |
+
+**ADR**：ADR-034 (production-vector-live-recall) 据 D1-D5 真实非合成验证 `Proposed → Accepted`（D1 工厂+热路径注入达成 / D2 qdrant live KNN wiring+honest-defer 部分·真实召回受阻如实 / D3 lancedb 真实索引+compaction 达成 / D4 选择矩阵真实测量 / D5 baseline 不变，ADR-013 不伪造）；ADR-030 + ADR-023 add-only Phase 29 Amendment（真实跨 backend 矩阵，不溯改 D 正文 ADR-014 D5）；ADR-004 守线（默认 0-dep + BruteForce 语义 baseline）。**ADR-014 cross-validation gate — 第二十次激活**。
+
+**Upgrade / Rollback**：默认运行时行为不变（semantic+hybrid 默认仍走 0-dep BruteForce，server.rs 注入 byte-equivalent），无强制迁移、0 新代码依赖；新增工厂 + `VectorStore` add-only trait + qdrant/lancedb 真实索引均 feature-gated。Rollback：`git tag -d v0.22.0` + 删 Release / ghcr tag；与 v0.21.0 行为兼容。
+
 ## v0.21.0 (2026-06-02) — release-ci-hardening (anonymous-pull guard + cosign 签名/SBOM/provenance + CI strict-lint + multi-arch arm64 DEFERRED + ADR-033 ratified)
 
 Phase 28 硬化发布 / CI 流水线。**全部改动为 `.github/workflows/*` + surgical clippy/gofmt 修复**；镜像运行时行为 + 默认构建 0-network / 0 新依赖 baseline **不变**（ADR-004），既有 cargo-test/go-test/spec-lint 三门不退化，0 新代码依赖。诚实口径：**arm64 multi-arch 延后**（QEMU emulation 实测不可行）、**真实 GHCR 签名于已授权 v0.21.0 release run 产生**（机制已 CI 端到端验证）。
