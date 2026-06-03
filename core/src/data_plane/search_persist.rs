@@ -126,15 +126,31 @@ impl SqliteTracePersist {
     }
 
     /// Get one trace by query_id. Returns `Ok(None)` on miss.
-    pub fn get(&self, key: &str) -> Result<Option<PbRetrievalTrace>, SqliteTracePersistError> {
+    ///
+    /// task-33.3 (ADR-038 D3): `workspace_id` adds optional isolation — empty =
+    /// aggregate-all (byte-equivalent to the pre-33.3 SQL), non-empty restricts
+    /// to that workspace so a query_id from another workspace returns `None`.
+    pub fn get(
+        &self,
+        key: &str,
+        workspace_id: &str,
+    ) -> Result<Option<PbRetrievalTrace>, SqliteTracePersistError> {
         let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
-        let row: Option<String> = conn
-            .query_row(
+        let row: Option<String> = if workspace_id.is_empty() {
+            conn.query_row(
                 "SELECT trace_json FROM search_traces WHERE query_id = ?1",
                 params![key],
                 |r| r.get::<_, String>(0),
             )
-            .optional()?;
+            .optional()?
+        } else {
+            conn.query_row(
+                "SELECT trace_json FROM search_traces WHERE query_id = ?1 AND workspace_id = ?2",
+                params![key, workspace_id],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?
+        };
         match row {
             Some(s) => decode_trace(&s).map(Some),
             None => Ok(None),
@@ -144,24 +160,34 @@ impl SqliteTracePersist {
     /// List the most-recent N records as `QueryRecord` (matches the
     /// `RetrievalTrace.query` + workspace_id/ts_unix metadata Rust-side
     /// per task-15.5). `limit` clamped 1..=100 to bound result size.
-    pub fn list(&self, limit: usize) -> Result<Vec<PbQueryRecord>, SqliteTracePersistError> {
+    ///
+    /// task-33.3 (ADR-038 D3): `workspace_id` adds optional isolation — empty =
+    /// aggregate-all (byte-equivalent to the pre-33.3 SQL), non-empty filters to
+    /// that workspace.
+    pub fn list(
+        &self,
+        limit: usize,
+        workspace_id: &str,
+    ) -> Result<Vec<PbQueryRecord>, SqliteTracePersistError> {
         let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
         let lim = limit.clamp(1, 100) as i64;
-        let mut stmt = conn.prepare(
-            "SELECT query_id, trace_json, workspace_id, ts_unix \
-             FROM search_traces ORDER BY ts_unix DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![lim], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        })?;
-        let mut out = Vec::with_capacity(lim as usize);
-        for r in rows {
-            let (key, trace_json, workspace_id, ts_unix) = r?;
+        let raw: Vec<(String, String, String, i64)> = if workspace_id.is_empty() {
+            let mut stmt = conn.prepare(
+                "SELECT query_id, trace_json, workspace_id, ts_unix \
+                 FROM search_traces ORDER BY ts_unix DESC LIMIT ?1",
+            )?;
+            let rows = stmt.query_map(params![lim], row_to_record_tuple)?;
+            rows.collect::<rusqlite::Result<_>>()?
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT query_id, trace_json, workspace_id, ts_unix \
+                 FROM search_traces WHERE workspace_id = ?2 ORDER BY ts_unix DESC LIMIT ?1",
+            )?;
+            let rows = stmt.query_map(params![lim, workspace_id], row_to_record_tuple)?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        let mut out = Vec::with_capacity(raw.len());
+        for (key, trace_json, workspace_id, ts_unix) in raw {
             let trace = decode_trace(&trace_json)?;
             out.push(PbQueryRecord {
                 query_id: key,
@@ -216,10 +242,15 @@ impl SqliteTracePersist {
     /// Returns traces whose `RetrievalTrace.query` text matches `query_text`
     /// (FTS5 MATCH), ordered by relevance (`rank`), projected to `QueryRecord`.
     /// `limit` clamped 1..=100 (mirrors `list`). Empty match → `Ok(vec![])`.
+    ///
+    /// task-33.3 (ADR-038 D3): `workspace_id` adds optional isolation — empty =
+    /// aggregate-all (byte-equivalent to the pre-33.3 SQL), non-empty filters to
+    /// that workspace.
     pub fn search_fts(
         &self,
         query_text: &str,
         limit: usize,
+        workspace_id: &str,
     ) -> Result<Vec<PbQueryRecord>, SqliteTracePersistError> {
         let conn = self.conn.lock().map_err(|_| SqliteTracePersistError::Poisoned)?;
         let lim = limit.clamp(1, 100) as i64;
@@ -231,22 +262,25 @@ impl SqliteTracePersist {
             return Ok(Vec::new());
         }
         let match_expr = format!("\"{}\"", query_text.replace('"', "\"\""));
-        let mut stmt = conn.prepare(
-            "SELECT t.query_id, t.trace_json, t.workspace_id, t.ts_unix \
-             FROM search_traces_fts f JOIN search_traces t ON t.query_id = f.query_id \
-             WHERE search_traces_fts MATCH ?1 ORDER BY rank LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(params![match_expr, lim], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        })?;
-        let mut out = Vec::new();
-        for r in rows {
-            let (key, trace_json, workspace_id, ts_unix) = r?;
+        let raw: Vec<(String, String, String, i64)> = if workspace_id.is_empty() {
+            let mut stmt = conn.prepare(
+                "SELECT t.query_id, t.trace_json, t.workspace_id, t.ts_unix \
+                 FROM search_traces_fts f JOIN search_traces t ON t.query_id = f.query_id \
+                 WHERE search_traces_fts MATCH ?1 ORDER BY rank LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![match_expr, lim], row_to_record_tuple)?;
+            rows.collect::<rusqlite::Result<_>>()?
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT t.query_id, t.trace_json, t.workspace_id, t.ts_unix \
+                 FROM search_traces_fts f JOIN search_traces t ON t.query_id = f.query_id \
+                 WHERE search_traces_fts MATCH ?1 AND t.workspace_id = ?3 ORDER BY rank LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![match_expr, lim, workspace_id], row_to_record_tuple)?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        let mut out = Vec::with_capacity(raw.len());
+        for (key, trace_json, workspace_id, ts_unix) in raw {
             let trace = decode_trace(&trace_json)?;
             out.push(PbQueryRecord {
                 query_id: key,
@@ -335,6 +369,12 @@ fn encode_trace(t: &PbRetrievalTrace) -> String {
     base64::engine::general_purpose::STANDARD.encode(&bytes)
 }
 
+/// task-33.3: shared row mapper for `list` / `search_fts`
+/// (query_id, trace_json, workspace_id, ts_unix).
+fn row_to_record_tuple(r: &rusqlite::Row<'_>) -> rusqlite::Result<(String, String, String, i64)> {
+    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+}
+
 fn decode_trace(s: &str) -> Result<PbRetrievalTrace, SqliteTracePersistError> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(s)
@@ -402,7 +442,7 @@ mod tests {
         persist
             .put("qry-rt", &t, "ws-rt", 1_700_000_100)
             .expect("put ok");
-        let got = persist.get("qry-rt").expect("get ok").expect("present");
+        let got = persist.get("qry-rt", "").expect("get ok").expect("present");
         assert_eq!(got.trace_id, t.trace_id);
         assert_eq!(got.query, t.query);
         assert_eq!(
@@ -412,7 +452,7 @@ mod tests {
         assert_eq!(got.lexical_candidates_count, t.lexical_candidates_count);
         assert_eq!(got.final_context_count, t.final_context_count);
         // Miss → None.
-        let missed = persist.get("qry-nope").expect("get ok");
+        let missed = persist.get("qry-nope", "").expect("get ok");
         assert!(missed.is_none());
     }
 
@@ -430,7 +470,7 @@ mod tests {
                 .unwrap();
         }
         // Default-ish limit 3 → newest 3 (ts 500, 400, 300).
-        let got = persist.list(3).expect("list ok");
+        let got = persist.list(3, "").expect("list ok");
         assert_eq!(got.len(), 3);
         assert_eq!(got[0].query_id, "qry-4");
         assert_eq!(got[0].ts_unix, 500);
@@ -440,7 +480,7 @@ mod tests {
         assert_eq!(got[2].ts_unix, 300);
         // Clamp test: 0 → at least 1; 200 → at most 100. (Empty store
         // separately verifies the bound; here we just exercise clamp upper.)
-        let zero_lim = persist.list(0).expect("list ok");
+        let zero_lim = persist.list(0, "").expect("list ok");
         assert!(!zero_lim.is_empty(), "limit 0 clamps to 1");
         // limit upper-bound: synthesize 110 rows then assert clamp 100.
         for i in 100..210i64 {
@@ -449,7 +489,7 @@ mod tests {
                 .put(&key, &fixture_trace(&key), "ws-list", i)
                 .unwrap();
         }
-        let upper = persist.list(200).expect("list ok");
+        let upper = persist.list(200, "").expect("list ok");
         assert_eq!(upper.len(), 100, "clamp upper to 100");
     }
 
@@ -525,7 +565,7 @@ mod tests {
             .put("q-rotate2", &fixture_trace("how to rotate the token again"), "ws", 300)
             .unwrap();
         // Two traces contain "rotate"; one contains "deploy".
-        let hits = persist.search_fts("rotate", 10).expect("fts ok");
+        let hits = persist.search_fts("rotate", 10, "").expect("fts ok");
         let ids: Vec<&str> = hits.iter().map(|r| r.query_id.as_str()).collect();
         assert_eq!(hits.len(), 2, "two traces contain 'rotate': {ids:?}");
         assert!(ids.contains(&"q-rotate"));
@@ -534,7 +574,7 @@ mod tests {
         // Projection carries the query text.
         assert!(hits.iter().all(|r| r.query.contains("rotate")));
         // Limit clamp: 0 → at least 1 returned (when matches exist).
-        let one = persist.search_fts("token", 0).expect("fts ok");
+        let one = persist.search_fts("token", 0, "").expect("fts ok");
         assert!(!one.is_empty(), "limit 0 clamps to >=1");
     }
 
@@ -546,7 +586,7 @@ mod tests {
         persist
             .put("q1", &fixture_trace("alpha beta gamma"), "ws", 100)
             .unwrap();
-        let hits = persist.search_fts("absent-term-xyz", 10).expect("fts ok");
+        let hits = persist.search_fts("absent-term-xyz", 10, "").expect("fts ok");
         assert!(hits.is_empty(), "no trace contains the term → empty");
     }
 
@@ -569,14 +609,14 @@ mod tests {
         persist.vacuum().expect("vacuum ok");
         // Surviving rows intact after VACUUM.
         assert_eq!(persist.row_count().unwrap(), 3);
-        assert!(persist.get("q-5").unwrap().is_some(), "newest survives get");
-        assert!(persist.get("q-0").unwrap().is_none(), "pruned row gone");
-        let listed = persist.list(100).unwrap();
+        assert!(persist.get("q-5", "").unwrap().is_some(), "newest survives get");
+        assert!(persist.get("q-0", "").unwrap().is_none(), "pruned row gone");
+        let listed = persist.list(100, "").unwrap();
         assert_eq!(listed.len(), 3, "list reflects survivors");
         // FTS shadow rows for pruned traces removed; survivors still hit.
-        let shared = persist.search_fts("shared", 100).unwrap();
+        let shared = persist.search_fts("shared", 100, "").unwrap();
         assert_eq!(shared.len(), 3, "only surviving traces FTS-match");
-        let gone = persist.search_fts("term-0", 100).unwrap();
+        let gone = persist.search_fts("term-0", 100, "").unwrap();
         assert!(gone.is_empty(), "pruned trace no longer FTS-indexed");
     }
 
@@ -602,14 +642,14 @@ mod tests {
         // New code opens the old DB → 0016 FTS table created + backfilled.
         let persist = SqliteTracePersist::open(&dir).expect("open old db ok");
         assert_eq!(persist.row_count().unwrap(), 1, "existing row preserved");
-        assert!(persist.get("legacy-1").unwrap().is_some(), "get still works");
-        let hits = persist.search_fts("rotate", 10).expect("fts ok");
+        assert!(persist.get("legacy-1", "").unwrap().is_some(), "get still works");
+        let hits = persist.search_fts("rotate", 10, "").expect("fts ok");
         assert_eq!(hits.len(), 1, "legacy row backfilled into FTS");
         assert_eq!(hits[0].query_id, "legacy-1");
         // Re-open is idempotent (no duplicate FTS rows, no data loss).
         drop(persist);
         let persist2 = SqliteTracePersist::open(&dir).expect("re-open ok");
-        let hits2 = persist2.search_fts("rotate", 10).expect("fts ok");
+        let hits2 = persist2.search_fts("rotate", 10, "").expect("fts ok");
         assert_eq!(hits2.len(), 1, "re-open does not duplicate FTS rows");
     }
 
@@ -623,9 +663,44 @@ mod tests {
         persist.put("k", &fixture_trace("second version"), "ws", 2).unwrap();
         assert_eq!(persist.row_count().unwrap(), 1, "same key replaced");
         // Old text no longer matches; new text does.
-        assert!(persist.search_fts("first", 10).unwrap().is_empty(), "stale FTS row replaced");
-        let hit = persist.search_fts("second", 10).unwrap();
+        assert!(persist.search_fts("first", 10, "").unwrap().is_empty(), "stale FTS row replaced");
+        let hit = persist.search_fts("second", 10, "").unwrap();
         assert_eq!(hit.len(), 1);
         assert_eq!(hit[0].query_id, "k");
+    }
+
+    /// TEST-33.3.3 (task-33.3 B2): get/list/search_fts workspace filter. Empty
+    /// workspace_id = aggregate-all (byte-equivalent to pre-33.3 behavior);
+    /// non-empty isolates to that workspace (cross-workspace rows not visible).
+    #[test]
+    fn test_33_3_3_workspace_filter_empty_aggregates_nonempty_isolates() {
+        let dir = temp_dir("ws-filter");
+        let persist = SqliteTracePersist::open(&dir).expect("open ok");
+        // 2 traces in ws-a, 1 in ws-b. "rotate" appears in one ws-a + the ws-b trace.
+        persist.put("a1", &fixture_trace("rotate prod token"), "ws-a", 100).unwrap();
+        persist.put("a2", &fixture_trace("deploy staging"), "ws-a", 200).unwrap();
+        persist.put("b1", &fixture_trace("rotate prod token"), "ws-b", 300).unwrap();
+
+        // list: empty = aggregate-all (all 3), ws-a = 2, ws-b = 1.
+        assert_eq!(persist.list(100, "").unwrap().len(), 3, "empty workspace_id aggregates all");
+        let ws_a = persist.list(100, "ws-a").unwrap();
+        assert_eq!(ws_a.len(), 2, "ws-a isolated");
+        assert!(ws_a.iter().all(|r| r.workspace_id == "ws-a"));
+        assert_eq!(persist.list(100, "ws-b").unwrap().len(), 1, "ws-b isolated");
+        assert!(persist.list(100, "ws-none").unwrap().is_empty(), "unknown workspace empty");
+
+        // get: by query_id, scoped by workspace when non-empty.
+        assert!(persist.get("a1", "").unwrap().is_some(), "empty workspace gets any key");
+        assert!(persist.get("a1", "ws-a").unwrap().is_some(), "a1 belongs to ws-a");
+        assert!(persist.get("a1", "ws-b").unwrap().is_none(), "a1 not visible from ws-b (isolation)");
+
+        // search_fts: empty = both "rotate" hits, ws-a = only a1, ws-b = only b1.
+        assert_eq!(persist.search_fts("rotate", 100, "").unwrap().len(), 2, "empty aggregates rotate hits");
+        let fts_a = persist.search_fts("rotate", 100, "ws-a").unwrap();
+        assert_eq!(fts_a.len(), 1, "ws-a rotate isolated");
+        assert_eq!(fts_a[0].query_id, "a1");
+        let fts_b = persist.search_fts("rotate", 100, "ws-b").unwrap();
+        assert_eq!(fts_b.len(), 1);
+        assert_eq!(fts_b[0].query_id, "b1");
     }
 }

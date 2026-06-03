@@ -236,6 +236,11 @@ message GetSourceChunkRequest {
 // daemon restart loses the cache [SPEC-DEFER:task-future.search-trace-sqlite-persistence] 留 v0.5.x.
 message GetSearchTraceRequest {
   string query_id = 1;
+  // task-33.3 (ADR-038 D3 / ADR-016 add-only): optional workspace isolation.
+  // Empty = aggregate-all (backward-compatible; existing clients that omit
+  // this field keep the v0.8 behavior). Non-empty restricts the lookup to the
+  // given workspace so a query_id from another workspace is not returned.
+  string workspace_id = 2;
 }
 
 // task-15.3 (Phase 15 P1 #3): Dashboard "已索引块" stats — total live docs +
@@ -254,6 +259,10 @@ message ChunksStats {
 // drawn from the in-memory trace store (task-12.3). limit default 20, max 100.
 message ListQueriesRequest {
   int32 limit = 1;  // 0 = default 20; clamped to [1, 100]
+  // task-33.3 (ADR-038 D3 / ADR-016 add-only): optional workspace isolation.
+  // Empty = aggregate-all (backward-compatible). Non-empty filters the query
+  // history to the given workspace.
+  string workspace_id = 2;
 }
 
 message QueryRecord {

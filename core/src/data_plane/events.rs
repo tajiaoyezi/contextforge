@@ -12,6 +12,7 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
+use crate::data_plane::indexing_events::IndexingEventRow;
 use crate::memoryops::audit::AuditLogEntry;
 use crate::pb_console::events_service_server::EventsService;
 use crate::pb_console::{ObservabilityEvent as PbEvent, SubscribeEventsRequest};
@@ -384,10 +385,12 @@ fn audit_op_str_to_event(op: &str) -> Option<(&'static str, &'static str)> {
 /// `entries` MUST be `id ASC` (as returned by `AuditSink::list()`); the output
 /// preserves that order. `since_ts > 0` filters to entries at/after the cutoff
 /// (unix seconds); `since_ts == 0` replays all. Non-memory operations
-/// (`import` / `search` / ...) are skipped — only memory state-op events have a
-/// persistent replay source (indexing events lack one,
-/// `[SPEC-DEFER:phase-future.indexing-event-persistence]`). Each event_id is the
-/// deterministic `evt-audit-{audit_id}` so the replay→live splice can dedup.
+/// (`import` / `search` / ...) are skipped — memory state-op events replay from
+/// `audit_log`; `indexing.*` events now have their own persistent source
+/// (`indexing_events`, migration 0019) rebuilt by `indexing_rows_to_pb_events`
+/// (end-to-end restart-then-replay `[SPEC-DEFER:phase-future.indexing-replay-e2e]`).
+/// Each event_id is the deterministic `evt-audit-{audit_id}` so the replay→live
+/// splice can dedup.
 pub fn replay_events_from_audit(entries: &[AuditLogEntry], since_ts: i64) -> Vec<PbEvent> {
     let mut out = Vec::new();
     for entry in entries {
@@ -413,6 +416,57 @@ pub fn replay_events_from_audit(entries: &[AuditLogEntry], since_ts: i64) -> Vec
             ts_unix: ts,
             trace_id: None,
             job_id: None,
+            payload_json,
+        });
+    }
+    out
+}
+
+/// task-33.3 (ADR-038 D3): rebuild the `indexing.*` event sequence from the
+/// persisted `indexing_events` rows (migration 0019), so a subscriber can
+/// replay indexing lifecycle it missed before subscribing — the indexing
+/// counterpart of `replay_events_from_audit`.
+///
+/// `rows` MUST be `id ASC` (as returned by `SqliteIndexingEventStore::list()`);
+/// the output preserves that order. `job_id` / `processed` / `total` are taken
+/// verbatim from the persisted row (NOT synthesized, ADR-013). `stage` maps to
+/// the event_type: `"indexing"` → `indexing.progress`, `"cancelled"` →
+/// `indexing.cancelled`, `"error"` → `indexing.error`. Each event_id is the
+/// deterministic `evt-idx-{id}` so the replay→live splice can dedup (mirrors
+/// the `evt-audit-{id}` pattern). End-to-end restart-then-replay is
+/// `[SPEC-DEFER:phase-future.indexing-replay-e2e]`.
+pub fn indexing_rows_to_pb_events(rows: &[IndexingEventRow]) -> Vec<PbEvent> {
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let (event_type, severity) = match row.stage.as_str() {
+            "cancelled" => ("indexing.cancelled", "info"),
+            "error" => ("indexing.error", "error"),
+            // "indexing" (progress) is the default; unknown stages fold here so
+            // a forward-compat row is never dropped silently.
+            _ => ("indexing.progress", "info"),
+        };
+        let message = match event_type {
+            "indexing.cancelled" => "indexing cancelled by user request".to_string(),
+            "indexing.error" => format!("indexing failed: {}", row.message),
+            _ => format!("indexing progress: {}/{} files", row.processed, row.total),
+        };
+        // Mirror build_progress_event's payload shape (job_id/processed_files/
+        // total_files) so replayed and live events are byte-compatible.
+        let payload_json = format!(
+            r#"{{"job_id":{},"processed_files":{},"total_files":{}}}"#,
+            serde_json::to_string(&row.job_id).unwrap_or_else(|_| String::from("\"\"")),
+            row.processed,
+            row.total,
+        );
+        out.push(PbEvent {
+            event_id: format!("evt-idx-{}", row.id),
+            event_type: event_type.to_string(),
+            severity: severity.to_string(),
+            source: "contextforge-core".to_string(),
+            message,
+            ts_unix: row.ts_unix,
+            trace_id: None,
+            job_id: Some(row.job_id.clone()),
             payload_json,
         });
     }
@@ -518,6 +572,59 @@ mod tests {
         assert_eq!(recent.len(), 2, "only ts>=200 (unpin@200 + soft_delete@300)");
         assert_eq!(recent[0].event_id, "evt-audit-3");
         assert_eq!(recent[1].event_id, "evt-audit-4");
+    }
+
+    fn idx_row(id: i64, job_id: &str, stage: &str, processed: i64, total: i64, ts: i64, msg: &str) -> IndexingEventRow {
+        IndexingEventRow {
+            id,
+            job_id: job_id.to_string(),
+            stage: stage.to_string(),
+            processed,
+            total,
+            message: msg.to_string(),
+            ts_unix: ts,
+        }
+    }
+
+    /// TEST-33.3.1 (Rust): the indexing replay mapper rebuilds `indexing.*`
+    /// events in `id ASC` order with real job_id/processed/total taken verbatim
+    /// from the persisted rows (not synthesized, ADR-013); stage maps to the
+    /// right event_type + severity; event_id is the deterministic `evt-idx-{id}`.
+    /// Mirrors TEST-26.2.3.
+    #[test]
+    fn test_33_3_1_indexing_rows_to_pb_events_id_asc_and_real_fields() {
+        let rows = vec![
+            idx_row(1, "job-1", "indexing", 2, 5, 100, ""),
+            idx_row(2, "job-1", "indexing", 5, 5, 200, ""),
+            idx_row(3, "job-1", "cancelled", 0, 0, 300, ""),
+            idx_row(4, "job-2", "error", 0, 0, 400, "commit: disk full"),
+        ];
+        let evs = indexing_rows_to_pb_events(&rows);
+        assert_eq!(evs.len(), 4, "every row maps (no drop)");
+        // id ASC + deterministic event_id + real fields.
+        assert_eq!(evs[0].event_id, "evt-idx-1");
+        assert_eq!(evs[0].event_type, "indexing.progress");
+        assert_eq!(evs[0].severity, "info");
+        assert_eq!(evs[0].source, "contextforge-core");
+        assert_eq!(evs[0].job_id, Some("job-1".to_string()));
+        assert_eq!(evs[0].ts_unix, 100);
+        assert!(evs[0].payload_json.contains("\"job_id\":\"job-1\""));
+        assert!(evs[0].payload_json.contains("\"processed_files\":2"));
+        assert!(evs[0].payload_json.contains("\"total_files\":5"));
+        // progress carries the real counts in its message too.
+        assert!(evs[1].message.contains("5/5 files"));
+        // cancelled.
+        assert_eq!(evs[2].event_id, "evt-idx-3");
+        assert_eq!(evs[2].event_type, "indexing.cancelled");
+        assert_eq!(evs[2].severity, "info");
+        // error: severity error + message carries the persisted detail.
+        assert_eq!(evs[3].event_id, "evt-idx-4");
+        assert_eq!(evs[3].event_type, "indexing.error");
+        assert_eq!(evs[3].severity, "error");
+        assert_eq!(evs[3].job_id, Some("job-2".to_string()));
+        assert!(evs[3].message.contains("disk full"));
+        // empty input → empty output.
+        assert!(indexing_rows_to_pb_events(&[]).is_empty());
     }
 
     // =====================================================================

@@ -143,35 +143,45 @@ impl TraceStore {
         );
     }
 
-    fn get(&self, key: &str) -> Option<PbRetrievalTrace> {
+    /// task-33.3 (ADR-038 D3): `workspace_id` adds optional isolation — empty =
+    /// aggregate-all (pre-33.3 behavior), non-empty returns the trace only when
+    /// it belongs to that workspace (query_id is globally unique, so a hot-cache
+    /// hit for another workspace is a miss, not a fall-through).
+    fn get(&self, key: &str, workspace_id: &str) -> Option<PbRetrievalTrace> {
         if let Some(rec) = self.map.get(key) {
-            return Some(rec.trace.clone());
+            if workspace_id.is_empty() || rec.workspace_id == workspace_id {
+                return Some(rec.trace.clone());
+            }
+            return None;
         }
         // task-16.1: hot cache miss → SQLite fallback (read-only; deliberately
         // does not back-fill the LRU to avoid polluting recency with old rows).
         self.persist
             .as_ref()
-            .and_then(|p| p.get(key).ok().flatten())
+            .and_then(|p| p.get(key, workspace_id).ok().flatten())
     }
 
     /// task-15.5 / task-16.1: list the most-recent N query records (DESC by
     /// insertion order via VecDeque reverse iteration). `limit` is clamped
     /// 1..=100. If a SQLite persist is configured AND the hot cache returns
     /// fewer items than requested, fall back to SQLite ORDER BY ts_unix DESC.
-    fn list(&self, limit: usize) -> Vec<PbQueryRecord> {
+    /// task-33.3 (ADR-038 D3): `workspace_id` adds optional isolation — empty =
+    /// aggregate-all (pre-33.3 behavior), non-empty filters the hot cache (and
+    /// the SQLite supplement) to that workspace.
+    fn list(&self, limit: usize, workspace_id: &str) -> Vec<PbQueryRecord> {
         let lim = limit.clamp(1, 100);
         let mem: Vec<PbQueryRecord> = self
             .order
             .iter()
             .rev()
+            .filter_map(|key| self.map.get(key).map(|rec| (key, rec)))
+            .filter(|(_, rec)| workspace_id.is_empty() || rec.workspace_id == workspace_id)
             .take(lim)
-            .filter_map(|key| {
-                self.map.get(key).map(|rec| PbQueryRecord {
-                    query_id: key.clone(),
-                    query: rec.trace.query.clone(),
-                    ts_unix: rec.ts_unix,
-                    workspace_id: rec.workspace_id.clone(),
-                })
+            .map(|(key, rec)| PbQueryRecord {
+                query_id: key.clone(),
+                query: rec.trace.query.clone(),
+                ts_unix: rec.ts_unix,
+                workspace_id: rec.workspace_id.clone(),
             })
             .collect();
         if mem.len() >= lim || self.persist.is_none() {
@@ -180,7 +190,7 @@ impl TraceStore {
         // task-16.1: hot cache short → SQLite supplements. After warm restore
         // this rarely triggers (LRU holds up to 1000); fresh boot before first
         // `put` is the typical hit.
-        match self.persist.as_ref().unwrap().list(lim) {
+        match self.persist.as_ref().unwrap().list(lim, workspace_id) {
             Ok(rows) => rows,
             Err(e) => {
                 eprintln!("WARN search_persist.list failed; returning hot cache subset: {e}");
@@ -465,11 +475,13 @@ impl SearchService for SearchServer {
         if req.query_id.is_empty() {
             return Err(Status::invalid_argument("query_id must not be empty"));
         }
+        // task-33.3 (ADR-038 D3): thread the add-only workspace_id through to the
+        // store. Empty = aggregate-all (existing clients that omit it unchanged).
         let trace = self
             .trace_store
             .lock()
             .map_err(|_| Status::internal("trace_store poisoned"))?
-            .get(&req.query_id);
+            .get(&req.query_id, &req.workspace_id);
         match trace {
             Some(t) => Ok(Response::new(t)),
             None => Err(Status::not_found(format!(
@@ -497,7 +509,8 @@ impl SearchService for SearchServer {
             .trace_store
             .lock()
             .map_err(|_| Status::internal("trace_store poisoned"))?;
-        let records = store.list(limit);
+        // task-33.3 (ADR-038 D3): add-only workspace_id filter (empty = aggregate-all).
+        let records = store.list(limit, &inner.workspace_id);
         Ok(Response::new(ListQueriesResponse { records }))
     }
 
@@ -653,6 +666,7 @@ mod tests {
         let err = server
             .get_search_trace(Request::new(GetSearchTraceRequest {
                 query_id: "".into(),
+                workspace_id: String::new(),
             }))
             .await
             .expect_err("expect invalid_argument");
@@ -665,6 +679,7 @@ mod tests {
         let err = server
             .get_search_trace(Request::new(GetSearchTraceRequest {
                 query_id: "qry-does-not-exist".into(),
+                workspace_id: String::new(),
             }))
             .await
             .expect_err("expect not_found");
@@ -702,6 +717,7 @@ mod tests {
         let resp = server
             .get_search_trace(Request::new(GetSearchTraceRequest {
                 query_id: "qry-test-1".into(),
+                workspace_id: String::new(),
             }))
             .await
             .expect("get_search_trace ok");
@@ -787,11 +803,11 @@ mod tests {
         }
         assert_eq!(store.len(), 3);
         // Oldest 2 (qry-0, qry-1) evicted; newest 3 (qry-2, 3, 4) retained.
-        assert!(store.get("qry-0").is_none());
-        assert!(store.get("qry-1").is_none());
-        assert!(store.get("qry-2").is_some());
-        assert!(store.get("qry-3").is_some());
-        assert!(store.get("qry-4").is_some());
+        assert!(store.get("qry-0", "").is_none());
+        assert!(store.get("qry-1", "").is_none());
+        assert!(store.get("qry-2", "").is_some());
+        assert!(store.get("qry-3", "").is_some());
+        assert!(store.get("qry-4", "").is_some());
     }
 
     // task-15.5 (Phase 15 P1 #5): TraceStore.list + SearchServer.list_queries tests.
@@ -817,7 +833,7 @@ mod tests {
                 1_700_000_000 + i as i64,
             );
         }
-        let recs = store.list(3);
+        let recs = store.list(3, "");
         assert_eq!(recs.len(), 3);
         // Most recent (qry-4) first.
         assert_eq!(recs[0].query_id, "qry-4");
@@ -848,9 +864,9 @@ mod tests {
             1_700_000_000,
         );
         // 0 → clamp to at least 1; 500 → clamp to 100 (but store only has 1).
-        let one = store.list(0);
+        let one = store.list(0, "");
         assert_eq!(one.len(), 1);
-        let big = store.list(500);
+        let big = store.list(500, "");
         assert_eq!(big.len(), 1);
     }
 
@@ -858,10 +874,82 @@ mod tests {
     async fn test_list_queries_rpc_default_limit_returns_empty() {
         let server = fresh_server();
         let resp = server
-            .list_queries(Request::new(ListQueriesRequest { limit: 0 }))
+            .list_queries(Request::new(ListQueriesRequest { limit: 0, workspace_id: String::new() }))
             .await
             .expect("list_queries ok");
         assert!(resp.into_inner().records.is_empty());
+    }
+
+    /// TEST-33.3.4 (task-33.3 B2): the handlers read the add-only request
+    /// workspace_id and thread it to the store. Empty = aggregate-all (existing
+    /// clients unchanged); non-empty isolates. Covers get_search_trace +
+    /// list_queries.
+    #[tokio::test]
+    async fn test_33_3_4_handlers_thread_workspace_id() {
+        fn trace(q: &str) -> PbRetrievalTrace {
+            PbRetrievalTrace {
+                trace_id: format!("t-{q}"),
+                query: q.into(),
+                expanded_query: None,
+                candidate_generation_steps: vec!["bm25".into()],
+                lexical_candidates_count: 0,
+                vector_candidates_count: 0,
+                rerank_steps: vec![],
+                scope_filter_result: "no-op".into(),
+                final_context_count: 0,
+                retrieved_chunks: vec![],
+            }
+        }
+        let server = fresh_server();
+        {
+            let mut store = server.trace_store.lock().unwrap();
+            store.put("qa".into(), trace("qa"), "ws-a".into(), 100);
+            store.put("qb".into(), trace("qb"), "ws-b".into(), 200);
+        }
+
+        // get_search_trace: matching workspace → ok; cross-workspace → not_found.
+        let ok = server
+            .get_search_trace(Request::new(GetSearchTraceRequest {
+                query_id: "qa".into(),
+                workspace_id: "ws-a".into(),
+            }))
+            .await
+            .expect("qa visible from ws-a");
+        assert_eq!(ok.into_inner().query, "qa");
+        let denied = server
+            .get_search_trace(Request::new(GetSearchTraceRequest {
+                query_id: "qa".into(),
+                workspace_id: "ws-b".into(),
+            }))
+            .await
+            .expect_err("qa not visible from ws-b");
+        assert_eq!(denied.code(), tonic::Code::NotFound);
+        // empty workspace_id still resolves (aggregate-all / backward-compat).
+        let any = server
+            .get_search_trace(Request::new(GetSearchTraceRequest {
+                query_id: "qa".into(),
+                workspace_id: String::new(),
+            }))
+            .await
+            .expect("qa visible with empty workspace_id");
+        assert_eq!(any.into_inner().query, "qa");
+
+        // list_queries: empty = both; ws-a = only qa.
+        let all = server
+            .list_queries(Request::new(ListQueriesRequest { limit: 50, workspace_id: String::new() }))
+            .await
+            .expect("list all")
+            .into_inner()
+            .records;
+        assert_eq!(all.len(), 2, "empty workspace_id aggregates all");
+        let only_a = server
+            .list_queries(Request::new(ListQueriesRequest { limit: 50, workspace_id: "ws-a".into() }))
+            .await
+            .expect("list ws-a")
+            .into_inner()
+            .records;
+        assert_eq!(only_a.len(), 1, "ws-a isolated");
+        assert_eq!(only_a[0].query_id, "qa");
     }
 
     #[tokio::test]
@@ -1035,13 +1123,13 @@ mod tests {
 
         assert_eq!(store.len(), 2, "warm restore populates hot cache");
         // Hot cache hit (not SQLite fallback) — get reads from map first.
-        assert!(store.get("k1").is_some());
-        assert_eq!(store.get("k1").unwrap().query, "q1");
-        assert!(store.get("k2").is_some());
+        assert!(store.get("k1", "").is_some());
+        assert_eq!(store.get("k1", "").unwrap().query, "q1");
+        assert!(store.get("k2", "").is_some());
 
         // list returns insertion-order DESC from VecDeque; warm restore
         // inserted oldest-first (k1, k2), so reverse-iteration yields k2, k1.
-        let listed = store.list(10);
+        let listed = store.list(10, "");
         assert_eq!(listed.len(), 2);
         assert_eq!(listed[0].query_id, "k2");
         assert_eq!(listed[1].query_id, "k1");
@@ -1065,10 +1153,10 @@ mod tests {
 
         // Hot cache contains it.
         assert_eq!(store.len(), 1);
-        assert_eq!(store.get("k-wt").unwrap().query, "hello");
+        assert_eq!(store.get("k-wt", "").unwrap().query, "hello");
 
         // Persist also contains it (write-through path verified).
-        let from_persist = persist.get("k-wt").expect("persist get ok");
+        let from_persist = persist.get("k-wt", "").expect("persist get ok");
         assert!(from_persist.is_some());
         assert_eq!(from_persist.unwrap().query, "hello");
         assert_eq!(persist.row_count().unwrap(), 1);
@@ -1104,7 +1192,7 @@ mod tests {
 
         // Invariant: hot cache reflects the put.
         assert_eq!(store.len(), 1);
-        let got = store.get("k-after-sabotage");
+        let got = store.get("k-after-sabotage", "");
         assert!(got.is_some(), "AC4 invariant: hot cache intact after persist failure");
         assert_eq!(got.unwrap().query, "survived");
     }
@@ -1125,11 +1213,11 @@ mod tests {
 
         assert_eq!(store.len(), 1, "cap=1 enforced after warm restore");
         // k2 should be the survivor (newest, last inserted).
-        assert!(store.get("k2").is_some());
+        assert!(store.get("k2", "").is_some());
 
         // k1 missed the hot cache → must fall back to SQLite via the
         // persist.get path inside TraceStore::get.
-        let got_k1 = store.get("k1");
+        let got_k1 = store.get("k1", "");
         assert!(
             got_k1.is_some(),
             "AC5 wiring: k1 served via SQLite fallback after cache eviction"
@@ -1161,7 +1249,7 @@ mod tests {
         assert_eq!(store.len(), 2, "cap=2 enforced after warm restore of 5 rows");
 
         // limit=5 but hot cache has only 2 → fallback to SQLite for all 5.
-        let listed = store.list(5);
+        let listed = store.list(5, "");
         assert_eq!(listed.len(), 5, "AC5 wiring: SQLite supplements when cache short");
 
         // Order from SQLite is ts_unix DESC: 500, 400, 300, 200, 100.

@@ -681,7 +681,17 @@ pub async fn serve_full(
 
             // task-11.3 §6 AC1/AC2 + task-11.4: real JobRunner backed by
             // IndexSessionBackend wired to EventBus.
-            let indexer = IndexSessionBackend::with_event_bus(event_bus.clone());
+            // task-33.3 (ADR-038 D3): also open a persistent indexing-event
+            // store (`<data_dir>/indexing_events.db`) so the emit points persist
+            // a replay source surviving restart (end-to-end restart-replay
+            // wiring is [SPEC-DEFER:phase-future.indexing-replay-e2e]).
+            let indexing_event_store = std::sync::Arc::new(
+                crate::data_plane::indexing_events::SqliteIndexingEventStore::open(data_dir)?,
+            );
+            let indexer = IndexSessionBackend::with_event_bus_and_indexing_store(
+                event_bus.clone(),
+                indexing_event_store,
+            );
             let job_store_dyn: Arc<dyn JobStore> = job_store.clone();
             let runner = Arc::new(JobRunner::new(job_store_dyn, indexer));
 

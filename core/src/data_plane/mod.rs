@@ -19,6 +19,7 @@
 pub mod eval;
 pub mod events;
 pub mod health;
+pub mod indexing_events;
 pub mod job;
 pub mod memory;
 pub mod search;
