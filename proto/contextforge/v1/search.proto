@@ -55,3 +55,21 @@ message RetrievalResult {
 message SearchResponse {
   repeated RetrievalResult results = 1;
 }
+
+// task-31.3 (ADR-036 D3) add-only: full-text chunk listing for the exporter. SearchResponse does not
+// carry chunk full text (its results are explainable hits, not source bodies), so the exporter wrote
+// content="" + sha256-of-empty. ListAllChunks returns every chunk's real content for a collection so
+// the export records carry real content + a real ContentHash. Add-only — Search/SearchResponse are
+// unchanged.
+message ListAllChunksRequest {
+  string collection_id = 1;
+}
+
+message ChunkContent {
+  string chunk_id = 1;
+  string content = 2;
+}
+
+message ListAllChunksResponse {
+  repeated ChunkContent chunks = 1;
+}

@@ -29,3 +29,17 @@ func (d *Daemon) Search(
 	}
 	return contextforgev1.NewContextServiceClient(conn).Search(ctx, req)
 }
+
+// ListAllChunks forwards a ListAllChunksRequest to contextforge-core's
+// ContextService.ListAllChunks (task-31.3: full-text chunk listing for the exporter, which
+// SearchResponse cannot supply). Reuses the same client connection as Search.
+func (d *Daemon) ListAllChunks(
+	ctx context.Context,
+	req *contextforgev1.ListAllChunksRequest,
+) (*contextforgev1.ListAllChunksResponse, error) {
+	conn, err := d.clientConn()
+	if err != nil {
+		return nil, err
+	}
+	return contextforgev1.NewContextServiceClient(conn).ListAllChunks(ctx, req)
+}

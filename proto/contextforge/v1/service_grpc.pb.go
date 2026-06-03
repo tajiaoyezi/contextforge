@@ -23,9 +23,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ContextService_Search_FullMethodName = "/contextforge.v1.ContextService/Search"
-	ContextService_Health_FullMethodName = "/contextforge.v1.ContextService/Health"
-	ContextService_Index_FullMethodName  = "/contextforge.v1.ContextService/Index"
+	ContextService_Search_FullMethodName        = "/contextforge.v1.ContextService/Search"
+	ContextService_Health_FullMethodName        = "/contextforge.v1.ContextService/Health"
+	ContextService_Index_FullMethodName         = "/contextforge.v1.ContextService/Index"
+	ContextService_ListAllChunks_FullMethodName = "/contextforge.v1.ContextService/ListAllChunks"
 )
 
 // ContextServiceClient is the client API for ContextService service.
@@ -36,6 +37,8 @@ type ContextServiceClient interface {
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	// Phase 9 task-9.1: server-streaming indexing RPC (ADR-013 §Decision #1).
 	Index(ctx context.Context, in *IndexRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IndexProgress], error)
+	// task-31.3 (ADR-036 D3) add-only: full-text chunk listing for the exporter (real content/hash).
+	ListAllChunks(ctx context.Context, in *ListAllChunksRequest, opts ...grpc.CallOption) (*ListAllChunksResponse, error)
 }
 
 type contextServiceClient struct {
@@ -85,6 +88,16 @@ func (c *contextServiceClient) Index(ctx context.Context, in *IndexRequest, opts
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ContextService_IndexClient = grpc.ServerStreamingClient[IndexProgress]
 
+func (c *contextServiceClient) ListAllChunks(ctx context.Context, in *ListAllChunksRequest, opts ...grpc.CallOption) (*ListAllChunksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAllChunksResponse)
+	err := c.cc.Invoke(ctx, ContextService_ListAllChunks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ContextServiceServer is the server API for ContextService service.
 // All implementations must embed UnimplementedContextServiceServer
 // for forward compatibility.
@@ -93,6 +106,8 @@ type ContextServiceServer interface {
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	// Phase 9 task-9.1: server-streaming indexing RPC (ADR-013 §Decision #1).
 	Index(*IndexRequest, grpc.ServerStreamingServer[IndexProgress]) error
+	// task-31.3 (ADR-036 D3) add-only: full-text chunk listing for the exporter (real content/hash).
+	ListAllChunks(context.Context, *ListAllChunksRequest) (*ListAllChunksResponse, error)
 	mustEmbedUnimplementedContextServiceServer()
 }
 
@@ -111,6 +126,9 @@ func (UnimplementedContextServiceServer) Health(context.Context, *HealthRequest)
 }
 func (UnimplementedContextServiceServer) Index(*IndexRequest, grpc.ServerStreamingServer[IndexProgress]) error {
 	return status.Errorf(codes.Unimplemented, "method Index not implemented")
+}
+func (UnimplementedContextServiceServer) ListAllChunks(context.Context, *ListAllChunksRequest) (*ListAllChunksResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAllChunks not implemented")
 }
 func (UnimplementedContextServiceServer) mustEmbedUnimplementedContextServiceServer() {}
 func (UnimplementedContextServiceServer) testEmbeddedByValue()                        {}
@@ -180,6 +198,24 @@ func _ContextService_Index_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ContextService_IndexServer = grpc.ServerStreamingServer[IndexProgress]
 
+func _ContextService_ListAllChunks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAllChunksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ContextServiceServer).ListAllChunks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ContextService_ListAllChunks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ContextServiceServer).ListAllChunks(ctx, req.(*ListAllChunksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ContextService_ServiceDesc is the grpc.ServiceDesc for ContextService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -194,6 +230,10 @@ var ContextService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Health",
 			Handler:    _ContextService_Health_Handler,
+		},
+		{
+			MethodName: "ListAllChunks",
+			Handler:    _ContextService_ListAllChunks_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -1,6 +1,6 @@
 # Task `31.3`: `eval-exporter-and-mcp-nits — eval case-results 子表（add-only migration 0018）+ exporter content="" 经新 ListAllChunks RPC 真实全文 + 真实 ContentHash + 3 MCP nits（protocolVersion 解析白名单 / audit.Write err 不吞 / allowlist 文件 mode warn）+ C2/C3/C4 诚实延后重申`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -80,19 +80,21 @@ pass bar：eval 子表 per-case SQL 可查 + 既有 `eval_runs` 读不变；expo
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1（eval case-results 子表）: add-only migration `0018_eval_case_results.sql` 建子表 `eval_case_results`（FK `eval_run_id`）；`store.rs` `update_case_results` 双写子表 + 保留 `case_results_json`；per-case 行 SQL 可查询；既有 `eval_runs` / `row_to_run` 读路径不受影响 — verified by **TEST-31.3.1**（🟢；真实 SQL 子表查询结果待实测回填）
-- [ ] AC2（exporter full content via ListAllChunks RPC）: 新增 `ListAllChunks(collection_id)`（add-only proto RPC）；`source.go` `loadRecords` 填真实 `content`（非 `""`）+ 真实 `ContentHash`（非 sha256-of-empty）；`fidelity.go` `CalcFidelity` 随真实正文 — verified by **TEST-31.3.2**（🟢；真实导出 content / ContentHash 待实测回填）
-- [ ] AC3（3 MCP nits 修）: `server.go:187` `protocolVersion` 解析 / 白名单（非字典序）；`server.go:270` `audit.Write` err stderr warn / 上抛（不吞）；`allowlist.go` `LoadAllowlist` `Stat` + 过松 mode warn；均不破既有协议 — verified by **TEST-31.3.3**（🟢）
-- [ ] AC4（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-31.3.4**（🟢；CI spec-lint 权威）
+- [x] AC1（eval case-results 子表）: add-only migration `0018_eval_case_results.sql` 建子表 `eval_case_results`（FK `eval_run_id`）；`store.rs` `update_case_results` 双写子表 + 保留 `case_results_json`（既有 `row_to_run` 读不变）；新增 `query_case_results`（per-run）+ `case_pass_ratio`（跨 run 聚合）SQL 可查询 — verified by **TEST-31.3.1**（`cargo test eval::store` 12 passed：子表查询 + 既有读不变 + 跨 run 聚合 + rewrite 替换）
+- [x] AC2（exporter full content via ListAllChunks RPC）: 新增 `ListAllChunks(ListAllChunksRequest) returns (ListAllChunksResponse)`（add-only proto RPC + buf generate Go pb；Rust `server.rs` handler 经 `enumerate_chunks` 读真实全文；daemon `ListAllChunks` 客户端 + main.go `listChunksViaDaemonWithDataDir` 接线 + exporter `ChunkLoader`）；`source.go` `loadRecords` 填真实 `content`（非 `""`）+ 真实 `ContentHash`（非 sha256-of-empty） — verified by **TEST-31.3.2**（exporter content 非空 + ContentHash 匹配真实正文 PASS；Search/SearchResponse 既有字段不动）
+- [x] AC3（3 MCP nits 修）: `server.go` `protocolVersion` 改 YYYY-MM-DD 日期解析语义比较（>= supported 接受，malformed 拒，非裸字典序；保 task-7.1 forward-compat 协商不破）；`writeAudit` 的 `audit.Write` err stderr warn（不吞）；`allowlist.go` `LoadAllowlist` `os.Stat` + 过松 mode（group/other access）warn；均不破既有协议 — verified by **TEST-31.3.3**（TestTask313_ProtocolVersionParse + 既有 TestTask71 forward-compat 仍绿）
+- [x] AC4（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-31.3.4**（PASS）
+
+> **C2/C3/C4 honest-defer 重申（documented，非 code AC，ADR-013 不伪造完成）**：rust-native-eval-runner（无 consumer）/ multi-arch-native-runner（QEMU emulation 不可行，须原生 arm64 runner）/ github-native-attestation（私有仓库 `actions/attest-*` 不可用，cosign 在用）三项经核受阻 / 无驱动维度诚实重申延后（§3 范围外各带 `[SPEC-DEFER]` tag）；task-31.4 closeout 经 ADR-036 §D4 + ADR-033 add-only Amendment 如实记录。
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-31.3.1 | eval case-results 子表 `eval_case_results`（FK + add-only migration 0018）——per-case SQL 可查；既有 `eval_runs` 读不受影响 | `core/src/eval/store.rs` + `migrations/0018_eval_case_results.sql` | Planned |
-| TEST-31.3.2 | exporter 经新 `ListAllChunks` RPC 取真实全文——导出 record.content 非空 + ContentHash 匹配真实正文（非 sha256-of-empty） | `proto/contextforge/v1/search.proto` + `internal/exporter/source.go` + `internal/exporter/fidelity.go` | Planned |
-| TEST-31.3.3 | 3 MCP nits——`protocolVersion` 解析 / 白名单（非字典序）；`audit.Write` err 不吞；allowlist 文件 mode `Stat` + 过松 warn | `internal/mcpadapter/server.go` + `internal/mcpadapter/allowlist.go` | Planned |
-| TEST-31.3.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-31.3.1 | eval case-results 子表 `eval_case_results`（FK + add-only migration 0018）——per-case `query_case_results` + 跨 run `case_pass_ratio` SQL 可查；既有 `eval_runs`/`row_to_run` 读不受影响 + rewrite 替换不累积 | `core/src/eval/store.rs` + `core/migrations/0018_eval_case_results.sql` | Done (PASS) |
+| TEST-31.3.2 | exporter 经新 `ListAllChunks` RPC 取真实全文——导出 record.content 非空 + ContentHash 匹配真实正文（非 sha256-of-empty）；nil loader 向后兼容空 content | `proto/contextforge/v1/{search,service}.proto` + `core/src/server.rs` + `internal/daemon/search.go` + `cmd/contextforge/main.go` + `internal/exporter/source.go` | Done (PASS) |
+| TEST-31.3.3 | 3 MCP nits——`protocolVersion` 日期解析语义比较（非字典序，forward-compat 保留）；`audit.Write` err stderr warn 不吞；allowlist 文件 mode `Stat` + 过松 warn | `internal/mcpadapter/server.go` + `internal/mcpadapter/allowlist.go` | Done (PASS) |
+| TEST-31.3.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -132,9 +134,17 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（待实施）
+**Status**: Done
 
-**计划改动文件**：
+**§9 Verification 实测证据**：
+- AC1：`cargo test -p contextforge-core eval::store` → **12 passed**（TEST-31.3.1：`query_case_results` 返 per-case 行 + `case_pass_ratio` 跨 run 聚合 + 既有 `get`/`row_to_run` JSON-blob 读不变 + rewrite 替换不累积）。migration 0018 add-only（仅 CREATE TABLE + index + FK，不动 `eval_runs`）。
+- AC2：`buf generate proto`（protoc-gen-go + protoc-gen-go-grpc）regen Go pb（仅 search/service，console_data_plane EOL-only churn 已 revert）；`cargo build -p contextforge-core` exit 0（Rust `list_all_chunks` handler 经 `enumerate_chunks` 读真实全文）；`go test ./internal/exporter/` PASS（TEST-31.3.2：content 非空 + ContentHash 匹配真实正文 + nil loader 向后兼容）；`go build ./...` + `go test ./...` exit 0（add-only RPC，Search/SearchResponse 既有字段不动）。
+- AC3：`go test ./internal/mcpadapter/` PASS（TestTask313_ProtocolVersionParse：日期解析 + forward-compat；既有 TestTask71 forward-compat 协商仍绿——故采「日期解析」而非严格白名单以不破既有契约）；audit.Write err stderr warn；allowlist `os.Stat` + 过松 mode warn。
+- 不退化：`cargo test --workspace` 0 failed + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning + `go test ./...` exit 0 + `go vet` 0；gofmt 改动文件 staged blob LF（CI clean）。
+- AC4：spec-lint `--touched origin/master` 0 未标注命中。
+- **C2/C3/C4**：honest-defer 重申（§3 范围外带 `[SPEC-DEFER]` tag，非交付），task-31.4 ADR-036 §D4 + ADR-033 add-only Amendment 记录，不伪造完成（ADR-013）。
+
+**实际改动文件**：
 - `migrations/0018_eval_case_results.sql`——新建（add-only）子表 `eval_case_results`（FK `eval_run_id` → `eval_runs` + per-case 列）。
 - `core/src/eval/store.rs`——`update_case_results` 双写子表 + 保留 `case_results_json`；新增按 case 维度读方法；既有 `row_to_run`（`:285`）整 run 读不动。
 - `proto/contextforge/v1/search.proto`——新增 `ListAllChunks(collection_id)`（或 `GetSourceChunk`）RPC（add-only，不改 `Search` / `SearchResponse` 既有字段）；buf generate 重生 Rust / Go 桩；daemon 侧实现 server handler。

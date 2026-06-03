@@ -188,8 +188,7 @@ func (x *SearchRequest) GetHybrid() bool {
 // RetrievalResult — explainable result returned to CLI / REST / MCP.
 // Fields kept identical across REST and MCP (ADR-003 single-source schema).
 // task-19.3 add-only: vector_score = 13 (semantic similarity; 0 for BM25 hits) +
-//
-//	embedding_provider = 14 (provider name that produced the hit; empty for BM25).
+//   embedding_provider = 14 (provider name that produced the hit; empty for BM25).
 type RetrievalResult struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -398,6 +397,160 @@ func (x *SearchResponse) GetResults() []*RetrievalResult {
 	return nil
 }
 
+// task-31.3 (ADR-036 D3) add-only: full-text chunk listing for the exporter. SearchResponse does not
+// carry chunk full text (its results are explainable hits, not source bodies), so the exporter wrote
+// content="" + sha256-of-empty. ListAllChunks returns every chunk's real content for a collection so
+// the export records carry real content + a real ContentHash. Add-only — Search/SearchResponse are
+// unchanged.
+type ListAllChunksRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	CollectionId string `protobuf:"bytes,1,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+}
+
+func (x *ListAllChunksRequest) Reset() {
+	*x = ListAllChunksRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_contextforge_v1_search_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ListAllChunksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAllChunksRequest) ProtoMessage() {}
+
+func (x *ListAllChunksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_contextforge_v1_search_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAllChunksRequest.ProtoReflect.Descriptor instead.
+func (*ListAllChunksRequest) Descriptor() ([]byte, []int) {
+	return file_contextforge_v1_search_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListAllChunksRequest) GetCollectionId() string {
+	if x != nil {
+		return x.CollectionId
+	}
+	return ""
+}
+
+type ChunkContent struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ChunkId string `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	Content string `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+}
+
+func (x *ChunkContent) Reset() {
+	*x = ChunkContent{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_contextforge_v1_search_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ChunkContent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChunkContent) ProtoMessage() {}
+
+func (x *ChunkContent) ProtoReflect() protoreflect.Message {
+	mi := &file_contextforge_v1_search_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChunkContent.ProtoReflect.Descriptor instead.
+func (*ChunkContent) Descriptor() ([]byte, []int) {
+	return file_contextforge_v1_search_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ChunkContent) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+func (x *ChunkContent) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+type ListAllChunksResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Chunks []*ChunkContent `protobuf:"bytes,1,rep,name=chunks,proto3" json:"chunks,omitempty"`
+}
+
+func (x *ListAllChunksResponse) Reset() {
+	*x = ListAllChunksResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_contextforge_v1_search_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ListAllChunksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAllChunksResponse) ProtoMessage() {}
+
+func (x *ListAllChunksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_contextforge_v1_search_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAllChunksResponse.ProtoReflect.Descriptor instead.
+func (*ListAllChunksResponse) Descriptor() ([]byte, []int) {
+	return file_contextforge_v1_search_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListAllChunksResponse) GetChunks() []*ChunkContent {
+	if x != nil {
+		return x.Chunks
+	}
+	return nil
+}
+
 var File_contextforge_v1_search_proto protoreflect.FileDescriptor
 
 var file_contextforge_v1_search_proto_rawDesc = []byte{
@@ -465,13 +618,26 @@ var file_contextforge_v1_search_proto_rawDesc = []byte{
 	0x6e, 0x73, 0x65, 0x12, 0x3a, 0x0a, 0x07, 0x72, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x73, 0x18, 0x01,
 	0x20, 0x03, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x78, 0x74, 0x66, 0x6f,
 	0x72, 0x67, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x74, 0x72, 0x69, 0x65, 0x76, 0x61, 0x6c,
-	0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x52, 0x07, 0x72, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x73, 0x42,
-	0x49, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x74, 0x61,
-	0x6a, 0x69, 0x61, 0x6f, 0x79, 0x65, 0x7a, 0x69, 0x2f, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x78, 0x74,
-	0x66, 0x6f, 0x72, 0x67, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x6f, 0x6e, 0x74,
-	0x65, 0x78, 0x74, 0x66, 0x6f, 0x72, 0x67, 0x65, 0x2f, 0x76, 0x31, 0x3b, 0x63, 0x6f, 0x6e, 0x74,
-	0x65, 0x78, 0x74, 0x66, 0x6f, 0x72, 0x67, 0x65, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x33,
+	0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x52, 0x07, 0x72, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x73, 0x22,
+	0x3b, 0x0a, 0x14, 0x4c, 0x69, 0x73, 0x74, 0x41, 0x6c, 0x6c, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x73,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x23, 0x0a, 0x0d, 0x63, 0x6f, 0x6c, 0x6c, 0x65,
+	0x63, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c,
+	0x63, 0x6f, 0x6c, 0x6c, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x22, 0x43, 0x0a, 0x0c,
+	0x43, 0x68, 0x75, 0x6e, 0x6b, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x12, 0x19, 0x0a, 0x08,
+	0x63, 0x68, 0x75, 0x6e, 0x6b, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07,
+	0x63, 0x68, 0x75, 0x6e, 0x6b, 0x49, 0x64, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x6f, 0x6e, 0x74, 0x65,
+	0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e,
+	0x74, 0x22, 0x4e, 0x0a, 0x15, 0x4c, 0x69, 0x73, 0x74, 0x41, 0x6c, 0x6c, 0x43, 0x68, 0x75, 0x6e,
+	0x6b, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x35, 0x0a, 0x06, 0x63, 0x68,
+	0x75, 0x6e, 0x6b, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x63, 0x6f, 0x6e,
+	0x74, 0x65, 0x78, 0x74, 0x66, 0x6f, 0x72, 0x67, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68, 0x75,
+	0x6e, 0x6b, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x52, 0x06, 0x63, 0x68, 0x75, 0x6e, 0x6b,
+	0x73, 0x42, 0x49, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f,
+	0x74, 0x61, 0x6a, 0x69, 0x61, 0x6f, 0x79, 0x65, 0x7a, 0x69, 0x2f, 0x63, 0x6f, 0x6e, 0x74, 0x65,
+	0x78, 0x74, 0x66, 0x6f, 0x72, 0x67, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x6f,
+	0x6e, 0x74, 0x65, 0x78, 0x74, 0x66, 0x6f, 0x72, 0x67, 0x65, 0x2f, 0x76, 0x31, 0x3b, 0x63, 0x6f,
+	0x6e, 0x74, 0x65, 0x78, 0x74, 0x66, 0x6f, 0x72, 0x67, 0x65, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -486,23 +652,27 @@ func file_contextforge_v1_search_proto_rawDescGZIP() []byte {
 	return file_contextforge_v1_search_proto_rawDescData
 }
 
-var file_contextforge_v1_search_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_contextforge_v1_search_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_contextforge_v1_search_proto_goTypes = []any{
-	(*SearchFilters)(nil),   // 0: contextforge.v1.SearchFilters
-	(*SearchRequest)(nil),   // 1: contextforge.v1.SearchRequest
-	(*RetrievalResult)(nil), // 2: contextforge.v1.RetrievalResult
-	(*SearchResponse)(nil),  // 3: contextforge.v1.SearchResponse
-	(*Provenance)(nil),      // 4: contextforge.v1.Provenance
+	(*SearchFilters)(nil),         // 0: contextforge.v1.SearchFilters
+	(*SearchRequest)(nil),         // 1: contextforge.v1.SearchRequest
+	(*RetrievalResult)(nil),       // 2: contextforge.v1.RetrievalResult
+	(*SearchResponse)(nil),        // 3: contextforge.v1.SearchResponse
+	(*ListAllChunksRequest)(nil),  // 4: contextforge.v1.ListAllChunksRequest
+	(*ChunkContent)(nil),          // 5: contextforge.v1.ChunkContent
+	(*ListAllChunksResponse)(nil), // 6: contextforge.v1.ListAllChunksResponse
+	(*Provenance)(nil),            // 7: contextforge.v1.Provenance
 }
 var file_contextforge_v1_search_proto_depIdxs = []int32{
 	0, // 0: contextforge.v1.SearchRequest.filters:type_name -> contextforge.v1.SearchFilters
-	4, // 1: contextforge.v1.RetrievalResult.provenance:type_name -> contextforge.v1.Provenance
+	7, // 1: contextforge.v1.RetrievalResult.provenance:type_name -> contextforge.v1.Provenance
 	2, // 2: contextforge.v1.SearchResponse.results:type_name -> contextforge.v1.RetrievalResult
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	5, // 3: contextforge.v1.ListAllChunksResponse.chunks:type_name -> contextforge.v1.ChunkContent
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_contextforge_v1_search_proto_init() }
@@ -560,6 +730,42 @@ func file_contextforge_v1_search_proto_init() {
 				return nil
 			}
 		}
+		file_contextforge_v1_search_proto_msgTypes[4].Exporter = func(v any, i int) any {
+			switch v := v.(*ListAllChunksRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_contextforge_v1_search_proto_msgTypes[5].Exporter = func(v any, i int) any {
+			switch v := v.(*ChunkContent); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_contextforge_v1_search_proto_msgTypes[6].Exporter = func(v any, i int) any {
+			switch v := v.(*ListAllChunksResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -567,7 +773,7 @@ func file_contextforge_v1_search_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_contextforge_v1_search_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

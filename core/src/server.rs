@@ -23,8 +23,9 @@ use crate::chunker::{ChunkPolicy, Provenance as ChunkerProvenance, Provenance as
 use crate::indexer::{IndexProgressSnapshot, IndexSession};
 use crate::pb::context_service_server::{ContextService, ContextServiceServer};
 use crate::pb::{
-    HealthRequest, HealthResponse, IndexProgress, IndexRequest, Provenance as PbProvenance,
-    RetrievalResult, SearchRequest, SearchResponse,
+    ChunkContent, HealthRequest, HealthResponse, IndexProgress, IndexRequest,
+    ListAllChunksRequest, ListAllChunksResponse, Provenance as PbProvenance, RetrievalResult,
+    SearchRequest, SearchResponse,
 };
 use crate::embedding::{select_provider, DeterministicEmbeddingProvider};
 use crate::retriever::vector::select_vector_backend;
@@ -225,6 +226,40 @@ impl ContextService for CoreService {
         Ok(Response::new(HealthResponse {
             status: "SERVING".to_string(),
         }))
+    }
+
+    /// task-31.3 (ADR-036 D3): full-text chunk listing for the exporter. Reads every chunk's real
+    /// content from the collection's SQLite store (no embedder / vector wiring needed) so the
+    /// exporter can fill real `content` + a real `ContentHash` (vs the prior content=""). Add-only —
+    /// the Search RPC / SearchResponse are unchanged.
+    async fn list_all_chunks(
+        &self,
+        req: Request<ListAllChunksRequest>,
+    ) -> Result<Response<ListAllChunksResponse>, Status> {
+        let req = req.into_inner();
+        let collection_id = if req.collection_id.trim().is_empty() {
+            "default"
+        } else {
+            req.collection_id.as_str()
+        };
+        let retriever = match Retriever::open(&self.data_dir, collection_id) {
+            Ok(r) => r,
+            Err(RetrieverError::CollectionNotFound(_)) => {
+                return Err(Status::failed_precondition(format!(
+                    "collection not found: {}",
+                    collection_id
+                )));
+            }
+            Err(e) => return Err(Status::internal(format!("open collection: {}", e))),
+        };
+        let items = retriever
+            .enumerate_chunks()
+            .map_err(|e| Status::internal(format!("enumerate chunks: {}", e)))?;
+        let chunks = items
+            .into_iter()
+            .map(|(chunk_id, content)| ChunkContent { chunk_id, content })
+            .collect();
+        Ok(Response::new(ListAllChunksResponse { chunks }))
     }
 
     /// task-6.1 §5.3 AC1: SearchRequest → Retriever.search/explain → SearchResponse.

@@ -39,6 +39,7 @@ func main() {
 	cli.SetMCPBackend(doMCP)
 	cli.SetIndexBackend(indexViaDaemon)
 	exporter.SetSearchBackend(searchViaDaemonWithDataDir)
+	exporter.SetChunkLoader(listChunksViaDaemonWithDataDir)
 	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -216,6 +217,38 @@ func searchViaDaemonWithDataDir(
 	}
 	defer restoreEnv()
 	return searchViaDaemon(ctx, req)
+}
+
+// listChunksViaDaemonWithDataDir is the production `exporter.ChunkLoader` (task-31.3): spawn a
+// transient core daemon under the export's data dir, wait for SERVING, call daemon.ListAllChunks,
+// and return a chunk_id → full-content map so the exporter fills real content + ContentHash.
+func listChunksViaDaemonWithDataDir(
+	ctx context.Context,
+	dataDir string,
+	collection string,
+) (map[string]string, error) {
+	restoreEnv, err := setDataDirEnv(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer restoreEnv()
+	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: false})
+	if err != nil {
+		return nil, fmt.Errorf("start core daemon: %w", err)
+	}
+	defer d.Stop()
+	if err := waitDaemonHealthy(ctx, d); err != nil {
+		return nil, err
+	}
+	resp, err := d.ListAllChunks(ctx, &contextforgev1.ListAllChunksRequest{CollectionId: collection})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(resp.GetChunks()))
+	for _, c := range resp.GetChunks() {
+		out[c.GetChunkId()] = c.GetContent()
+	}
+	return out, nil
 }
 
 func setDataDirEnv(dataDir string) (func(), error) {

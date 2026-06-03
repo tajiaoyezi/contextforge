@@ -2,6 +2,7 @@ package mcpadapter
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -23,6 +24,16 @@ func LoadAllowlist(path string) ([]AllowlistEntry, error) {
 			return nil, nil
 		}
 		return nil, err
+	}
+	// task-31.3 (ADR-036 D3, nit 3): the allowlist is security-sensitive; warn (best-effort) if it
+	// is group/other-accessible (POSIX perms). On Windows perm bits are not meaningful — the warn
+	// simply won't fire. Does not change load behavior.
+	if info, statErr := os.Stat(path); statErr == nil {
+		if perm := info.Mode().Perm(); perm&0o077 != 0 {
+			fmt.Fprintf(os.Stderr,
+				"mcp: warning: allowlist file %s has overly permissive mode %#o (group/other access); restrict to 0600\n",
+				path, perm)
+		}
 	}
 	var entries []AllowlistEntry
 	if err := json.Unmarshal(b, &entries); err != nil {
