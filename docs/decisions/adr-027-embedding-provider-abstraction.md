@@ -64,3 +64,11 @@ embedding 层的缺省与默认构建恒为本地、无网络、无模型 dep：
 - **D5（本地优先红线）**：默认构建 `cargo tree -p contextforge-core | grep ureq` **空** + deterministic 缺省 → 0 网络 / 0 模型 dep；`probe_embed` 默认 config-only（`TEST-22.4.1` 守 opt-in inert）。**红线真实守护**。
 
 **如实 defer（ADR-013，未据无网络伪造 ratify）**：远程 provider 真实网络联调 / 真实 API 密钥 / 真实召回质量 `[SPEC-DEFER:phase-future.embedding-provider-remote]` + health 远程探针真实命中 `[SPEC-DEFER:phase-future.embed-remote-probe]`——CI / 无人值守环境无密钥 + 无网络，骨架 + 契约测试达标即视抽象层验证通过，真实命中**未**标、不伪造。ratify 范围 = provider **抽象层**（配置选择 / dim 协商 / 缓存 / 远程骨架 / 本地优先），不含远程真实集成质量。证据见 `docs/releases/v0.15.0-evidence.md` §3。
+
+## Amendment (Phase 31 / v0.24.0, 2026-06-03 — add-only, 正文不溯改)
+
+Phase 31（ADR-036 D2）以 add-only 方式给 `CachingEmbeddingProvider` 的 L1 缓存加容量上界，**不溯改正文**（ADR-014 D5）：
+
+- **L1 缓存有界化（cache-lru）**：task-31.2（PR #207）`core/src/embedding/cache.rs` 的 L1 由无界 `Mutex<HashMap>` 改为 `BoundedCache`（map + VecDeque，FIFO-on-insert 驱逐，0 新 dep）+ `DEFAULT_EMBEDDING_CACHE_CAP=50_000` + `with_capacity` 构造（`new`/`with_sqlite` 签名兼容，默认 cap 不破现有命中）。长跑 daemon 的 L1 内存随唯一文本数单调无界增长的风险解除。`cargo test embedding::cache` 5 passed（含既有 22.2.* + 新 cap 驱逐测试）。L2 SQLite 上限延后 `[SPEC-DEFER:phase-future.l2-cache-eviction]`。
+
+依赖变更：手写 LRU 0 新 dep。详见 ADR-036 Ratification + `docs/releases/v0.24.0-evidence.md`。

@@ -1,5 +1,20 @@
 # ContextForge Release Notes
 
+## v0.24.0 (2026-06-03) — governance-debt-cleanup (memstore-event parity + event-bus verify-only + cache LRU/cap + compose 硬化 + eval 子表 + exporter 全文 + 3 MCP nits + ADR-036 ratified)
+
+Phase 31 清理跨 Phase 治理债：观测一致性（Go fallback memstore 发 `memory.*`）、缓存有界（embedding L1 LRU/cap + Go memstore cap 可配置）、部署硬化（compose 资源限 + 可选 TLS 反代）、eval 可查询（per-case 子表 + migration 0018）、exporter 全文保真（新 `ListAllChunks` RPC → 真实 content + ContentHash）、3 MCP nits。诚实校正：**event-bus partition/capacity 经核 Phase 26 已交付**（verify-only，不重复实现）。**默认行为 / proto 既有字段 / 既有契约不变**（ADR-004），三门 + lint 不退化。
+
+| task | 交付 |
+|---|---|
+| 31.1 (#206) | `MemStore.EmitEvent` + `MemMemoryStore.SetEventSink`；Pin/Deprecate/SoftDelete/Unpin/HardDelete 发 `memory.*` 入 fallback ring（对齐 Rust `audit_op_to_event_type`，Pin/Unpin 共 memory.pin）+ console_api_serve 接线。event-bus partition/capacity verify-only（cargo events 6 passed，Phase 26 已交付）；TEST-31.1.* |
+| 31.2 (#207) | `BoundedCache`（FIFO-on-insert，0 新 dep，cap 50_000）+ `with_capacity`；`resolveCacheCapacity`（env `CONTEXTFORGE_CONSOLEAPI_CACHE_CAP`）；compose mem_limit/cpus + `profiles:[tls]` caddy 反代 + Caddyfile（`docker compose config` + `--profile tls config` 实测 parse OK）；真实 cert honest-defer；TEST-31.2.* |
+| 31.3 (#208) | migration 0018 `eval_case_results` 子表 + 双写 + query_case_results/case_pass_ratio SQL；`ListAllChunks` add-only RPC（proto+buf+Rust handler+daemon client+main.go+exporter ChunkLoader）→ exporter content 非空 + 真实 ContentHash；3 MCP nits（protocolVersion 日期解析 / audit err warn / allowlist mode warn）；C2/C3/C4 honest-defer 重申；TEST-31.3.* |
+| 31.4 (this) | v0.24.0 release docs + smoke v21 step 40 + ADR-036 据 D1-D5 per-D ratify（D2 真实 cert / D4 native-runner·attestation honest-defer）+ ADR-021/027/029/033 add-only Amendment + roadmap §4 event-bus 更正 + phase-31 §6 闭合；TEST-31.4 |
+
+**ADR**：ADR-036 (governance-debt-cleanup) 据 D1-D5 真实非合成验证 `Proposed → Accepted`（D1 memstore parity + event-bus verify-only / D2 cache·deploy code-local 达成·真实 cert honest-defer / D3 eval 子表·exporter 全文·MCP nits / D4 honest-defer 重申 / D5 baseline 不变，ADR-013 不伪造）；ADR-021/027/029/033 add-only Phase 31 Amendment（memstore parity·event-bus 更正 / cache LRU / case-results 子表 / native-runner·attestation defer 重申，不溯改正文 ADR-014 D5）；ADR-004 守线。**ADR-014 cross-validation gate — 第二十二次激活**。
+
+**Upgrade / Rollback**：默认行为 / proto 既有字段 / 既有契约不变（既有 v0.6–v0.23 client + 索引/数据无需改动），0 新代码依赖；ListAllChunks add-only RPC + cache 有界化（默认 cap）+ memstore cap env-config + compose 限值/TLS profile + eval 子表 add-only migration + MCP nits 不破协议。Rollback：`git tag -d v0.24.0` + 删 Release / ghcr tag；与 v0.23.0 行为兼容。
+
 ## v0.23.0 (2026-06-03) — cjk-true-segmenter (jieba 真分词 analyzer feature-gated + 双站点注册 + reindex 迁移工具 + 真实 CJK recall delta + ADR-035 ratified)
 
 Phase 30 把 Phase 24 的 0-dep 重叠 bigram CJK analyzer 升级为 **feature-gated 真分词器**（`cjk-segmenter`，jieba-rs，`配置加载`→`配置`/`加载`），bigram 保留作 0-dep fallback。真分词 analyzer 索引/查询**双站点对称注册**；新增 `IndexSession::reindex_with_tokenizer` 既有索引迁移工具。**默认构建 0 新 dep + 默认 tokenization 不变**（ADR-004 / ADR-035 D5），三门 + lint 不退化。诚实口径：**真分词相对 bigram file-level 召回 delta=+0.0000**（小语料持平，两者均完整召回 CJK case；真分词价值在 token 洁净非此规模召回，ADR-013 不伪造提升）。

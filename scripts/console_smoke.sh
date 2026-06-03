@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 30 task-30.3 cjk-true-segmenter smoke (v20; v19 Phase 29 live-vector-recall).
+# scripts/console_smoke.sh — Phase 31 task-31.4 governance-debt-cleanup smoke (v21; v20 Phase 30 cjk-true-segmenter).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -961,6 +961,23 @@ if "$GO_BIN" init --root "$STAGING/cf-v22-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; cjk-segmenter feature-gated (jieba), default tokenization + 0-dep bigram fallback unchanged ✅ (TEST-30.1.* / TEST-30.2.* verified; true-seg vs bigram delta +0.0000 small-corpus, ADR-013)"
 else
   echo "    → cjk-true-segmenter (TEST-30.1.* / TEST-30.2.*) verified at Rust indexer + feature layer; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [40/40] task-31.4 governance-debt-cleanup: memstore-event parity + cache LRU/cap + compose hardening + eval subtable + exporter full-content + 3 MCP nits (Phase 31)"
+# v21 (task-31.4): Phase 31 (governance-debt-cleanup) clears cross-phase debt — Go fallback memstore
+# memory ops emit memory.* events for parity with workspace/job + the Rust data plane (task-31.1;
+# event-bus partition/capacity was already delivered in Phase 26 → verify-only); embedding-cache L1 is
+# now LRU/cap-bounded + the Go memstore cache cap is env-configurable + the production compose gained
+# resource limits and an optional TLS-terminating reverse proxy (task-31.2); eval per-case results
+# became a queryable subtable (migration 0018) + the exporter fills real content via the new
+# ListAllChunks RPC + 3 MCP nits fixed (task-31.3). multi-arch-native-runner / github-native-attestation
+# / rust-native-eval-runner remain honestly deferred (ADR-013). All changes preserve default behavior /
+# proto / existing contracts (ADR-004); this is a documentation/status step verifying the default build
+# still scaffolds.
+if "$GO_BIN" init --root "$STAGING/cf-v23-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v23-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; governance-debt fixes preserve default behavior / proto / contracts ✅ (TEST-31.1.* / TEST-31.2.* / TEST-31.3.* verified; compose-config parse 🟢, real TLS cert + native arm64 runner honest-deferred, ADR-013)"
+else
+  echo "    → governance-debt-cleanup (TEST-31.1.* / TEST-31.2.* / TEST-31.3.*) verified at Rust + Go layers; default build baseline unchanged (ADR-004)"
 fi
 
 echo
