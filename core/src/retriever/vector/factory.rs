@@ -4,8 +4,8 @@
 //! `Arc<dyn VectorSearcher>`, mirroring `embedding::factory::select_provider` and centralizing the
 //! choice the `server.rs` hot paths (`:302` hybrid / `:341` semantic) used to hardcode as
 //! `Arc::new(BruteForceVectorBackend::new())`. The default (`""` / `"brute"`) is byte-equivalent to
-//! that hardcoded backend — the swap is behavior-preserving (ADR-034 D1). `qdrant` / `lancedb` stay
-//! feature-gated (ADR-004 local-first: the default build pulls 0 new dependency); a disabled feature
+//! that hardcoded backend — the swap is behavior-preserving (ADR-034 D1). `qdrant` / `lancedb` /
+//! `sqlite-vec` stay feature-gated (ADR-004 local-first: the default build pulls 0 new dependency); a disabled feature
 //! surfaces as an explicit `VectorError` — never a silent fallback to BruteForce, never a fabricated
 //! success (ADR-013).
 
@@ -21,6 +21,8 @@ use crate::retriever::vector::BruteForceVectorBackend;
 /// - `"qdrant"` → `QdrantBackend` behind the `vector-qdrant` feature; an explicit
 ///   feature-not-enabled error otherwise (no panic, no silent fallback).
 /// - `"lancedb"` → `LanceDbBackend` behind the `vector-lancedb` feature; an explicit
+///   feature-not-enabled error otherwise.
+/// - `"sqlite-vec"` → `SqliteVecBackend` behind the `vector-sqlite` feature; an explicit
 ///   feature-not-enabled error otherwise.
 /// - any other name → an explicit unknown-backend error.
 ///
@@ -58,6 +60,18 @@ pub fn select_vector_backend(
             {
                 return Err(VectorError::Other(
                     "vector backend 'lancedb' requires the vector-lancedb feature".into(),
+                ));
+            }
+        }
+        "sqlite-vec" => {
+            #[cfg(feature = "vector-sqlite")]
+            {
+                Arc::new(crate::retriever::vector::SqliteVecBackend::new()?)
+            }
+            #[cfg(not(feature = "vector-sqlite"))]
+            {
+                return Err(VectorError::Other(
+                    "vector backend 'sqlite-vec' requires the vector-sqlite feature".into(),
                 ));
             }
         }
