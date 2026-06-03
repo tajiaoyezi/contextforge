@@ -7,6 +7,26 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.25.0
+
+📌 **v0.25.0 vector-backend-config-plumbing-and-completeness** — completes the vector-backend story end-to-end: the two production hot paths (`server.rs` hybrid `:340` / semantic `:382`) now select a backend from env (`CONTEXTFORGE_VECTOR_BACKEND` + optional `CONTEXTFORGE_VECTOR_DIM`, mirroring `resolve_data_dir`), the factory gains a `"sqlite-vec"` arm, and the console search surface carries `vector_score` provenance. The **default build stays 0-new-dependency, 0-network**; unset/blank backend → `BruteForce` byte-equivalent (default behavior unchanged), and every change is add-only / default-preserving (ADR-004). Honest scope: an unknown / feature-off backend surfaces the factory's honest `Err` (no silent fallback, ADR-013); the sqlite-vec in-process recall/latency matrix cell, real chunk `source_type`/`agent_scope` filtering, a config-file backend source, and dim auto-negotiation stay honestly deferred (ADR-013).
+
+- **backend config plumbing** (task-32.1, #212): `server.rs` hybrid (`:340`) + semantic (`:382`) resolve the backend via `resolve_vector_backend`/`parse_vector_backend` (reads `CONTEXTFORGE_VECTOR_BACKEND` + optional `CONTEXTFORGE_VECTOR_DIM`); unset/`""` → `BruteForce` byte-equivalent (default unchanged); unknown / feature-off → factory honest `Err` surfaced as `Status::internal` (no silent fallback, ADR-013). 0 new dep.
+- **sqlite-vec factory arm** (task-32.2, #213): `select_vector_backend` gains a `"sqlite-vec"` arm (feature `vector-sqlite` double-half cfg gating, mirroring qdrant/lancedb) — feat on → `SqliteVecBackend::new()` / feat off → honest `Err` naming sqlite-vec + vector-sqlite. The default build verifies feat-off honest-Err + the selection-matrix wiring (factory 6/6); a **real x86_64-pc-windows-msvc `cargo test --features vector-sqlite` build PASSED** (arm wiring genuinely verified, not just structural). The in-process recall/latency cell is honest-deferred (`[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`). 0 new dep (sqlite-vec already optional).
+- **console vector_score provenance + filter contract honesty** (task-32.3, #214): `console_data_plane.proto` `SearchResultItem` gains add-only `vector_score=16` (parity with v1 `RetrievalResult.vector_score=13`); the Rust producer sets it (cosine for vector hits, 0 for BM25), Go `grpcclient` maps it through to add-only `contractv1.SearchResult.VectorScore` (ADR-015 add-only). The misleading `retriever/mod.rs:325` WARN becomes an accurate no-op contract: the FROZEN `chunks` table has no `source_type`/`agent_scope` columns, so a real chunk filter is an import-path feature — honest-deferred (`[SPEC-DEFER:phase-future.chunk-source-type-filter]` / `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`). **ADR-037 → Accepted** (per-D; D2 sqlite-vec matrix cell honest-deferred). **ADR-034** add-only Phase-32 Amendment. **ADR-014 cross-validation gate — 23rd activation**.
+
+```bash
+# backend config plumbing: env name+dim parse + unset → brute-force byte-equiv
+cargo test -p contextforge-core resolve_vector_backend
+# sqlite-vec factory arm: feat-off honest-Err + selection matrix (factory 6/6)
+cargo test -p contextforge-core select_vector_backend
+cargo test -p contextforge-core --features vector-sqlite   # real MSVC feat-on build
+# console vector_score carried Rust producer → Go grpcclient → contractv1
+go test ./internal/grpcclient/ -run TestTask323
+```
+
+详 `RELEASE_NOTES.md` v0.25.0 段 + [Phase 32 spec](docs/specs/phases/phase-32-vector-backend-config-plumbing-and-completeness.md) + [ADR-037](docs/decisions/adr-037-vector-backend-config-plumbing-and-completeness.md)。
+
 ## What's new in v0.24.0
 
 📌 **v0.24.0 governance-debt-cleanup** — clears cross-phase debt across observability, caching, deployment, eval, and export. The **default build stays 0-new-dependency, 0-network**; every change is add-only / default-preserving / opt-in, so existing v0.6–v0.23 clients + data are unaffected (ADR-004). Honest scope: real TLS cert issuance needs a domain (`docker compose config` parse verified; cert deferred), and multi-arch arm64 / GitHub-native attestation / a Rust-native eval runner stay honestly deferred (ADR-013).

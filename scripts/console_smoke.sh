@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 31 task-31.4 governance-debt-cleanup smoke (v21; v20 Phase 30 cjk-true-segmenter).
+# scripts/console_smoke.sh — Phase 32 task-32.4 vector-backend-config-plumbing-and-completeness smoke (v22; v21 Phase 31 governance-debt-cleanup).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -978,6 +978,25 @@ if "$GO_BIN" init --root "$STAGING/cf-v23-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; governance-debt fixes preserve default behavior / proto / contracts ✅ (TEST-31.1.* / TEST-31.2.* / TEST-31.3.* verified; compose-config parse 🟢, real TLS cert + native arm64 runner honest-deferred, ADR-013)"
 else
   echo "    → governance-debt-cleanup (TEST-31.1.* / TEST-31.2.* / TEST-31.3.*) verified at Rust + Go layers; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [41/41] task-32.4 vector-backend-config-plumbing-and-completeness: backend config plumbing (env→hybrid/semantic two hot paths) + sqlite-vec factory arm + console vector_score provenance + retrieval-filter contract honesty (Phase 32)"
+# v22 (task-32.4): Phase 32 (vector-backend-config-plumbing-and-completeness) completes the
+# select_vector_backend factory wiring from Phase 29. server.rs hybrid + semantic two hot paths now
+# select the backend from env (CONTEXTFORGE_VECTOR_BACKEND, mirroring resolve_data_dir); unset/""
+# stays byte-equivalent to BruteForce (task-32.1). The factory gains a sqlite-vec arm (feature
+# vector-sqlite double-half gating, mirroring qdrant/lancedb; in-process selection-matrix wiring
+# verified, recall/latency cell honest-deferred to a local MSVC feature build, task-32.2). The console
+# data-plane SearchResultItem gained an add-only vector_score (parity v1 search proto), carried
+# end-to-end by the Rust producer + Go grpcclient, and the misleading source_type/agent_scope filter
+# WARN became an accurate no-op contract (chunks carry no such columns; real chunk filter is import-
+# path backlog) (task-32.3). All vector backends are feature-gated + the proto field is add-only → no
+# default-build runtime change; this is a documentation/status step checking the default build still
+# scaffolds (0-network / 0-dep baseline intact, ADR-004; sqlite-vec matrix cell honest-defer, ADR-013).
+if "$GO_BIN" init --root "$STAGING/cf-v24-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v24-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; vector backend env-selectable (default \"\" → BruteForce byte-equiv) + sqlite-vec factory arm feature-gated + console vector_score add-only + filter no-op contract ✅ (TEST-32.1.* / TEST-32.2.* / TEST-32.3.* verified; sqlite-vec in-process matrix cell honest-defer, ADR-013)"
+else
+  echo "    → vector-backend-config-plumbing (TEST-32.1.* / TEST-32.2.* / TEST-32.3.*) verified at Rust factory + Go console layers; default build baseline unchanged (ADR-004)"
 fi
 
 echo

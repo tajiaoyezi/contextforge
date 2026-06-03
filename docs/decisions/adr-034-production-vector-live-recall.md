@@ -69,3 +69,13 @@ ContextForge 截至 Phase 25（production-vector-backend, Done）已把生产向
 - **D5（默认构建不变：0 vector dep + BruteForce 语义 baseline）→ ✅ Accepted**：默认 `cargo test --workspace` 0 failed + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning；`core/Cargo.toml` / `Cargo.lock` 未改（0 新 direct dep）；qdrant/lancedb 真实索引全在各自 feature 下，默认 semantic+hybrid 经 0-dep BruteForce；三 base trait 签名不变（`VectorStore` 是 add-only 组合 trait）。
 
 ratify 范围 = vector backend 工厂 + server.rs 热路径注入（D1）+ qdrant live KNN wiring/honest-defer（D2 partial）+ lancedb 真实 IVF_PQ/IVF_HNSW_SQ 索引 + compaction + 召回（D3）+ 多 backend 选择矩阵真实测量（D4）+ 默认 0-dep baseline（D5）。**qdrant live-server 真实召回数据据「已达维度 ratify + 受阻维度如实记录」honest-defer，不伪造**（ADR-013）。证据见 `docs/releases/v0.22.0-evidence.md` §3。
+
+## Amendment (Phase 32 / v0.25.0)
+
+add-only 校准，不编辑 D1-D5 正文 / 不溯改上方 `## Ratification (v0.22.0 / task-29.4)` 及任何 Phase 29 校准（ADR-014 D5）。
+
+D4 的多 backend 选择矩阵在 v0.22.0 ratify 时，sqlite-vec 格记为「本 pass 未跑 in-process 测量」（`## Ratification` D4）。Phase 32（task-32.2，PR #213，squash `76a3137`）为 `select_vector_backend` 工厂补上 `"sqlite-vec"` 臂（`vector-sqlite` feature double-half cfg gating，仿 qdrant/lancedb：feature on → `SqliteVecBackend::new()`，`name()="sqlite-vec"`；feature off → 可识别 honest `Err`，点名 sqlite-vec + vector-sqlite，不静默成功，ADR-013）。故 sqlite-vec 现可经 `select_vector_backend` 选择 + 由 task-32.1 完成 config-plumbing（`CONTEXTFORGE_VECTOR_BACKEND`），D4 矩阵此前未测的 sqlite-vec 槽位现已 **factory-selectable + config-plumbed**，工厂 backend 覆盖补齐为 brute / qdrant / lancedb / sqlite-vec。
+
+工厂臂 wiring 经真实验证（非仅结构）：默认构建 TEST-32.2.1 feature-off honest-Err + TEST-32.2.2 selection-matrix wiring → factory 6/6；feature-on 经 **真实 x86_64-pc-windows-msvc `cargo test --features vector-sqlite`** 构建通过 → `sqlite_vec_with_feature_returns_sqlite_vec_backend` + 矩阵 feature-on 分支成立。0 新依赖（sqlite-vec 在 `Cargo.toml` 已是 optional）。
+
+sqlite-vec 的 **in-process recall/latency 矩阵 CELL（真实 KNN recall@k + 延迟 over 语料）仍 honest-deferred** `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`——需本机 MSVC feature 构建 + 真实语料跑出，绝不预填伪造数（ADR-013）。证据见 `docs/releases/v0.25.0-evidence.md`。
