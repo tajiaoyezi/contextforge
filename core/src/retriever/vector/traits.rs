@@ -44,3 +44,16 @@ pub trait VectorSearcher: VectorBackend {
     ) -> Result<Vec<VectorHit>, VectorError>;
     fn is_indexed(&self) -> bool;
 }
+
+/// task-29.1: a vector backend that is both writable (indexer) and readable (searcher).
+///
+/// Every concrete backend (`BruteForceVectorBackend` / `QdrantBackend` / `LanceDbBackend`) already
+/// implements both halves, so the blanket impl below makes them all `VectorStore` automatically —
+/// no per-backend code. The `select_vector_backend` factory returns `Arc<dyn VectorStore>` so a
+/// single handle can both index and search the same in-memory/remote state (the `server.rs` hot
+/// path indexes on demand, then searches). `VectorStore: VectorSearcher`, so the handle still
+/// upcasts to `Arc<dyn VectorSearcher>` for `with_vector_searcher`. This is add-only — the three
+/// base trait signatures above are unchanged (ADR-014 D5).
+pub trait VectorStore: VectorIndexer + VectorSearcher {}
+
+impl<T: VectorIndexer + VectorSearcher> VectorStore for T {}
