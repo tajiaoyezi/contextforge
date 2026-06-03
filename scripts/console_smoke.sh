@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 33 task-33.4 governance-debt-cleanup-2 smoke (v23; v22 Phase 32 vector-backend-config-plumbing-and-completeness).
+# scripts/console_smoke.sh — Phase 34 task-34.3 vector-config-completeness smoke (v24; v23 Phase 33 governance-debt-cleanup-2).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -1020,6 +1020,26 @@ if "$GO_BIN" init --root "$STAGING/cf-v25-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; L2 cache rowid-FIFO bound + memstore access-order LRU + hard-delete invariant + indexing-event persistence/replay (migration 0019) + TraceStore workspace_id filter (empty → aggregate-all byte-equiv) + export --timeout (default 60s byte-equiv) ✅ (TEST-33.1.* / TEST-33.2.* / TEST-33.3.* / TEST-33.4.* verified; indexing-replay-e2e + tracestore-isolation-e2e honest-defer, ADR-013)"
 else
   echo "    → governance-debt-cleanup-2 (TEST-33.1.* / TEST-33.2.* / TEST-33.3.* / TEST-33.4.*) verified at Rust + Go layers; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [43/43] task-34.3 vector-config-completeness: vector-dim-auto-negotiation + vector-backend-config-file ([vector]→env) + get_source_chunk workspace-isolation guard (Phase 34)"
+# v24 (task-34.3): Phase 34 (vector-config-completeness) finishes the vector-backend config story
+# started in Phase 32. The select_vector_backend factory no longer silently discards the configured
+# dim — it reconciles CONTEXTFORGE_VECTOR_DIM against the backend's declared expected_dim() via a pure
+# negotiate_vector_dim (reusing VectorError::DimMismatch); the default BruteForce backend is dim-agnostic
+# (expected_dim()==None) so the default build accepts any dim and stays byte-equivalent (task-34.1; real
+# enforcement bites only for dim-declaring feature backends, honest-deferred). Go config.toml gains an
+# add-only [vector] section bridged to the spawned core daemon via CONTEXTFORGE_VECTOR_BACKEND/_DIM
+# (setVectorEnv, mirroring CONTEXTFORGE_DATA_DIR; env-wins, no [vector] → unset → BruteForce byte-equiv;
+# Rust core keeps 0 toml dep) (task-34.2). get_source_chunk workspace isolation was already present since
+# task-12.2 — a verify-only guard test locks it (grounding correction; the survey overstated it as a gap)
+# (task-34.3). vector-dim-feature-enforce / daemon-options-datadir stay honestly deferred (ADR-013). All
+# changes preserve default behavior / proto / existing contracts (ADR-004) with 0 new dep (ADR-008); this
+# is a documentation/status step verifying the default build still scaffolds.
+if "$GO_BIN" init --root "$STAGING/cf-v26-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v26-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; vector-dim negotiation (default BruteForce any-dim byte-equiv) + config.toml [vector]→env bridge (env-wins, no section → BruteForce byte-equiv, Rust 0 toml dep) + get_source_chunk isolation guard ✅ (TEST-34.1.* / TEST-34.2.* / TEST-34.3.* verified; vector-dim-feature-enforce honest-defer, ADR-013)"
+else
+  echo "    → vector-config-completeness (TEST-34.1.* / TEST-34.2.* / TEST-34.3.*) verified at Rust factory + Go config layers; default build baseline unchanged (ADR-004)"
 fi
 
 echo

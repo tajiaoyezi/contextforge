@@ -1085,6 +1085,101 @@ mod tests {
         }
     }
 
+    // TEST-34.3.1 (task-34.3 / ADR-039 D3): get_source_chunk workspace isolation is ALREADY present
+    // (since task-12.2, search.rs:421-423 scopes candidates to req.workspace_id) — this is a
+    // verify-only guard documenting + locking that behavior (grounding correction: the survey
+    // overstated it as a gap). Three states: workspace_id set → that workspace only; cross-workspace
+    // → not_found (no fall-through); empty → aggregate probe finds it.
+    #[tokio::test]
+    async fn test_34_3_1_get_source_chunk_workspace_isolation_guard() {
+        use crate::chunker::ChunkPolicy;
+        use crate::indexer::IndexSession;
+        use crate::scanner::{default_denylist, ScanOptions};
+        use crate::workspace::{WorkspaceCreate, WorkspaceStore};
+
+        let src = temp_data_dir("iso-src");
+        let data = temp_data_dir("iso-data");
+        let coll = "ws-iso-a".to_string();
+        std::fs::write(src.join("a.md"), "isolation guard fixture content for chunk lookup").unwrap();
+        let scan_opts = ScanOptions {
+            denylist: default_denylist(),
+            allowlist: Vec::new(),
+            allow_denylist_override: false,
+            dry_run: false,
+            max_file_bytes: 10 * 1024 * 1024,
+        };
+        let mut sess = IndexSession::open(&data, &coll).expect("open indexer");
+        sess.index_path(&src, &scan_opts, &ChunkPolicy::default(), vec![])
+            .expect("index_path");
+        sess.commit().expect("commit");
+        drop(sess);
+
+        let ws = Arc::new(SqliteWorkspaceStore::open(&data).unwrap());
+        // Register ws-iso-a so the empty-workspace aggregate probe (workspace_store.list()) sees it.
+        ws.create(&WorkspaceCreate {
+            workspace_id: coll.clone(),
+            name: "iso-a".into(),
+            root_path: src.to_string_lossy().to_string(),
+            allowlist: vec![],
+            denylist: vec![],
+        })
+        .expect("create ws");
+        let js = Arc::new(SqliteJobStore::open(&data).unwrap());
+        let mut stores = DataPlaneStores::new(ws, js);
+        Arc::get_mut(&mut stores).expect("unique").data_dir = data.clone();
+        let server = SearchServer::new(stores);
+
+        // Get a real chunk_id from ws-iso-a via the search path.
+        let hits = server
+            .query(Request::new(PbSearchRequest {
+                query: "isolation guard fixture".into(),
+                workspace_id: coll.clone(),
+                agent_scope: String::new(),
+                retrieval_method: String::new(),
+                top_k: 5,
+                config_snapshot: String::new(),
+                semantic: false,
+            }))
+            .await
+            .expect("query ok")
+            .into_inner();
+        let chunk_id = hits
+            .results
+            .first()
+            .map(|r| r.chunk_id.clone())
+            .expect("at least one hit to obtain a real chunk_id");
+
+        // (1) workspace_id = the owning workspace → found.
+        let got = server
+            .get_source_chunk(Request::new(GetSourceChunkRequest {
+                chunk_id: chunk_id.clone(),
+                workspace_id: coll.clone(),
+            }))
+            .await
+            .expect("chunk visible from its own workspace");
+        assert_eq!(got.into_inner().chunk_id, chunk_id);
+
+        // (2) cross-workspace (a different, unindexed workspace) → not_found (no fall-through to ws-iso-a).
+        let denied = server
+            .get_source_chunk(Request::new(GetSourceChunkRequest {
+                chunk_id: chunk_id.clone(),
+                workspace_id: "ws-iso-b".into(),
+            }))
+            .await
+            .expect_err("chunk must not be visible from another workspace");
+        assert_eq!(denied.code(), tonic::Code::NotFound);
+
+        // (3) empty workspace_id → aggregate probe finds it (backward-compatible).
+        let agg = server
+            .get_source_chunk(Request::new(GetSourceChunkRequest {
+                chunk_id: chunk_id.clone(),
+                workspace_id: String::new(),
+            }))
+            .await
+            .expect("empty workspace_id aggregate probe finds the chunk");
+        assert_eq!(agg.into_inner().chunk_id, chunk_id);
+    }
+
     // ----------------------------------------------------------------------
     // task-16.1 (Phase 16 P4 #10) review follow-up: TraceStore↔Persist wiring.
     // These tests cover the AC3/AC4/AC5 seams that the search_persist

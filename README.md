@@ -7,6 +7,26 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.27.0
+
+📌 **v0.27.0 vector-config-completeness** — a focused, small version that completes the vector-backend config story opened by Phase 32: the factory now honors `CONTEXTFORGE_VECTOR_DIM` via dim auto-negotiation, the Go `[vector]` config section bridges to the core daemon's env, and `get_source_chunk` workspace isolation is re-grounded as already-present. The **default build stays 0-new-dependency, 0-network**; every change is add-only / default-preserving / opt-in, so existing v0.6–v0.26 clients + data are unaffected (ADR-004). Honest scope: the default `BruteForce` backend is dim-agnostic, so the default build accepts any dim and stays byte-equivalent — real dim enforcement bites only for dim-declaring feature backends (`[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`); the Rust core keeps its 0-toml-dep rule (config parsing stays Go-side).
+
+- **vector-dim auto-negotiation** (task-34.1, #224): `select_vector_backend` no longer silently discards `CONTEXTFORGE_VECTOR_DIM` — after constructing the backend it calls a new pure `negotiate_vector_dim(requested, declared)` (mirrors `embedding::factory::negotiate_dim`) reusing the existing `VectorError::DimMismatch`. The `VectorBackend` trait gains an add-only default `expected_dim() -> Option<usize>` returning `None` (dim-agnostic); `BruteForce` keeps `None`, so the default build accepts any dim byte-equivalently (ADR-004). Real enforcement is honest-deferred to dim-declaring feature backends (`[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`). 0 new dep.
+- **vector-backend config file** (task-34.2, #225): Go `config.Config` gains an add-only `[vector]` section (`Backend`/`Dim`); a `setVectorEnv(dataDir)` helper best-effort loads config and bridges `[vector]` → `CONTEXTFORGE_VECTOR_BACKEND`/`_DIM` for the spawned core daemon (wired into `doServe` + `doMCP`). **ENV WINS** (explicit env overrides config); no `[vector]` section → nothing exported → unset → `BruteForce` byte-equivalent (default unchanged, ADR-004). The Rust core keeps its 0-toml-dep rule (parsing stays Go-side). 0 new dep.
+- **get_source_chunk workspace isolation + closeout** (task-34.3): a verify-only grounding correction — `get_source_chunk` already scopes candidates to `req.workspace_id` (shipped task-12.2, `search.rs`); TEST-34.3.1 builds a real 2-state index and asserts `workspace_id` set → that workspace only / cross-workspace → not-found / empty → aggregate. **ADR-039 → Accepted** (per-D; D1 dim-negotiation Accepted + feature-enforce honest-deferred). **ADR-037** add-only Phase-34 Amendment (completes its env-plumbing follow-up). **ADR-014 cross-validation gate — 25th activation**.
+
+```bash
+# vector-dim negotiate (four paths) + BruteForce any-dim byte-equiv
+cargo test -p contextforge-core test_34_1
+# Go [vector] config round-trip + setVectorEnv export / env-wins
+go test ./internal/config/ -run TestTask342
+go test ./cmd/contextforge/ -run TestSetVectorEnv
+# get_source_chunk workspace isolation (set / cross / empty)
+cargo test -p contextforge-core test_34_3
+```
+
+详 `RELEASE_NOTES.md` v0.27.0 段 + [Phase 34 spec](docs/specs/phases/phase-34-vector-config-completeness.md) + [ADR-039](docs/decisions/adr-039-vector-config-completeness.md)。
+
 ## What's new in v0.26.0
 
 📌 **v0.26.0 governance-debt-cleanup-2** — a second wave of cross-phase governance-debt cleanup (mirrors Phase 31), tightening cache bounds, cache eviction policy, indexing-event durability, and trace-store workspace isolation. The **default build stays 0-new-dependency, 0-network**; every change is add-only / default-preserving / opt-in, so existing v0.6–v0.25 clients + data are unaffected (ADR-004). Honest scope: the L2 SQLite cache cap is an opt-in defense-in-depth ctor (no production call site yet), and indexing-replay e2e / strict multi-workspace trace isolation / true-LRU L2 / memory hard-delete cascade stay honestly deferred (ADR-013).
