@@ -318,14 +318,20 @@ impl Retriever {
             return Ok(Vec::new());
         }
 
-        // v0.1 schema gap warning: source_type / agent_scope 在 SearchFilters struct 中存在但
-        // 检索路径未消费（task-2.4 Tantivy/SQLite schema 无对应列）→ caller 传非空值会被静默
-        // 忽略。emit warning 让 caller 知情，避免误以为 filter 已生效。
-        // 真实 filter 实施由 SPEC-DRIFT-task-2.4 reverse-fill schema 后落地。
+        // task-32.3: honest no-op contract (not "not yet implemented"). source_type / agent_scope
+        // live on SearchFilters but are NOT chunk-retrieval dimensions: the chunks table (see
+        // indexer SQL_SCHEMA, §5.3 FROZEN) has no source_type / agent_scope columns, SearchResult's
+        // source_type is the DEFAULT_SOURCE_TYPE constant and its agent_scope is always empty, and
+        // agent_scope is fundamentally a memory-layer concept (memory_items, migration 0013). So a
+        // non-empty value here is a deliberate, documented no-op for chunk search — the empty-filter
+        // result is byte-for-byte identical. A *real* chunk filter is an import-path feature (it
+        // needs importer-side source_type tagging + a chunks schema migration), tracked as new
+        // backlog [SPEC-DEFER:phase-future.chunk-source-type-filter] +
+        // [SPEC-DEFER:phase-future.chunk-agent-scope-filter]; this code does not fake it (ADR-013).
         if !opts.filters.source_type.is_empty() || !opts.filters.agent_scope.is_empty() {
             eprintln!(
-                "[retriever] WARN: source_type/agent_scope filter not yet implemented \
-                 (schema gap; SPEC-DRIFT-task-2.4 pending), value ignored"
+                "[retriever] note: source_type/agent_scope are memory-layer filters, not chunk-search \
+                 dimensions (chunks carry no such columns) — ignored as a documented no-op"
             );
         }
 
@@ -884,6 +890,53 @@ mod tests {
             .expect("index_path");
         sess.commit().expect("commit");
         (src, data, coll)
+    }
+
+    // ---- TEST-32.3.2 — source_type / agent_scope are a documented no-op for chunk search ----
+    // Honest contract guard: a non-empty source_type/agent_scope filter returns byte-for-byte the
+    // same hits (and order) as the empty-filter default — chunks carry no such columns and
+    // agent_scope is a memory-layer concept. Real chunk filtering is import-path backlog
+    // [SPEC-DEFER:phase-future.chunk-source-type-filter] + [SPEC-DEFER:phase-future.chunk-agent-scope-filter].
+    #[test]
+    fn test_32_3_2_source_type_agent_scope_filter_is_noop() {
+        let (_src, data, coll) = build_fixture(
+            "filter-noop",
+            &[
+                ("a.md", "# Doc A\nthe shared marker noopfiltermarkerz is here\n"),
+                ("b.txt", "Doc B\nthe shared marker noopfiltermarkerz is here\n"),
+            ],
+        );
+        let retr = Retriever::open(&data, &coll).expect("open");
+        let baseline = retr
+            .search(&SearchOptions {
+                query: "noopfiltermarkerz".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("baseline search");
+        assert!(!baseline.is_empty(), "baseline should hit the shared marker");
+
+        // non-empty source_type + agent_scope → identical results (documented no-op)
+        let filtered = retr
+            .search(&SearchOptions {
+                query: "noopfiltermarkerz".into(),
+                top_k: 10,
+                filters: SearchFilters {
+                    source_type: vec!["code".into()],
+                    agent_scope: vec!["agent-x:ns".into()],
+                    ..SearchFilters::default()
+                },
+                explain: false,
+            })
+            .expect("filtered search");
+
+        let base_ids: Vec<&str> = baseline.iter().map(|r| r.chunk_id.as_str()).collect();
+        let filt_ids: Vec<&str> = filtered.iter().map(|r| r.chunk_id.as_str()).collect();
+        assert_eq!(
+            base_ids, filt_ids,
+            "source_type/agent_scope must be a no-op for chunk search (identical hits + order)"
+        );
     }
 
     // ---- TEST-4.1.1 / SCEN-4.1.1 (AC1) — BM25 Top-K ----

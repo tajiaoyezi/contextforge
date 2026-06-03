@@ -198,6 +198,9 @@ message SearchResultItem {
   string retrieval_method = 13;
   string reason = 14;
   Citation citation = 15;
+  // task-32.3 add-only: vector_score = 16 — semantic similarity provenance (0 for BM25 hits),
+  // parity with v1 search proto RetrievalResult.vector_score=13. add-only field,既有 client 兼容。
+  float vector_score = 16;
 }
 
 message RetrievalTrace {

@@ -335,6 +335,14 @@ impl SearchService for SearchServer {
                 rank_before_rerank: idx as i64,
                 rank_after_rerank: None,
                 retrieval_method: h.retrieval_method.clone(),
+                // task-32.3 add-only: vector_score provenance, mirroring the v1 search path
+                // (server.rs:407) — the cosine similarity for semantic ("vector") hits, 0 for BM25
+                // (no fabricated score; ADR-013). Parity with v1 search proto vector_score=13.
+                vector_score: if h.retrieval_method == "vector" {
+                    h.score
+                } else {
+                    0.0
+                },
                 reason: h.reason.clone(),
                 citation: Some(PbCitation {
                     citation_id: format!("cit-{}", h.chunk_id),
