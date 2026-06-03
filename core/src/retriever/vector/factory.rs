@@ -28,15 +28,15 @@ use crate::retriever::vector::BruteForceVectorBackend;
 ///
 /// Returns `Arc<dyn VectorStore>` (both indexer + searcher) so the `server.rs` hot path can index
 /// then search through one handle; it upcasts to `Arc<dyn VectorSearcher>` at `with_vector_searcher`.
-/// `dim` mirrors `select_provider`'s signature for later embedder-dim negotiation; the BruteForce
-/// arm works for any dim and does not constrain it in this task.
+/// task-34.1 (ADR-039 D1): after constructing the backend, `dim` is reconciled against the backend's
+/// declared `expected_dim()` via [`negotiate_vector_dim`] (mirrors `embedding::factory::negotiate_dim`)
+/// — a configured `CONTEXTFORGE_VECTOR_DIM` is no longer silently discarded. The default BruteForce
+/// backend is dim-agnostic (`expected_dim() == None`) so the default build accepts any dim and stays
+/// byte-equivalent (ADR-004); enforcement bites only for dim-declaring feature backends.
 pub fn select_vector_backend(
     name: &str,
     dim: usize,
 ) -> Result<Arc<dyn VectorStore>, VectorError> {
-    // `dim` is reserved for later embedder-dim negotiation (mirrors select_provider); the BruteForce
-    // arm works for any dim and the feature backends negotiate dim at index time, not construction.
-    let _ = dim;
     let backend: Arc<dyn VectorStore> = match name {
         "" | "brute" => Arc::new(BruteForceVectorBackend::new()),
         "qdrant" => {
@@ -79,7 +79,26 @@ pub fn select_vector_backend(
             return Err(VectorError::Other(format!("unknown vector backend {other:?}")));
         }
     };
+    // task-34.1 (ADR-039 D1): reconcile the configured dim with the backend's declared dim.
+    negotiate_vector_dim(dim, backend.expected_dim())?;
     Ok(backend)
+}
+
+/// task-34.1 (ADR-039 D1): reconcile a configured embedding dim with a backend's declared dim,
+/// mirroring [`crate::embedding::factory::negotiate_dim`]. `requested == 0` ("unset" — use whatever
+/// the backend/embedder produces) and a dim-agnostic backend (`declared == None`, e.g. BruteForce)
+/// never mismatch; a non-zero `requested` that differs from a backend's declared dim is a hard
+/// `DimMismatch` — the factory never silently truncates, pads, or discards the configured dim.
+pub(crate) fn negotiate_vector_dim(requested: usize, declared: Option<usize>) -> Result<(), VectorError> {
+    if let Some(d) = declared {
+        if requested != 0 && requested != d {
+            return Err(VectorError::DimMismatch {
+                expected: requested,
+                got: d,
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -178,6 +197,42 @@ mod tests {
                 select_vector_backend("sqlite-vec", 0).unwrap().name(),
                 "sqlite-vec"
             );
+        }
+    }
+
+    // TEST-34.1.1 (ADR-039 D1): negotiate_vector_dim pure-function — four paths. requested==0
+    // ("unset") or a dim-agnostic backend (declared==None) never mismatch; a non-zero requested
+    // that differs from a declared dim is a hard DimMismatch (reusing the existing variant).
+    #[test]
+    fn negotiate_vector_dim_four_paths() {
+        // requested 0 → always Ok (use whatever the backend/embedder produces).
+        assert!(negotiate_vector_dim(0, None).is_ok());
+        assert!(negotiate_vector_dim(0, Some(128)).is_ok());
+        // dim-agnostic backend (None) → any requested dim accepted.
+        assert!(negotiate_vector_dim(384, None).is_ok());
+        // declared matches requested → Ok.
+        assert!(negotiate_vector_dim(384, Some(384)).is_ok());
+        // declared differs from a non-zero requested → DimMismatch{expected:requested, got:declared}.
+        match negotiate_vector_dim(384, Some(128)) {
+            Err(VectorError::DimMismatch { expected, got }) => {
+                assert_eq!(expected, 384);
+                assert_eq!(got, 128);
+            }
+            other => panic!("expected DimMismatch, got {other:?}"),
+        }
+    }
+
+    // TEST-34.1.2 (ADR-039 D1): the default BruteForce backend is dim-agnostic
+    // (expected_dim()==None), so select_vector_backend accepts ANY configured dim and stays
+    // byte-equivalent to the pre-34.1 behavior (the dim is no longer silently discarded, but the
+    // default path imposes no constraint, ADR-004).
+    #[test]
+    fn brute_force_default_path_accepts_any_dim() {
+        for dim in [0usize, 128, 384, 1536] {
+            let backend = select_vector_backend("", dim)
+                .unwrap_or_else(|e| panic!("brute-force should accept dim={dim}: {e}"));
+            assert_eq!(backend.name(), "brute-force");
+            assert_eq!(backend.expected_dim(), None, "BruteForce stays dim-agnostic");
         }
     }
 }
