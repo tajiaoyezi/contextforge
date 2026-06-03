@@ -37,6 +37,7 @@ type Config struct {
 	Collections           []CollectionConfig // AC3: allowlist path import model
 	Remote                RemoteProviderConfig
 	Embedding             EmbeddingConfig // task-22.1: add-only embedding provider selection
+	Vector                VectorConfig    // task-34.2: add-only vector backend selection
 }
 
 // CollectionConfig is one indexed collection's allowlist import scope.
@@ -61,6 +62,18 @@ type RemoteProviderConfig struct {
 type EmbeddingConfig struct {
 	Provider string // "" | "deterministic" | "fastembed" | "remote"
 	Dim      int    // 0 ⇒ provider default (DEFAULT_DIM 384)
+}
+
+// VectorConfig selects which vector backend the Rust core builds (task-34.2 / ADR-039 D2).
+// Backend "" / "brute" → the dim-agnostic default; "qdrant" / "lancedb" / "sqlite-vec" are
+// feature-gated in the core (ADR-004 local-first). Dim 0 → no dim constraint. Add-only; an absent
+// [vector] section ⇒ zero value ⇒ nothing exported ⇒ the core's CONTEXTFORGE_VECTOR_BACKEND/_DIM
+// env path is unchanged (BruteForce byte-equivalent). The Go side bridges these to the spawned core
+// daemon via CONTEXTFORGE_VECTOR_BACKEND / CONTEXTFORGE_VECTOR_DIM (setVectorEnv), mirroring
+// CONTEXTFORGE_DATA_DIR; an explicitly-set env var wins over the config file.
+type VectorConfig struct {
+	Backend string // "" | "brute" | "qdrant" | "lancedb" | "sqlite-vec"
+	Dim     int    // 0 ⇒ no dim constraint
 }
 
 // DefaultRootDir returns the default data root (~/.contextforge).
@@ -194,6 +207,9 @@ func encodeTOML(c Config) string {
 	b.WriteString("\n[embedding]\n")
 	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Embedding.Provider))
 	fmt.Fprintf(&b, "dim = %s\n", strconv.Itoa(c.Embedding.Dim))
+	b.WriteString("\n[vector]\n")
+	fmt.Fprintf(&b, "backend = %s\n", tomlQuote(c.Vector.Backend))
+	fmt.Fprintf(&b, "dim = %s\n", strconv.Itoa(c.Vector.Dim))
 	for _, col := range c.Collections {
 		b.WriteString("\n[[collections]]\n")
 		fmt.Fprintf(&b, "id = %s\n", tomlQuote(col.ID))
@@ -218,6 +234,9 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 			continue
 		case line == "[embedding]":
 			section = "embedding"
+			continue
+		case line == "[vector]":
+			section = "vector"
 			continue
 		case line == "[[collections]]":
 			section = "collections"
@@ -246,6 +265,10 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 			}
 		case "embedding":
 			if err := assignEmbedding(&c.Embedding, key, raw); err != nil {
+				return Config{}, err
+			}
+		case "vector":
+			if err := assignVector(&c.Vector, key, raw); err != nil {
 				return Config{}, err
 			}
 		case "collections":
@@ -333,6 +356,24 @@ func assignEmbedding(e *EmbeddingConfig, key, raw string) error {
 			return fmt.Errorf("embedding.dim: %w", err)
 		}
 		e.Dim = n
+	}
+	return nil
+}
+
+func assignVector(v *VectorConfig, key, raw string) error {
+	switch key {
+	case "backend":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		v.Backend = s
+	case "dim":
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("vector.dim: %w", err)
+		}
+		v.Dim = n
 	}
 	return nil
 }
