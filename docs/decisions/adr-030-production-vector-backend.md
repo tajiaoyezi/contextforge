@@ -64,3 +64,23 @@ qdrant 生命周期层、lancedb 可构建性/调参参数**全部在各自 feat
 - **D4（默认构建不变：0 vector 依赖 + BM25-only baseline）→ 守线**：qdrant 生命周期层 / lancedb 可构建性·调参均在各自 feature 下；默认 `cargo test --workspace` exit 0 全绿、`core/Cargo.toml` / `Cargo.lock` 未改（0 新 direct dep，qdrant-client/lancedb/arrow-array/futures 自 task-18.4/18.5 即 optional）→ 无 ADR-008 依赖变更 Amendment。
 
 ratify 范围 = qdrant 生命周期契约层 + lancedb 可构建性 + 索引调参参数 + 生产 backend 选择矩阵（D1-D4 经真实 cargo build/test 验证）；qdrant live-server KNN 集成 + lancedb 真实 ANN 索引性能属后续（如实延后，不伪造）。证据见 `docs/releases/v0.18.0-evidence.md` §3。
+
+## Amendment (Phase 29 / v0.22.0, 2026-06-03 — add-only, D1–D4 正文不溯改)
+
+Phase 29（ADR-034 live-vector-recall）以 add-only 方式把 D2「lancedb 索引调参参数」+ D3「选择矩阵」从「校验 / 设计推断」推进到**真实建索引 + 真实跨 backend 测量**，**不溯改 D1–D4 / Consequences / Ratification Amendment 正文**（ADR-014 D5）：
+
+- **D2「真实 ANN 索引建图 + 召回」→ 🟢 真实兑现 `[SPEC-DEFER:phase-future.lancedb-index-tuning]`**：task-29.3 在 `LanceDbBackend` 加 `create_ann_index(&LanceIndexTuning)`（经 Lance `create_index` 建真实 `Index::IvfPq` / `Index::IvfHnswSq`）+ `compact()`（`OptimizeAction::All`），并以 deterministic clustered 语料（n=1024, dim=384, 32 query；非 fastembed，ground-truth=exact flat）实测 ANN 近似质量。`cargo test -p contextforge-core --features vector-lancedb --lib retriever::vector::lance_db` **4 passed**（含 TEST-29.3.1 真实建索引召回 + TEST-29.3.3 真实 compaction：1536 行 6 fragment → 压实后 count_rows=1536 行不丢）。**真实 compaction 执行兑现 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`**（不再延后）。
+- **D3「生产 backend 选择矩阵」→ 真实测量校准**：同一语料 + 统一召回口径的**真实跨 backend 矩阵**（单次代表值，dev box `x86_64-pc-windows-msvc` rustc 1.95.0）：
+
+  | backend | recall@5 | recall@10 | build | query/q | caveat |
+  |---|---|---|---|---|---|
+  | brute-force（0-dep，exact） | 1.0000 | 1.0000 | 0 | ~5.5 ms | 默认，精确，无 dep；O(n) 小/中语料最优 |
+  | lancedb flat（exact，ground-truth） | 1.0000 | 1.0000 | — | ~7.6 ms | 嵌入式列存，无索引 |
+  | lancedb IVF_PQ（parts=16, subs=16） | ~0.33–0.39 | ~0.41–0.46 | ~2.8 s | ~51 ms | 有损 PQ 压缩；建图慢、modest n 下查询反慢、召回折损大；run-to-run 抖动（kmeans/PQ 训练未播种） |
+  | lancedb IVF_HNSW_SQ（m=16, ef=100） | ~0.89 | ~0.90 | ~0.25 s | ~3.5 ms | 高召回 + 最快索引；lancedb ANN 首选档 |
+  | qdrant（hosted） | — | — | — | — | honest-defer：无 live server（task-29.2，`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`），不伪造 |
+  | sqlite-vec（单机嵌入式） | — | — | — | — | 可构建性已确证（task-23.2 MSVC）；本 pass 未跑 in-process 矩阵测量，诚实延后 `[SPEC-DEFER:phase-future.lancedb-large-corpus-perf]` 同口径 |
+
+  **真实结论（ADR-013 据实，不修饰）**：① modest n（~1024）下 brute-force exact 既最准又最快，**实测支持 ADR-023 D5 默认 0-dep BruteForce**——重型 ANN 的开销只在大语料才回本；② lancedb ANN 档内 **IVF_HNSW_SQ（高召回·快）> IVF_PQ（重压缩·modest n 下劣）**；③ IVF_PQ 在小语料的召回折损 + 查询变慢是真实有损权衡（非 bug）。大语料拐点性能 `[SPEC-DEFER:phase-future.vector-large-corpus-perf]` 延后。证据见 `docs/releases/v0.22.0-evidence.md` §3 + task-29.3 §10。
+
+依赖变更：task-29.3 复用 lancedb 0.30 既有 `index::Index` / `table::OptimizeAction` 面 → **0 新 dep**（`core/Cargo.toml`/`Cargo.lock` 未改）→ 无 ADR-008 依赖变更 Amendment。

@@ -154,3 +154,13 @@ Phase 25（ADR-030 production-vector-backend）以 add-only 方式推进本 ADR 
 - **D4「Embedded-columnar alternative: lancedb」tier → 🟢 可构建性确证（protoc 前置缩小）**：task-25.2 真实调查确证 lancedb 0.30 在 `x86_64-pc-windows-msvc`（rustc 1.95.0）`cargo build --features vector-lancedb` **真实 exit 0**（protoc 经仓内 build-dep `protoc-bin-vendored` 的 `protoc.exe` 经 `PROTOC` env 满足，无需系统安装；0 源码/Cargo 改动，0 新依赖）+ 索引调参参数校验（`LanceIndexTuning::validate`）+ 既有 backend 契约 `--lib` 2/2 PASS。D4 记录的「the heaviest build（Lance/DataFusion + a protoc prerequisite）」前置在本机以 vendored protoc **可满足**——protoc-prereq 担忧由此**缩小**（可满足、不需系统安装）而**非消除**（仍须显式提供 `PROTOC`）。**诚实 caveat**：单台 MSVC dev box 真实凭据，CI 默认不构建该 feature；广义 feature 全 target 测试受 rustc 1.95.0 ICE 限制（工具链项）；真实 ANN 索引性能 `[SPEC-DEFER:phase-future.lancedb-index-tuning]` 延后（`docs/spikes/phase-25-lancedb-buildability.md`）。
 
 依赖变更：task-25.1（qdrant 生命周期层复用 `qdrant-client` 1.18 既有 API）+ task-25.2（索引调参复用 lancedb 0.30 既有面）均 **0 新 dep**（qdrant-client/lancedb/arrow-array/futures 自 task-18.4/18.5 即 optional，`core/Cargo.toml`/`Cargo.lock` 未改）→ 无 ADR-008 依赖变更 Amendment。详见 ADR-030 + `docs/releases/v0.18.0-evidence.md`。
+
+## Amendment (Phase 29 / v0.22.0, 2026-06-03 — add-only, D1–D6 正文不溯改)
+
+Phase 29（ADR-034 live-vector-recall）以**真实跨 backend 测量**校准 tier 定位，**不溯改 D1–D6 / Consequences 正文**（ADR-014 D5）：
+
+- **D5「默认 0-dep BruteForce baseline」→ 实测背书**：task-29.3 同语料矩阵（n=1024, dim=384）实测 brute-force exact recall@10=1.0 + query ~5.5 ms/q，**既最准又最快于 lancedb IVF_PQ（~0.44, ~51 ms）/ 持平 lancedb flat（~7.6 ms）/ 仅略逊 IVF_HNSW_SQ 速度（~3.5 ms）但召回更高**。即 modest 语料下默认 0-dep BruteForce 不仅是「无 dep 的折中」而是**实测最优**——重型 ANN 的索引/查询开销只在大语料才回本。D5 默认档定位由真实测量背书。
+- **D4「lancedb embedded-columnar」tier → 真实 ANN 召回/延迟补全**：task-29.3 经 `create_ann_index` 真实建 IVF_PQ / IVF_HNSW_SQ 索引实测——lancedb 档内 **IVF_HNSW_SQ（recall@10 ~0.90, build ~0.25 s, query ~3.5 ms）为首选**，IVF_PQ（recall@10 ~0.44, build ~2.8 s）是重压缩档、modest n 下劣。承 Phase 25 Amendment 的「可构建性确证」，本 phase 续补「真实召回/延迟」。
+- **D3「hosted qdrant」tier → 仍 honest-defer**：task-29.2 qdrant live KNN 无 server → honest-defer（`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`），矩阵 qdrant 档真实召回待手动/dev-box server 回填，不伪造（ADR-013）。
+
+依赖变更：task-29.3 复用 lancedb 0.30 既有面 → **0 新 dep** → 无 ADR-008 Amendment。详见 ADR-030 Amendment (Phase 29) + `docs/releases/v0.22.0-evidence.md`。

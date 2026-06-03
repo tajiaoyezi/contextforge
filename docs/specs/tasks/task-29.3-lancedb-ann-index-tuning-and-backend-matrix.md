@@ -1,6 +1,6 @@
 # Task `29.3`: `lancedb-ann-index-tuning-and-backend-matrix — 在 LanceIndexTuning 参数契约层之上真实建 IVF_PQ/HNSW 索引并实测召回 + 产出多 backend 选择矩阵真实测量 → add-only Amendment 到 ADR-030 D3 / ADR-023 tiers`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -87,19 +87,19 @@ pass bar：IVF_PQ/HNSW 真实索引建图 + 召回测量经 `vector-lancedb` fea
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1（🟡 真实 ANN 索引建图 + 召回）: 在 `vector-lancedb` feature 下用 `LanceIndexTuning`（IVF_PQ 与 HNSW）经 Lance `create_index` 真实建索引覆盖嵌入式 Lance 数据集，对比 flat KNN 实测 recall@5/@10 + 建图耗时 + 查询延迟，真实跑出后回填 §10（兑现 `[SPEC-DEFER:phase-future.lancedb-index-tuning]`；ADR-013 禁预填） — verified by TEST-29.3.1
-- [ ] AC2（🟡 多 backend 选择矩阵真实测量 → add-only Amendment）: brute / sqlite-vec / lancedb / qdrant（task-29.2 可达则测、不可达诚实延后）统一语料真实测量「语料规模 × 部署形态 → 推荐 backend + caveat」矩阵，反哺 ADR-030 D3 + ADR-023 tier add-only Amendment（不溯改其 D 正文，ADR-014 D5） — verified by TEST-29.3.2
-- [ ] AC3（🔴 compaction 真跑或诚实延后）: 超 `compaction_threshold_rows` 后尝试真实触发 Lance 数据集 compaction；toolchain/资源限不可真跑则如实记录受阻 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`（ADR-013 不伪造） — verified by TEST-29.3.3
-- [ ] AC4（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by TEST-29.3.4
+- [x] AC1（🟡 真实 ANN 索引建图 + 召回）: `LanceDbBackend::create_ann_index(&LanceIndexTuning)` 经 Lance `create_index` 真实建 `Index::IvfPq` / `Index::IvfHnswSq` 索引覆盖嵌入式 Lance 数据集；deterministic clustered 语料（n=1024 dim=384 32 query，ground-truth=exact flat）实测：**IVF_PQ recall@5≈0.33–0.39 / @10≈0.41–0.46，build ~2.8 s，query ~51 ms；IVF_HNSW_SQ recall@5≈0.89 / @10≈0.90，build ~0.25 s，query ~3.5 ms**（兑现 `[SPEC-DEFER:phase-future.lancedb-index-tuning]`；真实跑出，非预填，ADR-013） — verified by TEST-29.3.1（`--lib` scoped PASS）
+- [x] AC2（🟡 多 backend 选择矩阵真实测量 → add-only Amendment）: 同语料真实矩阵——brute-force exact（recall 1.0, ~5.5 ms）/ lancedb flat（1.0, ~7.6 ms）/ lancedb IVF_PQ / IVF_HNSW_SQ（上）已实测；qdrant honest-defer（task-29.2 无 server）/ sqlite-vec 本 pass 未跑 in-process 测量诚实延后。反哺 ADR-030 `## Amendment (Phase 29)` D3 矩阵 + ADR-023 tier Amendment（不溯改其 D 正文，ADR-014 D5）。**实测结论：modest n 下 brute-force exact 既最准又最快，背书 ADR-023 D5 默认档** — verified by TEST-29.3.2（矩阵 ADR Amendment 落地）
+- [x] AC3（🔴 compaction 真跑或诚实延后）: `LanceDbBackend::compact()`（`OptimizeAction::All`）**真实跑通**——1536 行 6 fragment → 压实后 `count_rows=1536` 行不丢，**兑现 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`（不再延后）** — verified by TEST-29.3.3（`--lib` scoped PASS）
+- [x] AC4（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by TEST-29.3.4（PASS）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-29.3.1 | `vector-lancedb` feature 下 `LanceIndexTuning`（IVF_PQ + HNSW）经 Lance `create_index` 真实建索引 + flat 对比召回/建图耗时/查询延迟（`cargo build` + `--lib` scoped；🟡 feature build；值真实跑出回填） | `core/src/retriever/vector/lance_db.rs` + in-process 召回驱动 | Planned |
-| TEST-29.3.2 | 多 backend（brute/sqlite-vec/lancedb/qdrant）选择矩阵真实测量 → ADR-030 D3 + ADR-023 tier add-only Amendment（🟡 feature build；qdrant 凭 task-29.2，不可达诚实延后） | `docs/decisions/adr-030-production-vector-backend.md` + `docs/decisions/adr-023-vector-backend-default.md` | Planned |
-| TEST-29.3.3 | lancedb 数据集 compaction 真实执行或诚实延后 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`（🔴 toolchain/资源限） | `core/src/retriever/vector/lance_db.rs` | Planned |
-| TEST-29.3.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-29.3.1 | `vector-lancedb` feature 下 `create_ann_index`（IVF_PQ + IVF_HNSW_SQ）经 Lance `create_index` 真实建索引 + flat 对比召回/建图耗时/查询延迟（`--lib` scoped，规避 broad-test ICE） | `core/src/retriever/vector/lance_db.rs`（同源 `mod tests`） | Done (PASS) |
+| TEST-29.3.2 | 多 backend（brute/lancedb 实测；qdrant honest-defer；sqlite-vec 延后）选择矩阵真实测量 → ADR-030 D3 + ADR-023 tier add-only Amendment | `docs/decisions/adr-030-production-vector-backend.md` + `docs/decisions/adr-023-vector-backend-default.md` | Done (Amendment 落地) |
+| TEST-29.3.3 | lancedb 数据集 compaction **真实执行**（`OptimizeAction::All`，1536 行 6 fragment → 不丢行），兑现 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]` | `core/src/retriever/vector/lance_db.rs`（同源 `mod tests`） | Done (PASS) |
+| TEST-29.3.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -143,16 +143,13 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: Draft（待实施）
-- **计划改动文件**：
-  - `core/src/retriever/vector/lance_db.rs`——在 `LanceDbBackend` 之上加真实 ANN 索引建图路径（消费 `LanceIndexTuning` 经 Lance `create_index` 建 IVF_PQ / HNSW，区别于现 flat KNN `:270-332`）+ compaction 触发尝试。
-  - in-process 召回测量驱动（仿 `core/examples/phase20_recall_via_retriever.rs`；`vector-lancedb` + `embedding-fastembed` guard）——flat / IVF_PQ / HNSW recall@5/@10 + 建图耗时 + 查询延迟 + 多 backend 矩阵真实测量。
-  - `docs/decisions/adr-030-production-vector-backend.md`——`## Amendment` 段加 D3 矩阵真实测量（add-only，不溯改 D1-D4）。
-  - `docs/decisions/adr-023-vector-backend-default.md`——tier add-only Amendment 加 lancedb（D4）/ qdrant（D3）真实召回/延迟（不溯改 D1-D6，ADR-014 D5）。
-- **§9 Verification 计划** (will record real evidence at impl)：
-  - AC1：`cargo build --features vector-lancedb` exit 0 + `--lib retriever::vector::lance_db` PASS + 真实 IVF_PQ/HNSW vs flat recall@5/@10 + 建图耗时 + 查询延迟（真实跑出后回填，禁预填）。
-  - AC2：brute / sqlite-vec / lancedb / qdrant（可达则测）多 backend 矩阵真实测量值 + 每档 caveat → ADR-030 D3 / ADR-023 tier add-only Amendment（真实跑出后回填）。
-  - AC3：compaction 真跑结果或诚实延后理由（toolchain/资源受阻维度如实，ADR-013）。
-  - AC4：D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-  - 默认构建：`cargo test --workspace` + `go test ./...` 不退化（ADR-004 / ADR-023 D5）。
-- **设计取舍 / 受阻维度**（实施时如实回填，不伪造）：`vector-lancedb` 广义全 target 测试受 rustc 1.95.0 ICE 限 → `cargo build` + `--lib` scoped 规避（`[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]`）；适中 n 召回区分性 / 大语料性能受 toolchain/资源限如实记录（`[SPEC-DEFER:phase-future.lancedb-large-corpus-perf]`）；compaction 不可真跑则 `[SPEC-DEFER:phase-future.lancedb-schema-compaction]`；qdrant 矩阵档凭 task-29.2 live 数，honest-defer 时如实记录。
+- **Status**: Done
+- **实际改动文件**：
+  - `core/src/retriever/vector/lance_db.rs`——`LanceDbBackend::create_ann_index(&LanceIndexTuning)`（经 Lance `index::Index::IvfPq(IvfPqIndexBuilder)` / `Index::IvfHnswSq(IvfHnswSqIndexBuilder)` `create_index` 建真实索引，HNSW 用单 IVF 分区近似纯 HNSW）+ `compact()`（`table::OptimizeAction::All` + `count_rows`）；同源 `#[cfg(test)] mod tests` 加 TEST-29.3.1（clustered 语料真实 ANN 召回-vs-flat + brute baseline 矩阵）+ TEST-29.3.3（真实 compaction）+ 测试隔离 `LANCEDB_DIR_LOCK`（串行化共享 env 的 dir 测试）。附带：`validate` 的 `dim % n != 0`→`!dim.is_multiple_of(n)`（clippy `-D warnings` feature 下必需，behavior-preserving）。
+  - `docs/decisions/adr-030-production-vector-backend.md`——`## Amendment (Phase 29 / v0.22.0)`：D2 真实建索引+compaction 兑现 + D3 真实跨 backend 矩阵表（add-only，不溯改 D1-D4）。
+  - `docs/decisions/adr-023-vector-backend-default.md`——`## Amendment (Phase 29 / v0.22.0)`：D5 默认档实测背书 + D4 lancedb 真实召回/延迟 + D3 qdrant honest-defer（不溯改 D1-D6，ADR-014 D5）。
+- **§9 Verification 实测证据**：
+  - AC1/AC2/AC3：`cargo test -p contextforge-core --features vector-lancedb --lib retriever::vector::lance_db` → **4 passed; 0 failed**（含 25.2 既有 2 + 29.3.1 + 29.3.3）。真实矩阵（n=1024 dim=384 32 query，单次代表值）：brute exact recall@10=1.0 ~5.5 ms/q；lancedb flat 1.0 ~7.6 ms；**IVF_PQ recall@10≈0.41–0.46 build ~2.8 s query ~51 ms**（run-to-run 抖动，PQ 训练未播种）；**IVF_HNSW_SQ recall@10≈0.90 build ~0.25 s query ~3.5 ms**；真实 compaction 1536 行 6 fragment→count_rows=1536。
+  - 默认构建不退化：`cargo test --workspace`（无 feature）0 failed；`cargo clippy --workspace --all-targets -- -D warnings`（默认 CI gate）0 warning；`cargo clippy --features vector-lancedb --lib --tests -- -D warnings`（PROTOC 指向仓内 protoc-bin-vendored）0 warning；0 新 dep（`Cargo.toml`/`Cargo.lock` 未改）。
+  - AC4 lint：spec-lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）。
+- **真实结论 / 受阻维度（ADR-013 据实）**：① **modest n（~1024）下 brute-force exact 既最准又最快，实测背书 ADR-023 D5 默认 0-dep 档**——重型 ANN 开销大语料才回本；② lancedb ANN 内 IVF_HNSW_SQ（高召回·快）> IVF_PQ（重压缩·modest n 下劣）；③ IVF_PQ 小语料召回折损 + 查询变慢是真实有损权衡（非 bug）。受阻/延后：`vector-lancedb` 广义全 target 测试仍受 rustc 1.95.0 ICE 限 → `--lib` scoped 规避，CI 默认不构建该 feature `[SPEC-DEFER:phase-future.lancedb-build-prereq-ci]`；大语料拐点性能 `[SPEC-DEFER:phase-future.lancedb-large-corpus-perf]`；qdrant 矩阵档凭 task-29.2，无 server → honest-defer `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`；sqlite-vec 本 pass 未跑 in-process 矩阵测量（可构建性已 task-23.2 确证）。**compaction 已真跑兑现，不再延后。**
