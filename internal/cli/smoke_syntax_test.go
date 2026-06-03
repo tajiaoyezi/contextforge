@@ -338,6 +338,42 @@ func TestTask294_SmokeV19LiveVectorRecallStep(t *testing.T) {
 	}
 }
 
+// TEST-32.4.1 / AC1: smoke v22 adds step 41 — task-32.4 closeout (vector-backend-config-plumbing-and-
+// completeness). The vector backends + sqlite-vec arm are feature-gated and the console vector_score is
+// add-only, so step 41 is a documentation/status step verifying the default build still scaffolds.
+// Asserts the new [41/41] marker + Phase 32 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask324_SmokeV22VectorBackendConfigStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v22 (task-32.4)") {
+		t.Fatalf("console_smoke.sh missing v22 (task-32.4) header block")
+	}
+	for _, marker := range []string{"[41/41]", "vector-backend-config-plumbing", "TEST-32.1.", "TEST-32.2.", "TEST-32.3.", "sqlite-vec", "vector_score"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v22 step 41 must document vector-backend-config-plumbing status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v21 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "governance-debt-cleanup"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v22 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-31.4.1 / AC1: smoke v21 adds step 40 — task-31.4 closeout (governance-debt-cleanup). A
 // documentation/status step verifying the default build still scaffolds. Asserts the new [40/40]
 // marker + Phase 31 status, and no regression of the prior denominators (ADR-014 D5).
