@@ -96,6 +96,12 @@ impl From<tantivy::TantivyError> for RetrieverError {
 /// 检索配置（AC5 tokenizer / boost / exact phrase）.
 #[derive(Debug, Clone)]
 pub struct RetrieverConfig {
+    /// task-30.2 (schema-driven 对称，方案 B)：**此字段是 vestigial——search 热路径不读它来选 analyzer**。
+    /// `search` 经 `QueryParser::for_index`（`open_with_config` 内）据 **schema 字段绑定**派生 analyzer，
+    /// 绑定的唯一真相源是 Tantivy `meta.json`（索引时由 `IndexSession::open_with_tokenizer` 写入）。
+    /// 切换某 collection 的 analyzer 须 `IndexSession::reindex_with_tokenizer` 重建索引（绑定持久化），
+    /// 而非改此 config 字段。保留此字段仅为既有 API 兼容；index/query 分词对称由双站点 analyzer 注册
+    /// （indexer `open_with_tokenizer` + retriever `open_with_config`）保证（task-24.1 R4 / task-30.1）。
     pub tokenizer: String,
     pub field_boosts: HashMap<String, f32>,
     pub enable_exact_phrase: bool,

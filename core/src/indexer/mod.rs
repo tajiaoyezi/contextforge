@@ -918,6 +918,67 @@ impl IndexSession {
         writer.delete_term(term);
         Ok(n)
     }
+
+    /// task-30.2: reindex/migration tool — rebuild an existing collection's Tantivy inverted index
+    /// under a **new analyzer binding** (`new_tokenizer`).
+    ///
+    /// The analyzer binding is persisted in Tantivy `meta.json` (schema-binding), so switching the
+    /// tokenizer of an already-indexed collection requires a re-index — the old `meta.json` is not
+    /// retroactively rewritten. SQLite chunk content is the source of truth: this reads all stored
+    /// chunks, drops + recreates the Tantivy index bound to `new_tokenizer`, and re-adds every chunk.
+    /// SQLite is left untouched (chunk rows preserved). Backward-compatible: the existing index keeps
+    /// serving until this runs. Returns the number of chunks re-indexed.
+    pub fn reindex_with_tokenizer(
+        data_dir: &Path,
+        collection_id: &str,
+        new_tokenizer: &str,
+    ) -> Result<usize, IndexError> {
+        let coll_dir = data_dir.join("collections").join(collection_id);
+        let sqlite_path = coll_dir.join("metadata.sqlite");
+        let tantivy_dir = coll_dir.join("tantivy");
+        // 1) Read all chunks from SQLite (source of truth; separate connection, dropped before reopen).
+        let rows: Vec<(String, String, String, String, i64, i64)> = {
+            let sqlite = Connection::open(&sqlite_path)?;
+            let mut stmt = sqlite.prepare(
+                "SELECT chunk_id, content, file_path, language, line_start, line_end FROM chunks",
+            )?;
+            let mapped = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, i64>(5)?,
+                ))
+            })?;
+            mapped.collect::<Result<Vec<_>, _>>()?
+        };
+        // 2) Drop the old Tantivy index (analyzer binding lives in its meta.json).
+        if tantivy_dir.exists() {
+            fs::remove_dir_all(&tantivy_dir)?;
+        }
+        // 3) Recreate the session bound to the new tokenizer (SQLite chunks intact) + re-add chunks.
+        let mut sess = Self::open_with_tokenizer(data_dir, collection_id, new_tokenizer)?;
+        {
+            let writer = sess
+                .tantivy_writer
+                .lock()
+                .map_err(|e| IndexError::Tantivy(format!("writer lock poisoned: {}", e)))?;
+            for (chunk_id, content, file_path, language, line_start, line_end) in &rows {
+                writer.add_document(doc!(
+                    sess.f_chunk_id => chunk_id.clone(),
+                    sess.f_content => content.clone(),
+                    sess.f_file_path => file_path.clone(),
+                    sess.f_language => language.clone(),
+                    sess.f_line_start => *line_start,
+                    sess.f_line_end => *line_end,
+                ))?;
+            }
+        }
+        sess.commit()?;
+        Ok(rows.len())
+    }
 }
 
 #[cfg(test)]
@@ -1223,6 +1284,68 @@ mod tests {
             sess2.tantivy_search("置加", 10).unwrap().is_empty(),
             "default: CJK bigram '置加' 不应命中"
         );
+    }
+
+    // ---- TEST-30.2.2 (AC2) — reindex/migration 工具按目标 analyzer 绑定重建（默认构建可验，0-dep）----
+    // 既有 default-bound collection → reindex 到 code_cjk bigram 绑定 → migrated 索引 bigram 子词命中
+    // + chunk 数保留（SQLite 真相源不动）；既有默认读路径在迁移前不破（向后兼容）.
+    #[test]
+    fn test_30_2_2_reindex_migration_rebinds_analyzer() {
+        use crate::retriever::{Retriever, RetrieverConfig, SearchOptions};
+        let data_dir = temp_root("reindex-migrate");
+        // 1) 既有索引用 default analyzer 建（向后兼容基线：bigram 子词 不命中）.
+        let mut sess = IndexSession::open(&data_dir, "c").unwrap();
+        write_one_doc(&mut sess, "fn loadConfig() 配置加载模块");
+        sess.commit().unwrap();
+        assert_eq!(content_tokenizer_name(&sess.tantivy_index.schema()), DEFAULT_TOKENIZER);
+        assert!(
+            sess.tantivy_search("置加", 10).unwrap().is_empty(),
+            "default 绑定: bigram 子词 '置加' 不应命中（迁移前基线）"
+        );
+        drop(sess);
+        // 2) reindex/migration 工具：按 code_cjk 绑定重建（SQLite chunk 真相源不动）.
+        let n = IndexSession::reindex_with_tokenizer(&data_dir, "c", CODE_CJK_TOKENIZER).unwrap();
+        assert!(n >= 1, "reindex 应从 SQLite 重建 ≥1 chunk，实得 {n}");
+        // 3) migrated 索引：绑定换为 code_cjk（meta.json 持久化）+ bigram 子词命中（经 Retriever 只读查询）.
+        let retr = Retriever::open_with_config(
+            &data_dir,
+            "c",
+            RetrieverConfig { tokenizer: CODE_CJK_TOKENIZER.to_string(), ..Default::default() },
+        )
+        .unwrap();
+        let hits = retr
+            .search(&SearchOptions { query: "置加".to_string(), top_k: 10, ..Default::default() })
+            .unwrap();
+        assert!(!hits.is_empty(), "migrated(code_cjk): bigram 子词 '置加' 应命中（绑定已重建）");
+        let hits2 = retr
+            .search(&SearchOptions { query: "config".to_string(), top_k: 10, ..Default::default() })
+            .unwrap();
+        assert!(!hits2.is_empty(), "migrated(code_cjk): code 子词 'config' 应命中");
+    }
+
+    // ---- TEST-30.2.2b (AC2) — reindex 到真分词绑定（feature `cjk-segmenter`）----
+    #[cfg(feature = "cjk-segmenter")]
+    #[test]
+    fn test_30_2_2b_reindex_to_cjk_segmenter() {
+        use crate::retriever::{Retriever, RetrieverConfig, SearchOptions};
+        let data_dir = temp_root("reindex-cjkseg");
+        let mut sess = IndexSession::open(&data_dir, "c").unwrap();
+        write_one_doc(&mut sess, "fn loadConfig() 配置加载模块");
+        sess.commit().unwrap();
+        drop(sess);
+        let n = IndexSession::reindex_with_tokenizer(&data_dir, "c", CJK_SEGMENTER_TOKENIZER).unwrap();
+        assert!(n >= 1, "reindex 应重建 ≥1 chunk");
+        let retr = Retriever::open_with_config(
+            &data_dir,
+            "c",
+            RetrieverConfig { tokenizer: CJK_SEGMENTER_TOKENIZER.to_string(), ..Default::default() },
+        )
+        .unwrap();
+        // 真分词绑定后真词 配置 命中（migration → 真分词索引）.
+        let hits = retr
+            .search(&SearchOptions { query: "配置".to_string(), top_k: 10, ..Default::default() })
+            .unwrap();
+        assert!(!hits.is_empty(), "migrated(cjk_segmenter): 真词 '配置' 应命中");
     }
 
     // ---- TEST-30.1.1 (AC1) — 真分词 token stream（真词边界，区别于 bigram）----

@@ -9,3 +9,8 @@
 {"query":"治理自治","expected_file_path":"AGENTS.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram"}
 {"query":"语义检索","expected_file_path":"docs/decisions/adr-024-console-api-semantic-forward.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram"}
 {"query":"禁伪造","expected_file_path":"docs/decisions/adr-025-hybrid-scoring-fusion.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — exercises CJK bigram"}
+{"query":"可观测性","expected_file_path":"docs/decisions/adr-031-observability-hardening.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — true-seg 可观测/性 vs bigram 可观/观测/测性 (task-30.2 recall delta)"}
+{"query":"增量索引","expected_file_path":"docs/decisions/adr-028-vector-persistence-strategy.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — true-seg 增量/索引 vs bigram 增量/量索/索引 (task-30.2 recall delta)"}
+{"query":"生命周期","expected_file_path":"docs/decisions/adr-030-production-vector-backend.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — true-seg 生命周期/生命/周期 vs bigram 生命/命周/周期 (task-30.2 recall delta)"}
+{"query":"跨进程","expected_file_path":"docs/decisions/adr-016-cross-process-rust-go-via-grpc-bridge.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — true-seg 跨/进程 vs bigram 跨进/进程 (task-30.2 recall delta)"}
+{"query":"向量检索","expected_file_path":"docs/decisions/adr-023-vector-backend-default.md","expected_line_range":{"start":0,"end":0},"category":"cjk","notes":"CJK phrase — true-seg 向量/检索 vs bigram 向量/量检/检索 (task-30.2 recall delta)"}
