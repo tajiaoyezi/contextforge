@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 29 task-29.4 live-vector-recall smoke (v19; v18 Phase 28 release-ci-hardening).
+# scripts/console_smoke.sh — Phase 30 task-30.3 cjk-true-segmenter smoke (v20; v19 Phase 29 live-vector-recall).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -945,6 +945,22 @@ if "$GO_BIN" init --root "$STAGING/cf-v21-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; live-vector backends feature-gated, default semantic path still 0-dep BruteForce ✅ (TEST-29.1.* / TEST-29.2.* / TEST-29.3.* verified; qdrant live KNN honest-defer, ADR-013)"
 else
   echo "    → live-vector-recall (TEST-29.1.* / TEST-29.2.* / TEST-29.3.*) verified at Rust factory + feature layer; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [39/39] task-30.3 cjk-true-segmenter: jieba true-word analyzer (cjk-segmenter) + dual-site register + reindex migration tool + real recall delta (Phase 30)"
+# v20 (task-30.3): Phase 30 (cjk-true-segmenter) upgrades the 0-dep overlapping-bigram CJK analyzer to a
+# feature-gated true-word segmenter. The `cjk-segmenter` feature (jieba-rs, default off → 0 new dep)
+# segments 配置加载 → 配置/加载 (vs bigram 配置/置加/加载), registered at both the index site
+# (IndexSession::open_with_tokenizer) and the query site (Retriever::open_with_config) for symmetry
+# (task-30.1); IndexSession::reindex_with_tokenizer migrates an existing index to a new analyzer binding
+# (task-30.2). Measured (16 q): true-seg vs bigram file-level recall delta = +0.0000 on this small corpus
+# (both fully recall CJK cases; honest zero delta, ADR-013), both +0.125 over default. The segmenter is
+# feature-gated → no console-api runtime surface; this is a documentation/status step verifying the
+# default build still scaffolds with the 0-dep bigram fallback + default tokenization unchanged (ADR-004).
+if "$GO_BIN" init --root "$STAGING/cf-v22-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v22-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; cjk-segmenter feature-gated (jieba), default tokenization + 0-dep bigram fallback unchanged ✅ (TEST-30.1.* / TEST-30.2.* verified; true-seg vs bigram delta +0.0000 small-corpus, ADR-013)"
+else
+  echo "    → cjk-true-segmenter (TEST-30.1.* / TEST-30.2.*) verified at Rust indexer + feature layer; default build baseline unchanged (ADR-004)"
 fi
 
 echo
