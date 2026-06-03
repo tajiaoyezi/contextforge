@@ -893,6 +893,59 @@ mod tests {
         assert_eq!(scores1, scores2, "factory-driven semantic results must be byte-stable across calls");
     }
 
+    // ---- TEST-32.1.1 — parse_vector_backend maps env values (name + dim) to the factory args,
+    // trimming whitespace and defaulting a blank/unparsable dim to 0; an unknown backend name flows
+    // to the factory as an honest Err (never a silent BruteForce fallback, ADR-013). Pure parser →
+    // no process-global env mutation, so it is race-free under the parallel test runner. ----
+    #[test]
+    fn test_32_1_1_parse_vector_backend_and_factory_honest_err() {
+        assert_eq!(
+            parse_vector_backend(Some("qdrant"), Some("384")),
+            ("qdrant".to_string(), 384)
+        );
+        assert_eq!(
+            parse_vector_backend(Some("  lancedb  "), Some(" 768 ")),
+            ("lancedb".to_string(), 768),
+            "name + dim are trimmed"
+        );
+        assert_eq!(
+            parse_vector_backend(Some("sqlite-vec"), Some("")),
+            ("sqlite-vec".to_string(), 0),
+            "blank dim → 0"
+        );
+        assert_eq!(
+            parse_vector_backend(Some("brute"), Some("notanumber")),
+            ("brute".to_string(), 0),
+            "unparsable dim → 0"
+        );
+        // an unknown backend name surfaces the factory's honest Err (no silent fallback)
+        let (name, dim) = parse_vector_backend(Some("nope"), None);
+        let err = select_vector_backend(&name, dim).unwrap_err();
+        assert!(
+            err.to_string().contains("nope"),
+            "factory should echo the unknown backend name: {err}"
+        );
+    }
+
+    // ---- TEST-32.1.2 — unset env (None/None) and blank names resolve to ("", 0) → BruteForce,
+    // byte-equivalent to the Phase 29 hardcoded select_vector_backend("", 0) default. This is the
+    // default-behavior-unchanged guard (ADR-004): an unset CONTEXTFORGE_VECTOR_BACKEND keeps the
+    // hybrid/semantic hot paths on BruteForce exactly as before. ----
+    #[test]
+    fn test_32_1_2_default_unset_is_brute_force_byte_equiv() {
+        let (name, dim) = parse_vector_backend(None, None);
+        assert_eq!((name.as_str(), dim), ("", 0), "unset env → empty default arm");
+        let backend = select_vector_backend(&name, dim).expect("default arm always builds");
+        assert_eq!(
+            backend.name(),
+            "brute-force",
+            "unset env → BruteForce (byte-equivalent to the Phase 29 hardcoded default)"
+        );
+        // a whitespace-only backend name also collapses to the empty default arm
+        let (blank, bdim) = parse_vector_backend(Some("   "), None);
+        assert_eq!((blank.as_str(), bdim), ("", 0), "blank name → empty default arm");
+    }
+
     // ---- TEST-21.1.2 — hybrid=true dispatches the RRF fusion path ----
     // search_hybrid RRF-fuses BM25 + the (deterministic) vector path; results carry retrieval_method
     // "hybrid" + hybrid_score (the fused RRF score). Deterministic embeddings prove the fusion
