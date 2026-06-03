@@ -1,6 +1,6 @@
 # Task `29.1`: `vector-backend-factory-and-hotpath-injection — core/src/retriever/vector 新增 select_vector_backend(name, dim) 工厂（仿 embedding/factory.rs::select_provider）+ 把 core/src/server.rs:302/341 硬编码 BruteForceVectorBackend::new() 替换为工厂注入（默认仍 BruteForce 0-dep；qdrant/lancedb feature-gated 否则诚实 Err）+ feature 不连 live server 的 deterministic 工厂契约测试`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -87,19 +87,19 @@ pass bar：feature `vector-qdrant` / `vector-lancedb` 下工厂返回对应 back
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1（默认/空名 → BruteForce）: feature 关闭（默认构建）下 `select_vector_backend("", 0)` 与 `select_vector_backend("brute", 0)` 均返回 `BruteForceVectorBackend`（`Arc<dyn VectorSearcher>`，始终可用，0-dep），与 `server.rs:302/341` 替换前 byte-equivalent — verified by TEST-29.1.1（deterministic，不连 server）
-- [ ] AC2（feature 关闭 → 诚实 Err）: feature `vector-qdrant` / `vector-lancedb` 关闭时 `select_vector_backend("qdrant", _)` / `("lancedb", _)` 返回可识别 `VectorError`（明确「需对应 feature」），不 panic、不静默 fallback、不伪造成功；未知名同返诚实 Err（ADR-013） — verified by TEST-29.1.2（deterministic，不连 server）
-- [ ] AC3（server.rs 热路径经工厂 + 不退化）: `server.rs:302`（hybrid）+ `server.rs:341`（语义）改为 `select_vector_backend(...)` 注入；默认构建（无 vector feature）语义+hybrid 路径仍经工厂走 BruteForce，retrieval_method / vector_score / hybrid_score 输出不变；`cargo test --workspace` 不受影响、0 新依赖 — verified by TEST-29.1.3（deterministic，不连 server）
-- [ ] AC4（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by TEST-29.1.4 + §10 记录（CI spec-lint 权威）
+- [x] AC1（默认/空名 → BruteForce）: feature 关闭（默认构建）下 `select_vector_backend("", 0)` 与 `select_vector_backend("brute", 0)` 均返回 `BruteForceVectorBackend`（`Arc<dyn VectorStore>`，IS-A `VectorSearcher`，始终可用，0-dep），与 `server.rs:302/341` 替换前 byte-equivalent — verified by TEST-29.1.1（deterministic，不连 server，PASS）
+- [x] AC2（feature 关闭 → 诚实 Err）: feature `vector-qdrant` / `vector-lancedb` 关闭时 `select_vector_backend("qdrant", _)` / `("lancedb", _)` 返回可识别 `VectorError`（明确「需对应 feature」），不 panic、不静默 fallback、不伪造成功；未知名同返诚实 Err（ADR-013） — verified by TEST-29.1.2（deterministic，不连 server，PASS）
+- [x] AC3（server.rs 热路径经工厂 + 不退化）: `server.rs:302`（hybrid）+ `server.rs:341`（语义）改为 `select_vector_backend("", 0)` 注入；默认构建（无 vector feature）语义+hybrid 路径仍经工厂走 BruteForce，retrieval_method / vector_score / hybrid_score 输出不变；`cargo test --workspace` 191 lib + 全集成 0 failed、0 新依赖 — verified by TEST-29.1.3（deterministic，不连 server，PASS）
+- [x] AC4（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by TEST-29.1.4 + §10 记录（CI spec-lint 权威）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-29.1.1 | `select_vector_backend("", 0)` / `("brute", 0)` 返 BruteForce（默认构建，无 feature，deterministic 不连 server） | `core/src/retriever/vector`（工厂同源 `mod tests`） | Planned |
-| TEST-29.1.2 | feature 关闭时 `("qdrant", _)` / `("lancedb", _)` + 未知名返可识别 `VectorError`（非成功，不 panic，ADR-013） | `core/src/retriever/vector`（工厂同源 `mod tests`） | Planned |
-| TEST-29.1.3 | `server.rs:302/341` 经 `select_vector_backend` 注入；默认构建语义+hybrid 走 BruteForce 不退化 + `cargo test --workspace` 不受影响 | `core/src/server.rs` + retriever/server 集成测试 | Planned |
-| TEST-29.1.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-29.1.1 | `select_vector_backend("", 0)` / `("brute", 0)` 返 BruteForce（默认构建，无 feature，deterministic 不连 server） | `core/src/retriever/vector/factory.rs`（同源 `mod tests`） | Done (PASS) |
+| TEST-29.1.2 | feature 关闭时 `("qdrant", _)` / `("lancedb", _)` + 未知名返可识别 `VectorError`（非成功，不 panic，ADR-013） | `core/src/retriever/vector/factory.rs`（同源 `mod tests`） | Done (PASS) |
+| TEST-29.1.3 | `server.rs:302/341` 经 `select_vector_backend` 注入；默认构建语义+hybrid 走 BruteForce 不退化 + `cargo test --workspace` 不受影响 | `core/src/server.rs` + `cargo test --workspace` | Done (PASS) |
+| TEST-29.1.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -136,14 +136,17 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: Draft（待实施）。
-- **计划改动文件**：
-  - `core/src/retriever/vector/factory.rs`（新增，或工厂自由函数落 `mod.rs`）— `select_vector_backend(name, dim) -> Result<Arc<dyn VectorSearcher>, VectorError>`：`""`/`"brute"` → `BruteForceVectorBackend`；`"qdrant"` feature-gated（关闭诚实 Err）；`"lancedb"` feature-gated（关闭诚实 Err）；未知名诚实 Err。+ 同源 feature-aware deterministic `#[cfg(test)] mod tests`（TEST-29.1.1 默认臂 / TEST-29.1.2 关闭臂 + 未知名 Err）。
-  - `core/src/retriever/vector/mod.rs`（修改）— `pub use` 工厂函数（若独立 `factory.rs`），与 `embedding::factory` re-export 对称。
-  - `core/src/server.rs`（修改）— `:302`（hybrid）+ `:341`（语义）的 `Arc::new(BruteForceVectorBackend::new())` 替换为 `select_vector_backend(...)`（默认名，`Status::internal` 错误映射，byte-equivalent）；TEST-29.1.3 经 server / retriever 集成断言默认构建语义+hybrid 仍走 BruteForce。
-- **§9 Verification 计划** (will record real evidence at impl)：
-  - unit-test：`cargo test -p contextforge-core <工厂模块路径>`（TEST-29.1.1/29.1.2 默认构建工厂契约）— 真实跑出后回填 passed/failed。
-  - feature-test：`cargo test --features vector-qdrant retriever::vector`（qdrant 正向臂）+ `cargo build --features vector-lancedb` + `--lib` scoped（lancedb feature 构建 caveat 承 task-25.2）— 待实测回填。
-  - 不退化：`cargo test --workspace`（默认无 vector feature，0 failed，0 新依赖）+ `go test ./...`（零 Go delta）— 待实测回填。
-  - lint：`bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中（CI spec-lint gate 权威）— 待实测回填。
-  - RED→GREEN：先落 TEST-29.1.1~29.1.3 RED（工厂未实现 / server.rs 未替换），再实现转 GREEN — 真实跑出后回填。
+- **Status**: Done。
+- **实际改动文件**：
+  - `core/src/retriever/vector/factory.rs`（新增）— `select_vector_backend(name, dim) -> Result<Arc<dyn VectorStore>, VectorError>`：`""`/`"brute"` → `BruteForceVectorBackend`；`"qdrant"` feature-gated（`#[cfg(feature="vector-qdrant")]` 构造 `QdrantBackend::new()?`，关闭返诚实 Err「requires the vector-qdrant feature」）；`"lancedb"` 同构；未知名 `unknown vector backend {name:?}` Err。+ 同源 feature-aware deterministic `#[cfg(test)] mod tests`（TEST-29.1.1 默认臂 / TEST-29.1.2 关闭臂 + 未知名 Err + feature-on 正向臂）。
+  - `core/src/retriever/vector/traits.rs`（修改，add-only）— 新增组合 trait `VectorStore: VectorIndexer + VectorSearcher` + blanket `impl<T: VectorIndexer + VectorSearcher> VectorStore for T {}`；三 base trait 签名不动（ADR-014 D5）。
+  - `core/src/retriever/vector/mod.rs`（修改）— `pub mod factory;` + `pub use factory::select_vector_backend;` + `pub use traits::...VectorStore`，与 `embedding::factory` re-export 对称。
+  - `core/src/server.rs`（修改）— import `BruteForceVectorBackend` → `select_vector_backend`；`:302`（hybrid）+ `:341`（语义）的 `Arc::new(BruteForceVectorBackend::new())` 替换为 `select_vector_backend("", 0).map_err(|e| Status::internal(...))?`（默认名，byte-equivalent）。`backend.clone()` upcast `Arc<dyn VectorStore>`→`Arc<dyn VectorSearcher>`（喂 `with_vector_searcher`）、`backend.as_ref()` upcast `&dyn VectorStore`→`&dyn VectorIndexer`（喂 `index_chunks_semantic`），均经 rustc 1.86+ trait-upcasting coercion 在调用点自动完成。
+- **关键设计决断（主 agent 自治，ADR-012）**：spec 原拟工厂返 `Arc<dyn VectorSearcher>`；但 `server.rs` 热路径用**同一** backend 对象既 `index_chunks_semantic(&dyn VectorIndexer)` 又 `with_vector_searcher(Arc<dyn VectorSearcher>)`，单一 `VectorSearcher` trait 对象无法喂 indexer。最小且正确解：新增 add-only 组合 trait `VectorStore`（IS-A `VectorSearcher`，故契约真超集，不退化）。三 base trait 签名零改动。
+- **§9 Verification 实测证据**：
+  - unit-test：`cargo test -p contextforge-core --lib retriever::vector::factory` → **4 passed; 0 failed**（TEST-29.1.1/29.1.2 默认构建工厂契约 + 未知名 Err，不连 server）。
+  - 不退化：`cargo test --workspace` → 191 lib + 全集成 binary **0 failed**（默认无 vector feature，semantic+hybrid 经工厂走 BruteForce）；0 新依赖（`Cargo.toml`/`Cargo.lock` 未改）。
+  - lint：`cargo clippy --workspace --all-targets -- -D warnings` → Finished 0 warning；`bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中（CI spec-lint gate 权威）。
+  - Go：零 Go delta（`go test`/`go vet`/`gofmt` 不受影响，CI 权威）。
+  - RED→GREEN：commit 1 RED（factory 初版返 Err + tests，4 failed）→ commit 2 GREEN（实现 + server.rs 注入，4 passed + workspace 0 failed）。
+  - feature 正向臂（`--features vector-qdrant` qdrant 臂 / `--features vector-lancedb` lancedb 臂）经 `#[cfg(feature)]` 测试覆盖；qdrant 真实 live KNN → task-29.2，lancedb 真实 ANN 索引 → task-29.3（本 task 不连 live server、不预判召回数值，ADR-013）。
