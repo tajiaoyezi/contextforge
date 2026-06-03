@@ -8,6 +8,34 @@ import (
 	"github.com/tajiaoyezi/contextforge/internal/contractv1"
 )
 
+// TestMemStoreCacheCap — task-31.2 AC2: fallback cache cap is env-configurable
+// (CONTEXTFORGE_CONSOLEAPI_CACHE_CAP), falling back to the 256 default when unset/invalid.
+func TestMemStoreCacheCap(t *testing.T) {
+	if memStoreCacheDefaultCapacity != 256 {
+		t.Fatalf("default cap drifted: want 256, got %d", memStoreCacheDefaultCapacity)
+	}
+	// env override → cap 2; FIFO eviction keeps the cache at 2.
+	t.Setenv("CONTEXTFORGE_CONSOLEAPI_CACHE_CAP", "2")
+	if got := resolveCacheCapacity(); got != 2 {
+		t.Fatalf("env cap: want 2, got %d", got)
+	}
+	s := NewMemStore()
+	s.mu.Lock()
+	s.cacheChunkUnlocked("c1", contractv1.SourceChunk{})
+	s.cacheChunkUnlocked("c2", contractv1.SourceChunk{})
+	s.cacheChunkUnlocked("c3", contractv1.SourceChunk{})
+	n := len(s.chunkCache)
+	s.mu.Unlock()
+	if n != 2 {
+		t.Errorf("cap=2: chunk cache should hold 2 (oldest evicted), got %d", n)
+	}
+	// invalid value → fallback to default 256.
+	t.Setenv("CONTEXTFORGE_CONSOLEAPI_CACHE_CAP", "not-a-number")
+	if got := resolveCacheCapacity(); got != 256 {
+		t.Fatalf("invalid env cap should fall back to 256, got %d", got)
+	}
+}
+
 // task-17.1 / ADR-022 (Phase 17): MemMemoryStore fallback wires IsPinned into
 // Pin / Get / List + SeedFixtures preset of mem-fixture-1 to IsPinned: true.
 

@@ -8,7 +8,7 @@
 //! `rusqlite` bundled) is the L2 persistence opt-in. Cache entries are scoped by `(provider, dim)`
 //! so a cache file is never mis-read across providers.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -17,10 +17,58 @@ use sha2::{Digest, Sha256};
 
 use crate::embedding::traits::{EmbeddingError, EmbeddingProvider};
 
+/// task-31.2 (ADR-036 D2): default L1 cap. The L1 cache was an unbounded `HashMap`, so a long-running
+/// daemon embedding many distinct texts grew memory without bound. ~50k entries × 384 f32 × 4 B ≈ 75 MB
+/// upper bound — generous for normal workflows (same text still hits) but bounded.
+pub const DEFAULT_EMBEDDING_CACHE_CAP: usize = 50_000;
+
+/// task-31.2: capacity-bounded L1 cache with FIFO-on-insert eviction (0 new dep — hand-rolled over
+/// `std`). Re-inserting an existing key updates the value in place without changing eviction order.
+struct BoundedCache {
+    map: HashMap<String, Vec<f32>>,
+    order: VecDeque<String>,
+    cap: usize,
+}
+
+impl BoundedCache {
+    fn new(cap: usize) -> Self {
+        Self { map: HashMap::new(), order: VecDeque::new(), cap }
+    }
+
+    fn get(&self, k: &str) -> Option<&Vec<f32>> {
+        self.map.get(k)
+    }
+
+    fn insert(&mut self, k: String, v: Vec<f32>) {
+        if self.map.insert(k.clone(), v).is_some() {
+            // Key already present → value updated in place; eviction order unchanged.
+            return;
+        }
+        // New key: record insertion order, then evict oldest (FIFO) while over cap.
+        // cap == 0 ⇒ unbounded.
+        self.order.push_back(k);
+        if self.cap > 0 {
+            while self.map.len() > self.cap {
+                match self.order.pop_front() {
+                    Some(old) => {
+                        self.map.remove(&old);
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+}
+
 /// Embedding provider decorator that caches `Sha256(text) → embedding`.
 pub struct CachingEmbeddingProvider {
     inner: Arc<dyn EmbeddingProvider>,
-    mem: Mutex<HashMap<String, Vec<f32>>>,
+    mem: Mutex<BoundedCache>,
     store: Option<Mutex<Connection>>,
 }
 
@@ -36,11 +84,18 @@ impl std::fmt::Debug for CachingEmbeddingProvider {
 }
 
 impl CachingEmbeddingProvider {
-    /// Wrap `inner` with an in-memory cache (no persistence).
+    /// Wrap `inner` with an in-memory cache (no persistence), L1 bounded at
+    /// `DEFAULT_EMBEDDING_CACHE_CAP` (task-31.2).
     pub fn new(inner: Arc<dyn EmbeddingProvider>) -> Self {
+        Self::with_capacity(inner, DEFAULT_EMBEDDING_CACHE_CAP)
+    }
+
+    /// Wrap `inner` with an in-memory cache whose L1 is bounded at `cap` (FIFO-on-insert eviction;
+    /// `cap == 0` ⇒ unbounded). task-31.2.
+    pub fn with_capacity(inner: Arc<dyn EmbeddingProvider>, cap: usize) -> Self {
         Self {
             inner,
-            mem: Mutex::new(HashMap::new()),
+            mem: Mutex::new(BoundedCache::new(cap)),
             store: None,
         }
     }
@@ -65,7 +120,7 @@ impl CachingEmbeddingProvider {
         .map_err(to_backend_err)?;
         Ok(Self {
             inner,
-            mem: Mutex::new(HashMap::new()),
+            mem: Mutex::new(BoundedCache::new(DEFAULT_EMBEDDING_CACHE_CAP)),
             store: Some(Mutex::new(conn)),
         })
     }
@@ -285,6 +340,26 @@ mod tests {
         assert_eq!(counter2.embedded(), 0, "persisted hit must not call the inner provider");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // TEST-31.2.1 — AC1: L1 capacity bound with FIFO-on-insert eviction. Over-cap inserts evict the
+    // oldest; an evicted key re-embeds as a miss (inner re-invoked); a still-cached key stays a hit.
+    #[test]
+    fn test_31_2_1_l1_cap_evicts_oldest_fifo() {
+        let counter = Arc::new(CountingProvider::new(384));
+        let cache = CachingEmbeddingProvider::with_capacity(counter.clone(), 2);
+        cache.embed(&[s("a")]).unwrap();
+        cache.embed(&[s("b")]).unwrap();
+        cache.embed(&[s("c")]).unwrap(); // cap=2 → "a" (oldest) evicted; cache = {b, c}
+        assert_eq!(counter.embedded(), 3, "3 distinct texts each miss inner once");
+        assert!(cache.mem.lock().unwrap().len() <= 2, "L1 entry count bounded at cap");
+        // "a" was evicted → re-embed is a miss (inner re-called).
+        cache.embed(&[s("a")]).unwrap(); // evicts "b"; cache = {c, a}
+        assert_eq!(counter.embedded(), 4, "evicted 'a' re-embed is a miss");
+        // "c" still cached → re-embed is a hit (inner not called).
+        cache.embed(&[s("c")]).unwrap();
+        assert_eq!(counter.embedded(), 4, "still-cached 'c' re-embed is a hit");
+        assert!(cache.mem.lock().unwrap().len() <= 2, "L1 stays bounded after re-inserts");
     }
 
     // TEST-22.2.4 — AC4: dim()/name() passthrough + usable as Arc<dyn EmbeddingProvider>.

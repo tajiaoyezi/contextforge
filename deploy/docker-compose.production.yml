@@ -41,6 +41,10 @@ services:
       retries: 6
       start_period: 10s
     restart: unless-stopped
+    # task-31.2 (ADR-036 D2): resource limits (compose v2 top-level keys — `deploy.resources` only
+    # applies under swarm). Defaults are generous for single-host production; override via env.
+    mem_limit: ${CORE_MEM_LIMIT:-2g}
+    cpus: ${CORE_CPUS:-1.5}
 
   console-api-serve:
     image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
@@ -66,7 +70,34 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    # task-31.2 (ADR-036 D2): resource limits (env-overridable).
+    mem_limit: ${CONSOLE_MEM_LIMIT:-512m}
+    cpus: ${CONSOLE_CPUS:-1.0}
+
+  # task-31.2 (ADR-036 D2): OPTIONAL TLS-terminating reverse proxy. NOT started by default — only
+  # under `docker compose --profile tls up`, so the existing plaintext deployment is unchanged.
+  # Caddy reverse-proxies console-api-serve:48181 and terminates TLS on 443. Real cert issuance needs
+  # a real domain + reachable 80/443 (ACME) → [SPEC-DEFER:phase-future.compose-tls-auto-cert]; the
+  # Caddyfile below mounts a config dir (operator supplies a domain + cert or enables Caddy's ACME).
+  tls-proxy:
+    image: caddy:2
+    profiles: ["tls"]
+    depends_on:
+      console-api-serve:
+        condition: service_healthy
+    ports:
+      - "${TLS_HTTPS_PORT:-443}:443"
+      - "${TLS_HTTP_PORT:-80}:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
 
 volumes:
   contextforge-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
     driver: local

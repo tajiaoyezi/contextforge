@@ -166,6 +166,20 @@ Trusted-network mode (empty token) is appropriate when the stack is fronted by
 a reverse proxy (nginx / traefik / caddy) that already enforces auth, or when
 ContextForge is reachable only from a private VPC.
 
+**Optional TLS termination** (task-31.2 / ADR-036 D2 — landed): the production
+compose ships an optional Caddy reverse proxy under the `tls` profile, NOT started
+by default (the existing plaintext deployment is unchanged):
+
+```bash
+docker compose -f deploy/docker-compose.production.yml --profile tls up -d
+```
+
+It terminates TLS on 443 and reverse-proxies to `console-api-serve:48181`. Edit
+`deploy/caddy/Caddyfile` with your domain. With a real domain + reachable :80/:443,
+Caddy auto-provisions a Let's Encrypt cert (ACME) — that real cert issuance needs a
+live domain and is deferred (`[SPEC-DEFER:phase-future.compose-tls-auto-cert]`); for
+internal deployments use `tls internal` (Caddy local CA) or mount your own cert.
+
 ---
 
 ## §6 Upgrade path
@@ -380,15 +394,21 @@ volumes:
 This binds the volume to a dedicated NVMe path, bypassing the overlay filesystem
 write-amplification.
 
-**Container resource limits** [SPEC-DEFER:phase-future.compose-resource-limits]:
-v0.9 does not set `mem_limit` / `cpus`. For a single-tenant deployment on a
-dedicated host, this is fine. For multi-tenant or shared hosts, add:
+**Container resource limits** (task-31.2 / ADR-036 D2 — landed): the production
+compose now sets `mem_limit` / `cpus` on both services (compose v2 top-level keys —
+`deploy.resources` only applies under swarm), env-overridable:
 
 ```yaml
   contextforge-core:
-    mem_limit: 2g
-    cpus: 2.0
+    mem_limit: ${CORE_MEM_LIMIT:-2g}
+    cpus: ${CORE_CPUS:-1.5}
+  console-api-serve:
+    mem_limit: ${CONSOLE_MEM_LIMIT:-512m}
+    cpus: ${CONSOLE_CPUS:-1.0}
 ```
+
+Override per host, e.g. `CORE_MEM_LIMIT=4g CORE_CPUS=3.0 docker compose -f
+deploy/docker-compose.production.yml up -d`.
 
 **Concurrent query throughput**: ContextForge's data-plane processes search
 queries serially per index (Tantivy reader pool is single-writer). For higher
