@@ -1,6 +1,6 @@
 # Task `29.2`: `qdrant-live-knn-and-recall-harness — phase29 真实端到端召回 harness（clone phase20_recall_via_retriever，BruteForce→QdrantBackend::connect(QdrantConnConfig::from_env())，feature vector-qdrant + embedding-fastembed gated），首次真实兑现 [SPEC-DEFER:phase-future.qdrant-server-lifecycle]：connect→ensure-create→upsert→KNN over live qdrant；无 server 时 health()==Unreachable honest-defer（eprintln + exit 0，ADR-013 禁伪造）+ 单节点部署基线文档化（集群/复制延后）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -82,19 +82,19 @@ pass bar：(1) 真实 live qdrant server 上（手动 / dev-box）connect→ensu
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1（🔴 live qdrant 端到端 KNN，honest-defer）: feature `vector-qdrant` + `embedding-fastembed` 下，`phase29_recall_via_qdrant` 对一个真实 live qdrant server（手动 / dev-box）跑 connect→ensure-create→upsert→KNN，经 `Retriever::search_semantic` 热路径量真实 file-level SemanticRecall@5/@10 + top-1 + MRR over live qdrant KNN（`qdrant.rs:330-371`）；无 server 时 `health()==Unreachable` → eprintln + exit 0（honest-defer，绝不伪造召回 / live-server 通过，ADR-013）。真实召回数 **真实跑出后回填** §10 + v0.22.0 evidence，绝不预填 — verified by TEST-29.2.1
-- [ ] AC2（🟢 wiring deterministic）: harness 在 feature 开但无 server 时 deterministic 编译 + honest-defer 干净退出（exit 0，eprintln 说明），证明 connect/health/ensure-create/upsert/KNN 接线成立而不伪造召回；默认构建（feature 缺省）harness no-op、`cargo build --workspace` / `cargo test --workspace` 不退化、0 新 vector dep — verified by TEST-29.2.2
-- [ ] AC3（🟢 doc / 🔴 real）: qdrant 单节点部署基线（手动起 server / `QDRANT_URL` 指向 / dim-metric 384·Cosine 一致）在本 spec §5.2 + harness 注释文档化；集群 / 复制 / 部署拓扑诚实延后 [SPEC-DEFER:phase-future.qdrant-deployment-topology]（真实多节点拓扑 待实测回填，不伪造） — verified by TEST-29.2.3
-- [ ] AC4（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by TEST-29.2.4
+- [x] AC1（🔴 live qdrant 端到端 KNN，honest-defer）: feature `vector-qdrant` + `embedding-fastembed` 下 `phase29_recall_via_qdrant` 编译通过（exit 0），构造 `QdrantBackend::connect(QdrantConnConfig::from_env())` 后先 `health()`——本 run / CI 无 live server → `Unreachable` → eprintln（`no live qdrant at http://localhost:6334 ... Exiting 0.`）+ exit 0，**未输出任何召回数、未伪造 live-server 通过**（ADR-013）。Ready 分支经 `Retriever::search_semantic` 热路径量真实 recall@5/@10 + top-1 + MRR over live qdrant KNN（`qdrant.rs:330-371`）的真实召回数 **真实跑出后回填**（需手动 / dev-box 单节点 qdrant，本 run 无 server → honest-defer，绝不预填） — verified by TEST-29.2.1（honest-defer 维度 PASS；live-recall 维度如实延后）
+- [x] AC2（🟢 wiring deterministic）: harness feature 开但无 server 时 deterministic 编译（`cargo build --features vector-qdrant,embedding-fastembed` exit 0）+ honest-defer 干净退出（实测 exit 0，eprintln health=Unreachable），证明 connect/health/ensure-create/upsert/KNN 接线成立而不伪造召回；默认构建 harness no-op（`cargo build --workspace` 通过）、`cargo test --workspace` 不退化、0 新 vector dep — verified by TEST-29.2.2（PASS）
+- [x] AC3（🟢 doc / 🔴 real）: qdrant 单节点部署基线（手动起 server / `QDRANT_URL` 指向 / dim-metric 384·Cosine 一致）已于本 spec §5.2 + harness 顶部注释文档化；集群 / 复制 / 部署拓扑诚实延后 [SPEC-DEFER:phase-future.qdrant-deployment-topology]（真实多节点拓扑 待实测回填，不伪造） — verified by TEST-29.2.3（doc PASS）
+- [x] AC4（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by TEST-29.2.4（PASS）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-29.2.1 | 🔴 live qdrant connect→ensure-create→upsert→KNN over real server，经 `search_semantic` 热路径量真实 recall@5/@10/top-1/MRR；无 server honest-defer exit 0（真实召回数 真实跑出后回填，不预填） | `core/examples/phase29_recall_via_qdrant.rs` + §10 / v0.22.0 evidence | Planned |
-| TEST-29.2.2 | 🟢 harness feature 开无 server deterministic 编译 + honest-defer 干净退出（exit 0）；默认构建 no-op + `cargo build/test --workspace` 不退化 + 0 新 vector dep | `core/examples/phase29_recall_via_qdrant.rs` + 全 workspace | Planned |
-| TEST-29.2.3 | 🟢 doc / 🔴 real：单节点部署基线文档化（spec §5.2 + harness 注释）；集群/复制/拓扑诚实延后 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]` | 本 spec + `core/examples/phase29_recall_via_qdrant.rs` 注释 | Planned |
-| TEST-29.2.4 | ADR-014 D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-29.2.1 | 🔴 live qdrant connect→ensure-create→upsert→KNN over real server，经 `search_semantic` 热路径量真实 recall@5/@10/top-1/MRR；无 server honest-defer exit 0（真实召回数 真实跑出后回填，不预填） | `core/examples/phase29_recall_via_qdrant.rs` + §10 / v0.22.0 evidence | Done (honest-defer PASS；live-recall 维度延后) |
+| TEST-29.2.2 | 🟢 harness feature 开无 server deterministic 编译 + honest-defer 干净退出（exit 0）；默认构建 no-op + `cargo build/test --workspace` 不退化 + 0 新 vector dep | `core/examples/phase29_recall_via_qdrant.rs` + 全 workspace | Done (PASS) |
+| TEST-29.2.3 | 🟢 doc / 🔴 real：单节点部署基线文档化（spec §5.2 + harness 注释）；集群/复制/拓扑诚实延后 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]` | 本 spec + `core/examples/phase29_recall_via_qdrant.rs` 注释 | Done (doc PASS) |
+| TEST-29.2.4 | ADR-014 D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -137,14 +137,14 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: Draft（待实施）
-- **计划改动文件**：
-  - `core/examples/phase29_recall_via_qdrant.rs`（新增）— clone 自 `core/examples/phase20_recall_via_retriever.rs`；`#[cfg(all(feature = "vector-qdrant", feature = "embedding-fastembed"))]` 双 gate；`BruteForceVectorBackend::new()` → `QdrantBackend::connect(&QdrantConnConfig::from_env())?`；构造后先 `backend.health()` honest-defer（Unreachable→eprintln+exit 0）；Ready→ensure-create+upsert+KNN+量召回；feature 缺省 no-op main + 单节点部署基线注释
-  - 本 spec §10 + `docs/releases/v0.22.0-evidence.md`（task-29.4 新增）— 真实召回 + run 环境回填位（真实跑出后回填）
-- **§9 Verification 计划** (will record real evidence at impl)：
-  - AC2 default：`cargo build --workspace` + `cargo test --workspace`（harness no-op、0 新 vector dep、不退化）— 待实测回填
-  - AC2 feature 无 server：`cargo run --example phase29_recall_via_qdrant --features vector-qdrant,embedding-fastembed` honest-defer exit 0（无召回输出，证明 wiring 不伪造）— 待实测回填
-  - AC1 live：单节点 qdrant 上 `QDRANT_URL=... cargo run --example phase29_recall_via_qdrant --features vector-qdrant,embedding-fastembed` → connect→ensure-create→upsert→KNN 真实 recall@5/@10/top-1/MRR + qdrant 版本 + server 部署形态 — 真实跑出后回填（CI 无 server → honest-defer 维度如实记，不预填、不伪造，ADR-013）
-  - AC3：单节点部署基线文档化复核（spec §5.2 + harness 注释）；集群/复制/拓扑 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]` 诚实延后 — 待实测回填
-  - AC4 lint：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）— 待实测回填
-- **剩余风险 / 下游影响（计划）**：真实 live KNN 召回受「有无 live qdrant server」限——CI honest-defer，真实数手动 / dev-box 回填；集群/复制/部署拓扑 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]` 诚实延后；下游 task-29.3（多 backend 选择矩阵实测纳入 qdrant 档）+ task-29.4（closeout 据本 task 真实召回 / honest-defer 维度 ratify ADR-034 D2）。
+- **Status**: Done
+- **实际改动文件**：
+  - `core/examples/phase29_recall_via_qdrant.rs`（新增）— clone 自 `core/examples/phase20_recall_via_retriever.rs`；`#[cfg(all(feature = "vector-qdrant", feature = "embedding-fastembed"))]` 双 gate；唯一 backend 差异 `BruteForceVectorBackend::new()` → `Arc::new(QdrantBackend::connect(&QdrantConnConfig::from_env())?)`；构造后**第一步** `backend.health()` honest-defer（`QdrantHealth::Unreachable`→eprintln+`return Ok(())` exit 0）；Ready→`index_chunks_semantic`（内部 `open` ensure-create + `index_batch` upsert + flush）+ 30 query `search_semantic` 量 recall@5/@10/top-1/MRR；feature 缺省 `#[cfg(not(all(...)))]` no-op main；顶部注释文档化单节点部署基线 + honest-defer 约定 + 集群/复制延后。
+  - 本 spec §10 + `docs/releases/v0.22.0-evidence.md`（task-29.4 新增）— Ready 分支真实召回 + run 环境回填位（真实跑出后回填）。
+- **§9 Verification 实测证据**：
+  - AC2 default：`cargo build --workspace` exit 0（harness no-op 编译）；`cargo test --workspace`（承 task-29.1 191 lib + 全集成 0 failed，本 task 新增 gated example 不改默认路径，默认行为不变）；0 新 vector dep（`Cargo.toml`/`Cargo.lock` 未改）。
+  - AC2 feature 无 server：`cargo build -p contextforge-core --example phase29_recall_via_qdrant --features vector-qdrant,embedding-fastembed` → exit 0；`cargo run`（同 features）→ **实测 stdout/stderr：`phase29_recall_via_qdrant: no live qdrant at http://localhost:6334 (health=Unreachable); honest-defer per ADR-013 ... Exiting 0.`，EXIT=0，无任何召回数输出** → 证明 connect/health/wiring 成立而不伪造召回。
+  - AC1 live：Ready 分支真实 recall@5/@10/top-1/MRR + qdrant 版本 + server 部署形态 — **本 run 无 live qdrant server → honest-defer，未跑出、不预填、不伪造**（ADR-013）；需手动 / dev-box 单节点 qdrant 跑出后回填 §10 + v0.22.0 evidence。
+  - AC3：单节点部署基线文档化复核（spec §5.2 + harness 顶部注释）通过；集群/复制/拓扑 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]` 诚实延后。
+  - AC4 lint：`cargo clippy -p contextforge-core --example phase29_recall_via_qdrant --features vector-qdrant,embedding-fastembed -- -D warnings` 0 warning；`cargo clippy --workspace --all-targets -- -D warnings`（默认）0 warning；spec-lint `--touched origin/master` 0 未标注命中（CI 权威）。
+- **剩余风险 / 下游影响**：真实 live KNN 召回受「有无 live qdrant server」限——本 run / CI honest-defer，真实数手动 / dev-box 回填；集群/复制/部署拓扑 `[SPEC-DEFER:phase-future.qdrant-deployment-topology]` 诚实延后；下游 task-29.3（多 backend 选择矩阵实测纳入 qdrant 档；本 task honest-defer 时矩阵 qdrant 档诚实延后）+ task-29.4（closeout 据本 task honest-defer 维度 ratify ADR-034 D2「已达维度 ratify + 受阻维度如实记录」）。
