@@ -87,7 +87,7 @@ impl LanceIndexTuning {
                     ));
                 }
                 // PQ 子向量须整除 dim（每子向量等长切分）。
-                if dim % *num_sub_vectors != 0 {
+                if !dim.is_multiple_of(*num_sub_vectors) {
                     return Err(VectorError::Other(format!(
                         "lancedb IVF_PQ: num_sub_vectors ({num_sub_vectors}) must divide dim ({dim})"
                     )));
@@ -336,11 +336,100 @@ impl VectorSearcher for LanceDbBackend {
     }
 }
 
+// ---- task-29.3: REAL ANN index build on the `vector` column (redeems the parameter-contract layer
+// [SPEC-DEFER:phase-future.lancedb-index-tuning]). create_ann_index consumes a validated
+// LanceIndexTuning and calls Lance create_index, building a real IVF_PQ / IVF_HNSW_SQ index — distinct
+// from the default flat KNN `search` (`:270-332`). After an index exists, `nearest_to` queries use it. ----
+impl LanceDbBackend {
+    /// Build a real ANN index on the `vector` column from a validated `LanceIndexTuning`.
+    ///
+    /// - `IvfPq { num_partitions, num_sub_vectors }` → `Index::IvfPq` (product quantization).
+    /// - `Hnsw { m, ef_construction }` → `Index::IvfHnswSq` with a single IVF partition (effectively
+    ///   pure HNSW over scalar-quantized vectors; lancedb 0.30 exposes HNSW only as an IVF_HNSW_*
+    ///   variant).
+    ///
+    /// Requires an open table with rows (`index_batch` first). Errors surface as `VectorError`
+    /// (e.g. too few rows to train PQ on a tiny corpus) — never silently skipped (ADR-013).
+    pub fn create_ann_index(&self, tuning: &LanceIndexTuning) -> Result<(), VectorError> {
+        use lancedb::index::vector::{IvfHnswSqIndexBuilder, IvfPqIndexBuilder};
+        use lancedb::index::Index;
+
+        let dim = *self.dim.lock().unwrap();
+        tuning.validate(dim)?;
+        let table = self
+            .table
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or(VectorError::NotInitialized)?;
+        let dt = match tuning.metric {
+            VectorMetric::Cosine => DistanceType::Cosine,
+            VectorMetric::DotProduct => DistanceType::Dot,
+            VectorMetric::L2 => DistanceType::L2,
+        };
+        let index = match &tuning.index {
+            LanceAnnIndex::IvfPq {
+                num_partitions,
+                num_sub_vectors,
+            } => Index::IvfPq(
+                IvfPqIndexBuilder::default()
+                    .distance_type(dt)
+                    .num_partitions(*num_partitions as u32)
+                    .num_sub_vectors(*num_sub_vectors as u32),
+            ),
+            LanceAnnIndex::Hnsw { m, ef_construction } => Index::IvfHnswSq(
+                IvfHnswSqIndexBuilder::default()
+                    .distance_type(dt)
+                    .num_partitions(1)
+                    .num_edges(*m as u32)
+                    .ef_construction(*ef_construction as u32),
+            ),
+        };
+        self.rt.block_on(async {
+            table
+                .create_index(&["vector"], index)
+                .execute()
+                .await
+                .map_err(to_backend_err)
+        })?;
+        Ok(())
+    }
+
+    /// task-29.3 (AC3): real Lance dataset compaction via `optimize(OptimizeAction::All)` (compacts
+    /// data files + prunes old versions + optimizes indices). Intended to run after row count exceeds
+    /// `LanceIndexTuning::compaction_threshold_rows`. Returns the number of rows after compaction.
+    pub fn compact(&self) -> Result<usize, VectorError> {
+        let table = self
+            .table
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or(VectorError::NotInitialized)?;
+        self.rt.block_on(async {
+            table
+                .optimize(lancedb::table::OptimizeAction::All)
+                .await
+                .map_err(to_backend_err)?;
+            table.count_rows(None).await.map_err(to_backend_err)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::retriever::vector::traits::{VectorIndexer, VectorSearcher};
     use crate::retriever::vector::types::ChunkId;
+
+    // Tests that drive a real Lance dataset set the process-global `LANCEDB_DIR` env var before
+    // `LanceDbBackend::new()`; the default parallel test runner would race on it (one test's backend
+    // connecting to another's dir). Serialize them with this lock (poison-tolerant). Pure-function
+    // tests (validate) don't take it.
+    static LANCEDB_DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn dir_lock() -> std::sync::MutexGuard<'static, ()> {
+        LANCEDB_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     fn tuning_ivf(parts: usize, subs: usize) -> LanceIndexTuning {
         LanceIndexTuning {
@@ -389,6 +478,7 @@ mod tests {
     // ---- TEST-25.2.4 (AC4) — 既有 lancedb backend 契约不退化（open→index→search KNN + dim mismatch）----
     #[test]
     fn test_25_2_4_backend_contract_roundtrip() {
+        let _g = dir_lock();
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let dir = std::env::temp_dir().join(format!("cf-lancedb-test-{}-{nanos}", std::process::id()));
@@ -420,6 +510,204 @@ mod tests {
             matches!(be.index_batch(&bad), Err(VectorError::DimMismatch { .. })),
             "dim mismatch 应返 DimMismatch"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- TEST-29.3.1 (AC1) — REAL IVF_PQ / IVF_HNSW_SQ index build + recall-vs-flat measurement ----
+    // Deterministic clustered vectors (dim 384, no fastembed): flat (no index) = exact ground truth;
+    // IVF_PQ / HNSW are lossy ANN, so recall@k < 1.0 is the discriminating signal. Measures real build
+    // time + query latency. CI does NOT build the vector-lancedb feature; run via:
+    //   cargo test -p contextforge-core --features vector-lancedb --lib retriever::vector::lance_db -- --nocapture
+    const DIM: usize = 384;
+
+    fn lcg_next(state: &mut u64) -> f32 {
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((*state >> 33) as f32 / (1u64 << 31) as f32) - 1.0 // ~[-1, 1)
+    }
+
+    fn make_corpus() -> (Vec<VectorChunk>, Vec<(Vec<f32>, usize)>) {
+        // 16 clusters × 64 members = 1024 vectors; 32 queries (2 per cluster) perturbed off centers.
+        const CLUSTERS: usize = 16;
+        const PER_CLUSTER: usize = 64;
+        let mut st: u64 = 0x9E3779B97F4A7C15;
+        let centers: Vec<Vec<f32>> = (0..CLUSTERS)
+            .map(|_| (0..DIM).map(|_| lcg_next(&mut st)).collect())
+            .collect();
+        let mut chunks = Vec::with_capacity(CLUSTERS * PER_CLUSTER);
+        for (c, center) in centers.iter().enumerate() {
+            for m in 0..PER_CLUSTER {
+                let emb: Vec<f32> = center
+                    .iter()
+                    .map(|&x| x + 0.10 * lcg_next(&mut st))
+                    .collect();
+                chunks.push(VectorChunk {
+                    chunk_id: ChunkId(format!("c{c}-m{m}")),
+                    embedding: emb,
+                    metadata: None,
+                });
+            }
+        }
+        let mut queries = Vec::new();
+        for (c, center) in centers.iter().enumerate() {
+            for _ in 0..2 {
+                let q: Vec<f32> = center
+                    .iter()
+                    .map(|&x| x + 0.05 * lcg_next(&mut st))
+                    .collect();
+                queries.push((q, c));
+            }
+        }
+        (chunks, queries)
+    }
+
+    fn fresh_backend(tag: &str) -> (LanceDbBackend, std::path::PathBuf) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("cf-lancedb-{tag}-{}-{nanos}", std::process::id()));
+        std::env::set_var("LANCEDB_DIR", &dir);
+        let be = LanceDbBackend::new().expect("lancedb connect");
+        be.open(VectorIndexConfig {
+            dim: DIM,
+            metric: VectorMetric::Cosine,
+            persistence_path: None,
+            collection_id: "ann".to_string(),
+        })
+        .expect("open");
+        (be, dir)
+    }
+
+    fn recall_at(ann: &[VectorHit], gt: &[VectorHit], k: usize) -> f64 {
+        let gt_ids: std::collections::HashSet<&str> =
+            gt.iter().take(k).map(|h| h.chunk_id.0.as_str()).collect();
+        let hit = ann
+            .iter()
+            .take(k)
+            .filter(|h| gt_ids.contains(h.chunk_id.0.as_str()))
+            .count();
+        hit as f64 / k.min(gt.len()).max(1) as f64
+    }
+
+    #[test]
+    fn test_29_3_1_real_ann_index_recall_vs_flat() {
+        let _g = dir_lock();
+        use std::time::Instant;
+        let (chunks, queries) = make_corpus();
+        let k = 10usize;
+
+        // 1) Flat (no index) = exact ground truth + flat query latency.
+        let (flat, dir_flat) = fresh_backend("flat");
+        flat.index_batch(&chunks).expect("index flat");
+        let mut gts: Vec<Vec<VectorHit>> = Vec::with_capacity(queries.len());
+        let t0 = Instant::now();
+        for (q, _) in &queries {
+            gts.push(flat.search(q, k, None).expect("flat search"));
+        }
+        let flat_us = t0.elapsed().as_micros() as f64 / queries.len() as f64;
+
+        // 1b) BruteForceVectorBackend (0-dep default) baseline — exact cosine, so recall vs lancedb-flat
+        // ground truth is ~1.0; measured for the multi-backend matrix latency comparison (AC2).
+        use crate::retriever::vector::BruteForceVectorBackend;
+        let brute = BruteForceVectorBackend::new();
+        brute
+            .open(VectorIndexConfig {
+                dim: DIM,
+                metric: VectorMetric::Cosine,
+                persistence_path: None,
+                collection_id: "brute".to_string(),
+            })
+            .expect("brute open");
+        brute.index_batch(&chunks).expect("index brute");
+        let (mut b5, mut b10, mut brute_us) = (0.0f64, 0.0f64, 0.0f64);
+        for (i, (q, _)) in queries.iter().enumerate() {
+            let tq = Instant::now();
+            let hits = brute.search(q, k, None).expect("brute search");
+            brute_us += tq.elapsed().as_micros() as f64;
+            b5 += recall_at(&hits, &gts[i], 5);
+            b10 += recall_at(&hits, &gts[i], 10);
+        }
+        let nq0 = queries.len() as f64;
+        let (brute_r5, brute_r10, brute_us) = (b5 / nq0, b10 / nq0, brute_us / nq0);
+
+        // 2) IVF_PQ real index build (num_sub_vectors=16 divides dim 384) → recall vs flat.
+        let (ivf, dir_ivf) = fresh_backend("ivfpq");
+        ivf.index_batch(&chunks).expect("index ivf");
+        let tb = Instant::now();
+        ivf.create_ann_index(&tuning_ivf(16, 16)).expect("build IVF_PQ index");
+        let ivf_build_ms = tb.elapsed().as_millis();
+        let (mut r5, mut r10, mut ivf_us) = (0.0f64, 0.0f64, 0.0f64);
+        for (i, (q, _)) in queries.iter().enumerate() {
+            let tq = Instant::now();
+            let hits = ivf.search(q, k, None).expect("ivf search");
+            ivf_us += tq.elapsed().as_micros() as f64;
+            r5 += recall_at(&hits, &gts[i], 5);
+            r10 += recall_at(&hits, &gts[i], 10);
+        }
+        let n = queries.len() as f64;
+        let (ivf_r5, ivf_r10, ivf_us) = (r5 / n, r10 / n, ivf_us / n);
+
+        // 3) IVF_HNSW_SQ real index build → recall vs flat.
+        let hnsw_tuning = LanceIndexTuning {
+            index: LanceAnnIndex::Hnsw { m: 16, ef_construction: 100 },
+            metric: VectorMetric::Cosine,
+            compaction_threshold_rows: 1000,
+        };
+        let (hn, dir_hn) = fresh_backend("hnsw");
+        hn.index_batch(&chunks).expect("index hnsw");
+        let tb = Instant::now();
+        hn.create_ann_index(&hnsw_tuning).expect("build HNSW index");
+        let hnsw_build_ms = tb.elapsed().as_millis();
+        let (mut h5, mut h10, mut hn_us) = (0.0f64, 0.0f64, 0.0f64);
+        for (i, (q, _)) in queries.iter().enumerate() {
+            let tq = Instant::now();
+            let hits = hn.search(q, k, None).expect("hnsw search");
+            hn_us += tq.elapsed().as_micros() as f64;
+            h5 += recall_at(&hits, &gts[i], 5);
+            h10 += recall_at(&hits, &gts[i], 10);
+        }
+        let (hn_r5, hn_r10, hn_us) = (h5 / n, h10 / n, hn_us / n);
+
+        println!("=== TEST-29.3.1 REAL multi-backend matrix: lancedb ANN recall-vs-flat (n={} queries={} dim={DIM}) ===", chunks.len(), queries.len());
+        println!("brute-force(0-dep,exact)    recall@5={brute_r5:.4} recall@10={brute_r10:.4} build_ms=0 query_us={brute_us:.1}");
+        println!("lancedb flat(ground-truth)  recall@5=1.0000 recall@10=1.0000 query_latency_us={flat_us:.1}");
+        println!("lancedb IVF_PQ(p16,s16)     recall@5={ivf_r5:.4} recall@10={ivf_r10:.4} build_ms={ivf_build_ms} query_us={ivf_us:.1}");
+        println!("lancedb IVF_HNSW_SQ(m16,ef100) recall@5={hn_r5:.4} recall@10={hn_r10:.4} build_ms={hnsw_build_ms} query_us={hn_us:.1}");
+
+        // Assertions: real index build succeeded + returns k hits + recall is a measured [0,1] value.
+        // ANN recall vs exact flat is the discriminating signal (lossy quantization); we assert the
+        // indexes build and search returns results, and record the measured recall above (ADR-013:
+        // numbers are real, not asserted to a fabricated threshold).
+        assert!((0.0..=1.0).contains(&ivf_r10), "IVF_PQ recall@10 measured in [0,1]");
+        assert!((0.0..=1.0).contains(&hn_r10), "HNSW recall@10 measured in [0,1]");
+        assert!(ivf_r10 > 0.0, "IVF_PQ should recover at least some flat neighbors");
+        assert!(hn_r10 > 0.0, "HNSW should recover at least some flat neighbors");
+        for d in [dir_flat, dir_ivf, dir_hn] {
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    // ---- TEST-29.3.3 (AC3) — REAL Lance dataset compaction over compaction_threshold_rows ----
+    #[test]
+    fn test_29_3_3_real_compaction() {
+        let _g = dir_lock();
+        let (be, dir) = fresh_backend("compact");
+        // 6 batches × 256 rows = 1536 rows (> compaction_threshold_rows 1000), each batch a fragment.
+        let total = 6 * 256;
+        let mut st: u64 = 0xC0FFEE;
+        for batch in 0..6 {
+            let chunks: Vec<VectorChunk> = (0..256)
+                .map(|i| VectorChunk {
+                    chunk_id: ChunkId(format!("b{batch}-{i}")),
+                    embedding: (0..DIM).map(|_| lcg_next(&mut st)).collect(),
+                    metadata: None,
+                })
+                .collect();
+            be.index_batch(&chunks).expect("index batch");
+        }
+        let rows_after = be.compact().expect("real Lance compaction (OptimizeAction::All)");
+        println!("TEST-29.3.3 real compaction: {total} rows over 6 fragments → compacted, count_rows={rows_after}");
+        assert_eq!(rows_after, total, "compaction must preserve all rows");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
