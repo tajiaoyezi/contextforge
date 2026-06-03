@@ -1,6 +1,6 @@
 # ADR `039`: `vector-config-completeness`
 
-**Status**: Proposed（v0.27.0 / task-34.3 closeout 据真实 CI 逐 D ratify Proposed→Accepted；D1/D2 code-local 🟢，D3 get_source_chunk 隔离 already-present verify-only 🟢 grounding-correction，D4 默认 / 0-dep / 0-network / 既有契约不变 🟢；dim-declaring feature backend 的 live dim-enforce 🟡 honest-defer——见 §Ratification）
+**Status**: Accepted（v0.27.0 / task-34.3 closeout 据真实 CI 逐 D ratify；D1/D2 code-local 🟢，D3 get_source_chunk 隔离 already-present verify-only 🟢 grounding-correction，D4 默认 / 0-dep / 0-network / 既有契约不变 🟢；dim-declaring feature backend 的 live dim-enforce 🟡 honest-defer——见 §Ratification）
 
 **Category**: 向量后端配置补全（dim 协商 + config-file 桥接）/ 跨进程 env 接线 / 契约诚实化（grounding-correction）
 **Date**: 2026-06-03
@@ -80,12 +80,12 @@ honest-defer 边界（据 ADR-013 如实记录，不伪造、不夸大）：
 
 本 ADR 于 v0.27.0 closeout（task-34.3）据 task-34.1 / 34.2 / 34.3 真实 CI（四门绿：cargo-test / go-test / lint / spec-lint）逐 D ratify Proposed→Accepted。各 D 真实依据于 closeout 据真实产物回填（ADR-013 不预填、不据合成 ratify）：
 
-- **D1（vector-dim-auto-negotiation）→ Accepted 🟢（待 closeout 回填真实 PR/SHA）**：task-34.1 落 `VectorBackend::expected_dim` default-impl-None + `negotiate_vector_dim` 纯函数 + `factory.rs` 以 `negotiate_vector_dim(dim, backend.expected_dim())?` 替换 `let _ = dim;`，0 新 dep。TEST-34.1.1（纯函数 4 路径）+ TEST-34.1.2（BruteForce default path 任意 dim byte-equiv）绿。**honest-caveat 据实**：默认 BruteForce dim-agnostic（`expected_dim()=None`）→ 默认 build 无 dim 强制；feature-enforce live honest-defer `[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`。
-- **D2（vector-backend-config-file）→ Accepted 🟢（待 closeout 回填真实 PR/SHA）**：task-34.2 Go `config.Config` 加 `[vector]`（Backend / Dim）+ `setVectorEnv` 镜像 `setDataDirEnv`（present 且 env 未设 → 导出 / env 已设 → 不覆盖 env-wins / 无 section → 不导出），Rust core 0-dep 保持。TEST-34.2.1（TOML round-trip，既有 sections 不受影响）+ TEST-34.2.2（setVectorEnv 三路径）绿。daemon.Options.DataDir 重构 honest-defer `[SPEC-DEFER:phase-future.daemon-options-datadir]`。
-- **D3（get_source_chunk workspace 隔离 already-present verify-only）→ Accepted 🟢（grounding 校正，非实现）**：task-34.3 据 grounding 复核确认 search.rs:421-423 自 task-12.2 已落隔离，交付 verify-only 守护测试（workspace_id set → 仅该 workspace / 跨 workspace chunk_id → not_found / empty → aggregate）绿，无新代码。survey 高估据实校正为 already-present。
-- **D4（默认行为 + 0-dep + 0-network + 既有契约不变）→ Accepted 🟢（待 closeout 回填）**：全 phase 0 新 dep（Rust core 不引 toml）；0 proto / 0 migration；`expected_dim` default-impl-None add-only / `[vector]` add-only section 无 section byte-equiv / BruteForce dim-agnostic 任意 dim byte-equiv；既有 `cargo test --workspace` + `go test ./...` + lint + spec-lint 四门不退化。
+- **D1（vector-dim-auto-negotiation）→ Accepted 🟢**：task-34.1（PR #224，squash `fed7a90`） 落 `VectorBackend::expected_dim` default-impl-None + `negotiate_vector_dim` 纯函数 + `factory.rs` 以 `negotiate_vector_dim(dim, backend.expected_dim())?` 替换 `let _ = dim;`，0 新 dep。TEST-34.1.1（纯函数 4 路径）+ TEST-34.1.2（BruteForce default path 任意 dim byte-equiv）绿（`cargo test -p contextforge-core --lib` 207→209）。**honest-caveat 据实**：默认 BruteForce dim-agnostic（`expected_dim()=None`）→ 默认 build 无 dim 强制；feature-enforce live honest-defer `[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`。
+- **D2（vector-backend-config-file）→ Accepted 🟢**：task-34.2（PR #225，squash `a4ae446`） Go `config.Config` 加 `[vector]`（Backend / Dim）+ `setVectorEnv` 镜像 `setDataDirEnv`（present 且 env 未设 → 导出 / env 已设 → 不覆盖 env-wins / 无 section → 不导出），Rust core 0-dep 保持。TEST-34.2.1（TOML round-trip，既有 sections 不受影响）+ TEST-34.2.2（setVectorEnv 三路径）绿（`go test ./...` 全过 + `grep -c '^toml ' core/Cargo.toml`=0）。daemon.Options.DataDir 重构 honest-defer `[SPEC-DEFER:phase-future.daemon-options-datadir]`。
+- **D3（get_source_chunk workspace 隔离 already-present verify-only）→ Accepted 🟢（grounding 校正，非实现）**：task-34.3（本 closeout PR） 据 grounding 复核确认 search.rs:421-423 自 task-12.2 已落隔离，交付 verify-only 守护测试（workspace_id set → 仅该 workspace / 跨 workspace chunk_id → not_found / empty → aggregate）绿（`test_34_3_1_get_source_chunk_workspace_isolation_guard`，构建真实 2-state 索引），无新代码。survey 高估据实校正为 already-present。
+- **D4（默认行为 + 0-dep + 0-network + 既有契约不变）→ Accepted 🟢**：全 phase 0 新 dep（Rust core 不引 toml）；0 proto / 0 migration；`expected_dim` default-impl-None add-only / `[vector]` add-only section 无 section byte-equiv / BruteForce dim-agnostic 任意 dim byte-equiv；既有 `cargo test --workspace` + `go test ./...` + lint + spec-lint 四门不退化。
 
-真实 v0.27.0 tag/run/digest 经用户授权后由 post-tag-push backfill 填实（release docs `<backfill>`，ADR-013 不预填）。
+真实 v0.27.0 tag/run/digest 经用户授权后由 post-tag-push backfill 填实（release docs `<backfill>`，ADR-013 不预填）。本 closeout 本地四门绿：`cargo test -p contextforge-core --lib` 209 + `go test ./...` 全过 + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning + `bash -n scripts/console_smoke.sh` exit 0。
 
 ## Alternatives
 

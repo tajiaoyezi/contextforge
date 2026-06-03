@@ -338,6 +338,43 @@ func TestTask294_SmokeV19LiveVectorRecallStep(t *testing.T) {
 	}
 }
 
+// TEST-34.3.2 / AC2: smoke v24 adds step 43 — task-34.3 closeout (vector-config-completeness). The
+// dim-negotiation / config.toml [vector]→env bridge / get_source_chunk isolation guard all preserve
+// default behavior, so step 43 is a documentation/status step verifying the default build still
+// scaffolds. Asserts the new [43/43] marker + Phase 34 status, and no regression of the prior
+// denominators (ADR-014 D5).
+func TestTask343_SmokeV24VectorConfigCompletenessStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v24 (task-34.3)") {
+		t.Fatalf("console_smoke.sh missing v24 (task-34.3) header block")
+	}
+	for _, marker := range []string{"[43/43]", "vector-config-completeness", "TEST-34.1.", "TEST-34.2.", "TEST-34.3.", "negotiate_vector_dim", "[vector]", "get_source_chunk"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v24 step 43 must document vector-config-completeness status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v23 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "governance-debt-cleanup-2"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v24 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-33.4.2 / AC2: smoke v23 adds step 42 — task-33.4 closeout (governance-debt-cleanup-2). The L2
 // cache bound / memstore LRU / indexing replay+trace isolation (add-only proto+migration) / export
 // --timeout (add-only flag) all preserve default behavior, so step 42 is a documentation/status step
