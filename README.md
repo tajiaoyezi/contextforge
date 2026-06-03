@@ -7,6 +7,25 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.24.0
+
+📌 **v0.24.0 governance-debt-cleanup** — clears cross-phase debt across observability, caching, deployment, eval, and export. The **default build stays 0-new-dependency, 0-network**; every change is add-only / default-preserving / opt-in, so existing v0.6–v0.23 clients + data are unaffected (ADR-004). Honest scope: real TLS cert issuance needs a domain (`docker compose config` parse verified; cert deferred), and multi-arch arm64 / GitHub-native attestation / a Rust-native eval runner stay honestly deferred (ADR-013).
+
+- **observability + memstore parity** (task-31.1, #206): the Go fallback `MemMemoryStore` now emits `memory.*` events into the observability ring (parity with the workspace/job fallback + the Rust data plane). event-bus partition/capacity was already delivered in Phase 26 → verify-only + a roadmap correction (not re-implemented).
+- **cache + deploy hardening** (task-31.2, #207): the embedding L1 cache is now LRU/cap-bounded (`BoundedCache`, 0 new dep) and the Go memstore cache cap is env-configurable (`CONTEXTFORGE_CONSOLEAPI_CACHE_CAP`); the production compose gains `mem_limit`/`cpus` + an optional `tls` profile (Caddy reverse proxy). `docker compose config` + `--profile tls config` parse verified.
+- **eval subtable + exporter full-content + MCP nits** (task-31.3, #208): per-case eval results become a queryable subtable (`eval_case_results`, migration 0018); the exporter fills real content + a real `ContentHash` via the new add-only `ListAllChunks` RPC (was content=""); 3 MCP nits fixed (protocol-version date parsing, audit-write error surfacing, allowlist file-mode warning). **ADR-036 → Accepted** (per-D). **ADR-021/027/029/033** add-only Phase-31 Amendments. **ADR-014 cross-validation gate — 22nd activation**.
+
+```bash
+# memstore event parity + event-bus verify-only
+go test ./internal/consoleapi/ -run TestMemMemoryStore_EventParity
+cargo test -p contextforge-core data_plane::events   # 6 passed (verify-only, Phase 26)
+# eval per-case subtable + exporter full-content RPC
+cargo test -p contextforge-core eval::store          # 12 passed
+go test ./internal/exporter/ ./internal/mcpadapter/
+```
+
+详 `RELEASE_NOTES.md` v0.24.0 段 + [Phase 31 spec](docs/specs/phases/phase-31-governance-debt-cleanup.md) + [ADR-036](docs/decisions/adr-036-governance-debt-cleanup.md)。
+
 ## What's new in v0.23.0
 
 📌 **v0.23.0 cjk-true-segmenter** — upgrades the 0-dep overlapping-bigram CJK analyzer (`配置加载`→`配置`/`置加`/`加载`) to a **feature-gated true-word segmenter** (`cjk-segmenter`, jieba-rs: `配置加载`→`配置`/`加载`), keeping bigram as the 0-dep fallback. The **default build stays 0-new-dependency** — jieba is not compiled at default features (ADR-004); default `content` tokenization + 6-field schema are unchanged. Honest scope: on this small golden corpus the true segmenter shows **no file-level recall gain over bigram** (+0.0000), recorded truthfully (ADR-013); the value is cleaner tokens, not measurable recall at this scale.

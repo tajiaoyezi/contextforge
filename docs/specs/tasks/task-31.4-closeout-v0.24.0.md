@@ -1,6 +1,6 @@
 # Task `31.4`: `closeout-v0.24.0 — smoke v21 step [40/40] + v0.24.0 release docs + ADR-036 据 D1-D5 真实 ratify（D2 compose TLS 真实 cert / D4 native-runner / attestation 受阻维度如实）+ add-only Amendments（ADR-021/027/029/033）+ roadmap §4 event-bus 更正 + phase-31 §6 闭合`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -66,17 +66,17 @@ Phase 31 三个实现 task 全 Done：31.1（Go fallback memstore 内存操作 e
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1（smoke v21 step）: smoke v21 step `[40/40]`（治理债清理状态 + default build baseline intact）+ `TestTask314` 断言（含无回归既有 `[33/33]`..`[39/39]`，denominator 不溯改）— verified by TEST-31.4.1
-- [ ] AC2（closeout 文档闭合）: v0.24.0 release docs（evidence/artifacts `<backfill>` 待回填 + README + RELEASE_NOTES）+ ADR-036 据 D1-D5 真实 ratify Accepted（逐维如实，TLS 真实 cert / native runner / attestation 受阻维度据已达维度 ratify + 如实记录）+ add-only Amendments（ADR-021/027/029/033）+ roadmap §4 event-bus add-only 更正 + phase-31 §6 AC `[x]` + Status Done + adapter 闭合 + feature — verified by TEST-31.4.2
-- [ ] AC3（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by TEST-31.4.3
+- [x] AC1（smoke v21 step）: smoke banner v20→v21 + step `[40/40]`（治理债清理状态 + default build baseline intact）+ `TestTask314_SmokeV21GovernanceDebtCleanupStep`（含无回归既有 `[36/36]`..`[39/39]`，denominator 不溯改）— verified by TEST-31.4.1（`bash -n` exit 0 + `go test -run TestTask314` PASS）
+- [x] AC2（closeout 文档闭合）: v0.24.0 release docs（`v0.24.0-{evidence,artifacts}.md` `<backfill>` 待回填 + README v0.24 段 + RELEASE_NOTES v0.24.0 段）+ ADR-036 per-D ratify `Proposed→Accepted`（D1/D3/D5 Accepted；D2 真实 cert + D4 native-runner/attestation honest-defer PARTIAL）+ add-only Amendments（ADR-021/027/029/033）+ roadmap §4 event-bus add-only 更正（规划 PR #196 已落地）+ phase-31 §6 AC1-5 `[x]` + Status Done + adapter 闭合（Phase 31 Done/Tasks 4/ADR-036 Accepted）+ feature — verified by TEST-31.4.2
+- [x] AC3（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by TEST-31.4.3
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-31.4.1 | smoke v21 step `[40/40]`（治理债清理标记 + 无回归既有 denominator）+ `bash -n` 过 + go test TestTask314 过 | `scripts/console_smoke.sh` + `internal/cli/smoke_syntax_test.go` | Planned |
-| TEST-31.4.2 | release docs + ADR-036 ratify Accepted（per-D 如实）+ add-only Amendments（ADR-021/027/029/033）+ roadmap §4 event-bus 更正 + phase-31 §6 闭合 + adapter + feature | release/ADR/roadmap/phase/adapter/feature | Planned |
-| TEST-31.4.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-31.4.1 | smoke v21 step `[40/40]`（治理债清理标记 + 无回归既有 denominator）+ `bash -n` 过 + `go test -run TestTask314` 过 | `scripts/console_smoke.sh` + `internal/cli/smoke_syntax_test.go` | Done (PASS) |
+| TEST-31.4.2 | release docs + ADR-036 per-D ratify Accepted（D2/D4 honest-defer 如实）+ add-only Amendments（ADR-021/027/029/033）+ roadmap §4 event-bus 更正 + phase-31 §6 闭合 + adapter + feature | release/ADR/roadmap/phase/adapter/feature | Done |
+| TEST-31.4.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -107,7 +107,9 @@ cargo test --workspace && go test ./...
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（待实施）
+**Status**: Done
+
+**§9 Verification 实测证据**：`bash -n scripts/console_smoke.sh` exit 0；`go test ./internal/cli/ -run TestTask314` PASS（`[40/40]` + governance-debt-cleanup + TEST-31.1/31.2/31.3 + memstore-event + ListAllChunks 标记 + 无回归 `[36/36]`..`[39/39]`）；`cargo test --workspace` 0 failed + `go test ./...` 不退化；spec-lint `--touched origin/master` 0 未标注命中。ADR-036 据 31.1/31.2/31.3 真实产物 per-D ratify Accepted（D2 真实 TLS cert + D4 native-runner/attestation honest-defer PARTIAL，不伪造 ADR-013）；ADR-021/027/029/033 add-only Phase 31 Amendment 落地；roadmap §4 event-bus 更正规划 PR #196 已落地（本 task 不重复）；release docs tag/run/digest 待用户授权 tag 后 post-tag-push backfill 填实。
 
 **计划改动文件**：
 - `scripts/console_smoke.sh`——banner v20→v21 + v21 changelog 块 + step `[40/40]`（治理债清理状态 + default build init baseline 不变）。

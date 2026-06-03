@@ -338,6 +338,41 @@ func TestTask294_SmokeV19LiveVectorRecallStep(t *testing.T) {
 	}
 }
 
+// TEST-31.4.1 / AC1: smoke v21 adds step 40 — task-31.4 closeout (governance-debt-cleanup). A
+// documentation/status step verifying the default build still scaffolds. Asserts the new [40/40]
+// marker + Phase 31 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask314_SmokeV21GovernanceDebtCleanupStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v21") {
+		t.Fatalf("console_smoke.sh missing v21 header (task-31.4 closeout)")
+	}
+	for _, marker := range []string{"[40/40]", "governance-debt-cleanup", "TEST-31.1.", "TEST-31.2.", "TEST-31.3.", "memstore-event", "ListAllChunks"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v21 step 40 must document governance-debt-cleanup status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v20 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[36/36]", "[37/37]", "[38/38]", "[39/39]", "cjk-true-segmenter"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v21 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-30.3.1 / AC1: smoke v20 adds step 39 — task-30.3 closeout (cjk-true-segmenter). The segmenter
 // is feature-gated (no console-api runtime surface), so step 39 is a documentation/status step verifying
 // the default build still scaffolds with the 0-dep bigram fallback (ADR-004). Asserts the new [39/39]
