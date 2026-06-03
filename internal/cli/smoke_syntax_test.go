@@ -338,6 +338,42 @@ func TestTask294_SmokeV19LiveVectorRecallStep(t *testing.T) {
 	}
 }
 
+// TEST-30.3.1 / AC1: smoke v20 adds step 39 — task-30.3 closeout (cjk-true-segmenter). The segmenter
+// is feature-gated (no console-api runtime surface), so step 39 is a documentation/status step verifying
+// the default build still scaffolds with the 0-dep bigram fallback (ADR-004). Asserts the new [39/39]
+// marker + Phase 30 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask303_SmokeV20CjkTrueSegmenterStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v20") {
+		t.Fatalf("console_smoke.sh missing v20 header (task-30.3 closeout)")
+	}
+	for _, marker := range []string{"[39/39]", "cjk-true-segmenter", "TEST-30.1.", "TEST-30.2.", "reindex", "jieba"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v20 step 39 must document cjk-true-segmenter status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v19 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[35/35]", "[36/36]", "[37/37]", "[38/38]", "live-vector-recall"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v20 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
 // real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
 // step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),

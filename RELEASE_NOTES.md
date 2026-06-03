@@ -1,5 +1,19 @@
 # ContextForge Release Notes
 
+## v0.23.0 (2026-06-03) — cjk-true-segmenter (jieba 真分词 analyzer feature-gated + 双站点注册 + reindex 迁移工具 + 真实 CJK recall delta + ADR-035 ratified)
+
+Phase 30 把 Phase 24 的 0-dep 重叠 bigram CJK analyzer 升级为 **feature-gated 真分词器**（`cjk-segmenter`，jieba-rs，`配置加载`→`配置`/`加载`），bigram 保留作 0-dep fallback。真分词 analyzer 索引/查询**双站点对称注册**；新增 `IndexSession::reindex_with_tokenizer` 既有索引迁移工具。**默认构建 0 新 dep + 默认 tokenization 不变**（ADR-004 / ADR-035 D5），三门 + lint 不退化。诚实口径：**真分词相对 bigram file-level 召回 delta=+0.0000**（小语料持平，两者均完整召回 CJK case；真分词价值在 token 洁净非此规模召回，ADR-013 不伪造提升）。
+
+| task | 交付 |
+|---|---|
+| 30.1 (#202) | `cjk-segmenter` feature（jieba-rs 0.7.4 optional，主 agent R7 chore + ADR-008 add-only，默认 off → 0 新 dep）+ `cjk_segmenter` analyzer（jieba.cut 真分词，`配置加载→配置/加载` 区别 bigram `配置/置加/加载`）+ index/query 双站点对称注册（漏注册→召回静默退化 task-24.1 R4）+ bigram `code_cjk` 0-dep fallback 保留；TEST-30.1.* |
+| 30.2 (#203) | `IndexSession::reindex_with_tokenizer`（读 SQLite chunk + drop/重建 Tantivy 绑定 new analyzer + 重加，向后兼容）+ `RetrieverConfig.tokenizer` schema-driven 对称文档化（方案 B vestigial）+ phase24-harness 真分词 path + golden +5 CJK case（11→16，Go validator）；**实测 default 0.875 → bigram 1.0 → segmenter 1.0，delta(seg−bigram)=+0.0000 诚实零**；TEST-30.2.* |
+| 30.3 (this) | v0.23.0 release docs + smoke v20 step 39 + ADR-035 据 D1-D5 per-D ratify（D3 default flip honest-defer，逐维如实）+ ADR-029 add-only Amendment + phase-30 §6 闭合；TEST-30.3 |
+
+**ADR**：ADR-035 (cjk-true-segmenter-and-tokenizer-default) 据 D1-D5 真实非合成验证 `Proposed → Accepted`（D1 真分词 feature / D2 双站点对称 / D3 reindex 工具达成·default flip honest-defer / D4 真实 recall delta 含诚实零 / D5 baseline 不变，ADR-013 不伪造）；ADR-029 add-only Phase 30 Amendment（兑现 cjk-true-segmenter + tokenizer-default-on 部分，不溯改正文 ADR-014 D5）；ADR-008 jieba-rs add-only（optional，默认不编译）；ADR-004 守线。**ADR-014 cross-validation gate — 第二十一次激活**。
+
+**Upgrade / Rollback**：默认运行时行为不变（默认 tokenization + 6-field schema 不变，既有 v0.6–v0.22 client + 既有默认索引无需改动），0 新代码依赖；新增 cjk-segmenter feature + jieba（optional）+ reindex 工具均 feature-gated/inward。Rollback：`git tag -d v0.23.0` + 删 Release / ghcr tag；与 v0.22.0 行为兼容。
+
 ## v0.22.0 (2026-06-03) — live-vector-recall (vector backend 工厂 + server.rs 热路径注入 + qdrant live KNN honest-defer + lancedb 真实 IVF_PQ/IVF_HNSW_SQ 索引 + compaction + 多 backend 选择矩阵 + ADR-034 ratified)
 
 Phase 29 把 Phase 25 的 qdrant/lancedb 契约层 / 参数层兑现为**真实 live 向量召回**，并把真实 backend 工厂化注入生产热路径（`server.rs:302` hybrid / `:341` semantic 此前硬编码 `BruteForceVectorBackend`）。**默认构建 0-network / 0 新依赖 baseline 不变**（ADR-004 / ADR-023 D5），默认 semantic+hybrid 仍走 0-dep BruteForce，三门 + lint 不退化。诚实口径：**qdrant live KNN 无 server 时 honest-defer**（`health()==Unreachable` → exit 0，零伪造召回，ADR-013）；lancedb 真实 ANN 索引 feature-gated `--lib` scoped 实测。

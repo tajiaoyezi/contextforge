@@ -64,3 +64,13 @@ tokenizer opt-in（D1）/ 校验器（D2）/ 数据集扩充（D3）/ runner 评
 - **D5（默认构建不变）— ✅ 已达**：`cargo test --workspace` + `go test ./...` 0 failed；0 新 dep（`core/Cargo.toml` 未改，纯 std tokenizer）；默认 tokenization 不变（既有索引不失效）；eval gate 阈值（`GateTop5StrongMin=0.75` / `GateTop10StrongMin=0.85` / `GateSemanticRecall10Min=0.70`）不变（TEST-24.2.4 守护）。
 
 ratify 范围 = code/CJK tokenizer + eval 加固**策略**（D1-D3/D5 经真实 cargo/go test + recall 度量验证；D4 经真实评估诚实延后）。tokenizer 默认开启 + 索引迁移 [SPEC-DEFER:phase-future.tokenizer-default-on] + CJK 真正分词器 [SPEC-DEFER:phase-future.cjk-true-segmenter] + rust-native-eval-runner [SPEC-DEFER:phase-future.rust-native-eval-runner] 属后续。ADR-006（gate 阈值不变）/ ADR-008（tokenizer std-only，无依赖变更）无需 amendment。证据见 `docs/releases/v0.17.0-evidence.md` + `docs/spikes/phase-24-tokenizer-recall.md`。
+
+## Amendment (Phase 30 / v0.23.0, 2026-06-03 — add-only, D1–D5 正文不溯改)
+
+Phase 30（ADR-035 cjk-true-segmenter-and-tokenizer-default）以 add-only 方式兑现本 ADR `[SPEC-DEFER]` 所留的两个 follow-up marker，**不溯改 D1–D5 / Consequences / Ratification 正文**（ADR-014 D5）：
+
+- **`[SPEC-DEFER:phase-future.cjk-true-segmenter]` → 🟢 兑现（feature-gated，bigram fallback 保留）**：task-30.1（PR #202）经 `cjk-segmenter` feature（jieba-rs 0.7.4，pure-Rust，主 agent R7 chore + ADR-008 add-only）加并行 `cjk_segmenter` analyzer，对 CJK run 真分词（`配置加载 → 配置/加载`，区别 bigram `配置/置加/加载`），index/query 双站点对称注册。**D1 的 overlapping bigram `code_cjk` 保留作默认 0-dep fallback**（默认构建不编译 jieba，0 新 dep at default features，ADR-004 守线）——非替换、是并行升级。
+- **`[SPEC-DEFER:phase-future.tokenizer-default-on]` → 🟡 部分兑现（迁移工具 + 评估；default flip 仍延后）**：task-30.2（PR #203）提供 `IndexSession::reindex_with_tokenizer` 真实迁移工具（analyzer 绑定持久化 `meta.json` ⇒ 切 analyzer 须 re-index，工具读 SQLite chunk 真相源重建）+ `RetrieverConfig.tokenizer` schema-driven 对称文档化（D「vestigial config」现状收敛为方案 B）。**full default flip 据「迁移工具已备 + 翻默认是产品决策」诚实延后**（默认仍 opt-in，`[SPEC-DEFER:phase-future.tokenizer-default-on]` 续留）。
+- **D3/D4 recall 度量延伸（真实零 delta 诚实记录）**：扩 `golden-semantic.jsonl` +5 CJK case（11→16），phase24-style harness 实测 default/bigram/真分词——**真分词相对 bigram file-level 召回 delta=+0.0000（小语料持平）**，如实记录、不外推（ADR-013）。本 ADR 的 gate 阈值（`GateTop5StrongMin` 等）+ Go validator 单一事实源不变。
+
+依赖变更：task-30.1 jieba-rs 为 optional dep（经 ADR-008 add-only，默认构建不编译）；task-30.2 reindex 工具复用既有 SQLite/Tantivy 面 0 新 dep。详见 ADR-035 Ratification + `docs/releases/v0.23.0-evidence.md`。

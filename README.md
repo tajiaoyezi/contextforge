@@ -7,6 +7,25 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.23.0
+
+📌 **v0.23.0 cjk-true-segmenter** — upgrades the 0-dep overlapping-bigram CJK analyzer (`配置加载`→`配置`/`置加`/`加载`) to a **feature-gated true-word segmenter** (`cjk-segmenter`, jieba-rs: `配置加载`→`配置`/`加载`), keeping bigram as the 0-dep fallback. The **default build stays 0-new-dependency** — jieba is not compiled at default features (ADR-004); default `content` tokenization + 6-field schema are unchanged. Honest scope: on this small golden corpus the true segmenter shows **no file-level recall gain over bigram** (+0.0000), recorded truthfully (ADR-013); the value is cleaner tokens, not measurable recall at this scale.
+
+- **jieba true-word analyzer + dual-site register** (task-30.1, #202): `cjk-segmenter` feature (jieba-rs 0.7, optional, default off) adds a parallel `cjk_segmenter` analyzer registered at both the index site (`IndexSession::open_with_tokenizer`) and the query site (`Retriever::open_with_config`) — asymmetry would silently degrade recall (task-24.1 R4). Bigram `code_cjk` stays as the 0-dep fallback.
+- **reindex migration tool + tokenizer-default-on eval** (task-30.2, #203): `IndexSession::reindex_with_tokenizer` rebuilds a collection's Tantivy index under a new analyzer binding (binding persists in `meta.json`, so switching requires re-index), reading SQLite chunk content as source of truth. `RetrieverConfig.tokenizer` is documented as vestigial (schema-driven, 方案 B). The full default-on flip is honest-deferred (`[SPEC-DEFER:phase-future.tokenizer-default-on]`) — the migration tool is ready, but flipping the default is a product decision.
+- **real recall delta** (task-30.2): extended golden (11→16 CJK cases) measured default/bigram/segmenter — **segmenter vs bigram delta = +0.0000** (both fully recall CJK cases at file level), both +0.125 over default. **ADR-035 → Accepted** (per-D; D3 default-flip honest-defer). **ADR-029** add-only Phase-30 Amendment. **ADR-014 cross-validation gate — 21st activation**.
+
+```bash
+# jieba true-word CJK analyzer (配置加载 → 配置/加载, vs bigram 配置/置加/加载)
+cargo test -p contextforge-core --features cjk-segmenter --lib test_30_1      # 2 passed
+# real recall delta: default vs bigram vs true segmenter
+cargo run -p contextforge-core --features cjk-segmenter --example phase24_tokenizer_recall
+# reindex an existing index to a new analyzer binding (default build, 0-dep)
+cargo test -p contextforge-core --lib test_30_2_2
+```
+
+详 `RELEASE_NOTES.md` v0.23.0 段 + [Phase 30 spec](docs/specs/phases/phase-30-cjk-true-segmenter.md) + [ADR-035](docs/decisions/adr-035-cjk-true-segmenter-and-tokenizer-default.md)。
+
 ## What's new in v0.22.0
 
 📌 **v0.22.0 live-vector-recall** — redeems Phase 25's qdrant/lancedb contract & parameter layers into **real live vector recall**, and factory-injects the real backend into the production hot path (`core/src/server.rs` previously hardcoded `BruteForceVectorBackend` at the hybrid `:302` / semantic `:341` paths). The **default build stays 0-new-dependency, 0-network** — the default semantic+hybrid path still runs the 0-dep `BruteForceVectorBackend` (ADR-004 / ADR-023 D5). Honest scope: **qdrant live KNN honest-defers when no server is running** (`health()==Unreachable` → exit 0, no fabricated recall, ADR-013); lancedb real ANN indexes are feature-gated and verified `--lib` scoped.

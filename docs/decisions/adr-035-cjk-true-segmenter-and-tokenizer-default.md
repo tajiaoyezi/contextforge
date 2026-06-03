@@ -1,6 +1,6 @@
 # ADR `035`: `cjk-true-segmenter-and-tokenizer-default`
 
-**Status**: Proposed
+**Status**: Accepted（v0.23.0 / task-30.3 ratify；D3 default flip honest-defer 部分 ratify）
 
 **Category**: 检索 / 分词 / 召回质量
 **Date**: 2026-06-02
@@ -58,4 +58,16 @@ D1/D2 的真分词器（`cjk-segmenter` feature 默认不编译）、D3 的 defa
 - **Positive**: CJK 检索从 bigram 子串近似升级到真词边界（feature-gated `cjk-segmenter`），精度增益有真实 before/after recall delta 背书（ADR-013）；parallel analyzer name + 双站点注册保 bigram 作 0-dep fallback、真分词作可选升级，两者并存；tokenizer-default-on 经诚实评估给出可行结论（翻默认 + 迁移工具 或 诚实延后），config.tokenizer vestigial 现状被真接线或文档化收敛；扩充 CJK golden 让真分词增益可持续度量；默认构建保持 0 新 dep + 默认 tokenization 不变（既有 collection 不失效）。
 - **Negative / open**: 真分词器引入重词典 dep（lindera 内嵌 IPADIC/ko-dic ~🔴 大；jieba-rs 纯 Rust 词典 ~🟡），即便 feature-gated，opt-in 用户的二进制体积 / 编译时长上升（如实记录真实体积 delta，不夸大）；真实 recall delta 受扩充 CJK golden 覆盖度限制——小语料（现 11 q / 12 files）delta 可能仍偏弱或由少数 case 驱动，如实记录不外推（ADR-013）；tokenizer-default-on 的全量迁移面可能过重 → 诚实延后 default flip（受阻维度如实记录，不伪造「默认已翻」）；真分词器 token 边界依赖词典 recall，词典外新词（OOV）可能切碎，属词典固有局限。
 - **Ratification**: 本 ADR Proposed。task-30.1（真分词 token stream 单测 + 双站点对称 + 默认构建不变）+ task-30.2（扩充 CJK golden 真实 recall delta + reindex/migration 工具 + config 路由接线或 schema-driven 文档化）通过后于 v0.23.0 closeout 据真实分词单测 / 真实 recall delta ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）；重词典 dep / 小语料 / tokenizer-default-on 等受阻维度据「已达维度 ratify + 受阻维度如实记录」处理，不强 ratify。
-- **Follow-ups**: 真分词器词典自定义 / 用户词典加载 `[SPEC-DEFER:phase-future.cjk-segmenter-user-dict]`；若 D3 诚实延后则 tokenizer 默认开启续 `[SPEC-DEFER:phase-future.tokenizer-default-on]`；扩充 golden 至跨语料规模（破小语料局限）`[SPEC-DEFER:phase-future.cjk-golden-corpus-expansion]`；多语种分词器（日 / 韩，lindera ko-dic 路径）`[SPEC-DEFER:phase-future.multilang-segmenter]`。ADR-029（CJK 分词策略）以 add-only Amendment 记录真分词升级 + tokenizer-default-on 结论（task-30.3，不溯改 ADR-029 正文，ADR-014 D5）；若 D1 引入 optional dep，则 ADR-008 add-only Amendment 记录依赖选型（task-30.3）。
+- **Follow-ups**: 真分词器词典自定义 / 用户词典加载 `[SPEC-DEFER:phase-future.cjk-segmenter-user-dict]`；tokenizer 默认开启 default flip 续 `[SPEC-DEFER:phase-future.tokenizer-default-on]`（迁移工具已备，翻默认是产品决策）；扩充 golden 至跨语料规模（破小语料局限）`[SPEC-DEFER:phase-future.cjk-golden-corpus-expansion]`；多语种分词器（日 / 韩，lindera ko-dic 路径）`[SPEC-DEFER:phase-future.multilang-segmenter]`。ADR-029 以 add-only Amendment 记录真分词升级 + tokenizer-default-on 结论（task-30.3，不溯改正文，ADR-014 D5）；optional dep jieba-rs 经主 agent R7 chore + ADR-008 add-only（task-30.1）。
+
+## Ratification (v0.23.0 / task-30.3)
+
+本 ADR 于 v0.23.0 closeout（task-30.3）据 task-30.1/30.2 的**真实分词单测 / 真实扩 CJK golden recall delta** ratify **Proposed → Accepted**（ADR-013：禁据合成/伪造 ratify）。逐 D 真实依据：
+
+- **D1（CJK 真分词器 behind `cjk-segmenter`，默认 0-dep）→ ✅ Accepted**：task-30.1（PR #202）经主 agent R7 chore（ADR-008 add-only）引入 optional `jieba-rs 0.7.4`（pure-Rust，无 C/build 前置；选 jieba 而非 lindera 因更轻）+ `cjk-segmenter` feature（默认 off）。`tokenize_cjk_segmenter` 经 `jieba.cut(run, false)` 对 CJK run 真分词；`cargo test --features cjk-segmenter --lib test_30_1` **2 passed**——实测 `配置加载 → [配置, 加载]`（真词边界），与 bigram `[配置, 置加, 加载]` `assert_ne!` 显式区分。jieba 0.7.4 在 Windows MSVC（rustc 1.95.0）build exit 0，纯 Rust 无构建受阻（未触发 lindera 重词典 🔴 风险）。
+- **D2（parallel analyzer name + 双站点注册对称，保 bigram fallback）→ ✅ Accepted**：`CJK_SEGMENTER_TOKENIZER = "cjk_segmenter"` 并列 `code_cjk`，新 `build_cjk_segmenter_analyzer`/`register_cjk_segmenter` 在 index 站点（`open_with_tokenizer`）+ query 站点（`open_with_config`）双注册（feature-gated）；TEST-30.1.2 双站点 round-trip（IndexSession 写 + Retriever 查 `配置` 命中）PASS。bigram `code_cjk` 保留作 0-dep fallback。
+- **D3（tokenizer-default-on 评估 + reindex 工具 + config 路由）→ 🟡 PARTIAL（迁移工具 Accepted；default flip honest-defer）**：task-30.2（PR #203）`IndexSession::reindex_with_tokenizer` 真实迁移工具（读 SQLite chunk + drop/重建 Tantivy 绑定 new analyzer + 重加，向后兼容）——TEST-30.2.2（default→code_cjk）+ 30.2.2b（→cjk_segmenter）PASS。config 采**方案 B schema-driven 对称**——`RetrieverConfig.tokenizer` doc 注明 vestigial（search 据 schema/`meta.json` 派生）。**default flip 本身据「迁移工具已备 + 翻默认是产品决策」诚实延后 `[SPEC-DEFER:phase-future.tokenizer-default-on]`，默认仍 opt-in，不伪造已翻**（ADR-013）。
+- **D4（扩 CJK golden + 真实 recall delta）→ ✅ Accepted（含诚实零 delta 结论）**：task-30.2 扩 `golden-semantic.jsonl` +5 CJK case（11→16，经 Go `ValidateGoldenSemantic`）；phase24-style harness 实测（16 q / 14 file）：**default 0.8750/0.8750 → bigram 1.0/1.0 → segmenter 1.0/1.0**。**delta(seg−bigram)=+0.0000 全指标**——小语料 file-level 召回真分词与 bigram 持平（两者均完整召回 CJK case）；delta(seg−default)=+0.1250 recall。**诚实结论：小语料下真分词相对 bigram 无 file-level 召回提升**（真分词价值在 token 洁净/精度非此规模召回，bigram 0-dep fallback 仍有价值），如实记录零 delta、不外推、不伪造（ADR-013）。
+- **D5（默认构建默认 tokenization 不变）→ ✅ Accepted**：默认 `cargo test --workspace` 0 failed + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning；`cjk-segmenter` 默认 off → 不编译 jieba（0 新 dep at default features）；默认 `content` tokenization + 6-field schema 不变；bigram `code_cjk` opt-in 保留。
+
+ratify 范围 = 真分词器 feature-gated（D1）+ parallel name 双站点对称（D2）+ reindex 迁移工具（D3 partial）+ 真实 recall delta 含诚实零 delta（D4）+ 默认 baseline 不变（D5）。**tokenizer default flip 据「已达维度 ratify + 受阻维度如实记录」honest-defer，不伪造**（ADR-013）。证据见 `docs/releases/v0.23.0-evidence.md` §3。
