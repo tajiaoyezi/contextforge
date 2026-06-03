@@ -616,6 +616,64 @@ mod tests {
         assert!(matches!(err, MemoryStoreError::NotFound));
     }
 
+    /// TEST-33.2.3 (task-33.2 B2): hard-delete no-dangling-ref invariant.
+    /// (i) schema introspection asserts `memory_items` is the ONLY table carrying
+    /// a `memory_id` column — so `hard_delete`'s single `DELETE FROM memory_items`
+    /// leaves no orphan rows (cascade is a non-issue today; if a future table adds
+    /// `memory_id` without a matching cascade, this assertion fails and forces a
+    /// real decision rather than a silent orphan). (ii) `hard_delete(id)` then
+    /// `get(id)` is None (existing physical-removal behavior guarded).
+    #[test]
+    fn test_33_2_3_hard_delete_no_dangling_refs() {
+        let s = fresh_store();
+        // (i) schema introspection: which tables carry a `memory_id` column?
+        {
+            let conn = s.conn.lock().expect("lock");
+            let mut tables: Vec<String> = {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT name FROM sqlite_master WHERE type='table' \
+                         AND name NOT LIKE 'sqlite_%'",
+                    )
+                    .expect("prepare sqlite_master");
+                let rows = stmt
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .expect("query tables");
+                rows.map(|r| r.expect("table name")).collect()
+            };
+            tables.sort();
+            let mut with_memory_id: Vec<String> = Vec::new();
+            for t in &tables {
+                // PRAGMA table_info cannot bind the table name; t comes from
+                // sqlite_master (no injection risk). Column index 1 = name.
+                let mut stmt = conn
+                    .prepare(&format!("PRAGMA table_info({t})"))
+                    .expect("prepare table_info");
+                let mut cols = stmt
+                    .query_map([], |r| r.get::<_, String>(1))
+                    .expect("query cols");
+                if cols.any(|c| c.map(|name| name == "memory_id").unwrap_or(false)) {
+                    with_memory_id.push(t.clone());
+                }
+            }
+            assert_eq!(
+                with_memory_id,
+                vec!["memory_items".to_string()],
+                "exactly one table may carry memory_id; a new one needs a hard_delete \
+                 cascade decision (all tables = {tables:?})"
+            );
+        }
+        // (ii) hard_delete physically removes the row — no dangling row remains.
+        s.seed_for_tests(vec![mem("ddel", "scope", "active")])
+            .expect("seed");
+        assert!(s.get("ddel").expect("get").is_some());
+        s.hard_delete("ddel").expect("hard_delete");
+        assert!(
+            s.get("ddel").expect("get").is_none(),
+            "hard_delete must leave no row behind"
+        );
+    }
+
     /// TEST-27.3.1: is_pinned audit backfill — last memory_pin/unpin event wins;
     /// items with no audit events keep their state (not invented).
     #[test]

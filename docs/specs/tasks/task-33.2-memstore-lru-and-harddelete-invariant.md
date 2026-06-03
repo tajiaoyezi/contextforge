@@ -1,6 +1,6 @@
 # Task `33.2`: `memstore-lru-and-harddelete-invariant — console-api memstore 缓存 FIFO→access-order LRU（命中/覆写均 move-to-front）+ memory hard-delete no-dangling-ref 不变量测试（cascade 经全表审计为 non-issue 据实延后）+ handleMemoryPin lenient 契约据实不改（ADR-022 D2 保留）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -77,18 +77,18 @@ pass bar：B1 经确定性单测验证 access-order LRU（🟢，命中/覆写 m
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（memstore access-order LRU 两缓存 move-to-front 🟢）: `memstore.go` `cacheChunkUnlocked`（`:76-91`）/ `cacheTraceUnlocked`（`:96-111`）既有-key 覆写 move-to-front + 读路径 `GetSourceChunk`（`:341-352`）/ `GetSearchTrace`（`:357-368`）命中 move-to-front；驱逐弹最久未访问者；cap 沿用 `resolveCacheCapacity`（默认 256）；既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 LRU 语义 — verified by **TEST-33.2.1**（chunk 命中 move-to-front + 热 key 不被逐）+ **TEST-33.2.2**（trace 命中 move-to-front + 改写后 LRU 驱逐）
-- [ ] **AC2**（hard-delete no-dangling-ref 不变量 + cascade honest-defer + handleMemoryPin lenient 保留 🟢）: `core/src/memory/store.rs` 不变量测试断言「`memory_items` 是唯一含 `memory_id` 列的表」（schema 内省）+ `hard_delete(id)` 后 `get(id)` 为 `None`；cascade 据全表审计为 non-issue 据实延后 [SPEC-DEFER:phase-future.memory-harddelete-cascade]（不写 impossible-scenario 代码）；`handleMemoryPin`（`:525-549`）lenient 契约据实保留无改动（ADR-022 D2）、既有 pin 测试不退化 — verified by **TEST-33.2.3**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-33.2.4**（= LAST）
+- [x] **AC1**（memstore access-order LRU 两缓存 move-to-front 🟢）: `memstore.go` `cacheChunkUnlocked`（`:76-91`）/ `cacheTraceUnlocked`（`:96-111`）既有-key 覆写 move-to-front + 读路径 `GetSourceChunk`（`:341-352`）/ `GetSearchTrace`（`:357-368`）命中 move-to-front；驱逐弹最久未访问者；cap 沿用 `resolveCacheCapacity`（默认 256）；既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 LRU 语义 — verified by **TEST-33.2.1**（chunk 命中 move-to-front + 热 key 不被逐）+ **TEST-33.2.2**（trace 命中 move-to-front + 改写后 LRU 驱逐）。实证：`go test ./internal/consoleapi/ -run TestMemStore_CacheEviction -v` 2 PASS（`TestMemStore_CacheEviction_LRU` + `TestMemStore_CacheEviction_LRU_Trace`）；private helper `moveToMRU`（线性删除既有位置 + append 末尾，保 `*Order` 无重复）。
+- [x] **AC2**（hard-delete no-dangling-ref 不变量 + cascade honest-defer + handleMemoryPin lenient 保留 🟢）: `core/src/memory/store.rs` 不变量测试断言「`memory_items` 是唯一含 `memory_id` 列的表」（schema 内省 `sqlite_master` + `PRAGMA table_info`）+ `hard_delete(id)` 后 `get(id)` 为 `None`；cascade 据全表审计为 non-issue 据实延后 [SPEC-DEFER:phase-future.memory-harddelete-cascade]（不写 impossible-scenario 代码）；`handleMemoryPin`（`:525-549`）lenient 契约据实保留无改动（ADR-022 D2）、既有 pin 测试不退化 — verified by **TEST-33.2.3**。实证：`cargo test -p contextforge-core memory::store` 16 PASS（含 `test_33_2_3_hard_delete_no_dangling_refs`，断言 `with_memory_id == ["memory_items"]`）；`go test ./internal/consoleapi/ -run TestMemoryPin -v` PASS（`TestMemoryPin_204_no_body` 守线）。
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-33.2.4**（= LAST，CI spec-lint 权威）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-33.2.1 | chunk 缓存 access-order LRU：填满 cap → 读命中（`GetSourceChunk`）最早插入 key 使其最近使用 → 再插触发驱逐 → 热 key 仍在、最久未访问者被逐；既有 key 覆写亦 move-to-front | `internal/consoleapi/memstore.go` + `memstore_test.go` | Planned |
-| TEST-33.2.2 | trace 缓存 access-order LRU（同形 move-to-front on hit/覆写）；既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 LRU 语义（被逐者=最久未访问而非最早插入） | `internal/consoleapi/memstore.go` + `memstore_test.go` | Planned |
-| TEST-33.2.3 | hard-delete no-dangling-ref 不变量：schema 内省断言含 `memory_id` 列的表仅 `memory_items` + `hard_delete(id)` 后 `get(id)`=None；cascade non-issue 据实延后 [SPEC-DEFER:phase-future.memory-harddelete-cascade]；handleMemoryPin lenient 保留无改动 + 既有 pin 测试不退化 | `core/src/memory/store.rs`（同源 test）+ `internal/consoleapi/handlers.go`（无改动，仅守线） | Planned |
-| TEST-33.2.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-33.2.1 | chunk 缓存 access-order LRU：填满 cap → 读命中（`GetSourceChunk`）最早插入 key 使其最近使用 → 再插触发驱逐 → 热 key 仍在、最久未访问者被逐；既有 key 覆写亦 move-to-front | `internal/consoleapi/memstore.go` + `memstore_test.go` | Done |
+| TEST-33.2.2 | trace 缓存 access-order LRU（同形 move-to-front on hit/覆写）；既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 LRU 语义（被逐者=最久未访问而非最早插入） | `internal/consoleapi/memstore.go` + `memstore_test.go` | Done |
+| TEST-33.2.3 | hard-delete no-dangling-ref 不变量：schema 内省断言含 `memory_id` 列的表仅 `memory_items` + `hard_delete(id)` 后 `get(id)`=None；cascade non-issue 据实延后 [SPEC-DEFER:phase-future.memory-harddelete-cascade]；handleMemoryPin lenient 保留无改动 + 既有 pin 测试不退化 | `core/src/memory/store.rs`（同源 test）+ `internal/consoleapi/handlers.go`（无改动，仅守线） | Done |
+| TEST-33.2.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -124,17 +124,18 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`go test ./internal/consoleapi/ -run TestMemStore_CacheEviction` —— chunk / trace 两缓存 access-order LRU（命中读路径 `:341-352` / `:357-368` move-to-front + 既有 key 覆写 `:80-83` / `:100-103` move-to-front）；填满 cap → 访问最早 key → 再插触发驱逐 → 热 key 仍在、最久未访问者被逐；既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 LRU 语义（真实测试结果待实施回填，ADR-013 不伪造）。
-- AC2：`cargo test -p contextforge-core memory::store` + `go test ./internal/consoleapi/ -run TestMemoryPin` —— schema 内省断言含 `memory_id` 列的表仅 `memory_items`（`0013:6` PK）+ `hard_delete(id)` 后 `get(id)`=None；cascade 据全表审计为 non-issue 据实延后 [SPEC-DEFER:phase-future.memory-harddelete-cascade]；handleMemoryPin lenient 契约据实保留无改动（ADR-022 D2）+ 既有 pin 测试不退化。真实结果待实施回填。
+**§9 Verification 实证**（real evidence，本地全绿）：
+- AC1：`go test ./internal/consoleapi/ -run TestMemStore_CacheEviction -v` → 2 PASS（`TestMemStore_CacheEviction_LRU` + `TestMemStore_CacheEviction_LRU_Trace`）。chunk / trace 两缓存 access-order LRU 经确定性单测验证（cap=3：填满 a/b/c → 读命中 / 覆写 a → 再插 d → 被逐者为最久未访问者而非最早插入者；读命中 `GetSourceChunk` `:344-352` / `GetSearchTrace` `:360-369` move-to-front + 既有 key 覆写 `:83-86` / `:104-107` move-to-front 均经断言）。私有 helper `moveToMRU`（线性删除既有位置 + append 末尾）保 `*Order` 与 map key 集一一对应无重复（`assertNoCacheOrderDup` 守护 R1）。
+- AC2：`cargo test -p contextforge-core memory::store` → 16 PASS（含 `test_33_2_3_hard_delete_no_dangling_refs`）；`go test ./internal/consoleapi/ -run TestMemoryPin -v` → PASS（`TestMemoryPin_204_no_body` 守线）。不变量测试经 `sqlite_master` + `PRAGMA table_info` 内省断言 `with_memory_id == ["memory_items"]`（`0013:6` PK 是唯一含 `memory_id` 列的表）+ `hard_delete("ddel")` 后 `get("ddel")`=None；cascade 据全表审计为 non-issue 据实延后 [SPEC-DEFER:phase-future.memory-harddelete-cascade]（未写 impossible-scenario 代码）；handleMemoryPin lenient 契约据实保留无改动（ADR-022 D2）+ 既有 pin 测试不退化。
+- 不退化：`go test ./...` 全 PASS（exit 0）；`cargo test --workspace` 全 PASS（lib 202 + 全 integration）；`cargo clippy --workspace --all-targets -- -D warnings` 0 warning。
 - AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-- 0 新 dep / 默认行为不变 / 既有契约不变 / cascade non-issue 据实记录不伪造 / handleMemoryPin 诚实 non-change 真实结果待实施回填（ADR-013 受阻 / 据实非改不预填，真实跑出才记数）。
+- 0 新 dep（B1 沿用 `map`+`[]string`，B2 用既有 rusqlite 连接 introspection）/ 默认行为不变（命中/未命中返回值语义不变，cap 默认仍 256，仅驱逐选择由最早插入→最久未访问）/ 既有契约不变（公共方法签名兼容）/ cascade non-issue 据实记录不伪造（不写 cascade 实现、无伪造测试结果）/ handleMemoryPin 诚实 non-change（无代码改动，ADR-022 D2 保留）。
 
-**实际改动文件**（计划，待实施回填）：
-- `internal/consoleapi/memstore.go`——`cacheChunkUnlocked`（`:76-91`）/ `cacheTraceUnlocked`（`:96-111`）既有 key 覆写 move-to-front；`GetSourceChunk`（`:341-352`）/ `GetSearchTrace`（`:357-368`）读命中 move-to-front（加私有 touch helper）；`cacheCapacity` `:43` / `resolveCacheCapacity` `:55-62` 不动。
-- `internal/consoleapi/memstore_test.go`——既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 LRU 语义 + 新增 chunk / trace move-to-front 单测（TEST-33.2.1 / .2）。
-- `core/src/memory/store.rs`——新增 hard-delete no-dangling-ref 不变量测试（schema 内省含 `memory_id` 列的表仅 `memory_items` + `hard_delete` 后 `get`=None，TEST-33.2.3）；`hard_delete`（`:235-246`）逻辑不改。
+**实际改动文件**：
+- `internal/consoleapi/memstore.go`——新增私有 `moveToMRU(order, key)` helper；`cacheChunkUnlocked` / `cacheTraceUnlocked` 既有 key 覆写分支由「原地写回 return」改为「写回 + `moveToMRU`」；`GetSourceChunk` / `GetSearchTrace` 读命中加 `moveToMRU`（持 `s.mu` 下）；struct 缓存字段 doc 注释 FIFO→access-order LRU；`cacheCapacity` / `resolveCacheCapacity` 不动。
+- `internal/consoleapi/memstore_test.go`——既有 `TestMemStore_CacheEviction_FIFO`（`:209-243`）改写为 `TestMemStore_CacheEviction_LRU`（chunk，TEST-33.2.1）+ 新增 `TestMemStore_CacheEviction_LRU_Trace`（trace 覆写+读命中，TEST-33.2.2）+ `assertNoCacheOrderDup` 守护 helper；移除随 FIFO 测试一并废弃的 `fmt` import。
+- `core/src/memory/store.rs`——新增 hard-delete no-dangling-ref 不变量测试 `test_33_2_3_hard_delete_no_dangling_refs`（schema 内省含 `memory_id` 列的表仅 `memory_items` + `hard_delete` 后 `get`=None，TEST-33.2.3）；`hard_delete`（`:235-246`）逻辑不改。
 - `internal/consoleapi/handlers.go`——`handleMemoryPin`（`:525-549`）**无改动**（lenient 契约据实保留，ADR-022 D2）；仅守线 + ADR-038 D4 记录。
 - ADR-038 D2 据真实测试 ratify @ task-33.4 closeout（非本 task body）；cascade non-issue + handleMemoryPin lenient 据实记入 ADR-038 D4 @ task-33.4。
