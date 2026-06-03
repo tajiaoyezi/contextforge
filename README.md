@@ -7,6 +7,27 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.26.0
+
+📌 **v0.26.0 governance-debt-cleanup-2** — a second wave of cross-phase governance-debt cleanup (mirrors Phase 31), tightening cache bounds, cache eviction policy, indexing-event durability, and trace-store workspace isolation. The **default build stays 0-new-dependency, 0-network**; every change is add-only / default-preserving / opt-in, so existing v0.6–v0.25 clients + data are unaffected (ADR-004). Honest scope: the L2 SQLite cache cap is an opt-in defense-in-depth ctor (no production call site yet), and indexing-replay e2e / strict multi-workspace trace isolation / true-LRU L2 / memory hard-delete cascade stay honestly deferred (ADR-013).
+
+- **L2 + memstore cache bounding** (task-33.1/33.2, #218/#219): the embedding L2 SQLite cache gains a row-count cap + rowid-FIFO eviction (`with_sqlite_capacity`, `DEFAULT_L2_EMBEDDING_CACHE_CAP=50_000`, 0 schema migration via implicit rowid); the console-api memstore chunk/trace caches move from FIFO to access-order LRU (read-hit + existing-key overwrite both move-to-front). 0 new dep; the L2 cap is an opt-in ctor (defense-in-depth, no live leak), true-LRU L2 honest-deferred (`[SPEC-DEFER:phase-future.l2-cache-true-lru]`).
+- **indexing-event persistence + trace workspace isolation** (task-33.3, #220): `indexing.*` events now persist add-only (migration `0019_indexing_events` + `SqliteIndexingEventStore`, best-effort persist in ADDITION to the unchanged `eb.send` broadcast) with a pure `indexing_rows_to_pb_events` replay mapper; the trace store carries add-only `workspace_id` on `GetSearchTrace`/`ListQueries` (empty `workspace_id` = aggregate-all, byte-equivalent, ADR-004). drain-timeout was already delivered in Phase 26 → verify-only. indexing-replay e2e + strict multi-workspace isolation honest-deferred (`[SPEC-DEFER:phase-future.indexing-replay-e2e]` / `[SPEC-DEFER:phase-future.tracestore-multi-workspace-strict]`).
+- **export --timeout + closeout** (task-33.4): `export` gains an add-only `--timeout` flag (default `60s`, byte-equivalent to the old hardcoded `context.WithTimeout(60s)`, ADR-004). **ADR-038 → Accepted** (per-D). **ADR-031/027** add-only Phase-33 Amendments. **ADR-014 cross-validation gate — 24th activation**.
+
+```bash
+# L2 SQLite cap + rowid-FIFO eviction
+cargo test -p contextforge-core test_33_1
+# memstore chunk/trace access-order LRU
+go test ./internal/consoleapi/ -run TestMemStore_CacheEviction
+# indexing.* persistence round-trip + replay mapper
+cargo test -p contextforge-core test_33_3
+# export --timeout add-only flag (default 60s byte-equiv)
+go test ./internal/cli/ -run TestParseExportOpts_Timeout
+```
+
+详 `RELEASE_NOTES.md` v0.26.0 段 + [Phase 33 spec](docs/specs/phases/phase-33-governance-debt-cleanup-2.md) + [ADR-038](docs/decisions/adr-038-governance-debt-cleanup-2.md)。
+
 ## What's new in v0.25.0
 
 📌 **v0.25.0 vector-backend-config-plumbing-and-completeness** — completes the vector-backend story end-to-end: the two production hot paths (`server.rs` hybrid `:340` / semantic `:382`) now select a backend from env (`CONTEXTFORGE_VECTOR_BACKEND` + optional `CONTEXTFORGE_VECTOR_DIM`, mirroring `resolve_data_dir`), the factory gains a `"sqlite-vec"` arm, and the console search surface carries `vector_score` provenance. The **default build stays 0-new-dependency, 0-network**; unset/blank backend → `BruteForce` byte-equivalent (default behavior unchanged), and every change is add-only / default-preserving (ADR-004). Honest scope: an unknown / feature-off backend surfaces the factory's honest `Err` (no silent fallback, ADR-013); the sqlite-vec in-process recall/latency matrix cell, real chunk `source_type`/`agent_scope` filtering, a config-file backend source, and dim auto-negotiation stay honestly deferred (ADR-013).

@@ -7,10 +7,40 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tajiaoyezi/contextforge/internal/exporter"
 	contextforgev1 "github.com/tajiaoyezi/contextforge/proto/contextforge/v1"
 )
+
+// TEST-33.4.1 (task-33.4 AC1): export --timeout is an add-only flag that
+// defaults to 60s (byte-equivalent to the pre-33.4 hardcoded value, ADR-004)
+// and accepts an override; the existing flags keep parsing unchanged.
+func TestParseExportOpts_Timeout(t *testing.T) {
+	base := []string{"--format", "jsonl", "--output", "/tmp/out.jsonl", "--data-dir", "/tmp/d"}
+
+	// Unset → 60s default (byte-equivalent to the old hardcoded WithTimeout).
+	opts, err := parseExportOpts(base, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parse (default timeout): %v", err)
+	}
+	if opts.Timeout != 60*time.Second {
+		t.Errorf("default timeout: got %v want 60s", opts.Timeout)
+	}
+	// Existing flags still parse.
+	if opts.Format != "jsonl" || opts.Output != "/tmp/out.jsonl" || opts.DataDir != "/tmp/d" {
+		t.Errorf("existing flags regressed: %+v", opts)
+	}
+
+	// Explicit override is honored.
+	withTo, err := parseExportOpts(append(base, "--timeout", "120s"), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parse (--timeout=120s): %v", err)
+	}
+	if withTo.Timeout != 120*time.Second {
+		t.Errorf("override timeout: got %v want 120s", withTo.Timeout)
+	}
+}
 
 // TEST-6.3.5 / SCEN-6.3.5 / AC5
 func TestTask63_AC5_RunExportSubcommandEndToEndAndFormatFlags(t *testing.T) {
