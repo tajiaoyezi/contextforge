@@ -297,13 +297,28 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-038 governance-debt-cleanup-2**（Proposed，D1-D5；真实测试出来才 ratify，indexing replay e2e / trace isolation e2e 受阻维度据已达维度 ratify）。
 
+### 3.16 v0.27.0 / Phase 34 — vector-config-completeness（承 Phase 32，post-v0.26.0 add-only 排期）
+
+**目标**：把 Phase 32（vector-backend-config-plumbing-and-completeness, Done）落地的「env→server.rs 选 backend」补全为「vector dim 经工厂真实协商 + vector backend 经 config 文件（非仅 env）选用」，闭合 §3.14 排期时新开的两条 grounded backlog（`vector-dim-auto-negotiation` / `vector-backend-config-file`）。这是一个**刻意小**的版本——Phase 31/33 两轮治理债清扫后绿区 backlog 已薄，据实排小版本不凑数（ADR-013，honest over padding）。
+
+**来源 marker（§4 / §3.14 排期时新开 backlog）**：
+- `[SPEC-DEFER:phase-future.vector-dim-auto-negotiation]`（`core/src/retriever/vector/factory.rs:33-39` `select_vector_backend(name, dim)` 现 `let _ = dim` 静默丢弃 `server.rs:540 resolve_vector_backend` 解析并传入的 `CONTEXTFORGE_VECTOR_DIM`）。
+- `[SPEC-DEFER:phase-future.vector-backend-config-file]`（超 env 的结构化 vector backend 配置——经 Go `config.toml` `[vector]` 段 → env bridge）。
+
+**候选 task 拆分**：
+- **task-34.1** vector-dim-auto-negotiation：`factory.rs` 以纯函数 `negotiate_vector_dim(dim, backend.expected_dim())` 替代 `let _ = dim`（仿 `embedding/factory.rs:81-96 negotiate_dim`）；`VectorBackend` trait 加 `expected_dim(self) -> Option<usize>` DEFAULT impl 返 `None`（dim-agnostic），`BruteForceVectorBackend` 保 `None`；`VectorError::DimMismatch{expected,got}` 已实存（`types.rs:83`）。**honest-caveat**：默认 BruteForce `expected_dim()=None` → 默认构建协商接受任意 dim（无强制、byte-equivalent 默认行为，ADR-004），真实强制仅对声明 dim 的 feature backend（qdrant/lancedb/sqlite-vec）生效，其 live 维度 `[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`（须 feature build）。🟢 纯函数协商单测。
+- **task-34.2** vector-backend-config-file：Go `internal/config/config.go` add-only `[vector]` 段（`Backend string`/`Dim int` toml 标签）+ `setVectorEnv` helper（仿 `cmd/contextforge/main.go:255 setDataDirEnv` 跨进程 env-bridge：`[vector]` 存在且对应 env 未设时 export `CONTEXTFORGE_VECTOR_BACKEND`/`CONTEXTFORGE_VECTOR_DIM`，spawned core daemon 经既有 `resolve_vector_backend` env 路径接收）。**ENV WINS**：显式 env 覆盖 config 文件（向后兼容）；无 `[vector]` 段 → 不 export → unset → BruteForce byte-equivalent（ADR-004 默认不变）。Rust core 无 toml dep → 复用 `CONTEXTFORGE_DATA_DIR` 同款已验证跨进程 env-bridge（**非** `daemon.Options.DataDir` 字段重构，后者续 `[SPEC-DEFER:phase-future.daemon-options-datadir]`）。🟢 Go config round-trip + setVectorEnv 单测，0 新 dep。
+- **task-34.3** v0.27.0 closeout：**grounding 诚实校正**——`get_source_chunk` workspace 隔离经核**已实存**（`core/src/data_plane/search.rs:421-423` 自 task-12.2 起按 `req.workspace_id` scope candidates：非空→仅该 workspace / 空→aggregate-all probe），survey 高估为 gap → 仅 verify-only guard 不变式测试（workspace_id 设→仅该 workspace chunk / 跨 workspace chunk_id→not_found / 空→aggregate）记录已存在隔离，无新代码（ADR-039 记此 grounding 校正）。smoke v24 step [43/43]（banner v23→v24，staging `cf-v26-cfg`，offset +2）+ TestTask343（镜像 TestTask334，无 [37/37]..[42/42] 回归）+ v0.27.0 release docs + README v0.27 段 + RELEASE_NOTES v0.27.0 段 + ADR-039 ratify + ADR-037 add-only Phase 34 Amendment（dim-negotiation + config-file 完成 Phase 32 起的 env-plumbing，不溯改正文 D5）+ roadmap/adapter add-only + feature。🟢。
+
+**ADR**：**ADR-039 vector-config-completeness**（Proposed，D1 vector-dim-auto-negotiation（工厂 negotiate + expected_dim，默认 BruteForce no-op honest-caveat，feature-enforce SPEC-DEFER）/ D2 vector-backend-config-file（Go `[vector]`→env bridge，env-wins，无段=byte-equiv，Rust 0-dep 保留）/ D3 get_source_chunk 隔离已实存 verify-only（grounding 校正）+ dropped/honest-defer 边界 / D4 默认行为 + 0-dep + 0-network + 既有契约不变（ADR-004/008）；真实测试出来才 ratify，vector-dim-feature-enforce 受阻维度据已达维度 ratify）。ADR-014 第二十五次激活。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
 
-- **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`、`qdrant-deployment-topology`、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`。
+- **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`、`qdrant-deployment-topology`、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`、`vector-dim-feature-enforce`（add-only，承 §3.16 Phase 34——声明 dim 的 feature backend qdrant/lancedb/sqlite-vec 真实 dim 强制，须 feature build）。
 - **eval**：`rust-native-eval-runner`（现 Go runner，承 `task-14.1`）、`eval-dataset-validation`、`case-results-subtable`、`semantic-golden-dataset`（语义近邻标注扩充）。
 - **检索 tokenizer**：`cjk-and-code-tokenizer`（CJK + 代码符号分词，`phase-19` §2）。
 - **trace / events**：`tracestore-sqlite-vacuum`、`tracestore-fts`、`tracestore-multi-workspace-strict`、`events-sse-push`、`events-replay-from-audit`、`events-drain-timeout-config`、`event-bus-partition`、`event-bus-capacity`、`memstore-event-emit`。
@@ -341,6 +356,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > - **task-33.4** closeout → ✅：export `--timeout` add-only flag（默认 60s byte-equiv，`TestParseExportOpts_Timeout`）+ smoke v23 step [42/42]（TestTask334）+ release docs + ADR-038 per-D ratify + ADR-031/027 add-only Amendment（Phase 33）+ roadmap/adapter add-only。dropped-nits 诚实：`%v→%w` non-bug / tracestore-fts already-fixed / datadir env→Options `[SPEC-DEFER:phase-future.daemon-options-datadir]`。
 >
 > 全 phase 真实验证：`cargo test --workspace` lib 207 + 全 integration pass；`go test ./...` 全过（含 TestTask334）；`cargo clippy --workspace --all-targets -D warnings` 0 warning；`bash -n scripts/console_smoke.sh` exit 0；`spec_drift_lint --touched origin/master` 0 unannotated hits。默认构建 0 新 dep + 0 network + 既有契约（proto add-only `workspace_id` + migration add-only 0019 + export add-only `--timeout`）不变（ADR-004/008）。真实 v0.26.0 tag/release 经用户授权（ADR-012）。
+
+> **v0.27.0 / Phase 34 排期更新（规划中 2026-06-03，add-only，不删上方历史条目）**：§3.16 把 §3.14 排期时新开的两条 grounded backlog `[SPEC-DEFER:phase-future.vector-dim-auto-negotiation]` + `[SPEC-DEFER:phase-future.vector-backend-config-file]` 排入 **v0.27.0 / Phase 34 — vector-config-completeness**（task-34.1 vector-dim-auto-negotiation：`factory.rs` `negotiate_vector_dim` + `VectorBackend::expected_dim` DEFAULT None，默认 BruteForce dim-agnostic no-op honest-caveat、feature backend 真实强制续 `[SPEC-DEFER:phase-future.vector-dim-feature-enforce]` / task-34.2 vector-backend-config-file：Go `config.toml` `[vector]` 段 → `setVectorEnv` 跨进程 env-bridge（仿 `CONTEXTFORGE_DATA_DIR`，env-wins、无段=byte-equiv，Rust 0-dep 保留）/ task-34.3 closeout）。这是一个**刻意小**版本——Phase 31/33 两轮治理债清扫后绿区 backlog 已薄，据实排小版本不凑数（ADR-013）。**grounding 诚实校正（add-only，不删上方条目）**：`get_source_chunk` workspace 隔离经核**已实存**（`core/src/data_plane/search.rs:421-423` 自 task-12.2 起按 `req.workspace_id` scope candidates，空=aggregate-all 兼容）——survey 高估为 gap，Phase 34 仅 verify-only 不变式测试记录已存在隔离，不新增代码（task-34.3，ADR-039 D3 记此校正）。**新增 backlog（add-only）**：`vector-dim-feature-enforce`（声明 dim 的 feature backend 真实 dim 强制，须 feature build，🟡）。真实数值 / 受阻维度真实跑出后回填（ADR-013，不预填）。ADR-039 Proposed。
 
 ---
 
