@@ -1,6 +1,6 @@
 # Task `31.2`: `cache-and-deploy-hardening — embedding-cache LRU/cap（cache.rs 无界 HashMap）+ Go memstore cache cap 可配置（memstore.go 硬编码 256）+ production compose 资源限（mem_limit/cpus）+ 可选 TLS 终止反代`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -78,19 +78,19 @@ pass bar：B1/B2 经确定性单测验证（🟢）；B3/B4 经 `docker compose 
 
 ## 6. Acceptance Criteria
 
-- [ ] AC1（embedding-cache LRU/cap）: `CachingEmbeddingProvider` L1（`cache.rs:23`）改为容量上界 LRU——插入超 cap 后最旧 key 驱逐，被逐 key 再 embed 时 inner 重新调用（miss）、仍在缓存内的 key 不触发 inner；默认 cap 不破现有命中；0 新 dep 优先 — verified by TEST-31.2.1
-- [ ] AC2（Go memstore cache cap 可配置）: `memstore.go` cache cap 经 config / env 可配置（替代硬编码 256，`:49`），未设时默认 256 行为不变；`:46-48` `[SPEC-DEFER:phase-future.cache-cap-configurable]` 标注随实现移除 — verified by TEST-31.2.2
-- [ ] AC3（compose 资源限 + 可选 TLS proxy）: production compose 两服务（`:20-68`）加 `mem_limit` + `cpus`；加 `profiles: [tls]` 可选 TLS 终止反代服务；`docker compose config` 与 `docker compose --profile tls config` parse 通过；`production.md:165-167` / `:383-391` 散文升级为可落地说明；真实 cert 签发 🟡 `[SPEC-DEFER:phase-future.compose-tls-auto-cert]`（待实测回填） — verified by TEST-31.2.3
-- [ ] AC4（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by TEST-31.2.4
+- [x] AC1（embedding-cache LRU/cap）: `CachingEmbeddingProvider` L1 由无界 `HashMap` 改为容量上界 `BoundedCache`（map + VecDeque 插入序，0 新 dep）+ `DEFAULT_EMBEDDING_CACHE_CAP=50_000` + `with_capacity` 构造（`new`/`with_sqlite` 签名兼容）；插入超 cap 后最旧 key FIFO 驱逐，被逐 key 再 embed inner 重新调用（miss）、仍在缓存内 key 不触发 inner；默认 cap 不破现有命中（既有 TEST-22.2.* 全绿）— verified by TEST-31.2.1（PASS）
+- [x] AC2（Go memstore cache cap 可配置）: `memstore.go` `resolveCacheCapacity()` 读 `CONTEXTFORGE_CONSOLEAPI_CACHE_CAP`（正整数），未设/非法回落默认 256；`NewMemStore` 用之；`:46-48` doc 的 `[SPEC-DEFER:phase-future.cache-cap-configurable]` 已移除（兑现） — verified by TEST-31.2.2（env=2→缓存留 2 + 非法→256，PASS）
+- [x] AC3（compose 资源限 + 可选 TLS proxy）: production compose 两服务加 `mem_limit`/`cpus`（env-overridable，compose v2 顶层键）；加 `profiles: [tls]` 可选 caddy TLS 终止反代 + `deploy/caddy/Caddyfile`；**`docker compose config`（默认）+ `docker compose --profile tls config` 实测 parse OK**（mem_limit 渲染 536870912/2147483648，tls-proxy 仅 profile 下出现）；`production.md` TLS/资源限散文升级为已落地说明；真实 cert 签发 🟡 `[SPEC-DEFER:phase-future.compose-tls-auto-cert]`（需真实域名，honest-defer 不伪造） — verified by TEST-31.2.3（compose parse PASS）
+- [x] AC4（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by TEST-31.2.4（PASS）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-31.2.1 | embedding-cache LRU/cap：插入超 cap → 最旧 key 驱逐 → 被逐 key 再 embed inner 重新调用（miss），仍在缓存内 key 不触发 inner；默认 cap 不破命中 | `core/src/embedding/cache.rs`（+ 单测模块） | Planned |
-| TEST-31.2.2 | Go memstore cache cap 经 config/env 可配置（非硬编码 256）；设 env=2 → 缓存仅留 2；未设 → 默认 256 | `internal/consoleapi/memstore.go`（+ `*_test.go`） | Planned |
-| TEST-31.2.3 | compose mem_limit/cpus + 可选 TLS proxy service；`docker compose config` + `--profile tls config` parse 通过；真实 cert deferred `[SPEC-DEFER:phase-future.compose-tls-auto-cert]` | `deploy/docker-compose.production.yml` + `docs/deploy/production.md` | Planned |
-| TEST-31.2.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-31.2.1 | embedding-cache LRU/cap：cap=2 插 3 互异 → 最旧驱逐 → 被逐 key 再 embed inner 重算（miss），仍在缓存内 key 命中（inner 不调）+ L1 entry ≤ cap | `core/src/embedding/cache.rs`（同源 test） | Done (PASS) |
+| TEST-31.2.2 | Go memstore cache cap 经 `CONTEXTFORGE_CONSOLEAPI_CACHE_CAP` 可配置（非硬编码 256）；env=2 → 缓存留 2；非法 → 默认 256 | `internal/consoleapi/memstore.go` + `memstore_test.go` | Done (PASS) |
+| TEST-31.2.3 | compose mem_limit/cpus + 可选 caddy TLS proxy（profiles:[tls]）+ Caddyfile；`docker compose config` + `--profile tls config` 实测 parse OK；真实 cert deferred `[SPEC-DEFER:phase-future.compose-tls-auto-cert]` | `deploy/docker-compose.production.yml` + `deploy/caddy/Caddyfile` + `docs/deploy/production.md` | Done (parse PASS) |
+| TEST-31.2.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -129,9 +129,16 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（待实施）
+**Status**: Done
 
-**计划改动文件**：
+**§9 Verification 实测证据**：
+- AC1：`cargo test -p contextforge-core embedding::cache` → **5 passed**（TEST-31.2.1 cap=2 FIFO 驱逐 + 既有 22.2.* 全绿）。L1 `BoundedCache`（map+VecDeque，0 新 dep）；`new`/`with_sqlite` 默认 cap 50_000，`with_capacity` 可调。
+- AC2：`go test ./internal/consoleapi/ -run TestMemStoreCacheCap` PASS（env=2→缓存留 2，非法→256，default const=256）。
+- AC3：`docker compose -f deploy/docker-compose.production.yml config` exit 0（mem_limit 渲染 536870912/2147483648，tls-proxy 不在默认）；`--profile tls config` parse OK（caddy + caddy-data/config volumes）。真实 cert 签发须真实域名 → `[SPEC-DEFER:phase-future.compose-tls-auto-cert]` honest-defer（不伪造）。
+- 不退化：`cargo test --workspace` 0 failed + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning（`BoundedCache::insert` 改用 `map.insert().is_some()` 避 `map_entry` lint）；`go test ./internal/consoleapi/` PASS；gofmt 改动文件 staged blob LF（CI clean）。
+- AC4：spec-lint `--touched origin/master` 0 未标注命中。
+
+**实际改动文件**：
 - `core/src/embedding/cache.rs`——L1 `mem`（`:23`）改容量上界 LRU；回填路径（`:154` / `:170`）插入时驱逐；可选 L2（`:99-104`）行数上界（add-only）。+ 单测模块（cap 上界 + 驱逐 + miss 重算）。
 - `internal/consoleapi/memstore.go`——cache cap 经 config/env 可配置（替代 `:49` 硬编码 256）；`NewMemStore`（`:57`）读取 + 默认回落；`:46-48` doc `[SPEC-DEFER]` 标注随实现移除。+ `*_test.go`（env=2 驱逐 + 默认 256）。
 - `deploy/docker-compose.production.yml`——两服务（`:20-68`）加 `mem_limit` + `cpus`；加 `profiles: [tls]` 可选 TLS 反代服务（caddy / traefik）。

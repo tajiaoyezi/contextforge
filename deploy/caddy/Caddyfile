@@ -1,0 +1,11 @@
+# task-31.2 (ADR-036 D2): OPTIONAL TLS-terminating reverse proxy for the production stack.
+# Used only by the `tls` compose profile (docker compose --profile tls up). Caddy terminates TLS and
+# reverse-proxies to the Go console-api on the compose network.
+#
+# Replace `console.example.com` with your real domain. With a real domain + reachable :80/:443, Caddy
+# auto-provisions a Let's Encrypt cert (ACME) — that real issuance needs a live domain and is
+# [SPEC-DEFER:phase-future.compose-tls-auto-cert]. For an internal/offline deployment, either mount a
+# cert + use `tls /path/cert.pem /path/key.pem`, or use `tls internal` (Caddy local CA).
+console.example.com {
+	reverse_proxy console-api-serve:48181
+}

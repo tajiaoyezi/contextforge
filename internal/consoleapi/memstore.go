@@ -3,7 +3,9 @@ package consoleapi
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,10 +45,21 @@ type MemStore struct {
 	jobSeq uint64
 }
 
-// memStoreCacheDefaultCapacity caps both chunk and trace caches in the
-// fallback MemStore. 256 is sufficient for single-user Console UI demo flow;
-// configurable cap deferred to [SPEC-DEFER:phase-future.cache-cap-configurable].
+// memStoreCacheDefaultCapacity caps both chunk and trace caches in the fallback MemStore. 256 is
+// sufficient for single-user Console UI demo flow; operators can override via the
+// CONTEXTFORGE_CONSOLEAPI_CACHE_CAP env var (task-31.2).
 const memStoreCacheDefaultCapacity = 256
+
+// resolveCacheCapacity reads CONTEXTFORGE_CONSOLEAPI_CACHE_CAP (a positive int) and falls back to
+// memStoreCacheDefaultCapacity when the var is unset, empty, non-numeric, or <= 0 (task-31.2).
+func resolveCacheCapacity() int {
+	if v := os.Getenv("CONTEXTFORGE_CONSOLEAPI_CACHE_CAP"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return memStoreCacheDefaultCapacity
+}
 
 func NewMemStore() *MemStore {
 	return &MemStore{
@@ -54,7 +67,7 @@ func NewMemStore() *MemStore {
 		jobs:          map[string]contractv1.IndexJob{},
 		chunkCache:    map[string]contractv1.SourceChunk{},
 		traceCache:    map[string]contractv1.RetrievalTrace{},
-		cacheCapacity: memStoreCacheDefaultCapacity,
+		cacheCapacity: resolveCacheCapacity(),
 	}
 }
 
