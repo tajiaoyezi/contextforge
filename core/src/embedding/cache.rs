@@ -22,6 +22,11 @@ use crate::embedding::traits::{EmbeddingError, EmbeddingProvider};
 /// upper bound — generous for normal workflows (same text still hits) but bounded.
 pub const DEFAULT_EMBEDDING_CACHE_CAP: usize = 50_000;
 
+/// task-33.1 (ADR-038 D1): default L2 (SQLite) row-count cap, scoped per (provider, dim). The L2
+/// `embedding_cache` table was unbounded (`INSERT OR REPLACE` only grows); this bounds it with
+/// rowid-FIFO eviction (0 schema change — uses the implicit rowid as insert order). Same default as L1.
+pub const DEFAULT_L2_EMBEDDING_CACHE_CAP: usize = 50_000;
+
 /// task-31.2: capacity-bounded L1 cache with FIFO-on-insert eviction (0 new dep — hand-rolled over
 /// `std`). Re-inserting an existing key updates the value in place without changing eviction order.
 struct BoundedCache {
@@ -70,6 +75,8 @@ pub struct CachingEmbeddingProvider {
     inner: Arc<dyn EmbeddingProvider>,
     mem: Mutex<BoundedCache>,
     store: Option<Mutex<Connection>>,
+    /// task-33.1: L2 row-count cap per (provider, dim); 0 ⇒ unbounded. Only meaningful when `store` is `Some`.
+    l2_cap: usize,
 }
 
 impl std::fmt::Debug for CachingEmbeddingProvider {
@@ -97,6 +104,7 @@ impl CachingEmbeddingProvider {
             inner,
             mem: Mutex::new(BoundedCache::new(cap)),
             store: None,
+            l2_cap: DEFAULT_L2_EMBEDDING_CACHE_CAP,
         }
     }
 
@@ -105,6 +113,17 @@ impl CachingEmbeddingProvider {
     pub fn with_sqlite(
         inner: Arc<dyn EmbeddingProvider>,
         path: impl AsRef<Path>,
+    ) -> Result<Self, EmbeddingError> {
+        Self::with_sqlite_capacity(inner, path, DEFAULT_L2_EMBEDDING_CACHE_CAP)
+    }
+
+    /// task-33.1: like [`with_sqlite`] but with an explicit L2 row-count cap (`l2_cap == 0` ⇒
+    /// unbounded; rowid-FIFO eviction per (provider, dim)). L1 stays bounded at
+    /// `DEFAULT_EMBEDDING_CACHE_CAP`. Public ctors stay source-compatible (add-only).
+    pub fn with_sqlite_capacity(
+        inner: Arc<dyn EmbeddingProvider>,
+        path: impl AsRef<Path>,
+        l2_cap: usize,
     ) -> Result<Self, EmbeddingError> {
         let conn = Connection::open(path).map_err(to_backend_err)?;
         conn.execute(
@@ -122,6 +141,7 @@ impl CachingEmbeddingProvider {
             inner,
             mem: Mutex::new(BoundedCache::new(DEFAULT_EMBEDDING_CACHE_CAP)),
             store: Some(Mutex::new(conn)),
+            l2_cap,
         })
     }
 
@@ -157,6 +177,18 @@ impl CachingEmbeddingProvider {
             rusqlite::params![key, self.inner.name(), self.inner.dim() as i64, vec_to_bytes(v)],
         )
         .map_err(to_backend_err)?;
+        // task-33.1: bound the L2 row count with rowid-FIFO eviction, scoped per (provider, dim) so
+        // one provider cannot starve another. rowid ASC = insert order; keep the newest `l2_cap` rows
+        // and delete the rest. 0 schema change (uses the implicit rowid); mirrors the L1 FIFO contract.
+        if self.l2_cap > 0 {
+            conn.execute(
+                "DELETE FROM embedding_cache WHERE provider=?1 AND dim=?2 AND rowid NOT IN (\
+                    SELECT rowid FROM embedding_cache WHERE provider=?1 AND dim=?2 \
+                    ORDER BY rowid DESC LIMIT ?3)",
+                rusqlite::params![self.inner.name(), self.inner.dim() as i64, self.l2_cap as i64],
+            )
+            .map_err(to_backend_err)?;
+        }
         Ok(())
     }
 }
@@ -360,6 +392,65 @@ mod tests {
         cache.embed(&[s("c")]).unwrap();
         assert_eq!(counter.embedded(), 4, "still-cached 'c' re-embed is a hit");
         assert!(cache.mem.lock().unwrap().len() <= 2, "L1 stays bounded after re-inserts");
+    }
+
+    // TEST-33.1.1 — AC1: L2 SQLite row-count cap with rowid-FIFO eviction (mirrors L1 TEST-31.2.1,
+    // against the SQLite store). A fresh-L1 provider over the same file isolates the L2 layer: the
+    // oldest-inserted hash is evicted from L2 (re-embed = miss → inner re-called), a still-resident
+    // hash is an L2 hit (inner not called), and COUNT(*) stays bounded at the L2 cap.
+    #[test]
+    fn test_33_1_1_l2_cap_evicts_oldest_fifo() {
+        let dir = std::env::temp_dir().join(format!("cf-l2cap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("l2cap.sqlite");
+
+        let counter1 = Arc::new(CountingProvider::new(384));
+        let cache1 = CachingEmbeddingProvider::with_sqlite_capacity(counter1.clone(), &db, 2).unwrap();
+        cache1.embed(&[s("a")]).unwrap();
+        cache1.embed(&[s("b")]).unwrap();
+        cache1.embed(&[s("c")]).unwrap(); // L2 cap=2 → "a" (oldest rowid) evicted; L2 = {b, c}
+
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM embedding_cache", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2, "L2 row count bounded at cap");
+        drop(conn);
+
+        // fresh provider (empty L1) over same file: "a" was evicted from L2 → miss (inner re-called);
+        // "c" still resident → L2 hit (inner not called).
+        let counter2 = Arc::new(CountingProvider::new(384));
+        let cache2 = CachingEmbeddingProvider::with_sqlite_capacity(counter2.clone(), &db, 2).unwrap();
+        cache2.embed(&[s("a")]).unwrap();
+        assert_eq!(counter2.embedded(), 1, "evicted 'a' is an L2 miss → inner re-called");
+        cache2.embed(&[s("c")]).unwrap();
+        assert_eq!(counter2.embedded(), 1, "still-resident 'c' is an L2 hit → inner not called");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // TEST-33.1.2 — AC2: default L2 cap does not prematurely evict — a modest workload keeps every
+    // entry (guards behavior-unchanged for the default with_sqlite path, ADR-004; existing TEST-22.2.*
+    // roundtrip stays green).
+    #[test]
+    fn test_33_1_2_default_l2_cap_keeps_modest_workload() {
+        let dir = std::env::temp_dir().join(format!("cf-l2def-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("l2def.sqlite");
+
+        let counter = Arc::new(CountingProvider::new(384));
+        let cache = CachingEmbeddingProvider::with_sqlite(counter.clone(), &db).unwrap();
+        for t in ["t1", "t2", "t3", "t4", "t5"] {
+            cache.embed(&[s(t)]).unwrap();
+        }
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM embedding_cache", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 5, "default cap keeps all 5 entries (no premature eviction)");
+        drop(conn);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // TEST-22.2.4 — AC4: dim()/name() passthrough + usable as Arc<dyn EmbeddingProvider>.
