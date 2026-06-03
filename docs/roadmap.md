@@ -268,6 +268,23 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-036 governance-debt-cleanup**（Proposed，D1 memstore-event-emit Go parity + event-bus verify-only 更正 / D2 cache + deploy 硬化 / D3 eval 子表 + exporter 全文 + MCP nits / D4 honest defer 重申 / D5 默认行为 + 既有契约不变；真实测试 / 实测出来才 ratify，TLS cert / native runner / attestation 受阻维度据已达维度 ratify）。
 
+### 3.14 v0.25.0 / Phase 32 — vector-backend-config-plumbing-and-completeness（承 Phase 29，post-v0.24.0 add-only 排期）
+
+**目标**：把 Phase 29（live-vector-recall, Done）落地的 `select_vector_backend` 工厂从「仅默认接线」补全为「经 env/config 选 backend + 工厂后端覆盖齐全 + 控制面 provenance 对齐 + 检索 filter 契约诚实化」。`core/src/server.rs` 两热路径（hybrid `:340` / semantic `:382`）今天硬注入 `select_vector_backend("", 0)`（注释明记「No vector config is plumbed」）；`factory.rs` 有 brute/qdrant/lancedb arm 却无 sqlite-vec arm（`SqliteVecBackend` 已实存、已 re-export、task-23.2 已验 MSVC 可构建）；控制面 `console_data_plane.proto` `SearchResultItem` 缺 `vector_score`（数据面 v1 search proto 已有 `vector_score=13`）；`retriever/mod.rs:325` 对 source_type/agent_scope filter emit 措辞误导的 WARN。
+
+**来源 marker（grounded 校正）**：
+- `[SPEC-DEFER:phase-future.vector-backend-config-file]`（backend 经 env/config 选用，承 task-29.1 工厂）。
+- `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`（sqlite-vec in-process 选择矩阵 recall/latency cell，须本机 MSVC feature build，🟡）。
+- **关键诚实校正**：`source_type`/`agent_scope` chunk filter 经核 chunks 表（§5.3 FROZEN）无该列、`SearchResult` 二者硬编码、`agent_scope` 属 memory 层 — real chunk filter 是 import-path feature 非确定性 nit，本 phase 仅令契约诚实（准确 no-op）+ 开新 backlog `[SPEC-DEFER:phase-future.chunk-source-type-filter]` + `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`，不伪造已实现（ADR-013）。
+
+**候选 task 拆分**：
+- **task-32.1** backend config plumbing：`server.rs` hybrid + semantic 两热路径经 env（仿 `CONTEXTFORGE_DATA_DIR` pattern）选 backend，未设/"" → BruteForce byte-equivalent。🟢
+- **task-32.2** sqlite-vec factory arm：`select_vector_backend` 加 `"sqlite-vec"` arm（feature 双半 gating，镜像 qdrant/lancedb）+ in-process 选择矩阵 wiring 🟢；矩阵 recall/latency cell 🟡 honest-defer `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`（须 MSVC feature build，不伪造数值 ADR-013）。
+- **task-32.3** console provenance + filter 契约诚实化：`console_data_plane.proto` `SearchResultItem` add-only `vector_score=16`（parity v1 search proto）+ `mod.rs:325` 误导性 WARN → 准确 no-op 契约 + 新 chunk filter backlog。🟢
+- **task-32.4** v0.25.0 closeout：smoke v22 + release docs + ADR-037 ratify + ADR-034 add-only Amendment（sqlite-vec arm 补全工厂）+ roadmap/adapter add-only。🟢
+
+**ADR**：**ADR-037 vector-backend-config-plumbing-and-completeness**（Proposed，D1 config plumbing / D2 sqlite-vec arm（矩阵 cell honest-defer）/ D3 console provenance add-only + filter 契约诚实化 / D4 honest-defer 边界 / D5 默认 0-vector-dep baseline + 既有契约不变；真实测试 / 实测出来才 ratify，sqlite-vec 矩阵 cell / real chunk filter feature 受阻维度据已达维度 ratify）。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
@@ -292,6 +309,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > **v0.23.0 / Phase 30 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.12 把上方「检索 tokenizer」段承 Phase 24 的两项 follow-up marker `[SPEC-DEFER:phase-future.cjk-true-segmenter]` + `[SPEC-DEFER:phase-future.tokenizer-default-on]`（出处 ADR-029:54 + phase-24 spec :41/:42，**非** §4 既有 `cjk-and-code-tokenizer` —— 后者已于 v0.17.0 闭合）排入 **v0.23.0 / Phase 30 — cjk-true-segmenter**（task-30.1 真分词器 feature-gated + 双站点注册 / task-30.2 tokenizer-default-on 评估 + 既有索引迁移 + 真实 CJK recall delta / task-30.3 closeout）。真分词器引入 optional dep（jieba-rs/lindera）经主 agent R7 chore + ADR-008 add-only；默认构建仍 0 新 dep + 默认 tokenization 不变（ADR-004）。真实 recall delta 真实跑出后回填（ADR-013，不预填）；若全量 default-on 迁移过重则诚实延后 default flip 续 backlog。ADR-035 Proposed。
 >
 > **v0.24.0 / Phase 31 排期更新（规划中 2026-06-02，add-only，不删上方历史条目）**：§3.13 把上方 backlog 中真正开放的 code-local 项排入 **v0.24.0 / Phase 31 — governance-debt-cleanup**：`memstore-event-emit`（task-31.1）/ `cache-lru` + `cache-cap-configurable` + `compose-resource-limits` + `compose-tls-termination`（task-31.2）/ `case-results-subtable` + exporter `content=""`（task-6.3 旧 nit，经新 `ListAllChunks` RPC）+ PR #48 3 MCP nits（task-31.3）。Phase 28 follow-up `multi-arch-native-runner` / `github-native-attestation`（私有仓库受阻）/ `rust-native-eval-runner`（无 consumer）经核受阻 / 无驱动 → task-31.3 诚实重申延后续 backlog（不伪造完成，ADR-013）。**诚实校正（add-only，不删上方条目）**：上方 trace/events 段所列 `event-bus-partition` + `event-bus-capacity` 经核**已在 v0.19.0 / Phase 26（task-26.3 / ADR-031 D5）交付**（`core/src/data_plane/events.rs` `EventBusConfig`/`Partition`/`from_config` + `server.rs` 生产接线 + TEST-26.3.1a/b/c）——非开放债，自开放 backlog 剔除，Phase 31 仅 verify-only（task-31.1）。ADR-036 Proposed。
+
+> **v0.25.0 / Phase 32 排期更新（规划中 2026-06-03，add-only，不删上方历史条目）**：§3.14 把 `select_vector_backend` 工厂的「配置接线 + 后端覆盖补全 + 控制面 provenance + filter 契约诚实化」排入 **v0.25.0 / Phase 32 — vector-backend-config-plumbing-and-completeness**（task-32.1 backend config plumbing / task-32.2 sqlite-vec factory arm + 矩阵 wiring / task-32.3 console `vector_score` add-only + filter 契约诚实化 / task-32.4 closeout）。**新增 backlog 条目（add-only，grounded 校正）**：`chunk-source-type-filter`（real chunk source_type filter，须 importer 侧 source_type 打标 + chunks 表 §5.3 FROZEN schema migration，非确定性 nit）/ `chunk-agent-scope-filter`（agent_scope 属 memory 层 `memory_items` 0013，chunk 检索路径无该维度）/ `sqlite-vec-inprocess-matrix`（sqlite-vec in-process 选择矩阵 recall/latency cell，须本机 MSVC `vector-sqlite` feature build，🟡）/ `vector-backend-config-file`（超 env 的结构化 vector backend 配置）/ `vector-dim-auto-negotiation`（embedder-dim 据 provider 真实维度自动协商，现 `let _ = dim` 占位）。真实数值 / 受阻维度真实跑出后回填（ADR-013，不预填）。ADR-037 Proposed。
 
 ---
 

@@ -1,0 +1,82 @@
+# ADR `037`: `vector-backend-config-plumbing-and-completeness`
+
+**Status**: Proposed（Draft 阶段不 ratify；ratify 在 v0.25.0 / task-32.4 closeout，据真实测试逐 D 项；D2 sqlite-vec in-process 矩阵 cell 须 MSVC feature build → honest-defer 部分 ratify）
+
+**Category**: 检索 / 向量 backend / 配置接线 / 控制面 provenance / 契约诚实化
+**Date**: 2026-06-03
+**Decided By**: 主 agent（ADR-012 自治）；tajiaoyezi ratification at v0.25.0 closeout
+**Related**: ADR-034 (production-vector-live-recall — 本 phase 在其 `select_vector_backend` 工厂 + server.rs 热路径注入之上补全 sqlite-vec arm 工厂覆盖，以 add-only Amendment 记录，不溯改 D1-D5 正文，ADR-014 D5) / ADR-023 (vector-backend-default — 默认 0-dep + BruteForce 语义 baseline 守线) / ADR-027 (embedding-provider-selection — 仿 `select_provider` env→config 接线 pattern) / ADR-028 (vector-persistence — sqlite-vec MSVC 可构建结论复用，承 task-23.2) / ADR-004 (local-first-privacy-baseline — 默认构建 0 vector dep + 0 网络 + 默认行为不变) / ADR-013 (禁伪造红线 — sqlite-vec in-process 矩阵 cell / real chunk source_type+agent_scope filter 受阻维度真实跑出后回填，不预填) / ADR-012 (main-agent-governance-autonomy — tag/release outward-facing 须用户显式授权，v0.25.0 本轮已授权) / ADR-014 (D1-D5，第二十三次激活) / roadmap §3.14 + §4
+
+## Context
+
+ContextForge 截至 Phase 31（governance-debt-cleanup, Done）已把生产向量 backend 推进到 **工厂化 + 热路径注入** 阶段：Phase 29（ADR-034 D1）落了 `select_vector_backend(name, dim) -> Result<Arc<dyn VectorStore>, VectorError>`（`core/src/retriever/vector/factory.rs:31-69`），并把它接入 `server.rs` 的 hybrid（`server.rs:340`）与语义（`server.rs:382`）两热路径替换硬编码 BruteForce。但工厂注入只兑现了一半——**配置接线缺位、后端覆盖不全、控制面 provenance 与检索 filter 契约仍有诚实缺口**：
+
+- **配置未接线，热路径只能用默认后端**：两热路径当前均传 `select_vector_backend("", 0)`（hybrid `server.rs:340`、semantic `server.rs:382`），name 与 dim 硬编码为默认值——工厂虽已工厂化，但无任何 env/config 把运维选择的 backend 名喂进热路径。`CoreService` 已持有 `data_dir: PathBuf`（`server.rs:52`，main 经 `resolve_data_dir` 解析，遵循 `CONTEXTFORGE_DATA_DIR` env pattern，`server.rs:504-521`），但**没有任何 vector backend 配置被 plumb**。故 qdrant/lancedb/sqlite-vec 即便 feature 编译通过、工厂臂可识别，运维也无从在不改源码的前提下经热路径选用——`select_vector_backend` 的工厂价值仍被默认参数封印。
+
+- **工厂后端覆盖不全：sqlite-vec backend 已存在但工厂无臂**：`core/src/retriever/vector/sqlite_vec.rs` 的 `SqliteVecBackend`（`vector-sqlite` feature，`Cargo.toml` `sqlite-vec = "=0.1.9"` optional + `feature vector-sqlite = ["dep:sqlite-vec"]`）已实现 `VectorBackend`/`VectorIndexer`/`VectorSearcher` → `VectorStore`（`name()="sqlite-vec"`，in-memory SQLite `vec0` vtable），mod.rs:40 已 re-export，且在 task-23.2（Phase 23）经核 **MSVC 真实可构建 + 运行通过**（ADR-028 真实凭据）。但 `factory.rs` 的 match 臂只有 `""`/`"brute"`、`"qdrant"`、`"lancedb"`、unknown → 诚实 Err——**没有 `"sqlite-vec"` 臂**。运维把 backend 名设为 `sqlite-vec` 会落到 unknown 臂诚实 Err，工厂后端覆盖与 backend 实存清单不一致。
+
+- **控制面 provenance 缺 vector_score 字段（与 v1 search proto 不对齐）**：v1 search proto（`proto/contextforge/v1/search.proto`）的 `SearchResultItem` 已有 `vector_score=13`（`search.proto:48`）+ `retrieval_method=8`（`search.proto:43`），携带语义相似度 provenance。但 **CONSOLE data-plane proto**（`proto/contextforge/console_data_plane/v1/console_data_plane.proto`）的 `SearchResultItem`（`:185-201`）只有 `retrieval_method=13`（`:198`），**无 vector_score**——字段当前至 `citation=15`（`:200`），故 add-only 的 `vector_score` 应取 field 16。控制面消费者（console UI / 控制面 API）拿不到向量分 provenance，与数据面 v1 search proto 不对齐。
+
+- **检索 filter 契约误导性 WARN（关键校正，ADR-013 诚实）**：`core/src/retriever/mod.rs:135` 的 `SearchFilters` 有 `source_type:Vec<String>` + `agent_scope:Vec<String>`；`mod.rs:325-330` 在 caller 传非空 filter 时 emit WARN `"source_type/agent_scope filter not yet implemented (schema gap; SPEC-DRIFT-task-2.4 pending), value ignored"`。这条 WARN **措辞误导**——它暗示「task-2.4 reverse-fill schema 后即可落地」，把一项真实的导入路径功能矮化成一个待补的确定性 nit。**经核实情**：chunks 表（`indexer/mod.rs:117`，**§5.3 FROZEN**）**没有 source_type/agent_scope 列**（仅 chunk_id / file_path / line_start / line_end / language / content / content_hash / kind / collection_id / indexed_at；其中 `kind` 是 AST 结构性 `Option<String>`，**非** source 分类器）；`SearchResult.source_type` 是硬编码 `DEFAULT_SOURCE_TYPE`（`mod.rs:452`）、`agent_scope` 硬编码 `Vec::new()`（`mod.rs:459`）；而 `agent_scope` 本质是 **memory 层概念**（`memory_items` 表，migration 0013），非 chunk 层。故一个**真实的 chunk filter** 需要导入侧 source_type 打标 + 一次 schema migration——这是一项真实的 import-path 功能，**不是确定性 nit**。Phase 32 **不实现该功能**；它把 WARN/契约 **诚实化**（准确表述为 no-op + 新 backlog tag），默认空 filter 结果完全一致。
+
+本 ADR 记录把上述「配置接线缺位 / sqlite-vec 工厂覆盖缺口 / 控制面 provenance 不对齐 / 检索 filter 契约误导」收敛为一个集中补全 + 诚实化 Phase 的处理策略。改动**多为 code-local 🟢 可单测**（env→server.rs 接线 / sqlite-vec 工厂臂 wiring / console proto add-only field / filter 契约措辞诚实化）；sqlite-vec in-process 选择矩阵 recall/latency cell 须本机 MSVC feature build → 🟡 honest-defer，不伪造数值（ADR-013）；real chunk source_type+agent_scope filter 须导入侧打标 + schema migration → honest-defer 新 backlog（🔴 受阻，非本 phase 范围）。全部改动遵守 ADR-004 默认构建 0 vector dep + 0 网络 + 默认行为 / proto / 既有契约不变 + ADR-013 受阻 / 无驱动维度诚实不伪造。
+
+## Decision
+
+向量 backend 补全采用 **「配置接线 + 后端覆盖补全 + 控制面 provenance add-only + 契约诚实化 + 默认零依赖守线」** 策略，分 5 个决策点：
+
+### D1 — backend config plumbing：env→server.rs 两热路径，default 保形（task-32.1）🟢
+
+为 `server.rs` 的 hybrid（`server.rs:340`）与语义（`server.rs:382`）两热路径加 env/config 驱动的 backend 选择：从 env（仿 `select_provider` env→config pattern，沿用 `CONTEXTFORGE_DATA_DIR` 既有 env 风格）读取 backend 名 + dim，替换硬编码的 `select_vector_backend("", 0)`。未设 / `""` → `BruteForceVectorBackend`，与 task-29.1 既有默认 **byte-equivalent**（TEST-29.1.3 + 既有语义/hybrid 行为不变）。
+
+**理由**：`select_vector_backend` 工厂（ADR-034 D1）已就位，但两热路径硬编码 `("", 0)` 使工厂价值被默认参数封印——运维无法在不改源码下经热路径选用 qdrant/lancedb/sqlite-vec。加一层 env→config 接线把运维选择 plumb 进热路径，对称仿 embedding 侧 `select_provider` 接线 pattern，最 surgical（不改工厂签名、不改 `VectorStore` trait）。默认未设 → `""` → BruteForce 保形，守 ADR-004 0-dep + 默认行为不变（默认构建语义+hybrid 路径与 Phase 29 字节等价）。备选「server.rs 直接 `#[cfg]` 读环境」会把接线逻辑散在热路径、难单测，故不取——经工厂集中决策、env 默认分支 deterministic 可单测。
+
+### D2 — sqlite-vec factory arm：补全 factory 后端覆盖（task-32.2）🟢 / 🟡
+
+`factory.rs` 加 `"sqlite-vec"` 臂：`vector-sqlite` feature on → `SqliteVecBackend::new()`（`sqlite_vec.rs:50`，`name()="sqlite-vec"`）；feature off → 可识别 `Err`（naming `vector-sqlite` feature，不静默 fallback BruteForce、不伪造成功，承 factory 既有 qdrant/lancedb 双半 gating pattern）。in-process backend 选择矩阵 wiring 🟢（工厂臂 + 双半单测确定性可达）。**矩阵 recall/latency cell 须本机 MSVC `vector-sqlite` feature build 真实跑出 → 🟡 honest-defer `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`，不伪造数值**（ADR-013）。
+
+**理由**：`SqliteVecBackend` 已实存（`sqlite_vec.rs` impl `VectorStore`，mod.rs:40 re-export，task-23.2 经核 MSVC 真实可构建 + 运行通过，ADR-028），但 factory match 无 `"sqlite-vec"` 臂——后端覆盖与 backend 实存清单不一致，运维设 `sqlite-vec` 落 unknown 臂诚实 Err。补全工厂臂使覆盖完整，对称仿 qdrant/lancedb feature 双半 gating（feature on → backend / feature off → naming-feature Err），最 surgical。矩阵 cell（sqlite-vec in-process recall@10 / latency vs brute/lancedb）须本机启 `vector-sqlite` feature build 真实测量——CI 默认不构建该 feature（承 task-23.2 caveat：单机 MSVC build，CI 默认不开），故 cell 据 ADR-013 honest-defer `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`，真实跑出后回填 v0.25.0 evidence，绝不预填。备选「合成 cell 数充矩阵」违 ADR-013，故不取。
+
+### D3 — console provenance add-only + retrieval-filter 契约诚实化（task-32.3）🟢
+
+(a) **console provenance**：CONSOLE data-plane proto（`console_data_plane.proto`）的 `SearchResultItem`（`:185-201`）add-only `vector_score = 16`（当前字段至 `citation=15`，add-only 不改既有 tag），与 v1 search proto `SearchResultItem.vector_score=13`（`search.proto:48`）parity；经数据面 / 控制面携带向量分 provenance。(b) **retrieval-filter 契约诚实化**：`mod.rs:325-330` 误导性 WARN（`"... not yet implemented (schema gap; SPEC-DRIFT-task-2.4 pending) ..."`）改为 **准确的 no-op 契约**——明确表述 chunks 表（`indexer/mod.rs:117` §5.3 FROZEN）无 source_type/agent_scope 列、`source_type` 硬编码 `DEFAULT_SOURCE_TYPE`（`mod.rs:452`）/ `agent_scope` 硬编码 `Vec::new()`（`mod.rs:459`），传非空 filter 为准确 no-op（默认空 filter 结果完全一致），并落 `[SPEC-DEFER:phase-future.chunk-source-type-filter]` + `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]` 新 backlog。
+
+**理由**：(a) console SearchResultItem 缺 vector_score（`:185-201` 仅 retrieval_method=13）使控制面消费者拿不到向量分 provenance，与 v1 search proto 不对齐；add-only field 16 不改既有 tag、不破既有控制面 client（ADR-004 既有契约不变）。(b) `mod.rs:325` WARN 措辞误导（暗示 task-2.4 schema reverse-fill 后即可落地，把真实 import-path 功能矮化为确定性 nit）；经核 chunks 表 FROZEN 无该列、source_type/agent_scope 均硬编码默认、agent_scope 本质 memory 层概念（`memory_items` 表 migration 0013）——一个真实 chunk filter 须导入侧 source_type 打标 + schema migration，是真实 import-path 功能而非 nit（ADR-013 诚实校正）。Phase 32 不实现该功能，只把契约措辞诚实化（准确 no-op + 新 SPEC-DEFER backlog），默认空 filter 结果完全一致，不破任何既有行为。
+
+### D4 — honest-defer 边界：sqlite-vec 矩阵 cell + real chunk filter feature（task-32.2 / task-32.3）🟡 / 🔴
+
+两项受阻 / 无驱动维度据 ADR-013 如实记录、不伪造完成：(a) **sqlite-vec in-process 选择矩阵 recall/latency cell** 须本机 MSVC `vector-sqlite` feature build 真实跑出 → 🟡 honest-defer `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`（wiring 🟢 已达，cell 数据未跑、不预填）；(b) **real chunk source_type + agent_scope filter** 须导入侧 source_type 打标 + chunks 表 schema migration（chunks 表 §5.3 FROZEN 当前无该列）→ 🔴 honest-defer 新 backlog `[SPEC-DEFER:phase-future.chunk-source-type-filter]` + `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`（本 phase 只做契约诚实化 no-op，不实现该 import-path 功能）。
+
+**理由**：据 ADR-013，对受阻 / 无驱动维度诚实记录边界、不伪造完成：sqlite-vec 矩阵 cell——CI 默认不构建 `vector-sqlite` feature（承 task-23.2 caveat：单机 MSVC build），真实 cell 须本机 feature build 跑出后回填，wiring（工厂臂 + 双半单测）已达而数据 honest-defer `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`；real chunk filter——chunks 表 FROZEN 无 source_type/agent_scope 列、agent_scope 本是 memory 层概念，真实 filter 是导入路径功能（须打标 + migration）而非确定性 nit `[SPEC-DEFER:phase-future.chunk-source-type-filter]`，Phase 32 据实只做契约诚实化（准确 no-op）、把真实 feature 据实记为新 backlog `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`，不沿用「schema reverse-fill 后即可落地」的误导表述。
+
+### D5 — 默认 0-vector-dep baseline + 默认行为 + 既有契约不变（all tasks）🟢
+
+所有改动保持默认构建 0 vector dep + 0 网络 + 默认行为 / proto / 既有契约不变（ADR-004）：env→server.rs 接线默认未设 → `""` → BruteForce 与 Phase 29 字节等价；sqlite-vec 工厂臂在 `vector-sqlite` feature 下、默认构建不编译 `SqliteVecBackend`（0 新 dep——sqlite-vec 已是 optional dep，本 phase 不加任何新依赖，ADR-008 dep add-only）；console proto `vector_score=16` 为 add-only field（不改既有 tag、不破既有 client）；filter 契约诚实化为 no-op（默认空 filter 结果完全一致，不改任何既有行为）；既有 `cargo-test` / `go-test` / `spec-lint` 三门不退化；不改 `VectorBackend`/`VectorIndexer`/`VectorSearcher`/`VectorStore` 四 trait 签名。
+
+**理由**：ADR-004 local-first——默认构建 0-network / 0 新依赖 / 0 供应链面 + 默认行为不变是不可让渡的 baseline。本 phase 为纯配置接线补全 + 后端覆盖补全 + 控制面 provenance add-only + 契约诚实化——非默认行为演进。env 默认分支保形 / feature 边界内 backend / add-only proto field / no-op 契约诚实化使既有用户与既有契约零感知，符合 ADR-004 本地优先 / 隐私基线与 ADR-023 D5 默认 0-dep + BruteForce 语义 baseline。
+
+## Consequences
+
+- **Positive**: server.rs hybrid + semantic 两热路径经 env/config 选 backend（兑现工厂配置接线，运维不改源码可选用 qdrant/lancedb/sqlite-vec），未设 / `""` → BruteForce 字节等价默认行为不变；factory 补全 sqlite-vec 臂（后端覆盖与 backend 实存清单一致，in-process 选择矩阵 wiring 🟢）；CONSOLE data-plane SearchResultItem add-only `vector_score=16` 携带向量分 provenance（parity v1 search proto，控制面消费者可见）；检索 filter 契约从误导性 WARN 诚实化为准确 no-op + 新 SPEC-DEFER backlog（默认空 filter 结果完全一致）。全部 env 默认保形 / feature 边界 / add-only / no-op 诚实化，默认构建 0 vector dep + 0 网络 + 默认行为 + proto + 既有契约不变（ADR-004），既有三门不退化，四 trait 签名不变。
+- **Negative / open**（受阻维度如实，不伪造）：sqlite-vec in-process 选择矩阵 recall/latency cell 须本机 MSVC `vector-sqlite` feature build 真实跑出 → 🟡 honest-defer `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`（wiring 已达，cell 数据未跑、不预填，CI 默认不构建该 feature，承 task-23.2 caveat）；real chunk source_type + agent_scope filter 须导入侧 source_type 打标 + chunks 表（§5.3 FROZEN 无该列）schema migration → 🔴 honest-defer 新 backlog `[SPEC-DEFER:phase-future.chunk-source-type-filter]` + `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`（agent_scope 本是 memory 层概念，本 phase 只做契约诚实化 no-op，不实现该 import-path 功能）——以上受阻 / 无驱动维度据 ADR-013 如实记录、不伪造完成。
+- **Ratification**: 本 ADR **Proposed**。task-32.1..32.3 通过后于 v0.25.0 closeout（task-32.4）据真实 CI / 实测产物 ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）；sqlite-vec in-process 矩阵 cell（须 MSVC feature build）/ real chunk filter feature（须导入侧打标 + migration）等受阻维度据已达维度 ratify + 如实记录受阻，不强 ratify。
+- **Follow-ups**: sqlite-vec in-process 选择矩阵 recall/latency cell（本机 MSVC feature build 跑出后）`[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`；real chunk source_type filter（导入侧 source_type 打标 + schema migration 后）`[SPEC-DEFER:phase-future.chunk-source-type-filter]`；real chunk agent_scope filter（memory 层 scope 关联 chunk 后）`[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`；vector backend config 文件化（超 env 的结构化配置）`[SPEC-DEFER:phase-future.vector-backend-config-file]`。ADR-034（sqlite-vec arm 补全 factory）以 add-only Amendment 于 task-32.4 记录（不溯改 D1-D5 正文，ADR-014 D5）；ADR-023（0-dep baseline 守线）/ ADR-027（env→config 接线 pattern 复用）/ ADR-028（sqlite-vec MSVC 可构建结论复用）的引用均不溯改其正文。
+
+## Alternatives
+
+- **A1（不接 env，仍硬编码默认参数）**：保留 `select_vector_backend("", 0)` 不动——工厂价值被默认参数封印，运维无从经热路径选用真实 backend，配置接线缺位持续。否决：D1 加薄薄一层 env→config 接线即兑现工厂价值，最 surgical 且默认保形（未设 → BruteForce 字节等价），不接线等于工厂只完成一半。
+- **A2（factory 不加 sqlite-vec 臂，把 sqlite-vec 当不支持后端）**：让 `sqlite-vec` 落 unknown 臂诚实 Err。否决：`SqliteVecBackend` 已实存（impl VectorStore，mod.rs:40 re-export，task-23.2 MSVC 可构建）——工厂后端覆盖与 backend 实存清单不一致是真实缺口，补 add-only 臂（feature 双半 gating，对称 qdrant/lancedb）即修，最 surgical。
+- **A3（console proto 复用既有 score 字段携带 vector 分，不加 vector_score）**：让控制面消费者从 `score=10` 推断向量分。否决：`score` 是融合 / 排序后总分、语义不等于向量分 provenance，与 v1 search proto 显式 `vector_score=13` 不对齐；add-only field 16（不改既有 tag）parity v1 proto 才是诚实 provenance，且不破既有 client（ADR-004）。
+- **A4（本 phase 实现 real chunk source_type+agent_scope filter）**：直接给 chunks 表加 source_type/agent_scope 列 + 导入侧打标 + filter 落地。否决：chunks 表 §5.3 FROZEN、agent_scope 本是 memory 层概念（migration 0013）——这是真实 import-path 功能（须打标 + schema migration），跨 Phase 改 FROZEN schema 超本 phase 范围；据 ADR-013 本 phase 只把误导性 WARN 诚实化为准确 no-op + 新 backlog，把真实 feature 据实记延后，不伪造为已落地。
+- **A5（合成 sqlite-vec 矩阵 cell 充数）**：用推理 / 合成数据填 sqlite-vec in-process recall/latency cell。否决：违 ADR-013 禁伪造红线——cell 须本机 MSVC `vector-sqlite` feature build 真实跑出，wiring 🟢 已达而数据 🟡 honest-defer，真实跑出后回填 evidence，绝不预填。
+
+## 触及 ADR 关系
+
+- **ADR-034（production-vector-live-recall）→ add-only Amendment @ task-32.4**：本 phase 在其 `select_vector_backend` 工厂 + server.rs 热路径注入（D1）之上补全 sqlite-vec arm（factory 后端覆盖补全）+ env→config 接线兑现工厂配置价值。以 `## Amendment (Phase 32 / v0.25.0)` add-only 记录 sqlite-vec arm 补全 + config plumbing，**不溯改 ADR-034 D1-D5 正文**（ADR-014 D5）。
+- **ADR-023（vector-backend-default）→ 守线引用（不溯改）**：默认构建 0 vector dep + BruteForce 语义 baseline（D1 默认保形 / D2 feature 边界 / D5）守 ADR-023 D5 默认 0-dep 档，不溯改其 D1-D6 tier 正文。
+- **ADR-027（embedding-provider-selection）→ pattern 复用（不溯改）**：D1 env→config 接线对称仿 `select_provider` env→config pattern，复用其工厂接线先例，不溯改其正文。
+- **ADR-028（vector-persistence）→ 凭据复用（不溯改）**：D2 sqlite-vec arm 复用 task-23.2 sqlite-vec MSVC 真实可构建 + 运行通过结论，不溯改其正文。
+- **ADR-004（local-first-privacy-baseline）→ 守线**：默认构建 0 vector dep + 0 网络 + 默认行为 / proto / 既有契约不变（D5）守 ADR-004 baseline。
+- **ADR-008（dep add-only）→ 守线**：本 phase 加 **0 新依赖**（sqlite-vec 已是 optional dep，feature 边界内）。
+- **ADR-013（禁伪造红线）→ 守线**：sqlite-vec in-process 矩阵 cell（须 MSVC feature build）/ real chunk source_type+agent_scope filter feature（须导入侧打标 + migration）受阻维度真实跑出后回填，不预填、不伪造（D2 / D3 / D4）。
+- **ADR-014（cross-phase-exit-criteria-validation）→ 第二十三次激活**：D1-D5 mapping + D2 lint（touched 行 0 未标注命中）+ D3 verified-by + D4 自治 + D5 历史 Phase 1-31 不溯改（ADR 改动 add-only Amendment）；本 ADR ratify 在 task-32.4 closeout，Draft 阶段不 ratify。
