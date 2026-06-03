@@ -107,6 +107,9 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 	if fallbackInmem {
 		store := consoleapi.NewMemStore()
 		memMem := consoleapi.NewMemMemoryStore()
+		// task-31.1: memory ops emit memory.* events into the shared fallback ring (parity with
+		// workspace/job fallback + the Rust data plane), visible via GET /v1/observability/events.
+		memMem.SetEventSink(store.EmitEvent)
 		memMem.SeedFixtures()
 		memEval := consoleapi.NewMemEvalStore()
 		fmt.Fprintln(stderr, "WARN console-api: using in-memory fallback store (CONSOLE_API_FALLBACK_INMEM=1; data plane bypassed; ADR-016 §D4)")
