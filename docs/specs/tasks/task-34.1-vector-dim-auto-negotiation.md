@@ -1,6 +1,6 @@
 # Task `34.1`: `vector-dim-auto-negotiation — factory.rs select_vector_backend(name, dim) 不再静默丢弃 CONTEXTFORGE_VECTOR_DIM（替代 let _ = dim 直接弃用）；镜像 embedding::factory::negotiate_dim 加纯函数 negotiate_vector_dim + VectorBackend::expected_dim() 默认 None；0 新 dep / 0 schema migration；默认 BruteForce dim-agnostic 不强校（ADR-004 byte-equivalent）+ feature-backend live enforce 诚实延后`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -81,16 +81,16 @@ pass bar：`negotiate_vector_dim` 纯函数四路经确定性单测验证（`0` 
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（`negotiate_vector_dim` 纯函数四路 + 默认 BruteForce byte-equivalent 🟢）: 纯函数 `negotiate_vector_dim(requested, declared)` ——`requested == 0` ⇒ `Ok`；`declared == None` ⇒ `Ok`；`declared == Some(d)` 且 `requested == d` ⇒ `Ok`；`declared == Some(d)` 且非零 `requested != d` ⇒ `Err(VectorError::DimMismatch { expected: requested, got: d })`（复用既有 `:83`，不新增变体）。`select_vector_backend`（`:33-39`）`:39` `let _ = dim;` 替换为 `negotiate_vector_dim(dim, backend.expected_dim())?`；默认 BruteForce 路径（`expected_dim()==None`）任意 dim 放行（byte-equivalent，ADR-004）；`VectorBackend` 加 `expected_dim` 默认 `None`（三既有签名不动，add-only）；**0 新 dep + 0 schema migration** — verified by **TEST-34.1.1**（纯函数四路）+ **TEST-34.1.2**（默认 BruteForce 路径任意 dim 放行 byte-equivalent）
-- [ ] **AC2**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-34.1.3**（= LAST）
+- [x] **AC1**（`negotiate_vector_dim` 纯函数四路 + 默认 BruteForce byte-equivalent 🟢）: 纯函数 `negotiate_vector_dim(requested, declared)` ——`requested == 0` ⇒ `Ok`；`declared == None` ⇒ `Ok`；`declared == Some(d)` 且 `requested == d` ⇒ `Ok`；`declared == Some(d)` 且非零 `requested != d` ⇒ `Err(VectorError::DimMismatch { expected: requested, got: d })`（复用既有 `:83`，不新增变体）。`select_vector_backend`（`:33-39`）`:39` `let _ = dim;` 替换为 `negotiate_vector_dim(dim, backend.expected_dim())?`；默认 BruteForce 路径（`expected_dim()==None`）任意 dim 放行（byte-equivalent，ADR-004）；`VectorBackend` 加 `expected_dim` 默认 `None`（三既有签名不动，add-only）；**0 新 dep + 0 schema migration** — verified by **TEST-34.1.1**（纯函数四路）+ **TEST-34.1.2**（默认 BruteForce 路径任意 dim 放行 byte-equivalent）
+- [x] **AC2**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-34.1.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-34.1.1 | `negotiate_vector_dim` 纯函数四路：`0` ⇒ Ok / `None`-declared ⇒ Ok / matching `Some(d)==requested` ⇒ Ok / mismatch 非零 `requested != Some(d)` ⇒ `DimMismatch { expected: requested, got: d }`（复用既有 `types.rs:83`，0 新 dep + 0 schema migration） | `core/src/retriever/vector/factory.rs`（同源 test） | Planned |
-| TEST-34.1.2 | 默认 BruteForce 路径：`select_vector_backend("", dim)` / `("brute", dim)` 对任意 `dim`（含非零）仍返 brute-force 成功（`expected_dim()==None` ⇒ 协商放行），与改前 `let _ = dim` byte-equivalent（ADR-004 默认行为不变）；既有 TEST-29.1.x / TEST-32.2.x 不退化 | `core/src/retriever/vector/factory.rs` | Planned |
-| TEST-34.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-34.1.1 | `negotiate_vector_dim` 纯函数四路：`0` ⇒ Ok / `None`-declared ⇒ Ok / matching `Some(d)==requested` ⇒ Ok / mismatch 非零 `requested != Some(d)` ⇒ `DimMismatch { expected: requested, got: d }`（复用既有 `types.rs:83`，0 新 dep + 0 schema migration） | `core/src/retriever/vector/factory.rs`（同源 test） | Done |
+| TEST-34.1.2 | 默认 BruteForce 路径：`select_vector_backend("", dim)` / `("brute", dim)` 对任意 `dim`（含非零）仍返 brute-force 成功（`expected_dim()==None` ⇒ 协商放行），与改前 `let _ = dim` byte-equivalent（ADR-004 默认行为不变）；既有 TEST-29.1.x / TEST-32.2.x 不退化 | `core/src/retriever/vector/factory.rs` | Done |
+| TEST-34.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -121,15 +121,15 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`cargo test -p contextforge-core retriever::vector::factory` —— `negotiate_vector_dim` 四路（`0` ⇒ Ok / `None`-declared ⇒ Ok / matching ⇒ Ok / mismatch ⇒ `DimMismatch { expected, got }`，复用既有 `types.rs:83`）+ `select_vector_backend` `:39` `let _ = dim;` 替换为 `negotiate_vector_dim(dim, backend.expected_dim())?` + 默认 BruteForce 路径任意 dim 放行（byte-equivalent，ADR-004）+ `VectorBackend` 加 `expected_dim` 默认 `None`（三既有签名不动 add-only）；0 新 dep + 0 schema migration（真实测试结果待实施回填，ADR-013 不伪造）。
+**§9 Verification 实证**（real evidence，本地全绿）：
+- AC1：`cargo test -p contextforge-core --lib retriever::vector::factory` → factory 8/8 PASS，含 `negotiate_vector_dim_four_paths`（TEST-34.1.1：`0`⇒Ok / `None`-declared⇒Ok / matching⇒Ok / 非零 mismatch⇒`DimMismatch{expected:384,got:128}`，复用既有 `types.rs:83`）+ `brute_force_default_path_accepts_any_dim`（TEST-34.1.2：`select_vector_backend("", dim)` 对 dim∈{0,128,384,1536} 均返 brute-force + `expected_dim()==None`，byte-equivalent）。`factory.rs` `let _ = dim;` 已替换为 `negotiate_vector_dim(dim, backend.expected_dim())?`（选出 backend 后协商）；`VectorBackend::expected_dim()` add-only 默认 `None`。
 - AC2：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-- 不退化：`cargo test --workspace` + `cargo clippy --workspace --all-targets -- -D warnings` —— 既有 TEST-29.1.x / TEST-32.2.x vector 工厂测试不退化；默认 build 可观察行为 byte-equivalent。真实结果待实施回填。
-- 0 新 dep / 0 schema migration / 默认 BruteForce no-op byte-equivalent / 既有契约不变 / feature-backend live enforce 诚实延后 真实结果待实施回填（ADR-013 数值不预填，真实跑出才记数）。
+- 不退化：`cargo test -p contextforge-core --lib` 209 passed / 0 failed（207→209，+TEST-34.1.1/.2；既有 TEST-29.1.x / TEST-32.2.x vector 工厂测试不退化）；`cargo clippy --workspace --all-targets -- -D warnings` 0 warning。
+- 0 新 dep / 0 schema migration / 默认 BruteForce no-op byte-equivalent / 既有契约不变（VectorBackend add-only 默认方法）/ feature-backend live enforce 诚实延后 `[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`（ADR-013 不夸大默认强制）。
 
-**实际改动文件**（计划，待实施回填）：
-- `core/src/retriever/vector/factory.rs`——`select_vector_backend`（`:33-39`）`:39` `let _ = dim;` 替换为 `negotiate_vector_dim(dim, backend.expected_dim())?`（选出 backend 后协商，公共签名不变）；新增纯函数 `negotiate_vector_dim`（镜像 `embedding/factory.rs:88-96` `negotiate_dim`，复用 `VectorError::DimMismatch` `types.rs:83`）。+ 同源 test（TEST-34.1.1 四路 + TEST-34.1.2 默认 BruteForce byte-equivalent）。
+**实际改动文件**：
+- `core/src/retriever/vector/factory.rs`——`select_vector_backend` 的 `let _ = dim;` 替换为 `negotiate_vector_dim(dim, backend.expected_dim())?`（选出 backend 后协商，公共签名不变）；新增 `pub(crate)` 纯函数 `negotiate_vector_dim`（镜像 `embedding/factory.rs:88-96` `negotiate_dim`，复用 `VectorError::DimMismatch` `types.rs:83`）。+ 同源 test（TEST-34.1.1 四路 + TEST-34.1.2 默认 BruteForce byte-equivalent）。
 - `core/src/retriever/vector/traits.rs`——`VectorBackend`（`:11-16`）加 `fn expected_dim(&self) -> Option<usize> { None }`（add-only 默认实现，三既有签名不动，ADR-014 D5）；`BruteForceVectorBackend`（`brute_force.rs:39`）沿用默认 `None`（dim-agnostic，不覆写）。
 - `docs/decisions/adr-037-*.md` dim-negotiation add-only Phase 34 Amendment 落点在 task-34.3 closeout（非本 task body）。

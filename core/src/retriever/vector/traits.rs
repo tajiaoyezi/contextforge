@@ -13,6 +13,16 @@ pub trait VectorBackend: Send + Sync + Debug {
     fn version(&self) -> &'static str;
     fn is_local(&self) -> bool;
     fn requires_embedding(&self) -> bool;
+    /// task-34.1 (ADR-039 D1): the fixed embedding dimension this backend's index
+    /// is bound to, or `None` if the backend is dim-agnostic (accepts any dim).
+    /// Default `None` keeps every existing backend source-compatible (add-only,
+    /// ADR-014 D5); `BruteForceVectorBackend` stays dim-agnostic. dim-declaring
+    /// feature backends (qdrant / lancedb / sqlite-vec) may override once they pin
+    /// a collection dim — real enforcement there is
+    /// `[SPEC-DEFER:phase-future.vector-dim-feature-enforce]` (needs a feature build).
+    fn expected_dim(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// Write-path: index lifecycle + mutation.
