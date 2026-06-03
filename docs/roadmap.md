@@ -285,6 +285,18 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-037 vector-backend-config-plumbing-and-completeness**（Proposed，D1 config plumbing / D2 sqlite-vec arm（矩阵 cell honest-defer）/ D3 console provenance add-only + filter 契约诚实化 / D4 honest-defer 边界 / D5 默认 0-vector-dep baseline + 既有契约不变；真实测试 / 实测出来才 ratify，sqlite-vec 矩阵 cell / real chunk filter feature 受阻维度据已达维度 ratify）。
 
+### 3.15 v0.26.0 / Phase 33 — governance-debt-cleanup-2（第二轮治理债清扫，承 Phase 31，post-v0.25.0 add-only 排期）
+
+**目标**：清第二轮 code-local 治理债，镜像 Phase 31 / ADR-036；grounding 校正后据实下修多处 survey 过陈（ADR-013）。
+
+**候选 task 拆分**：
+- **task-33.1** L2 SQLite embedding-cache rowid-FIFO 有界（Phase 31 仅界 L1；L2 `INSERT OR REPLACE` 无界）。**0 新 dep / 0 migration**（用既有 implicit rowid）。诚实校正：`with_sqlite` 无生产调用点（test-only）→ opt-in-path 防御非确证 live 泄漏；true-LRU 须 ALTER → `[SPEC-DEFER:phase-future.l2-cache-true-lru]`。🟢
+- **task-33.2** console-api memstore FIFO→access-order LRU（move-to-front on hit）+ memory hard-delete no-dangling-ref 不变式测试（cascade 经核非问题——`memory_id` 仅 memory_items PK、无 memory-vector 表 → `[SPEC-DEFER:phase-future.memory-harddelete-cascade]`）。剔除 handleMemoryPin strict-400（ADR-022 D2 蓄意 lenient 契约，据实不改）。🟢
+- **task-33.3** observability：indexing.* 事件持久化（add-only migration 0019）+ replay mapper 扩展（mapper 🟢 / e2e 🟡 `[SPEC-DEFER:phase-future.indexing-replay-e2e]`）+ TraceStore 多 workspace 严格隔离（add-only `workspace_id` proto 字段 + SQL WHERE，空=aggregate-all 兼容）+ events-drain-timeout verify-only（经核 Phase 26 已交付）。🟢/🟡
+- **task-33.4** `internal/cli/export.go` add-only `--timeout` flag（默认 60s）+ v0.26.0 closeout。剔除/honest-defer：`%v→%w`（non-bug，Status 未丢）/ tracestore-fts（已修复）/ datadir env→Options（🟡 `[SPEC-DEFER:phase-future.daemon-options-datadir]`）。🟢
+
+**ADR**：**ADR-038 governance-debt-cleanup-2**（Proposed，D1-D5；真实测试出来才 ratify，indexing replay e2e / trace isolation e2e 受阻维度据已达维度 ratify）。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
@@ -319,6 +331,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > - **task-32.4** closeout → ✅：smoke v22 step [41/41]（TestTask324）+ release docs + ADR-037 per-D ratify + ADR-034 add-only Amendment（Phase 32 / v0.25.0：补全工厂 backend 覆盖 brute/qdrant/lancedb/sqlite-vec；sqlite-vec 矩阵 cell 续 `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`）+ roadmap/adapter add-only。
 >
 > 全 phase 真实验证：`cargo test --workspace` 199 passed / 0 failed；`go test ./...` 全过（含 TestTask323）；`cargo clippy --workspace --all-targets -D warnings` 0 warning；`go vet` clean；gofmt clean；`spec_drift_lint --touched origin/master` 0 unannotated hits。ADR-037 D2 仅 PARTIAL（sqlite-vec 矩阵 cell `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`，须 MSVC feature build + 语料）；D1/D3/D5 ✅、D4 honest-defer 边界 reaffirmed（含 `[SPEC-DEFER:phase-future.chunk-source-type-filter]` / `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`，ADR-013 不伪造）。默认构建 0 新 dep + 0 network + 既有契约（proto add-only + factory arm + no-op 契约）不变（ADR-004/008/023）。真实 v0.25.0 tag/release 经用户授权（ADR-012）。
+
+> **v0.26.0 / Phase 33 排期更新（规划中 2026-06-03，add-only，不删上方历史条目）**：§3.15 把第二轮 code-local 治理债排入 **v0.26.0 / Phase 33 — governance-debt-cleanup-2**（task-33.1 L2 cache 有界 / task-33.2 memstore LRU + hard-delete invariant / task-33.3 observability indexing replay + trace isolation + drain verify-only / task-33.4 export --timeout + closeout）。**grounding 诚实校正（ADR-013）**：memory hard-delete cascade 经核为非问题（无可级联表）→ 仅不变式测试；handleMemoryPin strict-400 经核为 ADR-022 D2 蓄意 lenient 契约 → 据实不改；`%v→%w` 经核 non-bug；tracestore-fts 经核已修复；events-drain-timeout 经核 Phase 26 已交付 verify-only。**新增 backlog（add-only）**：`l2-cache-true-lru`（须 ALTER）/ `memory-harddelete-cascade`（仅当未来加 FK）/ `indexing-replay-e2e`（须 daemon）/ `tracestore-multi-workspace-strict-e2e`（须 console）/ `daemon-options-datadir`（Go→Rust 跨进程 datadir transport 重构，🟡）。ADR-038 Proposed。
 
 ---
 
