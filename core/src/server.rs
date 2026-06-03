@@ -334,10 +334,13 @@ impl ContextService for CoreService {
         if req.hybrid {
             let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
-            // task-29.1: backend now comes from the factory. No vector config is plumbed to the
-            // server yet, so default args ("", 0) — byte-equivalent to the hardcoded
-            // BruteForceVectorBackend::new() (TEST-29.1.3).
-            let backend = select_vector_backend("", 0)
+            // task-32.1: backend name + dim now come from env (CONTEXTFORGE_VECTOR_BACKEND /
+            // CONTEXTFORGE_VECTOR_DIM, mirroring resolve_data_dir's env pattern). Unset / "" →
+            // BruteForce, byte-equivalent to the Phase 29 hardcoded ("", 0) default (TEST-29.1.3;
+            // default hybrid behavior unchanged, ADR-004). An unknown backend / feature-off surfaces
+            // the factory's honest Err as Status::internal — never a silent fallback (ADR-013).
+            let (backend_name, vec_dim) = resolve_vector_backend();
+            let backend = select_vector_backend(&backend_name, vec_dim)
                 .map_err(|e| Status::internal(format!("hybrid vector backend: {}", e)))?;
             let wired = retriever
                 .with_embedder(embedder)
@@ -377,9 +380,12 @@ impl ContextService for CoreService {
             // hardcoded DeterministicEmbeddingProvider::default() (TEST-22.1.2/22.1.5).
             let embedder = select_provider("deterministic", 0)
                 .map_err(|e| Status::internal(format!("semantic embedder: {}", e)))?;
-            // task-29.1: backend via factory (default "", 0 → byte-equivalent to the hardcoded
-            // BruteForceVectorBackend::new(); TEST-29.1.3).
-            let backend = select_vector_backend("", 0)
+            // task-32.1: backend via env-resolved factory (CONTEXTFORGE_VECTOR_BACKEND /
+            // CONTEXTFORGE_VECTOR_DIM; unset / "" → BruteForce byte-equivalent to the Phase 29
+            // hardcoded ("", 0), TEST-29.1.3). feature-off / unknown → factory honest Err →
+            // Status::internal, no silent fallback (ADR-013).
+            let (backend_name, vec_dim) = resolve_vector_backend();
+            let backend = select_vector_backend(&backend_name, vec_dim)
                 .map_err(|e| Status::internal(format!("semantic vector backend: {}", e)))?;
             let wired = retriever
                 .with_embedder(embedder.clone())
@@ -522,6 +528,34 @@ pub fn resolve_data_dir(arg: Option<&str>) -> PathBuf {
         Ok(h) if !h.trim().is_empty() => PathBuf::from(h).join(".contextforge"),
         _ => PathBuf::from(".contextforge"),
     }
+}
+
+/// task-32.1: resolve the vector backend selection (name + dim) for the search hot paths from env.
+///
+/// Mirrors [`resolve_data_dir`]'s env conventions: `CONTEXTFORGE_VECTOR_BACKEND` selects the backend
+/// by name (`""`/`brute` → BruteForce; `qdrant`/`lancedb`/`sqlite-vec` behind their features), and
+/// `CONTEXTFORGE_VECTOR_DIM` optionally carries the embedder dim. Unset / blank → `("", 0)`, which is
+/// byte-equivalent to the Phase 29 hardcoded `select_vector_backend("", 0)` — so the default build's
+/// hybrid/semantic hot paths stay on BruteForce with unchanged behavior (ADR-004 / TEST-29.1.3).
+pub fn resolve_vector_backend() -> (String, usize) {
+    parse_vector_backend(
+        std::env::var("CONTEXTFORGE_VECTOR_BACKEND").ok().as_deref(),
+        std::env::var("CONTEXTFORGE_VECTOR_DIM").ok().as_deref(),
+    )
+}
+
+/// Pure parser behind [`resolve_vector_backend`] (env values injected as args → unit-testable without
+/// mutating process-global env). A blank / unset name collapses to `""` (the BruteForce default arm),
+/// never to a substituted non-empty default; a blank / unparsable dim collapses to `0` (the reserved
+/// `dim` arg). Never panics.
+fn parse_vector_backend(name_var: Option<&str>, dim_var: Option<&str>) -> (String, usize) {
+    let name = name_var.map(str::trim).unwrap_or("").to_string();
+    let dim = dim_var
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    (name, dim)
 }
 
 /// AC1: resolve a *safe* listen address.
