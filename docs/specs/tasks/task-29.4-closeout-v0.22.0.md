@@ -1,6 +1,6 @@
 # Task `29.4`: `closeout-v0.22.0 — smoke v19 step 38 + v0.22.0 release docs + ADR-034 据 D1-D5 诚实 per-D ratify（live-server / 大语料受阻维度据已达维度部分 ratify）+ ADR-030/023 add-only Amendment + phase-29 §6 闭合`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -67,17 +67,17 @@ Phase 29 三个实现 task 全 Done：29.1（`select_vector_backend(name, dim)` 
 
 ## 6. Acceptance Criteria
 
-- [ ] **AC1**（smoke v19 step 38）: smoke v19 step 38（`[38/38]` live-vector backend 状态 + default build baseline intact）+ `TestTask294` 断言（含无回归既有 `[34/34]`..`[37/37]`，denominator 不溯改）— verified by **TEST-29.4.1** + §10 实测（`bash -n` + go test）
-- [ ] **AC2**（v0.22.0 release docs + ADR ratify/Amendment + phase/adapter/feature bundle）: v0.22.0 release docs（evidence/artifacts `<backfill>` 待回填 + README + RELEASE_NOTES）+ ADR-034 据 D1-D5 诚实 per-D ratify Accepted（live-server / 大语料受阻维度据已达维度部分 ratify）+ ADR-030/023 add-only Amendment（不溯改正文）+ phase-29 §6 AC `[x]` + Status Done + adapter 闭合 + feature — verified by **TEST-29.4.2** + §10
-- [ ] **AC3**（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by **TEST-29.4.3**（CI spec-lint 权威）
+- [x] **AC1**（smoke v19 step 38）: smoke v19 step 38（`[38/38]` live-vector backend 状态 + default build baseline intact）+ `TestTask294_SmokeV19LiveVectorRecallStep` 断言（含无回归既有 `[34/34]`..`[37/37]`，denominator 不溯改）— verified by **TEST-29.4.1**（`bash -n` exit 0 + `go test -run TestTask294` PASS）
+- [x] **AC2**（v0.22.0 release docs + ADR ratify/Amendment + phase/adapter/feature bundle）: v0.22.0 release docs（`v0.22.0-{evidence,artifacts}.md` tag/run/digest `<backfill>` 待回填 + README v0.22 段 + RELEASE_NOTES v0.22.0 段）+ ADR-034 per-D ratify `Proposed→Accepted`（D1/D3/D4/D5 Accepted；D2 qdrant live-server PARTIAL honest-defer）+ ADR-030/023 add-only Amendment（task-29.3 已落地，不溯改正文）+ phase-29 §6 AC `[x]` + Status Done + adapter 闭合（Phase 29 Done/Tasks 4/ADR-034 Accepted）+ feature — verified by **TEST-29.4.2**
+- [x] **AC3**（ADR-014 D2 lint）: bash scripts/spec_drift_lint.sh --touched origin/master PR 触及行 0 未标注命中 — verified by **TEST-29.4.3**（CI spec-lint 权威）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-29.4.1 | smoke v19 step 38（`[38/38]` + live-vector backend 标记 + 无回归既有 denominator）+ `bash -n` 过 + go test TestTask294 过 | `scripts/console_smoke.sh` + `internal/cli/smoke_syntax_test.go` | Planned |
-| TEST-29.4.2 | release docs + ADR-034 per-D ratify Accepted（live-server/大语料受阻维度部分 ratify 如实）+ ADR-030/023 add-only Amendment + phase-29 §6 闭合 + adapter + feature | release/ADR/phase/adapter/feature | Planned |
-| TEST-29.4.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-29.4.1 | smoke v19 step 38（`[38/38]` + live-vector backend 标记 + 无回归既有 denominator）+ `bash -n` 过 + go test TestTask294 过 | `scripts/console_smoke.sh` + `internal/cli/smoke_syntax_test.go` | Done (PASS) |
+| TEST-29.4.2 | release docs + ADR-034 per-D ratify Accepted（live-server 受阻维度部分 ratify 如实）+ ADR-030/023 add-only Amendment + phase-29 §6 闭合 + adapter + feature | release/ADR/phase/adapter/feature | Done |
+| TEST-29.4.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done (PASS) |
 
 ## 8. Risks
 
@@ -108,8 +108,9 @@ cargo test --workspace && go test ./...
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-- **Status**: Draft（待实施）。
-- **计划改动文件**：
+- **Status**: Done。
+- **§9 Verification 实测证据**：`bash -n scripts/console_smoke.sh` exit 0；`go test ./internal/cli/ -run TestTask294` PASS（`[38/38]` + live-vector-recall + TEST-29.1/29.2/29.3 标记 + 无回归既有 `[34/34]`..`[37/37]`）；`cargo test --workspace` 0 failed + `go test ./...` 不退化（closeout 文档 + smoke step 不影响 workspace）；spec-lint `--touched origin/master` 0 未标注命中。ADR-034 据 29.1/29.2/29.3 真实产物 per-D ratify Accepted（D2 qdrant live-server honest-defer 部分 ratify，真实召回回填位 `<backfill>`，不伪造 ADR-013）；ADR-030/023 add-only Amendment 已于 task-29.3 落地（本 closeout 引用，不重复）；release docs tag/run/digest 待用户授权 tag 后 post-tag-push backfill 填实。
+- **实际改动文件**：
   - `scripts/console_smoke.sh`（banner v18→v19 + v19 changelog 块 + step `[38/38]` live-vector backend 状态）
   - `internal/cli/smoke_syntax_test.go`（`TestTask294_SmokeV19LiveVectorRecallStep`，断言 `[38/38]` + 无回归既有 `[34/34]`..`[37/37]`）
   - `docs/releases/v0.22.0-evidence.md` + `docs/releases/v0.22.0-artifacts.md`（新，tag/run/digest 用 `<backfill: ...>` 待回填）

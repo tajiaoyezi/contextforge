@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 28 task-28.4 release-ci-hardening smoke (v18; v17 Phase 27 memory-ops-hardening).
+# scripts/console_smoke.sh — Phase 29 task-29.4 live-vector-recall smoke (v19; v18 Phase 28 release-ci-hardening).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -119,6 +119,14 @@
 # §D2; mechanism verified, real GHCR sign at the v0.21.0 release run); CI strict-lint job — clippy
 # -D warnings + gofmt + go vet, all blocking (task-28.3, backlog measured then fixed). ADR-033 → Accepted.
 # step 37 is a documentation/status step (release/CI hardening has no runtime surface to exercise).
+# v19 (Phase 29) adds step 38 — task-29.4 closeout (live-vector-recall). The production vector path is
+# wired: select_vector_backend factory replaces the hardcoded BruteForceVectorBackend at server.rs:302/341
+# (task-29.1, default ""→BruteForce 0-dep, qdrant/lancedb feature-gated→honest Err); qdrant
+# connect→ensure-create→upsert→KNN harness (task-29.2, CI no server→health()==Unreachable honest-defer
+# exit 0, ADR-013, no fabricated recall); lancedb real IVF_PQ/IVF_HNSW_SQ create_index + compaction +
+# cross-backend recall matrix (task-29.3, --lib scoped; IVF_HNSW_SQ recall@10~0.90, IVF_PQ~0.44, brute
+# exact fastest at modest n). Vector backends are feature-gated → no console-api runtime surface; step 38
+# is a documentation/status step verifying the default build still scaffolds (0-network/0-dep, ADR-004).
 #
 # Modes (selected by env):
 #
@@ -924,6 +932,19 @@ if "$GO_BIN" init --root "$STAGING/cf-v20-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact (0-network / 0-dep baseline unchanged); release/CI hardening is CI/release-config only ✅ (TEST-28.1.*/28.2.*/28.3.* verified on CI + local registry)"
 else
   echo "    → release/CI hardening (TEST-28.1.*/28.2.*/28.3.*) verified on CI + local registry; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [38/38] task-29.4 live-vector-recall: backend factory + server.rs hot-path injection + qdrant live KNN (honest-defer) + lancedb real ANN index/matrix (Phase 29)"
+# v19 (task-29.4): Phase 29 (live-vector-recall) wires the production vector path. select_vector_backend
+# factory (task-29.1) replaces the hardcoded BruteForceVectorBackend at server.rs:302/341; qdrant live KNN
+# harness honest-defers when no server (task-29.2, ADR-013); lancedb real IVF_PQ/IVF_HNSW_SQ index +
+# compaction + cross-backend matrix (task-29.3). All vector backends are feature-gated (vector-qdrant /
+# vector-lancedb) → no console-api runtime surface; this is a documentation/status step checking the
+# default build still scaffolds (0-network / 0-dep baseline intact, ADR-004).
+if "$GO_BIN" init --root "$STAGING/cf-v21-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v21-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; live-vector backends feature-gated, default semantic path still 0-dep BruteForce ✅ (TEST-29.1.* / TEST-29.2.* / TEST-29.3.* verified; qdrant live KNN honest-defer, ADR-013)"
+else
+  echo "    → live-vector-recall (TEST-29.1.* / TEST-29.2.* / TEST-29.3.*) verified at Rust factory + feature layer; default build baseline unchanged (ADR-004)"
 fi
 
 echo

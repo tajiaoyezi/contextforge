@@ -302,6 +302,42 @@ func TestTask284_SmokeV18ReleaseCiHardeningStep(t *testing.T) {
 	}
 }
 
+// TEST-29.4.1 / AC1: smoke v19 adds step 38 — task-29.4 closeout (live-vector-recall). Vector backends
+// are feature-gated (no console-api runtime surface), so step 38 is a documentation/status step verifying
+// the default build still scaffolds (ADR-004). Asserts the new [38/38] marker + Phase 29 status, and no
+// regression of the prior denominators (ADR-014 D5 — only the newest step carries the running total).
+func TestTask294_SmokeV19LiveVectorRecallStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v19") {
+		t.Fatalf("console_smoke.sh missing v19 header (task-29.4 closeout)")
+	}
+	for _, marker := range []string{"[38/38]", "live-vector-recall", "TEST-29.1.", "TEST-29.2.", "TEST-29.3.", "honest-defer", "BruteForce"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v19 step 38 must document live-vector-recall status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v18 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[34/34]", "[35/35]", "[36/36]", "[37/37]", "release-ci-hardening"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v19 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-20.3.1 / AC1: smoke v10 upgrades step 29 from a shape-only ({result, trace}) assertion to a
 // real semantic-engagement assertion — after task-20.1 wired console-api ?semantic=true forwarding,
 // step 29 now greps the trace for the vector path (candidate_generation_steps=vector-bruteforce),
