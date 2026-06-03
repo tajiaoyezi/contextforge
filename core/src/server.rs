@@ -27,7 +27,7 @@ use crate::pb::{
     RetrievalResult, SearchRequest, SearchResponse,
 };
 use crate::embedding::{select_provider, DeterministicEmbeddingProvider};
-use crate::retriever::vector::BruteForceVectorBackend;
+use crate::retriever::vector::select_vector_backend;
 use crate::retriever::{
     is_chunk_id_format, Retriever, RetrieverError, SearchFilters as RetrieverFilters,
     SearchOptions, SearchResult,
@@ -299,7 +299,11 @@ impl ContextService for CoreService {
         if req.hybrid {
             let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
-            let backend = Arc::new(BruteForceVectorBackend::new());
+            // task-29.1: backend now comes from the factory. No vector config is plumbed to the
+            // server yet, so default args ("", 0) — byte-equivalent to the hardcoded
+            // BruteForceVectorBackend::new() (TEST-29.1.3).
+            let backend = select_vector_backend("", 0)
+                .map_err(|e| Status::internal(format!("hybrid vector backend: {}", e)))?;
             let wired = retriever
                 .with_embedder(embedder)
                 .with_vector_searcher(backend.clone());
@@ -338,7 +342,10 @@ impl ContextService for CoreService {
             // hardcoded DeterministicEmbeddingProvider::default() (TEST-22.1.2/22.1.5).
             let embedder = select_provider("deterministic", 0)
                 .map_err(|e| Status::internal(format!("semantic embedder: {}", e)))?;
-            let backend = Arc::new(BruteForceVectorBackend::new());
+            // task-29.1: backend via factory (default "", 0 → byte-equivalent to the hardcoded
+            // BruteForceVectorBackend::new(); TEST-29.1.3).
+            let backend = select_vector_backend("", 0)
+                .map_err(|e| Status::internal(format!("semantic vector backend: {}", e)))?;
             let wired = retriever
                 .with_embedder(embedder.clone())
                 .with_vector_searcher(backend.clone());

@@ -27,7 +27,7 @@ pub mod lance_db;
 #[cfg(test)]
 mod tests;
 
-pub use traits::{VectorBackend, VectorIndexer, VectorSearcher};
+pub use traits::{VectorBackend, VectorIndexer, VectorSearcher, VectorStore};
 pub use types::{ChunkId, VectorChunk, VectorError, VectorFilter, VectorHit, VectorIndexConfig, VectorMetric, VectorScore};
 pub use noop::NoopVectorBackend;
 pub use brute_force::BruteForceVectorBackend;

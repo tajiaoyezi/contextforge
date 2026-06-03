@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use crate::retriever::vector::traits::VectorSearcher;
+use crate::retriever::vector::traits::VectorStore;
 use crate::retriever::vector::types::VectorError;
 use crate::retriever::vector::BruteForceVectorBackend;
 
@@ -24,19 +24,48 @@ use crate::retriever::vector::BruteForceVectorBackend;
 ///   feature-not-enabled error otherwise.
 /// - any other name → an explicit unknown-backend error.
 ///
+/// Returns `Arc<dyn VectorStore>` (both indexer + searcher) so the `server.rs` hot path can index
+/// then search through one handle; it upcasts to `Arc<dyn VectorSearcher>` at `with_vector_searcher`.
 /// `dim` mirrors `select_provider`'s signature for later embedder-dim negotiation; the BruteForce
 /// arm works for any dim and does not constrain it in this task.
 pub fn select_vector_backend(
     name: &str,
     dim: usize,
-) -> Result<Arc<dyn VectorSearcher>, VectorError> {
-    // task-29.1 RED: factory not yet implemented (TEST-29.1.1/29.1.2 expected to fail here).
-    let _ = (name, dim);
-    let _placeholder: Option<Arc<dyn VectorSearcher>> = None;
-    let _ = BruteForceVectorBackend::new();
-    Err(VectorError::Other(
-        "select_vector_backend not yet implemented (task-29.1 RED)".into(),
-    ))
+) -> Result<Arc<dyn VectorStore>, VectorError> {
+    // `dim` is reserved for later embedder-dim negotiation (mirrors select_provider); the BruteForce
+    // arm works for any dim and the feature backends negotiate dim at index time, not construction.
+    let _ = dim;
+    let backend: Arc<dyn VectorStore> = match name {
+        "" | "brute" => Arc::new(BruteForceVectorBackend::new()),
+        "qdrant" => {
+            #[cfg(feature = "vector-qdrant")]
+            {
+                Arc::new(crate::retriever::vector::QdrantBackend::new()?)
+            }
+            #[cfg(not(feature = "vector-qdrant"))]
+            {
+                return Err(VectorError::Other(
+                    "vector backend 'qdrant' requires the vector-qdrant feature".into(),
+                ));
+            }
+        }
+        "lancedb" => {
+            #[cfg(feature = "vector-lancedb")]
+            {
+                Arc::new(crate::retriever::vector::LanceDbBackend::new()?)
+            }
+            #[cfg(not(feature = "vector-lancedb"))]
+            {
+                return Err(VectorError::Other(
+                    "vector backend 'lancedb' requires the vector-lancedb feature".into(),
+                ));
+            }
+        }
+        other => {
+            return Err(VectorError::Other(format!("unknown vector backend {other:?}")));
+        }
+    };
+    Ok(backend)
 }
 
 #[cfg(test)]
