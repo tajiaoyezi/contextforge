@@ -334,10 +334,13 @@ impl ContextService for CoreService {
         if req.hybrid {
             let top_k = if req.top_k <= 0 { 10 } else { req.top_k as usize };
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
-            // task-29.1: backend now comes from the factory. No vector config is plumbed to the
-            // server yet, so default args ("", 0) — byte-equivalent to the hardcoded
-            // BruteForceVectorBackend::new() (TEST-29.1.3).
-            let backend = select_vector_backend("", 0)
+            // task-32.1: backend name + dim now come from env (CONTEXTFORGE_VECTOR_BACKEND /
+            // CONTEXTFORGE_VECTOR_DIM, mirroring resolve_data_dir's env pattern). Unset / "" →
+            // BruteForce, byte-equivalent to the Phase 29 hardcoded ("", 0) default (TEST-29.1.3;
+            // default hybrid behavior unchanged, ADR-004). An unknown backend / feature-off surfaces
+            // the factory's honest Err as Status::internal — never a silent fallback (ADR-013).
+            let (backend_name, vec_dim) = resolve_vector_backend();
+            let backend = select_vector_backend(&backend_name, vec_dim)
                 .map_err(|e| Status::internal(format!("hybrid vector backend: {}", e)))?;
             let wired = retriever
                 .with_embedder(embedder)
@@ -377,9 +380,12 @@ impl ContextService for CoreService {
             // hardcoded DeterministicEmbeddingProvider::default() (TEST-22.1.2/22.1.5).
             let embedder = select_provider("deterministic", 0)
                 .map_err(|e| Status::internal(format!("semantic embedder: {}", e)))?;
-            // task-29.1: backend via factory (default "", 0 → byte-equivalent to the hardcoded
-            // BruteForceVectorBackend::new(); TEST-29.1.3).
-            let backend = select_vector_backend("", 0)
+            // task-32.1: backend via env-resolved factory (CONTEXTFORGE_VECTOR_BACKEND /
+            // CONTEXTFORGE_VECTOR_DIM; unset / "" → BruteForce byte-equivalent to the Phase 29
+            // hardcoded ("", 0), TEST-29.1.3). feature-off / unknown → factory honest Err →
+            // Status::internal, no silent fallback (ADR-013).
+            let (backend_name, vec_dim) = resolve_vector_backend();
+            let backend = select_vector_backend(&backend_name, vec_dim)
                 .map_err(|e| Status::internal(format!("semantic vector backend: {}", e)))?;
             let wired = retriever
                 .with_embedder(embedder.clone())
@@ -522,6 +528,34 @@ pub fn resolve_data_dir(arg: Option<&str>) -> PathBuf {
         Ok(h) if !h.trim().is_empty() => PathBuf::from(h).join(".contextforge"),
         _ => PathBuf::from(".contextforge"),
     }
+}
+
+/// task-32.1: resolve the vector backend selection (name + dim) for the search hot paths from env.
+///
+/// Mirrors [`resolve_data_dir`]'s env conventions: `CONTEXTFORGE_VECTOR_BACKEND` selects the backend
+/// by name (`""`/`brute` → BruteForce; `qdrant`/`lancedb`/`sqlite-vec` behind their features), and
+/// `CONTEXTFORGE_VECTOR_DIM` optionally carries the embedder dim. Unset / blank → `("", 0)`, which is
+/// byte-equivalent to the Phase 29 hardcoded `select_vector_backend("", 0)` — so the default build's
+/// hybrid/semantic hot paths stay on BruteForce with unchanged behavior (ADR-004 / TEST-29.1.3).
+pub fn resolve_vector_backend() -> (String, usize) {
+    parse_vector_backend(
+        std::env::var("CONTEXTFORGE_VECTOR_BACKEND").ok().as_deref(),
+        std::env::var("CONTEXTFORGE_VECTOR_DIM").ok().as_deref(),
+    )
+}
+
+/// Pure parser behind [`resolve_vector_backend`] (env values injected as args → unit-testable without
+/// mutating process-global env). A blank / unset name collapses to `""` (the BruteForce default arm),
+/// never to a substituted non-empty default; a blank / unparsable dim collapses to `0` (the reserved
+/// `dim` arg). Never panics.
+fn parse_vector_backend(name_var: Option<&str>, dim_var: Option<&str>) -> (String, usize) {
+    let name = name_var.map(str::trim).unwrap_or("").to_string();
+    let dim = dim_var
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    (name, dim)
 }
 
 /// AC1: resolve a *safe* listen address.
@@ -891,6 +925,59 @@ mod tests {
         let scores1: Vec<f32> = first.results.iter().map(|r| r.vector_score).collect();
         let scores2: Vec<f32> = second.results.iter().map(|r| r.vector_score).collect();
         assert_eq!(scores1, scores2, "factory-driven semantic results must be byte-stable across calls");
+    }
+
+    // ---- TEST-32.1.1 — parse_vector_backend maps env values (name + dim) to the factory args,
+    // trimming whitespace and defaulting a blank/unparsable dim to 0; an unknown backend name flows
+    // to the factory as an honest Err (never a silent BruteForce fallback, ADR-013). Pure parser →
+    // no process-global env mutation, so it is race-free under the parallel test runner. ----
+    #[test]
+    fn test_32_1_1_parse_vector_backend_and_factory_honest_err() {
+        assert_eq!(
+            parse_vector_backend(Some("qdrant"), Some("384")),
+            ("qdrant".to_string(), 384)
+        );
+        assert_eq!(
+            parse_vector_backend(Some("  lancedb  "), Some(" 768 ")),
+            ("lancedb".to_string(), 768),
+            "name + dim are trimmed"
+        );
+        assert_eq!(
+            parse_vector_backend(Some("sqlite-vec"), Some("")),
+            ("sqlite-vec".to_string(), 0),
+            "blank dim → 0"
+        );
+        assert_eq!(
+            parse_vector_backend(Some("brute"), Some("notanumber")),
+            ("brute".to_string(), 0),
+            "unparsable dim → 0"
+        );
+        // an unknown backend name surfaces the factory's honest Err (no silent fallback)
+        let (name, dim) = parse_vector_backend(Some("nope"), None);
+        let err = select_vector_backend(&name, dim).unwrap_err();
+        assert!(
+            err.to_string().contains("nope"),
+            "factory should echo the unknown backend name: {err}"
+        );
+    }
+
+    // ---- TEST-32.1.2 — unset env (None/None) and blank names resolve to ("", 0) → BruteForce,
+    // byte-equivalent to the Phase 29 hardcoded select_vector_backend("", 0) default. This is the
+    // default-behavior-unchanged guard (ADR-004): an unset CONTEXTFORGE_VECTOR_BACKEND keeps the
+    // hybrid/semantic hot paths on BruteForce exactly as before. ----
+    #[test]
+    fn test_32_1_2_default_unset_is_brute_force_byte_equiv() {
+        let (name, dim) = parse_vector_backend(None, None);
+        assert_eq!((name.as_str(), dim), ("", 0), "unset env → empty default arm");
+        let backend = select_vector_backend(&name, dim).expect("default arm always builds");
+        assert_eq!(
+            backend.name(),
+            "brute-force",
+            "unset env → BruteForce (byte-equivalent to the Phase 29 hardcoded default)"
+        );
+        // a whitespace-only backend name also collapses to the empty default arm
+        let (blank, bdim) = parse_vector_backend(Some("   "), None);
+        assert_eq!((blank.as_str(), bdim), ("", 0), "blank name → empty default arm");
     }
 
     // ---- TEST-21.1.2 — hybrid=true dispatches the RRF fusion path ----
