@@ -1,6 +1,6 @@
 # Task `36.2`: `qdrant-recall-ci-service — 向 .github/workflows/ci.yml 新增 qdrant-recall job，用 qdrant SERVICE CONTAINER（services: qdrant: image qdrant/qdrant，端口 6334:6334 + 6333:6333）+ Rust 1.93 + install protoc，每次 CI run 跑 QDRANT_URL=http://localhost:6334 cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture，对 live service container 实测 task-36.1 recall harness——CI 从此 HAS a live server，永久兑现并关闭 [SPEC-DEFER:phase-future.qdrant-server-lifecycle]（ADR-034 D2）；CI-only / add-only / 默认 build + 默认行为不变（vector-qdrant 仍 opt-in，0 新 dep，ADR-004/008）；验证实证 = 本 PR 自身 live CI run（据实记录，ADR-013）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -114,15 +114,15 @@ pass bar：`.github/workflows/ci.yml` 新增 `qdrant-recall` job（`services: qd
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（qdrant-recall service-container job add-only + 本 PR live CI run 绿）: `.github/workflows/ci.yml` 新增 `qdrant-recall` job——`services: qdrant: { image: qdrant/qdrant, ports: ["6334:6334", "6333:6333"] }` + `dtolnay/rust-toolchain@stable` `toolchain: '1.93'` + `Install protoc` + cargo cache + `QDRANT_URL=http://localhost:6334 cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture`；既有 5 job 逐字符不改；默认 build 0-vector-dep + 默认行为不变 + 0 新 dep；本 PR 自身 CI 的 `qdrant-recall` job 绿（harness 对 live service container 真跑、`health() == Ready` 走真实召回分支、recall@k >= floor、`--nocapture` 打印真实数）= 真实实证（run-id / 真实召回数真实跑出后据实回填，ADR-013 不预填）— verified by **TEST-36.2.1**（本 PR 自身 live CI run = real evidence）
-- [ ] **AC2**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-36.2.2**（= LAST）
+- [x] **AC1**（qdrant-recall service-container job add-only + 本 PR live CI run 绿）: `.github/workflows/ci.yml` 新增 `qdrant-recall` job——`services: qdrant: { image: qdrant/qdrant, ports: ["6334:6334", "6333:6333"] }` + `dtolnay/rust-toolchain@stable` `toolchain: '1.93'` + `Install protoc` + cargo cache + `QDRANT_URL=http://localhost:6334 cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture`；既有 5 job 逐字符不改；默认 build 0-vector-dep + 默认行为不变 + 0 新 dep；本 PR 自身 CI 的 `qdrant-recall` job 绿（harness 对 live service container 真跑、`health() == Ready` 走真实召回分支、recall@k >= floor、`--nocapture` 打印真实数）= 真实实证（run-id / 真实召回数真实跑出后据实回填，ADR-013 不预填）— verified by **TEST-36.2.1**（本 PR 自身 live CI run = real evidence）
+- [x] **AC2**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-36.2.2**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-36.2.1 | `qdrant-recall` CI job 用 service container（`qdrant/qdrant` + 6334/6333）+ Rust 1.93 + protoc 对 live server 跑 task-36.1 harness（`QDRANT_URL=http://localhost:6334 cargo test ... --features vector-qdrant --test qdrant_live_recall -- --nocapture`）且绿——`health() == Ready` 走真实召回分支、recall@k >= floor、`--nocapture` 打印真实数；既有 5 job 不退化、默认 build + 默认行为不变、0 新 dep。验证实证 = 本 PR 自身 live CI run（run-id / 真实召回数真实跑出后据实回填，ADR-013 不预填） | `.github/workflows/ci.yml` + 本 PR 自身 CI run | Draft |
-| TEST-36.2.2 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Draft |
+| TEST-36.2.1 | `qdrant-recall` CI job 用 service container（`qdrant/qdrant` + 6334/6333）+ Rust 1.93 + protoc 对 live server 跑 task-36.1 harness（`QDRANT_URL=http://localhost:6334 cargo test ... --features vector-qdrant --test qdrant_live_recall -- --nocapture`）且绿——`health() == Ready` 走真实召回分支、recall@k >= floor、`--nocapture` 打印真实数；既有 5 job 不退化、默认 build + 默认行为不变、0 新 dep。验证实证 = 本 PR 自身 live CI run（run-id / 真实召回数真实跑出后据实回填，ADR-013 不预填） | `.github/workflows/ci.yml` + 本 PR 自身 CI run | Done |
+| TEST-36.2.2 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -160,4 +160,17 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-待实施回填
+**Status**: Done
+
+**§9 Verification 实证**（real evidence，本 PR 自身 live CI run）：
+- **AC1 真实 live CI 召回**：本 PR `qdrant-recall` CI job（run **26961084355**）service container `qdrant/qdrant` 真起（log `qdrant ready after 1 attempt(s)`），harness 走 `health()==Ready` 真实召回分支（**非** honest-defer skip），CI 实测 `PHASE36 qdrant LIVE recall@10 vs brute-force exact KNN | N=2000 dim=64 M=50 @ http://localhost:6334 => recall@10=1.0000`，`test result: ok. 2 passed; 0 failed`。`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`（ADR-034 D2）从此每次 CI run 被验证——结构性「CI 无 live server」约束**永久解除**（task-36.3 / ADR-034 add-only Phase-36 Amendment 据真实数标 D2 fulfilled）。
+- 既有 6 job（cargo-test / go-test / spec-lint / lint / feature-build×8）不退化、默认 build 0-vector-dep + 默认行为不变、0 新 dep（全门绿，run 26961084355）。
+- AC2：D2 lint `--touched origin/master`（CI spec-lint 权威，绿）。
+
+**诚实判读（ADR-013）**：CI 实测 recall@10=**1.0000** 与本地一致——qdrant 在 N=2000（低于其 HNSW indexing_threshold）即时服务精确 KNN，故为 live KNN **正确性**真实证明（取代合成 fixture 0.7/0.85）；HNSW 近似域大语料真实 ANN recall 压测留 `[SPEC-DEFER:phase-future.vector-large-corpus-perf]`，不夸大。验证证据为 **PR 自身 live CI run（run 26961084355）**，非预填（ADR-013）。
+
+**grounding 校正**：「Wait for qdrant to be ready」步（curl `/readyz` retry）实测 `ready after 1 attempt(s)` 即成——防 harness 在 server 就绪前误走 honest-defer skip（确保 recall 真测而非 no-op）；spec §8 R1 stop-condition（CI log 须见真实 recall 数非 skip）经 log 据实满足。
+
+**实际改动文件**：
+- `.github/workflows/ci.yml`——add-only 第 6 个 job `qdrant-recall`（`services: qdrant/qdrant` 6334+6333 + Rust 1.93 + protoc + cargo cache + Wait-for-ready + `QDRANT_URL=http://localhost:6334 cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture`）；既有 5 job 逐字符不改。
+- 0 backend 改动 / 0 新 dep / 0 默认构建变更。ADR-041 D3（CI service-container 集成）ratify 依据（@ task-36.3 closeout）。
