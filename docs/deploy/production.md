@@ -15,7 +15,7 @@ container, fallback in-mem enabled).
 
 ```bash
 # 1. Pull image (task-16.3 ships ghcr.io/tajiaoyezi/contextforge-daemon)
-docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0
+docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0
 
 # 2. Bring up the stack (uses defaults from compose yml — see §2 for overrides)
 docker compose -f deploy/docker-compose.production.yml up -d
@@ -38,7 +38,7 @@ daemon is unreachable — see §8 troubleshooting.
 The compose stack reads two env vars to build the image reference:
 
 ```yaml
-image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.28.0}
 ```
 
 To pin a specific version, copy and edit the env template:
@@ -47,20 +47,36 @@ To pin a specific version, copy and edit the env template:
 cp deploy/.env.production.example deploy/.env.production
 # edit deploy/.env.production:
 #   OWNER=tajiaoyezi
-#   CONTEXTFORGE_VERSION=v0.9.0
+#   CONTEXTFORGE_VERSION=v0.28.0
 
 docker compose --env-file deploy/.env.production \
   -f deploy/docker-compose.production.yml up -d
 ```
 
 Available tags:
-- `:v0.9.0` — first production release for Phase 16 backlog completion
+- `:v0.28.0` — current stable release (always pin an explicit `vX.Y.Z` in production)
 - `:latest` — moves to the latest published `v*` tag (avoid in production pins)
-- `:v0.9.0-rc1` etc. — release candidates ahead of the stable tag
+- `:v0.9.0` etc. — earlier stable releases remain pullable for downgrade
 
 Images are built by `.github/workflows/release.yml` (task-16.3) on every `v*`
-annotated tag push and pushed to GHCR with `linux/amd64` only in v0.9. ARM64
-support is tracked under [SPEC-DEFER:phase-future.multi-arch-image].
+annotated tag push and pushed to GHCR as `linux/amd64` only. ARM64 support is
+tracked under [SPEC-DEFER:phase-future.multi-arch-image].
+
+**Supply-chain verification** (cosign keyless, task-28.2) — the release image is
+signed and carries an SPDX SBOM + SLSA provenance attestation. Verify the exact
+digest before deploying:
+
+```bash
+# resolve the digest the tag points to, then verify that digest
+DIGEST=$(docker buildx imagetools inspect \
+  ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0 --format '{{.Manifest.Digest}}')
+cosign verify ghcr.io/tajiaoyezi/contextforge-daemon@"$DIGEST" \
+  --certificate-identity-regexp '^https://github.com/tajiaoyezi/contextforge/.github/workflows/release.yml@.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The per-release digest + Rekor transparency-log indices are recorded in
+`docs/releases/v0.28.0-evidence.md` (and the matching `RELEASE_NOTES.md` entry).
 
 ---
 
@@ -184,14 +200,14 @@ internal deployments use `tls internal` (Caddy local CA) or mount your own cert.
 
 ## §6 Upgrade path
 
-Upgrading from v0.8.x → v0.9.0 preserves data:
+Upgrading to a newer tag preserves data (example targets v0.28.0):
 
 ```bash
 # 1. Pull new image
-docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0
+docker pull ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0
 
 # 2. Update .env.production (optional — only if pinning explicitly)
-sed -i 's/CONTEXTFORGE_VERSION=.*/CONTEXTFORGE_VERSION=v0.9.0/' deploy/.env.production
+sed -i 's/CONTEXTFORGE_VERSION=.*/CONTEXTFORGE_VERSION=v0.28.0/' deploy/.env.production
 
 # 3. Recreate containers, keep volume
 docker compose -f deploy/docker-compose.production.yml up -d --force-recreate
@@ -199,8 +215,9 @@ docker compose -f deploy/docker-compose.production.yml up -d --force-recreate
 
 The `contextforge-data` volume is **not** removed — `up -d --force-recreate`
 only stops and recreates the containers. SQLite migrations (e.g.
-`0015_search_traces.sql` — task-16.1) run automatically on first start of
-v0.9.0; they are `IF NOT EXISTS` and idempotent.
+`0015_search_traces.sql` — task-16.1, or later `0019_indexing_events` — task-33.3)
+run automatically on first start of the new image; they are `IF NOT EXISTS` /
+guarded `ALTER` and idempotent.
 
 To downgrade, point `CONTEXTFORGE_VERSION` back to a prior tag and recreate.
 **Caveat**: a tag containing a forward-migrating schema change (e.g. v0.9.0's
@@ -245,7 +262,7 @@ spec:
     spec:
       containers:
       - name: contextforge-core
-        image: ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0
+        image: ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0
         # Same pod = shared network namespace; console-api-serve dials
         # 127.0.0.1:50551 so wildcard bind is unnecessary here (unlike compose).
         command: ["contextforge-core", "127.0.0.1:50551", "/data"]
@@ -264,7 +281,7 @@ spec:
           periodSeconds: 10
 
       - name: console-api-serve
-        image: ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0
+        image: ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0
         command:
         - contextforge
         - console-api-serve
@@ -352,9 +369,9 @@ host:
 
 ```bash
 # on connected host
-docker save ghcr.io/tajiaoyezi/contextforge-daemon:v0.9.0 | gzip > contextforge-v0.9.0.tar.gz
+docker save ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0 | gzip > contextforge-v0.28.0.tar.gz
 # transfer to air-gapped host
-docker load < contextforge-v0.9.0.tar.gz
+docker load < contextforge-v0.28.0.tar.gz
 ```
 
 ### Container restart loop

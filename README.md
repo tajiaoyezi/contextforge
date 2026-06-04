@@ -544,6 +544,35 @@ Console contract v1 REST endpoints; Console UI HTTPAdapter v1.0 双方握手成�
 - ADR-014 cross-validation gate fully activated for Phase 10 (D1 mapping table +
   D2 lint + D3 verified-by + D4/D5 in `scripts/spec_drift_lint.sh`).
 
+## Run the released image
+
+Prebuilt, signed images are published to GHCR on every `v*` tag — no build
+required. The current stable tag is **`v0.28.0`** (`linux/amd64`). The image
+bundles both binaries (`contextforge-core` Rust data-plane + `contextforge` Go
+control-plane); its default command is `console-api-serve` on port `48181`.
+
+```bash
+# Production: two-process stack (Rust core + Go console-api), data persisted.
+# Defaults to v0.28.0 — override with CONTEXTFORGE_VERSION. See docs/deploy/production.md.
+docker compose -f deploy/docker-compose.production.yml up -d
+curl -fsS http://localhost:48181/v1/health | jq .   # -> {"status":"healthy",...}
+
+# Dev / PoC: single container, in-memory fallback — serves immediately, NOT persistent.
+docker run --rm -p 48181:48181 \
+  -e CONSOLE_API_FALLBACK_INMEM=1 \
+  ghcr.io/tajiaoyezi/contextforge-daemon:v0.28.0
+```
+
+Without `CONSOLE_API_FALLBACK_INMEM=1` (and no reachable `contextforge-core`),
+`/v1/health` honestly reports `503 degraded` with an actionable `error_reason` —
+start the core daemon or use the production compose stack.
+
+Each release image is cosign keyless-signed and ships an SPDX SBOM + SLSA
+provenance attestation; verify the exact digest before deploying (command + the
+per-release digest live in [`docs/deploy/production.md`](docs/deploy/production.md)
+§2 and `docs/releases/v0.28.0-evidence.md`). The release artifact **is** the signed
+GHCR image — this repo does not publish a GitHub Release object or source tarball.
+
 ## Quick Start
 
 ### One-shot smoke (Linux / WSL2 / Git Bash on Windows)
@@ -559,7 +588,7 @@ the [examples/quickstart/](examples/quickstart/) fixture, and prints
 ### Manual steps
 
 ```bash
-# 1. Build (Go 1.22+, Rust stable).
+# 1. Build (Go 1.26+, Rust stable).
 go build -o contextforge ./cmd/contextforge
 cargo build -p contextforge-core
 export PATH="$(pwd):$(pwd)/target/debug:$PATH"
@@ -606,10 +635,12 @@ stops at the first non-flag argument.
   effort via Git Bash.
 - `LICENSE` remains all-rights-reserved (occupies the slot until an OSI
   license is chosen).
-- No GitHub Release tarball is published from this repo yet — release
-  contracts and a release-smoke gate are in place
-  (`scripts/release_smoke.sh`, `scripts/quickstart_smoke.sh`), but the
-  actual `gh release create` step is performed by an external release job.
+- The published release artifact is the **signed GHCR image**
+  (`ghcr.io/tajiaoyezi/contextforge-daemon:vX.Y.Z`, cosign keyless + SBOM +
+  provenance) built by `.github/workflows/release.yml` on each `v*` tag — this
+  repo does **not** publish a GitHub Release object or source tarball. Release /
+  quickstart smoke gates (`scripts/release_smoke.sh`,
+  `scripts/quickstart_smoke.sh`) run as part of the pipeline.
 
 ## Where to go next
 

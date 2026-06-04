@@ -217,6 +217,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 ### 3.10 Console 语义 explain（跨仓库，本仓不实现）
 
 - `[SPEC-OWNER:phase-future.console-semantic-explain]`：ContextForge-Console 是**独立仓库**，语义召回 explain 面板属 Console 领域。本仓职责限于：(a) 确保 `/v1/search` 语义响应携带 `vector_score` / `embedding_provider` provenance（v0.12 已加，v0.13 贯通 console-api）；(b) 跨仓库通知 + 契约对齐文档（仿 ADR-022 D4 cross-repo signal 模式）。🔴 本仓不实现 UI，规划中仅记协调项。
+- `[SPEC-OWNER:phase-future.console-data-plane-surfacing]`（v0.28.0 全面审查记录）：v0.22–v0.27 新增数据面能力（vector backend 选择 / hybrid + reranker 检索 / observability 事件 SSE / `vector_score` 溯源）在本仓已具备 **contract / proto 层暴露**（console-api `/v1/search`、`/v1/observability/events` 等），但**专属 console UI 呈现**仍属 ContextForge-Console 独立仓领域；本仓职责同上（契约层 provenance + 跨仓通知，不实现 UI）。**v0.28.0（observability-hardening）经审查为 daemon stderr-only、零 console 接触面**（无 consoleapi/proto/RPC/字段/endpoint 改动），不新增任何 console 对接义务。🔴 跨仓协调项，非本仓 backlog。
 
 ### 3.11 v0.22.0 / Phase 29 — live-vector-recall（承 Phase 25，post-v0.20.0 add-only 排期）
 
