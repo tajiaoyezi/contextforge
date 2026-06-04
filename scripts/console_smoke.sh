@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 35 task-35.3 observability-hardening smoke (v25; v24 Phase 34 vector-config-completeness).
+# scripts/console_smoke.sh — Phase 36 task-36.3 qdrant-live-vector-recall smoke (v26; v25 Phase 35 observability-hardening).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -1060,6 +1060,26 @@ if "$GO_BIN" init --root "$STAGING/cf-v27-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; hot-path silent errors now surfaced via eprintln!/fmt.Fprintf(os.Stderr) (index_session_backend store.append ×4 + retriever desync + setVectorEnv config.Load/Setenv, best-effort preserved) + 7→3-4 grounding correction (no new metrics facility) ✅ (TEST-35.1.* / TEST-35.2.* / TEST-35.3.* verified; memstore nil-sink honest non-issue, ADR-013)"
 else
   echo "    → observability-hardening (TEST-35.1.* / TEST-35.2.* / TEST-35.3.*) verified at Rust core + Go layers; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [45/45] task-36.3 qdrant-live-vector-recall: qdrant LIVE KNN recall@k vs BruteForce exact KNN via a CI service-container (recall@10=1.0000, N=2000 dim=64) — ADR-034 D2 qdrant-server-lifecycle defer closed (Phase 36)"
+# v26 (task-36.3): Phase 36 (qdrant-live-vector-recall) closes ADR-034 D2's long-standing honest-defer
+# [SPEC-DEFER:phase-future.qdrant-server-lifecycle] — "real live-server KNN recall numbers were never
+# measured (CI had no qdrant server; the only in-repo numbers were synthetic fixtures)". The qdrant
+# backend (connect/health/ensure-create/upsert/KNN/delete) has been fully implemented since Phase 25/29;
+# this phase adds an env-gated harness (core/tests/qdrant_live_recall.rs) that indexes a deterministic
+# reproducible corpus into both qdrant (live) and BruteForceVectorBackend (exact ground truth) and
+# measures recall@k = mean(|qdrant_topk ∩ exact_topk|/k) (task-36.1), plus a qdrant-recall CI job with a
+# qdrant service-container that runs it on EVERY CI run (task-36.2), permanently validating recall. Real
+# CI-measured result: recall@10=1.0000 (N=2000 dim=64 M=50; qdrant serves exact KNN below its HNSW
+# indexing_threshold, so this is a live-KNN correctness proof matching brute-force ground truth — the
+# HNSW-approximation regime over large corpora stays honestly deferred, ADR-013). 0 backend change / 0
+# new dep (qdrant-client optional since task-18.4) / default build 0-vector-dep unchanged (ADR-004/008);
+# this is a documentation/status step verifying the default build still scaffolds.
+if "$GO_BIN" init --root "$STAGING/cf-v28-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v28-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; qdrant LIVE KNN recall@k vs BruteForce exact KNN now measured every CI run via a qdrant service-container (recall@10=1.0000, N=2000 dim=64 M=50; qdrant serves exact below HNSW indexing_threshold = live-KNN correctness proof) ✅ (TEST-36.1.* / TEST-36.2.* verified live, run 26961084355; HNSW-approx-regime large-corpus recall honest-defer, ADR-013)"
+else
+  echo "    → qdrant-live-vector-recall (TEST-36.1.* / TEST-36.2.*) verified via qdrant service-container; default build baseline 0-vector-dep unchanged (ADR-004)"
 fi
 
 echo

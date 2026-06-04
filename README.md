@@ -7,6 +7,21 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.29.0
+
+📌 **v0.29.0 qdrant-live-vector-recall** — closes the ADR-034 D2 honest-defer `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]` by measuring **REAL live qdrant KNN recall** and guarding it permanently in CI via a qdrant service container. The qdrant backend (connect/health/ensure-create/upsert/KNN/delete) was already fully implemented since Phase 25/29; v0.29.0 adds an env-gated harness + a `qdrant-recall` CI job — **0 backend change, 0 new dependency** (`qdrant-client` optional since task-18.4). The **default build stays 0-vector-dep, 0-network** (ADR-004/008): the harness skips unless `QDRANT_URL` is set, and the CI job is the only place a live qdrant is spun up. Honest caveat (ADR-013): `recall@10 = 1.0000` because at N=2000 — below qdrant's HNSW `indexing_threshold` (default ~10000) — qdrant serves **EXACT** KNN, so this is a live-KNN **correctness** proof (qdrant == brute-force exact ground truth) replacing the synthetic `eval_integration.rs` fixture; stressing the HNSW **approximation** regime (large corpus > `indexing_threshold` + optimizer-built index) is honestly deferred (`[SPEC-DEFER:phase-future.vector-large-corpus-perf]`).
+
+- **qdrant-live-recall harness** (task-36.1, #236): a new env-gated `core/tests/qdrant_live_recall.rs` builds an N=2000 / dim=64 corpus, upserts into a live qdrant via the existing backend, runs M=50 KNN queries, and asserts qdrant's top-10 against a `BruteForce` **exact** KNN ground truth — measuring **recall@10 = 1.0000**. The harness is skipped unless `QDRANT_URL` is set, so the default `cargo test` build stays 0-vector-dep / 0-network (ADR-004/008). 0 backend change, 0 new dep (`qdrant-client` optional since task-18.4).
+- **qdrant-recall CI job** (task-36.2, #237): a new `qdrant-recall` CI job runs the harness against a **qdrant/qdrant service container**, guarding live KNN recall permanently. CI run 26961084355 reports "qdrant ready after 1 attempt(s)" and "test result: ok. 2 passed; 0 failed" with **recall@10 = 1.0000** (N=2000, dim=64, M=50); also reproduced locally against a `qdrant/qdrant` docker container. This is a live-KNN correctness proof (exact-below-threshold, see caveat), not an HNSW-approximation stress test.
+- **closeout** (task-36.3): **ADR-041 qdrant-live-vector-recall → Accepted** (per-D). **ADR-034** add-only Phase-36 Amendment marks its **D2 qdrant-server-lifecycle fulfilled** (live KNN recall measured + CI-guarded), NOT retro-editing the D-body (ADR-014 D5). **ADR-014 cross-validation gate — 27th activation**. Smoke v26 [45/45] (banner v25→v26, staging `cf-v28-cfg`, `TestTask363`).
+
+```bash
+# live qdrant KNN recall@10 vs BruteForce exact ground truth (skipped unless QDRANT_URL set)
+QDRANT_URL=http://localhost:6334 cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture
+```
+
+详 `RELEASE_NOTES.md` v0.29.0 段 + [Phase 36 spec](docs/specs/phases/phase-36-qdrant-live-vector-recall.md) + [ADR-041](docs/decisions/adr-041-qdrant-live-vector-recall.md)。
+
 ## What's new in v0.28.0
 
 📌 **v0.28.0 observability-hardening** — a focused, small version (third debt-cleanup, diminishing returns; honest over padding, ADR-013) that surfaces genuinely-swallowed errors in the hot paths, mirroring the repo's existing stderr conventions (Rust `eprintln!` / Go `fmt.Fprintf(os.Stderr)`). It is **observability-only**: best-effort contracts stay best-effort (indexing not blocked, query keeps skipping, daemon not blocked) and are **never** turned into fail-fast (ADR-004). The **default build stays 0-new-dependency, 0-network**; no new logging/metrics framework is introduced.
