@@ -93,3 +93,46 @@ jobs:
           echo "gofmt clean"
       - name: go vet
         run: go vet ./...
+
+  # Audit follow-up (v0.28.0 review, finding BUILD-4): the default build is
+  # 0-vector-dep, and CI previously built ONLY that default profile — every
+  # optional vector/embedding backend was off-by-default AND untested in CI,
+  # resting entirely on single-dev-box spikes. This matrix build-checks each
+  # optional feature on Linux (compile + link, NO tests). lancedb's full test
+  # targets hit a pre-existing rustc ICE (finding BUILD-5) so we build-check it,
+  # not test it — `cargo build` is exactly the right scope here. fail-fast:false
+  # so one feature's failure never masks the others. vector-spike is omitted
+  # (inert empty feature == default build, no signal).
+  feature-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        feature:
+          - vector-sqlite
+          - vector-qdrant
+          - vector-lancedb
+          - vector-hnsw
+          - embedding-fastembed
+          - reranker-fastembed
+          - embedding-remote
+          - cjk-segmenter
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.93'
+      - name: Install protoc (lancedb build.rs needs a system protoc)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-feat-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo build --features ${{ matrix.feature }}
+        run: cargo build -p contextforge-core --features ${{ matrix.feature }}
