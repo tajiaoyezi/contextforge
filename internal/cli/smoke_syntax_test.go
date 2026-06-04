@@ -375,6 +375,43 @@ func TestTask343_SmokeV24VectorConfigCompletenessStep(t *testing.T) {
 	}
 }
 
+// TEST-35.3.2 / AC2: smoke v25 adds step 44 — task-35.3 closeout (observability-hardening). The
+// rust/go silent-failure surfacing (eprintln! / fmt.Fprintf(os.Stderr)) + 7→3-4 grounding correction
+// all preserve default behavior (observability-only; best-effort is never turned into fail-fast), so
+// step 44 is a documentation/status step verifying the default build still scaffolds. Asserts the new
+// [44/44] marker + Phase 35 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask353_SmokeV25ObservabilityHardeningStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v25 (task-35.3)") {
+		t.Fatalf("console_smoke.sh missing v25 (task-35.3) header block")
+	}
+	for _, marker := range []string{"[44/44]", "observability-hardening", "TEST-35.1.", "TEST-35.2.", "TEST-35.3.", "eprintln", "setVectorEnv"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v25 step 44 must document observability-hardening status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v24 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "vector-config-completeness"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v25 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-33.4.2 / AC2: smoke v23 adds step 42 — task-33.4 closeout (governance-debt-cleanup-2). The L2
 // cache bound / memstore LRU / indexing replay+trace isolation (add-only proto+migration) / export
 // --timeout (add-only flag) all preserve default behavior, so step 42 is a documentation/status step

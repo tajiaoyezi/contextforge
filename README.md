@@ -7,6 +7,23 @@ It ships as two binaries (ADR-001):
 - `contextforge`: Go control-plane CLI, REST/MCP adapter, Console Contract v1 REST surface (`console-api-serve`, v0.3+), export and eval entrypoint.
 - `contextforge-core`: Rust data-plane daemon for scan, parse, chunk, index, and retrieval.
 
+## What's new in v0.28.0
+
+📌 **v0.28.0 observability-hardening** — a focused, small version (third debt-cleanup, diminishing returns; honest over padding, ADR-013) that surfaces genuinely-swallowed errors in the hot paths, mirroring the repo's existing stderr conventions (Rust `eprintln!` / Go `fmt.Fprintf(os.Stderr)`). It is **observability-only**: best-effort contracts stay best-effort (indexing not blocked, query keeps skipping, daemon not blocked) and are **never** turned into fail-fast (ADR-004). The **default build stays 0-new-dependency, 0-network**; no new logging/metrics framework is introduced.
+
+- **rust-silent-failure-surfacing** (task-35.1, #229): `index_session_backend`'s **four** `store.append` emit points (progress/index-error/commit-error/cancelled) change `let _ =` → `if let Err(persist_err) { eprintln!("WARN indexing-event persist failed …: {persist_err}") }` (SQLite persist failures — disk-full/lock — no longer swallowed; best-effort, indexing not blocked). `retriever/mod.rs:415`'s `Err(_) => continue` (Tantivy/SQLite desync) → `Err(e) => { eprintln!("WARN retriever: … desync …"); continue }` (skip preserved). `eb.send` stays as-is (no-subscribers is a normal broadcast condition, intentional). Mirrors `search.rs:108-113`. 0 new dep.
+- **go-silent-failure-surfacing** (task-35.2, #230): `setVectorEnv`'s `config.Load` + `os.Setenv` failures now `fmt.Fprintf(os.Stderr, "contextforge: …")` (mirrors `daemon/rest.go:110`), guarded by `errors.Is(err, os.ErrNotExist)` so a MISSING config.toml — the normal default — stays silent and only a malformed/unreadable config warns. Best-effort preserved (env-only path unchanged on failure, daemon not blocked). 0 new dep.
+- **7→3-4 grounding correction + closeout** (task-35.3): the survey's 7 candidates collapse to 3-4 genuinely-silent sites; four are dropped/left as-is with no code change (a grounding correction, the ADR-013 value): `search.rs:109` already WARNs (and core has no metrics facility, so a counter would be over-engineering) / `mcpadapter/server.go:298` already surfaced in task-31.3 / `allowlist.go:31` intentional POSIX-only platform caveat / `eb.send:193` intentional no-subscribers. `memstore.go:579` nil-sink is an honest non-issue (its only production wiring always calls `SetEventSink`). **No new metrics facility** is introduced. **ADR-040 → Accepted** (per-D). **ADR-031** add-only Phase-35 Amendment. **ADR-014 cross-validation gate — 26th activation**.
+
+```bash
+# rust: indexing-event persist best-effort guard + retriever desync skip guard
+cargo test -p contextforge-core test_35_1
+# go: setVectorEnv malformed→WARN (stderr-capture) / missing→no WARN / valid→no WARN
+go test ./cmd/contextforge/ -run TestSetVectorEnv
+```
+
+详 `RELEASE_NOTES.md` v0.28.0 段 + [Phase 35 spec](docs/specs/phases/phase-35-observability-hardening.md) + [ADR-040](docs/decisions/adr-040-observability-hardening.md)。
+
 ## What's new in v0.27.0
 
 📌 **v0.27.0 vector-config-completeness** — a focused, small version that completes the vector-backend config story opened by Phase 32: the factory now honors `CONTEXTFORGE_VECTOR_DIM` via dim auto-negotiation, the Go `[vector]` config section bridges to the core daemon's env, and `get_source_chunk` workspace isolation is re-grounded as already-present. The **default build stays 0-new-dependency, 0-network**; every change is add-only / default-preserving / opt-in, so existing v0.6–v0.26 clients + data are unaffected (ADR-004). Honest scope: the default `BruteForce` backend is dim-agnostic, so the default build accepts any dim and stays byte-equivalent — real dim enforcement bites only for dim-declaring feature backends (`[SPEC-DEFER:phase-future.vector-dim-feature-enforce]`); the Rust core keeps its 0-toml-dep rule (config parsing stays Go-side).
