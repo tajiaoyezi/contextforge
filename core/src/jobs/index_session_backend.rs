@@ -198,13 +198,20 @@ impl IndexerBackend for IndexSessionBackend {
             // indexing, mirroring the eb.send best-effort above).
             if let Some(store) = &indexing_store {
                 if !job_id_context.is_empty() {
-                    let _ = store.append(
+                    // task-35.1 (ADR-040 D1): surface the swallowed persist error to
+                    // stderr instead of `let _` (mirrors search.rs:109). Still
+                    // best-effort — a write failure does NOT block indexing.
+                    if let Err(persist_err) = store.append(
                         &job_id_context,
                         "indexing",
                         evt.processed_files,
                         evt.total_files,
                         "",
-                    );
+                    ) {
+                        eprintln!(
+                            "WARN indexing-event persist failed (job={job_id_context}, stage=indexing): {persist_err}"
+                        );
+                    }
                 }
             }
             if matches!(on_progress(&evt), ProgressDecision::Cancel) {
@@ -231,15 +238,20 @@ impl IndexerBackend for IndexSessionBackend {
                     }
                 }
                 // task-33.3: persist the error row as a replay source (best-effort).
+                // task-35.1 (ADR-040 D1): surface the swallowed persist error to stderr.
                 if let Some(store) = &self.indexing_event_store {
                     if !job_id_for_terminal.is_empty() {
-                        let _ = store.append(
+                        if let Err(persist_err) = store.append(
                             &job_id_for_terminal,
                             "error",
                             0,
                             0,
                             &format!("IndexSession::index_path_cancellable: {e}"),
-                        );
+                        ) {
+                            eprintln!(
+                                "WARN indexing-event persist failed (job={job_id_for_terminal}, stage=error): {persist_err}"
+                            );
+                        }
                     }
                 }
                 format!("IndexSession::index_path_cancellable: {e}")
@@ -258,9 +270,16 @@ impl IndexerBackend for IndexSessionBackend {
                 }
             }
             // task-33.3: persist the commit-error row as a replay source.
+            // task-35.1 (ADR-040 D1): surface the swallowed persist error to stderr.
             if let Some(store) = &self.indexing_event_store {
                 if !job_id_for_terminal.is_empty() {
-                    let _ = store.append(&job_id_for_terminal, "error", 0, 0, &format!("commit: {e}"));
+                    if let Err(persist_err) =
+                        store.append(&job_id_for_terminal, "error", 0, 0, &format!("commit: {e}"))
+                    {
+                        eprintln!(
+                            "WARN indexing-event persist failed (job={job_id_for_terminal}, stage=error): {persist_err}"
+                        );
+                    }
                 }
             }
             format!("commit: {e}")
@@ -275,9 +294,16 @@ impl IndexerBackend for IndexSessionBackend {
                 }
             }
             // task-33.3: persist the cancelled row as a replay source.
+            // task-35.1 (ADR-040 D1): surface the swallowed persist error to stderr.
             if let Some(store) = &self.indexing_event_store {
                 if !job_id_for_terminal.is_empty() {
-                    let _ = store.append(&job_id_for_terminal, "cancelled", 0, 0, "");
+                    if let Err(persist_err) =
+                        store.append(&job_id_for_terminal, "cancelled", 0, 0, "")
+                    {
+                        eprintln!(
+                            "WARN indexing-event persist failed (job={job_id_for_terminal}, stage=cancelled): {persist_err}"
+                        );
+                    }
                 }
             }
         }
@@ -395,6 +421,45 @@ mod tests {
         // (The IndexSession committed everything indexed before cancel.)
         let _ = outcome;
         let _ = Ordering::Relaxed; // touch for clarity
+    }
+
+    // ---- TEST-35.1.1 (Phase 35 / ADR-040 D1) — indexing-event persist best-effort guard ----
+    // The four `store.append` emit points were `let _ = ...` (swallowed persist errors); task-35.1
+    // surfaces them via `eprintln!` WARN while keeping best-effort (a persist failure must NOT block
+    // indexing). `SqliteIndexingEventStore` is a concrete type (no trait → forcing an append failure
+    // would need a scope-creep refactor), so this is a behavior-preservation guard: with a real store
+    // wired the changed `if let Err(e) = store.append(...)` runs its Ok branch, indexing completes, and
+    // the best-effort persist flow still records rows. The error-branch `eprintln!` is inspection-
+    // verified (repo convention does not assert `eprintln!` output, ADR-013).
+    #[test]
+    fn test_35_1_1_indexing_event_persist_best_effort_guard() {
+        let data_dir = temp_dir("idx-event-persist");
+        let workspace_id = "ws-isb-evtpersist";
+        let (_ws, _js) = ensure_workspace(&data_dir, workspace_id).unwrap();
+
+        let event_bus = crate::data_plane::events::EventBus::new();
+        let store = Arc::new(
+            crate::data_plane::indexing_events::SqliteIndexingEventStore::open(&data_dir)
+                .expect("indexing-event store open"),
+        );
+        let backend =
+            IndexSessionBackend::with_event_bus_and_indexing_store(event_bus, store.clone());
+
+        let mut on_progress =
+            |_evt: &JobProgressEvent| -> ProgressDecision { ProgressDecision::Continue };
+        let outcome = backend
+            .index(&fixture_dir(), &data_dir, workspace_id, "job-evt-1", &mut on_progress)
+            .expect("index ok with persistent indexing-event store");
+        assert!(outcome.processed_files >= 5, "≥5 files indexed; got {}", outcome.processed_files);
+
+        // best-effort store.append Ok branch executed → lifecycle rows persisted (indexing not blocked).
+        let rows = store.list(100).expect("list indexing-event rows");
+        assert!(
+            !rows.is_empty(),
+            "best-effort indexing-event rows persisted (store.append surfacing kept the flow); got {}",
+            rows.len()
+        );
+        assert!(rows.iter().all(|r| r.job_id == "job-evt-1"), "rows tagged with the job id");
     }
 
     /// TEST-33.3.2 (emit half): when an indexing-event store is wired, the
