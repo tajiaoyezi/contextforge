@@ -1,6 +1,6 @@
 # Task `35.2`: `go-silent-failure-surfacing — setVectorEnv config.Load 错误（main.go:297）+ os.Setenv 失败（main.go:308）静默吞掉 → fmt.Fprintf(os.Stderr) WARN 显式化（镜像 daemon/rest.go:110 audit best-effort stderr 惯例）；memstore.go:579 emitMemoryEvent nil-sink 退化 🟡 待实施期 impl-grounding（若 MemMemoryStore 接入 production sink-expected 路径则一次性 sync.Once 退化告警，否则据实记 honest non-issue）；observability-only（best-effort env-only 路径失败时不变 / 不阻断热路径 / 不转 fail-fast，ADR-004）；0 新 dep（ADR-008）/ 0 proto / 0 migration`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）
@@ -100,15 +100,15 @@ pass bar：`setVectorEnv` malformed `config.toml` ⇒ WARN 行出现在捕获的
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（`setVectorEnv` 静默错误 stderr 显式化 + best-effort 不变 🟢）: `config.Load` 错误分支（`main.go:297`）加 `fmt.Fprintf(os.Stderr, "contextforge: vector config load failed (%s): %v\n", dataDir, err)`（镜像 `daemon/rest.go:110`），surface 后仍 `return restore`（best-effort 不变，daemon 不阻断）；`os.Setenv` 失败分支（`main.go:308`）补 WARN 显式化（best-effort 不变）；malformed `config.toml` ⇒ 经 `os.Pipe` 捕获的 stderr 含 WARN 行；valid/missing config ⇒ 无 WARN；env-wins + restore 行为不退化（扩展既有 `TestSetVectorEnv`，TEST-34.2.2 不退化）；memstore nil-sink（`memstore.go:579`）🟡 实施期据实决断（production-wired ⇒ 一次性 `sync.Once` WARN 并加断言 / 设计 fallback-only ⇒ honest non-issue 不改码不造测试，[SPEC-DEFER:phase-future.memstore-degraded-observability-warn]，不预断）；surfacing 不转 fail-fast（既有契约不变）；0 新 dep — verified by **TEST-35.2.1**（setVectorEnv malformed-config WARN via stderr-capture + valid/empty no-WARN + env-wins preserved）
-- [ ] **AC2**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-35.2.2**（= LAST）
+- [x] **AC1**（`setVectorEnv` 静默错误 stderr 显式化 + best-effort 不变 🟢）: `config.Load` 错误分支（`main.go:297`）加 `fmt.Fprintf(os.Stderr, "contextforge: vector config load failed (%s): %v\n", dataDir, err)`（镜像 `daemon/rest.go:110`），surface 后仍 `return restore`（best-effort 不变，daemon 不阻断）；`os.Setenv` 失败分支（`main.go:308`）补 WARN 显式化（best-effort 不变）；malformed `config.toml` ⇒ 经 `os.Pipe` 捕获的 stderr 含 WARN 行；valid/missing config ⇒ 无 WARN；env-wins + restore 行为不退化（扩展既有 `TestSetVectorEnv`，TEST-34.2.2 不退化）；memstore nil-sink（`memstore.go:579`）🟡 实施期据实决断（production-wired ⇒ 一次性 `sync.Once` WARN 并加断言 / 设计 fallback-only ⇒ honest non-issue 不改码不造测试，[SPEC-DEFER:phase-future.memstore-degraded-observability-warn]，不预断）；surfacing 不转 fail-fast（既有契约不变）；0 新 dep — verified by **TEST-35.2.1**（setVectorEnv malformed-config WARN via stderr-capture + valid/empty no-WARN + env-wins preserved）
+- [x] **AC2**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-35.2.2**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-35.2.1 | `setVectorEnv` malformed-config WARN（stderr-capture RED→GREEN）：写 malformed `config.toml` 到临时 dataDir → 经 `os.Pipe` 重定向捕获 `os.Stderr` → 断言 `contextforge: vector config load failed` WARN 行出现；valid/missing config → 断言无 WARN；env-wins（显式 env 不被覆盖）+ restore 闭包恢复 不退化（扩展既有 `TestSetVectorEnv`，task-34.2）。memstore nil-sink 🟡 若实施期判 production-wired 才在 `internal/consoleapi` 同包 test 加一次性 WARN 断言；若判 honest non-issue 则不加（据实，不为非 issue 造测试） | `cmd/contextforge/main_test.go`（同包 test，扩展 `TestSetVectorEnv`）（+ 🟡 `internal/consoleapi/memstore_test.go` 条件性） | Draft |
-| TEST-35.2.2 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Draft |
+| TEST-35.2.1 | `setVectorEnv` malformed-config WARN（stderr-capture RED→GREEN）：写 malformed `config.toml` 到临时 dataDir → 经 `os.Pipe` 重定向捕获 `os.Stderr` → 断言 `contextforge: vector config load failed` WARN 行出现；valid/missing config → 断言无 WARN；env-wins（显式 env 不被覆盖）+ restore 闭包恢复 不退化（扩展既有 `TestSetVectorEnv`，task-34.2）。memstore nil-sink 🟡 若实施期判 production-wired 才在 `internal/consoleapi` 同包 test 加一次性 WARN 断言；若判 honest non-issue 则不加（据实，不为非 issue 造测试） | `cmd/contextforge/main_test.go`（同包 test，扩展 `TestSetVectorEnv`）（+ 🟡 `internal/consoleapi/memstore_test.go` 条件性） | Done |
+| TEST-35.2.2 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -147,4 +147,20 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft — 待实施回填（实施 + 验证后回填 §9 real evidence：`go test ./cmd/contextforge/ -run TestSetVectorEnv` stderr-capture RED→GREEN 结果 / memstore nil-sink 🟡 实施期 grounding 决断结果（production-wired 一次性 WARN 或 honest non-issue）/ 0 新 dep 确认 / D2 lint / 实际改动文件清单；ADR-040 §D2 据实记录 + memstore 决断）。
+**Status**: Done
+
+**§9 Verification 实证**（real evidence，本地全绿）：
+- AC1：`go test ./cmd/contextforge/ -run TestSetVectorEnv -v` → 6/6 PASS（既有 `TestSetVectorEnv` 3 子测试 + 新 `TestSetVectorEnv_LoadErrorSurfacing` 3 子测试：malformed→WARN（stderr-capture 真 RED→GREEN）/ missing→no WARN（os.ErrNotExist 守护）/ valid→no WARN）。`go test ./...` 全过（无回归）；`go vet ./cmd/...` clean。
+- AC2：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
+- gofmt：本机 `gofmt -l` 标 main.go/main_test.go = **纯 Windows autocrlf CRLF**（`gofmt -d` 整文件均匀 \r 差异、无任何缩进修正）；git 存 LF、CI（LF）gofmt 通过（以 CI/LF 为准）。
+
+**grounding 校正（实施期，ADR-013）**：
+- **config.Load 对 MISSING config.toml 也返 error**（`os.Open` 失败）→ 朴素 surface 会对「无配置」这一**常见默认**误报 WARN（噪声/UX 回归）。据实加 `errors.Is(err, os.ErrNotExist)` 守护：**仅** malformed/unreadable 报警，missing 静默（TEST-35.2.1 `missing→no WARN` 子测试守护）。
+- **memstore nil-sink（`memstore.go:579`）= honest non-issue（DROP，不改码）**：grounding 复核 `NewMemMemoryStore()` 唯一**生产**调用点 `internal/cli/console_api_serve.go:109`，紧随**无条件** `:112 SetEventSink(store.EmitEvent)`——生产 fallback 路径 sink 总是接线；nil-sink 仅出现在测试/直接构造（设计内可选）。加一次性 degraded WARN 只会在测试触发=噪声无生产价值 → 据实记 honest non-issue 不改码 `[SPEC-DEFER:phase-future.memstore-degraded-observability-warn]`（🟡 borderline 经 grounding 解析为 by-design）。
+- **`os.Setenv` 失败 surface（顺带项）**：B2 在既有「成功才记 restore」分支补「失败则 WARN」，restore 记录语义不变。
+
+**实际改动文件**：
+- `cmd/contextforge/main.go`——`setVectorEnv`：`config.Load` 错误分支 add-only `if !errors.Is(err, os.ErrNotExist) { fmt.Fprintf(os.Stderr, "contextforge: vector config load failed (%s): %v\n", dataDir, err) }`（missing 静默、malformed 报警、best-effort `return restore` 不变）+ `os.Setenv` 失败分支 `if err := os.Setenv(...); err != nil { fmt.Fprintf(os.Stderr, ...) } else { restores = append(...) }`；import `errors`。
+- `cmd/contextforge/main_test.go`——`captureStderr(t, fn)` helper（os.Pipe 重定向）+ `TestSetVectorEnv_LoadErrorSurfacing`（malformed→WARN / missing→no WARN / valid→no WARN）。
+- `internal/consoleapi/memstore.go`——**0 改动**（nil-sink honest non-issue，grounding 校正）。
+- 0 新 dep（`fmt`/`os`/`errors` 标准库）/ 0 proto / 0 migration / 默认行为 + 既有 best-effort 契约不变（env-only 路径失败时不变、env-wins/restore 保持，observability-only，ADR-004/008）。ADR-040 D2 ratify 依据（@ task-35.3 closeout）。

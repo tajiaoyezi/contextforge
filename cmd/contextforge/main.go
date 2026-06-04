@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -296,7 +297,15 @@ func setVectorEnv(dataDir string) func() {
 	}
 	cfg, err := config.Load(dataDir)
 	if err != nil {
-		return restore // best-effort: missing/malformed config → env-only path unchanged
+		// task-35.1 (ADR-040 D2): surface a malformed/unreadable config error to stderr instead of
+		// dropping it silently (mirrors daemon/rest.go:110 best-effort audit surfacing). A MISSING
+		// config.toml is the normal default (no [vector] file source, config.Load returns an
+		// os.ErrNotExist open error) → stay silent for it; only a real parse/read failure warns.
+		// Still best-effort — env-only path unchanged either way (daemon not blocked).
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "contextforge: vector config load failed (%s): %v\n", dataDir, err)
+		}
+		return restore
 	}
 	setIfAbsent := func(key, val string) {
 		if val == "" {
@@ -305,7 +314,11 @@ func setVectorEnv(dataDir string) func() {
 		if _, had := os.LookupEnv(key); had {
 			return // env wins: an explicit env var overrides the config file
 		}
-		if os.Setenv(key, val) == nil {
+		// task-35.1 (ADR-040 D2): surface a setenv failure to stderr (was silently dropped — only
+		// the success branch recorded a restore). Still best-effort: a failed setenv exports nothing.
+		if err := os.Setenv(key, val); err != nil {
+			fmt.Fprintf(os.Stderr, "contextforge: vector env setenv failed (%s): %v\n", key, err)
+		} else {
 			restores = append(restores, func() { _ = os.Unsetenv(key) })
 		}
 	}
