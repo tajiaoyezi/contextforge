@@ -412,7 +412,15 @@ impl Retriever {
             );
             let (file_path, content, indexed_at) = match row {
                 Ok(t) => t,
-                Err(_) => continue, // Tantivy/SQLite 暂时不同步 → skip 该 hit
+                // task-35.1 (ADR-040 D1): Tantivy/SQLite 暂时不同步 → 仍 skip 该 hit
+                // （behavior 不变），但把被吞掉的真实错误 surface 到 stderr
+                // （mirrors search.rs:109；observability-only，query 继续返其余 hit）。
+                Err(e) => {
+                    eprintln!(
+                        "WARN retriever: chunk {chunk_id} present in index but missing from SQLite (desync), skipping: {e}"
+                    );
+                    continue;
+                }
             };
 
             // AC2: time filter (indexed_at 是 unix seconds as String，indexer rfc3339_now)
@@ -936,6 +944,60 @@ mod tests {
         assert_eq!(
             base_ids, filt_ids,
             "source_type/agent_scope must be a no-op for chunk search (identical hits + order)"
+        );
+    }
+
+    // ---- TEST-35.1.2 (Phase 35 / ADR-040 D1) — retriever Tantivy/SQLite desync skip guard ----
+    // retriever/mod.rs:415 skipped a hit via `Err(_) => continue` when a chunk_id is in the Tantivy
+    // index but absent from the SQLite `chunks` table (desync). task-35.1 surfaces the swallowed error
+    // via `eprintln!` WARN while keeping the `continue` (skip behavior unchanged). This behavior-lock
+    // guard constructs that desync (delete the chunks rows after indexing, leaving Tantivy intact),
+    // then asserts `search()` returns gracefully (Ok) with the desynced hits skipped — i.e. the
+    // observability surfacing did NOT turn the best-effort skip into a fail-fast. The `eprintln!`
+    // output itself is inspection-verified (repo convention does not assert `eprintln!` output, ADR-013).
+    #[test]
+    fn test_35_1_2_retriever_desync_skip_guard() {
+        let (_src, data, coll) = build_fixture(
+            "desync-skip",
+            &[
+                ("a.md", "# Doc A\nthe shared marker desyncmarkerz appears here\n"),
+                ("b.md", "# Doc B\nthe shared marker desyncmarkerz appears here too\n"),
+            ],
+        );
+        // Baseline: the marker hits before we induce the desync (retr dropped at block end).
+        let baseline = {
+            let retr = Retriever::open(&data, &coll).expect("open");
+            retr.search(&SearchOptions {
+                query: "desyncmarkerz".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("baseline search")
+        };
+        assert!(!baseline.is_empty(), "baseline should hit the shared marker");
+
+        // Force a Tantivy/SQLite desync: delete every chunks row, leaving the Tantivy index intact.
+        let sqlite_path = data.join("collections").join(&coll).join("metadata.sqlite");
+        {
+            let conn = rusqlite::Connection::open(&sqlite_path).expect("open chunks db");
+            conn.execute("DELETE FROM chunks", []).expect("delete chunks rows");
+        }
+
+        // Re-open: Tantivy still returns the hits, but every SQLite JOIN now misses → desync skip path.
+        let retr = Retriever::open(&data, &coll).expect("re-open");
+        let after = retr
+            .search(&SearchOptions {
+                query: "desyncmarkerz".into(),
+                top_k: 10,
+                filters: SearchFilters::default(),
+                explain: false,
+            })
+            .expect("search returns gracefully when all hits are desync-skipped (not fail-fast)");
+        assert!(
+            after.is_empty(),
+            "all hits desync-skipped → empty result returned gracefully (skip preserved); got {}",
+            after.len()
         );
     }
 
