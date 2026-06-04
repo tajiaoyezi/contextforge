@@ -13,12 +13,12 @@
 #   docker compose -f deploy/docker-compose.production.yml up -d
 #
 # Image:
-#   ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+#   ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.28.0}
 #   (task-16.3 pushes images here on `v*` tag)
 
 services:
   contextforge-core:
-    image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+    image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.28.0}
     command: ["contextforge-core", "0.0.0.0:50551", "/data"]
     environment:
       CONTEXTFORGE_DATA_DIR: /data
@@ -47,7 +47,7 @@ services:
     cpus: ${CORE_CPUS:-1.5}
 
   console-api-serve:
-    image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.9.0}
+    image: ghcr.io/${OWNER:-tajiaoyezi}/contextforge-daemon:${CONTEXTFORGE_VERSION:-v0.28.0}
     command:
       - contextforge
       - console-api-serve
