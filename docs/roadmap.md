@@ -343,13 +343,15 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-041 qdrant-live-vector-recall**（Proposed，D1 live recall harness（qdrant HNSW ANN recall@k vs BruteForce 精确 KNN 方法学；确定性可复现语料；无 server env-gated honest-defer）/ D2 真实测量召回数（`待回填` 直至 CI run 跑出，ADR-013 不伪造）/ D3 CI service-container 集成（每次 run 验证、永久关闭 CI-no-server defer）/ D4 默认 0-vector-dep + 行为不变 + 0 新 dep（ADR-004/008））；ADR-034 add-only Phase-36 Amendment（兑现 D2 `qdrant-server-lifecycle`，不溯改 D-body D5）。ADR-014 第二十七次激活。
 
+**v0.29.0 推进记录（已实现，发版待 tag）**：task-36.1（#236，harness `core/tests/qdrant_live_recall.rs`，本地 recall@10=1.0000）+ task-36.2（#237，`qdrant-recall` CI service-container job，**CI run 26961084355 实测 recall@10=1.0000**，`qdrant-server-lifecycle` 永久关闭）+ task-36.3（closeout：smoke v26[45/45] + ADR-041 Accepted + ADR-034 add-only Phase-36 Amendment 标 D2 fulfilled + release docs）全 Done 三门绿合入 master。诚实：recall=1.0 = qdrant 低于 HNSW indexing_threshold 服务精确 KNN 的 live 正确性证明，HNSW 近似域大语料 recall 续 `[SPEC-DEFER:phase-future.vector-large-corpus-perf]`。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
 
-- **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`（**§3.18 Phase 36 兑现中**——真实 live KNN 召回 + CI service-container 永久守护）、`qdrant-deployment-topology`、`qdrant-semantic-golden-recall`（vs golden 语义标签需真实 embedding model）、`vector-large-corpus-perf`（百万级 qdrant 性能基准）、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`、`vector-dim-feature-enforce`（add-only，承 §3.16 Phase 34——声明 dim 的 feature backend qdrant/lancedb/sqlite-vec 真实 dim 强制，须 feature build）。
+- **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`（**§3.18 Phase 36 已兑现关闭**——真实 live KNN 召回 recall@10=1.0000 + CI service-container 永久守护，CI run 26961084355）、`qdrant-deployment-topology`、`qdrant-semantic-golden-recall`（vs golden 语义标签需真实 embedding model）、`vector-large-corpus-perf`（百万级 qdrant 性能基准）、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`、`vector-dim-feature-enforce`（add-only，承 §3.16 Phase 34——声明 dim 的 feature backend qdrant/lancedb/sqlite-vec 真实 dim 强制，须 feature build）。
 - **eval**：`rust-native-eval-runner`（现 Go runner，承 `task-14.1`）、`eval-dataset-validation`、`case-results-subtable`、`semantic-golden-dataset`（语义近邻标注扩充）。
 - **检索 tokenizer**：`cjk-and-code-tokenizer`（CJK + 代码符号分词，`phase-19` §2）。
 - **trace / events**：`tracestore-sqlite-vacuum`、`tracestore-fts`、`tracestore-multi-workspace-strict`、`events-sse-push`、`events-replay-from-audit`、`events-drain-timeout-config`、`event-bus-partition`、`event-bus-capacity`、`memstore-event-emit`、`observability-metrics-facility`（结构化计数器/metrics facility，core 现无、stderr surfacing 是忠实 scope，承 §3.17 Phase 35，🟡）、`memstore-degraded-observability-warn`（MemMemoryStore nil-sink 一次性降级告警，若 sink optional-by-design 则 honest non-issue，承 §3.17 Phase 35，🟡）。

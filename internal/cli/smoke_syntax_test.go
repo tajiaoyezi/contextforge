@@ -375,6 +375,44 @@ func TestTask343_SmokeV24VectorConfigCompletenessStep(t *testing.T) {
 	}
 }
 
+// TEST-36.3.2 / AC2: smoke v26 adds step 45 — task-36.3 closeout (qdrant-live-vector-recall). The
+// qdrant live KNN recall@k vs BruteForce exact KNN is measured on every CI run via a qdrant service-
+// container (recall@10=1.0000), closing ADR-034 D2's qdrant-server-lifecycle defer; this preserves
+// default behavior (vector-qdrant opt-in, default build 0-vector-dep), so step 45 is a documentation/
+// status step verifying the default build still scaffolds. Asserts the new [45/45] marker + Phase 36
+// status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask363_SmokeV26QdrantLiveRecallStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v26 (task-36.3)") {
+		t.Fatalf("console_smoke.sh missing v26 (task-36.3) header block")
+	}
+	for _, marker := range []string{"[45/45]", "qdrant-live-vector-recall", "TEST-36.1.", "TEST-36.2.", "recall@10", "qdrant_live_recall"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v26 step 45 must document qdrant-live-vector-recall status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "observability-hardening"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v26 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-35.3.2 / AC2: smoke v25 adds step 44 — task-35.3 closeout (observability-hardening). The
 // rust/go silent-failure surfacing (eprintln! / fmt.Fprintf(os.Stderr)) + 7→3-4 grounding correction
 // all preserve default behavior (observability-only; best-effort is never turned into fail-fast), so

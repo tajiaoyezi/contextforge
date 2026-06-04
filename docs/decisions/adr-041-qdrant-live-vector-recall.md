@@ -1,6 +1,6 @@
 # ADR `041`: `qdrant-live-vector-recall`
 
-**Status**: Proposed（v0.29.0 / task-36.3 closeout 据真实 CI 逐 D ratify；D1 live-recall-harness 方法论 + D2 真实实测召回数（待回填 until task-36.2 run，ADR-013 不伪造）+ D3 CI service-container 集成永久关闭 CI-no-server defer + D4 默认 0-vector-dep / 0-network / 既有行为不变；qdrant live KNN recall 真实测量 + CI service-container 永久守护——见 §Ratification）
+**Status**: Accepted（v0.29.0 / task-36.3 closeout 据真实 CI run 26961084355 逐 D ratify；D1 live-recall-harness 方法论 ✅ + D2 真实实测 recall@10=1.0000（N=2000 dim=64 M=50，CI run 26961084355，ADR-013 真实非伪造）✅ + D3 CI service-container 集成永久关闭 CI-no-server defer ✅ + D4 默认 0-vector-dep / 0-network / 既有行为不变 + 0 新 dep ✅；qdrant live KNN recall 真实测量 + CI service-container 永久守护——见 §Ratification）
 
 **Category**: 检索 / 向量 backend / 召回质量（qdrant HNSW ANN recall@k vs BruteForce exact KNN）/ live 端到端兑现 / CI service-container 永久守护
 **Date**: 2026-06-04
@@ -84,3 +84,14 @@ harness（D1）跑出的真实 recall@k 数字（recall@10 + 可附 recall@5 / t
 - **ADR-008（dep add-only）→ 守线**：本 phase 加 **0 新依赖**——`qdrant-client` 自 task-18.4 起已是 optional dep（`vector-qdrant` feature 下），不引入任何新 direct dep，`Cargo.lock` 默认构建段不变。
 - **ADR-013（禁伪造红线）→ 守线**：live recall 真实数据真实跑出后回填（D2 待回填 until task-36.2 run，floor 是 guard、真实数是报告，绝不预填、绝不以合成 fixture（`eval_integration.rs:110`）冒充真实测量）；确定性种子语料无随机 / 无时钟可复现（D1）；env-gated honest-defer（health 不 Ready → 干净 `return` 不 fail，D1）据实分级、不伪造 KNN 通过；CI run 验证证据据实记录、不预填（D3）。
 - **ADR-014（cross-phase-exit-criteria-validation）→ 第二十七次激活**：D1-D4 mapping + 各 task LAST D2 lint（TEST-36.1.3 / 36.2.2，touched 行 0 未标注命中）+ D1 verified-by（TEST-36.1.1 live harness / 36.1.2 reproducibility）+ D3 verified-by（TEST-36.2.1 live CI run）+ D4 自治 + D5 历史 Phase 1-35 不溯改（ADR 改动 add-only Phase-36 Amendment、不溯改 ADR-034 D2 D-body）；本 ADR ratify 在 task-36.3 closeout，Proposed 阶段不 ratify。
+
+## Ratification (v0.29.0 / task-36.3)
+
+**Proposed → Accepted**（逐 D 据真实 CI run **26961084355** + 实测 recall，ADR-013 真实非伪造）：
+
+- **D1 live recall harness 方法论 — ✅ Accepted**：`core/tests/qdrant_live_recall.rs`（`#![cfg(feature = "vector-qdrant")]`，env-gated `QDRANT_URL` 复用 `QdrantConnConfig::from_env()`）落地——确定性可复现语料（splitmix64 index-seeded 单位向量 N=2000 dim=64，无 `rand` / 无 clock）双索引进 `QdrantBackend`（ensure-create + index_batch）与 `BruteForceVectorBackend`（精确 ground truth），M=50 query `recall@k=mean(|qdrant_topk ∩ exact_topk|/k)`；`health()!=Ready` honest-defer 干净 skip 不 fail。TEST-36.1.1（live）+ TEST-36.1.2（可复现性，无 server 也跑）本地 + CI 双绿。
+- **D2 真实实测召回数 — ✅ Accepted（真实回填）**：CI run **26961084355**（`qdrant-recall` job，service container 日志 `qdrant ready after 1 attempt(s)`）实测 `PHASE36 qdrant LIVE recall@10 vs brute-force exact KNN | N=2000 dim=64 M=50 => recall@10=1.0000`，`test result: ok. 2 passed; 0 failed`。本地对 `qdrant/qdrant` 容器一致复现 recall@10=1.0000。**诚实判读（ADR-013）**：recall=1.0 因 qdrant 在 N=2000（低于其 HNSW indexing_threshold 默认 ~10000）服务**精确** KNN → 这是 live KNN **正确性**真实证明（qdrant == brute-force exact ground truth，取代合成 fixture `eval_integration.rs:110` 的 0.7/0.85）；HNSW **近似域**大语料真实 ANN recall（预期 <1.0）须大语料 + optimizer-wait → honest-defer `[SPEC-DEFER:phase-future.vector-large-corpus-perf]`，不夸大为「已压测 HNSW 近似」。floor=0.90 为不退化 guard，真实 1.0000 留足余量。
+- **D3 CI service-container 集成 — ✅ Accepted**：`.github/workflows/ci.yml` `qdrant-recall` job（`services: qdrant/qdrant` 6334+6333 + Rust 1.93 + protoc + Wait-for-ready + harness）每次 CI run 对 live service container 验证 recall；run 26961084355 绿 = 真实证据。**`[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`（ADR-034 D2）永久关闭**——CI now HAS a live qdrant server。
+- **D4 默认 0-vector-dep + 0 新 dep + 既有行为不变 — ✅ Accepted**：`vector-qdrant` opt-in（harness `#![cfg]`-gated，默认 `cargo test --workspace` 不编译）；`qdrant-client` 自 task-18.4 已 optional（0 新 dep）；既有 cargo-test / go-test / lint / spec-lint / feature-build 不退化，`qdrant-recall` 是 add-only 第 6 验证面（run 26961084355 全门绿）。
+
+**ADR-034 D2 关闭**：以 add-only `## Amendment (Phase 36 / v0.29.0)` 记 ADR-034 D2 `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]` fulfilled（live KNN recall measured + CI-guarded），不溯改 ADR-034 D2 D-body / Ratification (v0.22.0)（ADR-014 D5）。ADR-014 第二十七次激活全 D 通过。
