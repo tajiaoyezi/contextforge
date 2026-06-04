@@ -136,3 +136,50 @@ jobs:
           key: ${{ runner.os }}-cargo-feat-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
       - name: cargo build --features ${{ matrix.feature }}
         run: cargo build -p contextforge-core --features ${{ matrix.feature }}
+
+  # task-36.2 (Phase 36): run the qdrant live-recall harness (task-36.1) against a
+  # real qdrant SERVICE CONTAINER every CI run — closes ADR-034 D2's structural
+  # honest-defer [SPEC-DEFER:phase-future.qdrant-server-lifecycle] ("CI has no live
+  # qdrant server"). The "Wait for qdrant" step guards against the harness silently
+  # honest-defer-skipping before the server is ready (so recall@k is actually
+  # measured + asserted, not no-op'd). CI-only / add-only; default build unchanged.
+  qdrant-recall:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    services:
+      qdrant:
+        image: qdrant/qdrant
+        ports:
+          - 6334:6334
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.93'
+      - name: Install protoc (qdrant-client build needs a system protoc)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-qdrant-recall-${{ hashFiles('**/Cargo.lock') }}
+      - name: Wait for qdrant to be ready
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:6333/readyz >/dev/null; then
+              echo "qdrant ready after ${i} attempt(s)"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::qdrant service container not ready after 60s" >&2
+          exit 1
+      - name: qdrant live recall harness (recall@k vs brute-force exact KNN)
+        env:
+          QDRANT_URL: http://localhost:6334
+        run: cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture
