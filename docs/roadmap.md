@@ -328,13 +328,28 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-040 observability-hardening**（Proposed，D1 rust-silent-failure-surfacing（`index_session_backend.rs:201` + `retriever/mod.rs:415` eprintln! WARN，best-effort 保持，guard 测试）/ D2 go-silent-failure-surfacing（`setVectorEnv` config.Load/Setenv fmt.Fprintf stderr，stderr-capture RED→GREEN；memstore nil-sink 🟡 impl-grounding）/ D3 grounding 校正诚实 7→3-4 收敛（4 处 DROP/LEAVE，不引新 metrics facility）/ D4 默认行为 + 0-dep + 0-network + 既有契约不变（ADR-004/008，best-effort 不转 fail-fast）；真实测试出来才 ratify，memstore nil-sink 🟡 据实施期 grounding 定夺）。ADR-014 第二十六次激活。
 
+### 3.18 v0.29.0 / Phase 36 — qdrant-live-vector-recall（承 Phase 25/29 live 向量召回血脉，post-v0.28.0 add-only 排期）
+
+**目标**：兑现 ADR-034 D2 一路 honest-defer 的 `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`（真实 live-server 端到端 KNN 召回数）——把「qdrant live KNN wiring 经 honest-defer 证明、但真实召回数从未跑出（in-repo `eval_integration.rs` 0.7/0.85 是合成 fixture）」推进到「对真实 qdrant server 跑出真实 recall@k + 经 CI service container 每次 run 永久验证」。**关键 de-risk 已证明**：真实 qdrant + qdrant-client 1.18 端到端 round-trip 跑通、KNN 余弦序正确（query `[1,0,0,0]`→`[(a,1.0),(c,0.994)]`）。qdrant backend 自 Phase 25/29 已全实现（connect/health/ensure-create/upsert/KNN/delete），本 phase 0 行 backend 改动、只加 harness + CI 接线。经用户 AskUserQuestion（2026-06-04）选「C 解锁高价值项 → qdrant live 向量召回（自起 docker）」+「规划+实现+发版（无人值守）」即 v0.29.0 release 授权（ADR-012）。
+
+**来源 marker（§4 向量 backend 细化段 + ADR-034 D2 Ratification 🟡 PARTIAL）**：
+- `[SPEC-DEFER:phase-future.qdrant-server-lifecycle]`（ADR-034 D2 残留 live-server KNN 召回维度——本 phase 兑现 + CI-guarded 永久关闭）。
+- 合成-fixture 召回（`eval_integration.rs` 0.7/0.85 非真实）→ 真实测量取代（ADR-013，A1 synthetic-fixture REJECTED）。
+
+**候选 task 拆分**：
+- **task-36.1** qdrant-live-recall-harness：新增 `core/tests/qdrant_live_recall.rs`（`#![cfg(feature = "vector-qdrant")]`，env-gated `QDRANT_URL` 复用 `QdrantConnConfig::from_env()`；`health() != Ready` → honest-defer 干净 skip 不 fail）；确定性可复现语料（N=1000 dim=64 index-seeded 单位向量，无 `rand`/无 clock）双索引进 `QdrantBackend` 与 `BruteForceVectorBackend`（精确 ground truth）；M=50 query recall@k = mean(|∩|/k) 断言 ≥ floor（k=10→0.90）+ eprintln 实测数（真实跑出后回填，绝不预填，ADR-013）。🟢 generator / 🔴 live server。0 新 dep。
+- **task-36.2** qdrant-recall-ci-service：`.github/workflows/ci.yml` 加 `qdrant-recall` job（qdrant service container + toolchain 1.93 + protoc + 跑 harness）→ 每次 CI run 对 live service container 验证 recall、永久关闭 `qdrant-server-lifecycle`。CI-only / add-only / 默认构建不变。验证证据 = PR 自身 live CI run（据实记录，ADR-013）。
+- **task-36.3** v0.29.0 closeout：smoke v26 step [45/45]（banner v25→v26，staging `cf-v28-cfg`）+ TestTask363（镜像 TestTask353，无 [37/37]..[44/44] 回归）+ release docs（真实召回数 + 真实 CI run 链接）+ README/RELEASE_NOTES v0.29 + ADR-041 ratify + ADR-034 add-only Phase 36 Amendment（标 D2 fulfilled，不溯改 D-body D5）+ roadmap §3.18/§4 + adapter + feature。🟢。
+
+**ADR**：**ADR-041 qdrant-live-vector-recall**（Proposed，D1 live recall harness（qdrant HNSW ANN recall@k vs BruteForce 精确 KNN 方法学；确定性可复现语料；无 server env-gated honest-defer）/ D2 真实测量召回数（`待回填` 直至 CI run 跑出，ADR-013 不伪造）/ D3 CI service-container 集成（每次 run 验证、永久关闭 CI-no-server defer）/ D4 默认 0-vector-dep + 行为不变 + 0 新 dep（ADR-004/008））；ADR-034 add-only Phase-36 Amendment（兑现 D2 `qdrant-server-lifecycle`，不溯改 D-body D5）。ADR-014 第二十七次激活。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
 
-- **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`、`qdrant-deployment-topology`、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`、`vector-dim-feature-enforce`（add-only，承 §3.16 Phase 34——声明 dim 的 feature backend qdrant/lancedb/sqlite-vec 真实 dim 强制，须 feature build）。
+- **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`（**§3.18 Phase 36 兑现中**——真实 live KNN 召回 + CI service-container 永久守护）、`qdrant-deployment-topology`、`qdrant-semantic-golden-recall`（vs golden 语义标签需真实 embedding model）、`vector-large-corpus-perf`（百万级 qdrant 性能基准）、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`、`vector-dim-feature-enforce`（add-only，承 §3.16 Phase 34——声明 dim 的 feature backend qdrant/lancedb/sqlite-vec 真实 dim 强制，须 feature build）。
 - **eval**：`rust-native-eval-runner`（现 Go runner，承 `task-14.1`）、`eval-dataset-validation`、`case-results-subtable`、`semantic-golden-dataset`（语义近邻标注扩充）。
 - **检索 tokenizer**：`cjk-and-code-tokenizer`（CJK + 代码符号分词，`phase-19` §2）。
 - **trace / events**：`tracestore-sqlite-vacuum`、`tracestore-fts`、`tracestore-multi-workspace-strict`、`events-sse-push`、`events-replay-from-audit`、`events-drain-timeout-config`、`event-bus-partition`、`event-bus-capacity`、`memstore-event-emit`、`observability-metrics-facility`（结构化计数器/metrics facility，core 现无、stderr surfacing 是忠实 scope，承 §3.17 Phase 35，🟡）、`memstore-degraded-observability-warn`（MemMemoryStore nil-sink 一次性降级告警，若 sink optional-by-design 则 honest non-issue，承 §3.17 Phase 35，🟡）。
