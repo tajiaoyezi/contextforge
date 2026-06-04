@@ -314,6 +314,21 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 ---
 
+### 3.17 v0.28.0 / Phase 35 — observability-hardening（承 Phase 31/33 治理债血脉，post-v0.27.0 add-only 排期）
+
+**目标**：承 Phase 31（governance-debt-cleanup, Done）/ Phase 33（governance-debt-cleanup-2, Done）治理债血脉，把热路径中**被静默吞掉的真实错误**显式化（surface genuinely-swallowed errors），镜像仓库既有 stderr 惯例（Rust `eprintln!` / Go `fmt.Fprintf(os.Stderr)`）。这是一个**刻意小**版本——第三轮债清理性质、边际递减（diminishing returns），据 ADR-013 honest over padding 据实排小不凑数；经 AskUserQuestion（2026-06-04）用户选「A 可观测性硬化（纯绿区）」+「规划+实现+发版（无人值守）」即 v0.28.0 release 授权（ADR-012）。
+
+**来源（backlog grounding workflow 实测 v0.27.0 后 GitHub 0 issue/0 PR，高价值项全 🔴 外部受阻 → 绿区焦点小版本）+ 关键诚实校正（ADR-013，本版核心价值）**：survey 初列 7 处「静默吞错」候选，grounding 据实收敛为 **3-4 处真静默**——其余 4 处 DROP/LEAVE（已显式化 / 设计内有意为之，不改代码记 grounding 校正）：`search.rs:109`（已 `eprintln!` WARN，缺的只是结构化计数器但 core 无 metrics facility 加=过度工程）/ `mcpadapter/server.go:298`（task-31.3 已 `fmt.Fprintf(os.Stderr)`）/ `mcpadapter/allowlist.go:31`（有意 POSIX-only 平台 caveat，改 Windows ACL 须引 `golang.org/x/sys/windows` 破 0-dep）/ `index_session_backend.rs:193` `eb.send`（有意 no-subscribers 正常态）。
+
+**候选 task 拆分**：
+- **task-35.1** rust-silent-failure-surfacing：`core/src/jobs/index_session_backend.rs:201` `let _ = store.append(...)`（indexing-event SQLite 持久化真实错误：磁盘满/锁）→ `if let Err(e) = ... { eprintln!("WARN ...: {e}") }`（仍 best-effort 不阻断 indexing）+ `core/src/retriever/mod.rs:415` `Err(_) => continue`（Tantivy/SQLite desync 静默跳过命中）→ `Err(e) => { eprintln!("WARN retriever: ... desync, skipping: {e}"); continue }`（skip 行为保留）；镜像 `search.rs:108-113`；`eb.send:193` LEAVE AS-IS。Rust eprintln! 输出 std 单测难断言（仓库既有 eprintln! 站点亦不断言）→ guard/behavior-preservation 测试，据实不伪造 stderr-assert（ADR-013）。🟢 0 新 dep。
+- **task-35.2** go-silent-failure-surfacing：`cmd/contextforge/main.go:297` `setVectorEnv` 内 `config.Load` 错误（malformed/unreadable config.toml 被静默吞）+ `:308` `os.Setenv` 失败 → `fmt.Fprintf(os.Stderr)` 显式化（镜像 `daemon/rest.go:110`，仍 best-effort env-only 路径失败时不变）；`memstore.go:579` `emitMemoryEvent` nil-sink no-op 🟡 实施期 grounding 定夺（production-wired → 一次性 `sync.Once` WARN / fallback-only by-design → honest non-issue `[SPEC-DEFER:phase-future.memstore-degraded-observability-warn]`）。stderr-capture（`os.Pipe`）真实 RED→GREEN。🟢 0 新 dep。
+- **task-35.3** v0.28.0 closeout：grounding 校正记录（7→3-4 DROP/LEAVE 4 处）+ smoke v25 step [44/44]（banner v24→v25，staging `cf-v27-cfg`，offset +2）+ TestTask353（镜像 TestTask343，无 [37/37]..[43/43] 回归）+ release docs + README v0.28 段 + RELEASE_NOTES v0.28.0 段 + ADR-040 ratify + ADR-031 add-only Phase 35 Amendment（承 stderr/best-effort surfacing 方向，不溯改正文 D5）+ roadmap/adapter add-only + feature。🟢。
+
+**ADR**：**ADR-040 observability-hardening**（Proposed，D1 rust-silent-failure-surfacing（`index_session_backend.rs:201` + `retriever/mod.rs:415` eprintln! WARN，best-effort 保持，guard 测试）/ D2 go-silent-failure-surfacing（`setVectorEnv` config.Load/Setenv fmt.Fprintf stderr，stderr-capture RED→GREEN；memstore nil-sink 🟡 impl-grounding）/ D3 grounding 校正诚实 7→3-4 收敛（4 处 DROP/LEAVE，不引新 metrics facility）/ D4 默认行为 + 0-dep + 0-network + 既有契约不变（ADR-004/008，best-effort 不转 fail-fast）；真实测试出来才 ratify，memstore nil-sink 🟡 据实施期 grounding 定夺）。ADR-014 第二十六次激活。
+
+---
+
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
@@ -321,7 +336,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 - **向量 backend 细化**：`multi-backend-production`、`qdrant-server-lifecycle`、`qdrant-deployment-topology`、`lancedb-index-tuning`、`lancedb-schema-compaction`、`lancedb-build-prereq-ci`、`vector-dim-feature-enforce`（add-only，承 §3.16 Phase 34——声明 dim 的 feature backend qdrant/lancedb/sqlite-vec 真实 dim 强制，须 feature build）。
 - **eval**：`rust-native-eval-runner`（现 Go runner，承 `task-14.1`）、`eval-dataset-validation`、`case-results-subtable`、`semantic-golden-dataset`（语义近邻标注扩充）。
 - **检索 tokenizer**：`cjk-and-code-tokenizer`（CJK + 代码符号分词，`phase-19` §2）。
-- **trace / events**：`tracestore-sqlite-vacuum`、`tracestore-fts`、`tracestore-multi-workspace-strict`、`events-sse-push`、`events-replay-from-audit`、`events-drain-timeout-config`、`event-bus-partition`、`event-bus-capacity`、`memstore-event-emit`。
+- **trace / events**：`tracestore-sqlite-vacuum`、`tracestore-fts`、`tracestore-multi-workspace-strict`、`events-sse-push`、`events-replay-from-audit`、`events-drain-timeout-config`、`event-bus-partition`、`event-bus-capacity`、`memstore-event-emit`、`observability-metrics-facility`（结构化计数器/metrics facility，core 现无、stderr surfacing 是忠实 scope，承 §3.17 Phase 35，🟡）、`memstore-degraded-observability-warn`（MemMemoryStore nil-sink 一次性降级告警，若 sink optional-by-design 则 honest non-issue，承 §3.17 Phase 35，🟡）。
 - **memory**：`memory-pinned-at-timestamp`、`memory-pin-actor`、`handle-memory-pin-strict-body`、`is-pinned-backfill-from-audit`、`memory-pin-unpin-split`、`hard-delete-policy`。
 - **cache / deploy**：`cache-lru`、`cache-cap-configurable`、`compose-resource-limits`、`compose-tls-termination`。
 
@@ -365,6 +380,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > - **task-34.3** closeout → ✅：`get_source_chunk` workspace 隔离 verify-only 守护测试（TEST-34.3.1，grounding 校正已实存自 task-12.2）+ smoke v24 [43/43]（TestTask343）+ release docs + ADR-039 ratify + ADR-037 add-only Phase 34 Amendment + roadmap/adapter。
 >
 > 全 phase 真实验证：`cargo test -p contextforge-core --lib` 209 + `go test ./...` 全过（含 TestTask343）+ `cargo clippy --workspace --all-targets -D warnings` 0 warning + `bash -n scripts/console_smoke.sh` exit 0 + `spec_drift_lint --touched origin/master` 0 unannotated。默认构建 0 新 dep + 0 network + 既有契约（Rust 0 toml dep / `expected_dim` add-only 默认方法 / `[vector]` add-only 段）不变（ADR-004/008）。真实 v0.27.0 tag/release 经用户授权（ADR-012）。
+
+> **v0.28.0 / Phase 35 排期更新（规划中 2026-06-04，add-only，不删上方历史条目）**：§3.17 把「热路径静默错误显式化」排入 **v0.28.0 / Phase 35 — observability-hardening**（task-35.1 rust-silent-failure-surfacing：`index_session_backend.rs:201` store.append + `retriever/mod.rs:415` desync-skip 经 `eprintln!` WARN 镜像 `search.rs:109`、best-effort 保持 / task-35.2 go-silent-failure-surfacing：`setVectorEnv` config.Load/Setenv 经 `fmt.Fprintf(os.Stderr)` 镜像 `daemon/rest.go:110`、stderr-capture RED→GREEN、`memstore.go:579` nil-sink 🟡 impl-grounding / task-35.3 closeout）。这是一个**刻意小**版本——承 Phase 31/33 治理债血脉、第三轮债清理边际递减，据实排小不凑数（ADR-013，honest over padding）；backlog grounding 实测 v0.27.0 后 GitHub 0 issue/0 PR、高价值项全 🔴 外部受阻 → 绿区焦点小版本。**grounding 诚实校正（add-only，不删上方条目）**：survey 7 候选 → 3-4 真静默，DROP/LEAVE 4 处（`search.rs:109` 已显式化+core 无 metrics facility / `mcpadapter/server.go:298` task-31.3 已显式化 / `mcpadapter/allowlist.go:31` 有意 POSIX-only 平台 caveat / `index_session_backend.rs:193` eb.send 有意 no-subscribers）记 grounding 校正不改代码（ADR-040 D3）。**新增 backlog（add-only）**：`observability-metrics-facility`（结构化计数器，core 现无 metrics facility，🟡）/ `memstore-degraded-observability-warn`（若 grounding 显 MemMemoryStore sink optional-by-design 则 honest non-issue，🟡）。真实数值 / 受阻维度真实跑出后回填（ADR-013，不预填）。ADR-040 Proposed。
 
 ---
 
