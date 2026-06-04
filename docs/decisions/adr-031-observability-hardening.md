@@ -78,3 +78,13 @@ Phase 33（ADR-038 D3）以 add-only 方式补 `indexing.*` 事件持久化 + re
 - **events-drain-timeout = VERIFY-ONLY 校正（承 D5 交付）**：`CONSOLE_EVENTS_DRAIN_TIMEOUT`（`grpcclient.go` `drainTimeoutFromEnv`，默认 100ms）系 Phase 26 D5 既交付，本 phase 据实从「add」改「verify-only」（镜像 Phase 31 event-bus-partition 校正），引证既有 `TestDrainTimeoutFromEnv`（5 子用例绿），不重实现。
 
 依赖变更：migration `include_str!` + proto add-only field 0 新 dep。详见 ADR-038 Ratification D3 + `docs/releases/v0.26.0-evidence.md`。
+
+## Amendment (Phase 35 / v0.28.0, 2026-06-04 — add-only, 正文不溯改)
+
+Phase 35（ADR-040 observability-hardening）承本 ADR 确立的 **stderr / best-effort surfacing 方向**，把它从 TraceStore / events / event-bus 延伸到**热路径中被静默吞掉的真实错误**，**不溯改 D1-D6 正文 + 既有 Phase 33 Amendment 正文**（ADR-014 D5）：
+
+- **热路径静默错误显式化（承 best-effort surfacing 方向）**：task-35.1（PR #229）把 `core/src/jobs/index_session_backend.rs` 的 **4 处** `store.append`（progress/index-error/commit-error/cancelled）`let _ =` 改为 `if let Err(persist_err) { eprintln!("WARN indexing-event persist failed …: {persist_err}") }`（SQLite persist 失败=磁盘满/锁，不再无声吞掉；best-effort 保留，不阻断 indexing）+ `core/src/retriever/mod.rs:415` 的 `Err(_) => continue`（Tantivy/SQLite desync 静默跳过命中）改为 `Err(e) => { eprintln!("WARN retriever: … desync …"); continue }`（skip 行为保留）；`eb.send` 各处保留 as-is（broadcast 无订阅者返 Err 是正常态 intentional，本 ADR D5 既定 best-effort emit 不变）。task-35.2（PR #230）把 `cmd/contextforge/main.go` `setVectorEnv` 的 `config.Load`/`os.Setenv` 失败改为 `fmt.Fprintf(os.Stderr)` 显式化（`errors.Is(os.ErrNotExist)` 守护 missing 静默），镜像 task-31.3（ADR-036）确立的 Go stderr audit-surfacing pattern。
+- **不引入新 metrics facility**：core 仅 `eprintln!` / Go 仅 `fmt.Fprintf(os.Stderr)`，severity 为消息前缀（WARN/INFO），无 severity / metrics framework——structured metrics/counter facility honest-defer `[SPEC-DEFER:phase-future.observability-metrics-facility]`（承本 ADR「轻量 stderr surfacing」基线）。
+- **7→3-4 grounding 校正（ADR-013）**：survey 7 候选据实收敛 3-4 真静默；4 处 DROP/LEAVE（`search.rs:109` already-surfaced / `mcpadapter/server.go:298` task-31.3 already-done / `allowlist.go:31` 有意 POSIX-only / `eb.send:193` 有意 no-subscribers），不改代码；`memstore.go:579` nil-sink = honest non-issue（生产 sink 总接线）`[SPEC-DEFER:phase-future.memstore-degraded-observability-warn]`。
+
+依赖变更：0 新 dep（add-only eprintln!/Fprintf 旁路，observability-only best-effort 不转 fail-fast）。详见 ADR-040 Ratification + `docs/releases/v0.28.0-evidence.md`。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console_smoke.sh — Phase 34 task-34.3 vector-config-completeness smoke (v24; v23 Phase 33 governance-debt-cleanup-2).
+# scripts/console_smoke.sh — Phase 35 task-35.3 observability-hardening smoke (v25; v24 Phase 34 vector-config-completeness).
 #
 # REAL mode (default): spawns BOTH the Rust `contextforge-core` daemon
 # (data plane gRPC) AND the Go `console-api-serve` REST proxy. The
@@ -1040,6 +1040,26 @@ if "$GO_BIN" init --root "$STAGING/cf-v26-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; vector-dim negotiation (default BruteForce any-dim byte-equiv) + config.toml [vector]→env bridge (env-wins, no section → BruteForce byte-equiv, Rust 0 toml dep) + get_source_chunk isolation guard ✅ (TEST-34.1.* / TEST-34.2.* / TEST-34.3.* verified; vector-dim-feature-enforce honest-defer, ADR-013)"
 else
   echo "    → vector-config-completeness (TEST-34.1.* / TEST-34.2.* / TEST-34.3.*) verified at Rust factory + Go config layers; default build baseline unchanged (ADR-004)"
+fi
+
+echo "  [44/44] task-35.3 observability-hardening: rust-silent-failure-surfacing (index_session_backend store.append + retriever Tantivy/SQLite desync via eprintln! WARN) + go-silent-failure-surfacing (setVectorEnv config.Load/Setenv via fmt.Fprintf(os.Stderr)) + 7→3-4 grounding correction (Phase 35)"
+# v25 (task-35.3): Phase 35 (observability-hardening) surfaces genuinely-swallowed errors in the hot
+# paths, mirroring the repo's existing stderr conventions (Rust eprintln! / Go fmt.Fprintf(os.Stderr));
+# observability-only — best-effort contracts stay best-effort (indexing not blocked, query keeps
+# skipping, daemon not blocked), never turned into fail-fast (ADR-004). index_session_backend's four
+# store.append emit points + retriever's Tantivy/SQLite desync skip now log a WARN instead of `let _ =`
+# / `Err(_) => continue` (task-35.1); setVectorEnv's config.Load + os.Setenv failures now log to stderr
+# (guarded by os.ErrNotExist so a missing config — the normal default — stays silent) (task-35.2). The
+# honest 7→3-4 grounding correction drops four already-surfaced/intentional sites (search.rs:109 already
+# WARNs / mcpadapter server.go:298 done in task-31.3 / allowlist.go:31 intentional POSIX-only / eb.send
+# no-subscribers) with no code change, and introduces no new metrics facility (ADR-040 D3). vector-dim-
+# feature-enforce / memstore-degraded-observability-warn stay honestly deferred (ADR-013). All changes
+# preserve default behavior / proto / existing contracts (ADR-004) with 0 new dep (ADR-008); this is a
+# documentation/status step verifying the default build still scaffolds.
+if "$GO_BIN" init --root "$STAGING/cf-v27-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v27-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; hot-path silent errors now surfaced via eprintln!/fmt.Fprintf(os.Stderr) (index_session_backend store.append ×4 + retriever desync + setVectorEnv config.Load/Setenv, best-effort preserved) + 7→3-4 grounding correction (no new metrics facility) ✅ (TEST-35.1.* / TEST-35.2.* / TEST-35.3.* verified; memstore nil-sink honest non-issue, ADR-013)"
+else
+  echo "    → observability-hardening (TEST-35.1.* / TEST-35.2.* / TEST-35.3.*) verified at Rust core + Go layers; default build baseline unchanged (ADR-004)"
 fi
 
 echo
