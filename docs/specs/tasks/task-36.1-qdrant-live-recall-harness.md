@@ -1,6 +1,6 @@
 # Task `36.1`: `qdrant-live-recall-harness — 新增 core/tests/qdrant_live_recall.rs（#![cfg(feature = "vector-qdrant")]，env-gated QDRANT_URL via QdrantConnConfig::from_env），首次以「qdrant HNSW ANN recall@k vs BruteForce 精确 KNN」方法学在 live qdrant 上量真实召回：确定性可复现语料 N×dim → 同时索引进 QdrantBackend(open ensure-create + index_batch) 与 BruteForceVectorBackend → M 个确定性 query 取双方 top-k → recall@k = mean(|qdrant_topk ∩ exact_topk| / k) ≥ documented floor 并 eprintln 真实测得值；health() != Ready 时 eprintln skip notice + 干净 return（honest-defer，无 server 时 CI/本地 skip 不 fail，ADR-013）；0 新 dep / 0 schema migration / 0 默认构建变更（vector-qdrant opt-in，ADR-004/008）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -113,17 +113,17 @@ pass bar：feature `vector-qdrant` 下 `core/tests/qdrant_live_recall.rs` 编译
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（live recall harness env-gated + honest-defer skip 🔴 live / 🟢 wiring）: 新增 `core/tests/qdrant_live_recall.rs`（`#![cfg(feature = "vector-qdrant")]`），env-gated 经 `QdrantConnConfig::from_env()`；构造 `QdrantBackend::connect(...)` 后第一步 `health()`——`!= Ready`（无 server）→ eprintln skip notice + `return`（测试**干净通过不 fail**）；`Ready` 时同确定性语料同时索引进 `QdrantBackend`（`open` ensure-create + `index_batch` upsert）与 `BruteForceVectorBackend`（精确 ground truth），M 个确定性 query 取双方 top-k，`recall@k = mean(|qdrant_topk ∩ exact_topk| / k) >= FLOOR`（如 k=10 floor 0.90）并 eprintln 真实测得值（真实数字 **真实跑出后回填**，无 server 时 honest-defer skip，绝不预填，ADR-013）；**0 新 dep + 0 schema migration + 0 默认构建变更**（默认 0-vector-dep / 0-network） — verified by **TEST-36.1.1**（env-gated：有 live qdrant 时真实 `recall@k >= floor`；无 server honest-defer 干净 skip 不 fail）
-- [ ] **AC2**（确定性语料生成器复现性，无 server 🟢）: `deterministic_unit_vector(seed, dim)` 同 seed 必产同一向量（无 `rand` / 无 clock）且每个为单位向量——**不连 server** 即可复现性自测，守住 harness 可复现地基（ADR-013） — verified by **TEST-36.1.2**（无 server，断言同 seed → 同向量 + 单位向量）
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-36.1.3**（= LAST）
+- [x] **AC1**（live recall harness env-gated + honest-defer skip 🔴 live / 🟢 wiring）: 新增 `core/tests/qdrant_live_recall.rs`（`#![cfg(feature = "vector-qdrant")]`），env-gated 经 `QdrantConnConfig::from_env()`；构造 `QdrantBackend::connect(...)` 后第一步 `health()`——`!= Ready`（无 server）→ eprintln skip notice + `return`（测试**干净通过不 fail**）；`Ready` 时同确定性语料同时索引进 `QdrantBackend`（`open` ensure-create + `index_batch` upsert）与 `BruteForceVectorBackend`（精确 ground truth），M 个确定性 query 取双方 top-k，`recall@k = mean(|qdrant_topk ∩ exact_topk| / k) >= FLOOR`（如 k=10 floor 0.90）并 eprintln 真实测得值（真实数字 **真实跑出后回填**，无 server 时 honest-defer skip，绝不预填，ADR-013）；**0 新 dep + 0 schema migration + 0 默认构建变更**（默认 0-vector-dep / 0-network） — verified by **TEST-36.1.1**（env-gated：有 live qdrant 时真实 `recall@k >= floor`；无 server honest-defer 干净 skip 不 fail）
+- [x] **AC2**（确定性语料生成器复现性，无 server 🟢）: `deterministic_unit_vector(seed, dim)` 同 seed 必产同一向量（无 `rand` / 无 clock）且每个为单位向量——**不连 server** 即可复现性自测，守住 harness 可复现地基（ADR-013） — verified by **TEST-36.1.2**（无 server，断言同 seed → 同向量 + 单位向量）
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-36.1.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-36.1.1 | 🔴 live / 🟢 wiring：env-gated（`QdrantConnConfig::from_env`）live recall harness——`health()==Ready` 时同确定性语料双索引（qdrant ensure-create+upsert / BruteForce 精确），M query 取双方 top-k，`recall@k >= FLOOR`（如 k=10 floor 0.90）+ eprintln 真实值（真实数字 真实跑出后回填，不预填）；`health()!=Ready`（无 server）→ eprintln skip + return 干净通过（**不** fail，honest-defer ADR-013） | `core/tests/qdrant_live_recall.rs` | Draft |
-| TEST-36.1.2 | 🟢 确定性语料生成器复现性（**无 server**）：`deterministic_unit_vector(seed, dim)` 同 seed → 同向量（无 `rand` / 无 clock）+ 每个为单位向量——不连 server 即可跑、即绿，守 harness 可复现地基（ADR-013） | `core/tests/qdrant_live_recall.rs` | Draft |
-| TEST-36.1.3 | ADR-014 D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Draft |
+| TEST-36.1.1 | 🔴 live / 🟢 wiring：env-gated（`QdrantConnConfig::from_env`）live recall harness——`health()==Ready` 时同确定性语料双索引（qdrant ensure-create+upsert / BruteForce 精确），M query 取双方 top-k，`recall@k >= FLOOR`（如 k=10 floor 0.90）+ eprintln 真实值（真实数字 真实跑出后回填，不预填）；`health()!=Ready`（无 server）→ eprintln skip + return 干净通过（**不** fail，honest-defer ADR-013） | `core/tests/qdrant_live_recall.rs` | Done |
+| TEST-36.1.2 | 🟢 确定性语料生成器复现性（**无 server**）：`deterministic_unit_vector(seed, dim)` 同 seed → 同向量（无 `rand` / 无 clock）+ 每个为单位向量——不连 server 即可跑、即绿，守 harness 可复现地基（ADR-013） | `core/tests/qdrant_live_recall.rs` | Done |
+| TEST-36.1.3 | ADR-014 D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -168,6 +168,20 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-待回填（task-36.1 实施完成后回填 §9 Verification 实证 / grounding 校正 / 实际改动文件 / 剩余风险与下游影响；真实召回数经 task-36.2 CI service-container run 真实跑出后回填 §10 + v0.29.0 evidence，绝不预填，ADR-013）。
+**§9 Verification 实证**（real evidence，本地全绿 + 真实 live 召回）：
+- **AC1 真实 live 召回**：`QDRANT_URL=http://localhost:6334 cargo test -p contextforge-core --features vector-qdrant --test qdrant_live_recall -- --nocapture`（对真实 `qdrant/qdrant` docker 容器）→ `test_36_1_1_qdrant_live_recall_at_k` PASS，实测 `PHASE36 qdrant LIVE recall@10 vs brute-force exact KNN | N=2000 dim=64 M=50 => recall@10=1.0000`。honest-defer 分支：`env -u QDRANT_URL cargo test ...` → `test_36_1_1` 干净 SKIP（eprintln "QDRANT_URL unset (honest-defer)" + return，**不 fail**）、`test_36_1_2` PASS（2 passed / 0 failed）。
+- **AC2 复现性**：`test_36_1_2_deterministic_corpus_reproducible` PASS（同 seed → byte-identical 向量 / 异 seed → 不同 / 单位长 norm≈1.0），**无 server 也跑**。
+- 默认构建不退化：`cargo test -p contextforge-core --lib` 212 passed / 0 failed（harness `#![cfg(feature = "vector-qdrant")]` 不进默认构建）；`cargo clippy -p contextforge-core --features vector-qdrant --tests -- -D warnings` 0 warning。
+- AC3：D2 lint `--touched origin/master`（CI spec-lint 权威）。
+
+**诚实判读（ADR-013，关键）**：实测 recall@10=**1.0000**——这是「qdrant LIVE KNN 与 brute-force 精确 ground truth 逐一吻合」的真实 live-server 召回数（取代合成 fixture `eval_integration.rs` 0.7/0.85），真实关闭 ADR-034 D2「真实 live recall 数从未测过」。**为何 1.0**：qdrant 在 upsert 后即时对低于其 HNSW `indexing_threshold`（默认 ~10000）/ 未经后台 optimizer 建图的段服务**精确** KNN，故 N=2000 下 qdrant 返回值即等于精确 top-k → recall 1.0。这是 live-server KNN **正确性**的真实证明；压测 HNSW **近似域**（语料 > indexing_threshold 且 optimizer 建图后）的真实 ANN recall（预期 <1.0）需大语料 + optimizer-wait、timing 敏感 → honest-defer `[SPEC-DEFER:phase-future.vector-large-corpus-perf]`（不夸大为「已压测 HNSW 近似」，ADR-013）。floor=0.90 为不退化 guard（若 qdrant 召回错误/漏检则 <0.90 红），真实测得 1.0000 留足余量。
+
+**grounding 校正（实施期，ADR-013）**：
+- generator 函数名实为 `det_unit_vec(seed, dim)`（spec §7 草拟名 `deterministic_unit_vector`）+ splitmix64 派生（无 `rand`/无 clock）；collection 名实为 `phase36_live_recall`（下划线，spec 连字符）——均机械命名差异，行为同 spec。
+- 真实 CI live run（每次 CI run 对 service container 跑、永久关闭 CI-no-server defer）由 **task-36.2** `qdrant-recall` job 兑现 `[SPEC-OWNER:task-36.2-qdrant-recall-ci-service]`；本 task 的 live 证据 = 本地对真实 qdrant 容器跑出的 recall@10=1.0000（真实非预填）。
+
+**实际改动文件**：
+- 新增 `core/tests/qdrant_live_recall.rs`（`#![cfg(feature = "vector-qdrant")]`，env-gated `QDRANT_URL` + `health()!=Ready` honest-defer skip；splitmix64 确定性单位向量 N=2000 dim=64；双索引 `QdrantBackend`（ensure-create+index_batch）vs `BruteForceVectorBackend` 精确 ground truth；M=50 query recall@k=mean(|∩|/k) 断言 ≥ 0.90 + eprintln 实测值；TEST-36.1.1 live + TEST-36.1.2 复现性）。
+- 0 backend 改动 / 0 新 dep / 0 schema migration / 0 network / 0 默认构建变更（默认 0-vector-dep，ADR-004/008）。ADR-041 D1 ratify 依据（@ task-36.3 closeout）。
