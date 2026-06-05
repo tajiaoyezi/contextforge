@@ -408,6 +408,27 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 >
 > 全 phase 真实验证：`cargo test -p contextforge-core --lib` 212 + `go test ./...` 全过（含 TestSetVectorEnv_LoadErrorSurfacing + TestTask353）+ `cargo clippy --workspace --all-targets -D warnings` 0 warning + `bash -n scripts/console_smoke.sh` exit 0 + `spec_drift_lint --touched origin/master` 0 unannotated。默认构建 0 新 dep + 0 network + 既有契约（observability-only，best-effort 不转 fail-fast，不引 log/tracing/metrics facility）不变（ADR-004/008）。真实 v0.28.0 tag/release 经用户授权（AskUserQuestion 2026-06-04，ADR-012）。
 
+> **v0.29.0 后 defer-marker 复扫刷新（2026-06-05，add-only，不删上方历史条目）**：应行 361 约定对 `rg 'SPEC-(DEFER|OWNER):phase-future'` 复扫，与本文件 §3.x 各 phase **已验证推进记录**交叉比对，确认 §4 上方清单（行 354-359）中下列 backlog 条目**实已在后续 phase 兑现关闭**（marker 文本当时未同步更新 → 本次据实刷新）。源码 / 已闭 spec 内对应 `[SPEC-DEFER]` 注释按 ADR-014 D5 保留为历史快照不溯改；唯一例外是 `core/src/retriever/vector/qdrant.rs::open()` 一处现在时声明「CI 无 live server」已为假，随本次据实更新。
+>
+> | marker | 兑现处（in-doc 证据） |
+> |---|---|
+> | `eval-dataset-validation` / `semantic-golden-dataset` | v0.17.0 / Phase 24 task-24.2（见行 365） |
+> | `cjk-and-code-tokenizer` | v0.17.0 / Phase 24 task-24.1（见行 365；**非** §3.12 的 `cjk-true-segmenter`，后者另列） |
+> | `tracestore-fts` / `tracestore-sqlite-vacuum` | v0.19.0 / Phase 26 task-26.1（`search_fts` + VACUUM + migration 0016，见行 186） |
+> | `events-sse-push` / `events-replay-from-audit` | v0.19.0 / Phase 26 task-26.2（见行 187） |
+> | `events-drain-timeout-config` / `event-bus-partition` / `event-bus-capacity` | v0.19.0 / Phase 26（见行 371 诚实校正） |
+> | `memory-pin-actor` / `memory-pinned-at-timestamp` / `is-pinned-backfill-from-audit` | v0.20.0 / Phase 27 task-27.1（见行 201） |
+> | `memory-pin-unpin-split` / `hard-delete-policy` | v0.20.0 / Phase 27 task-27.2（见行 202） |
+> | `memstore-event-emit` | v0.24.0 / Phase 31 task-31.1（见行 265） |
+> | `case-results-subtable` | v0.24.0 / Phase 31 task-31.3（migration 0018，见行 267） |
+> | `cache-lru` / `cache-cap-configurable` | v0.24.0 / Phase 31 task-31.2（见行 266） |
+> | `compose-resource-limits` / `compose-tls-termination` | v0.24.0 / Phase 31 task-31.2（compose mem/cpu + 可选 TLS proxy；真实 cert 自动签发续延后，见行 266） |
+> | `qdrant-server-lifecycle` | v0.29.0 / Phase 36 task-36.1/36.2（已见行 354 inline 标注；本次补 `qdrant.rs::open()` 源码注释据实更新） |
+>
+> **非问题（grounding 校正，非兑现亦非债，据实不实现）**：`handle-memory-pin-strict-body`（ADR-022 D2 蓄意 lenient，见行 295/387）、`memstore-degraded-observability-warn`（Phase 35 校正为 honest non-issue DROP，见行 406）、`memory-harddelete-cascade`（无可级联表，仅不变式守护，见行 387）。
+>
+> **仍真延后（承诺度低 / 需外部前置，本次不动其承诺度）**：`multi-backend-production`、`qdrant-deployment-topology`、`vector-large-corpus-perf`、`lancedb-index-tuning` / `lancedb-schema-compaction` / `lancedb-build-prereq-ci`、`vector-dim-feature-enforce`、`rust-native-eval-runner`（无 consumer）、`tracestore-multi-workspace-strict`（SQL 级隔离已交付 Phase 33 task-33.3，console e2e 续延后 🟡）、`indexing-replay-e2e`、`observability-metrics-facility`、`daemon-options-datadir`、`l2-cache-true-lru`、`sqlite-vec-inprocess-matrix`、`embed-remote-probe` / `embedding-provider-remote`（骨架已 Phase 22 落地，真实联调须 API key）、`hybrid-scoring` / `reranker-real-quality`（管道已落地，真实大语料质量曲线须语料）、`vector-incremental-index`、`hnsw-graph-persistence`（语义检索按需内存索引路径）、`chunk-source-type-filter` / `chunk-agent-scope-filter`、`multi-arch-image`。
+
 ---
 
 ## 5. 执行协议（承项目契约）

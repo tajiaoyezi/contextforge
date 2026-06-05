@@ -216,7 +216,8 @@ impl VectorIndexer for QdrantBackend {
         let collection = config.collection_id.clone();
         // task-25.1 ensure-create：不再无脑 drop+create（保数据）。查 existing → decide_ensure
         // → reuse/create/error。dim/metric 不匹配返回可识别 error（不静默丢数据）。真实 live
-        // 端到端 KNN 集成 [SPEC-DEFER:phase-future.qdrant-server-lifecycle]（CI 无 live server）。
+        // 端到端 KNN 召回已由 Phase 36（task-36.1/36.2）兑现：core/tests/qdrant_live_recall.rs
+        // + CI `qdrant-recall` service-container job 每次 run 实测 recall@10=1.0000。
         let existing: Option<CollectionDesc> = self.rt.block_on(async {
             if self
                 .client
