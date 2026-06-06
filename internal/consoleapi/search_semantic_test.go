@@ -66,3 +66,54 @@ func TestTask201_HandleSearchSemanticORMerge(t *testing.T) {
 		})
 	}
 }
+
+// TestTask392_HandleSearchHybridORMerge — task-39.2 §6 AC1: handleSearch OR-merges the
+// `?hybrid=true` query param with the body `hybrid` field (mirrors ?semantic); the
+// resulting flag is forwarded to the downstream SearchClient. Default (neither set) → false.
+func TestTask392_HandleSearchHybridORMerge(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		body string
+		want bool
+	}{
+		{"query param true", "/v1/search?hybrid=true", `{"query":"q","workspace_id":"w"}`, true},
+		{"body field true", "/v1/search", `{"query":"q","workspace_id":"w","hybrid":true}`, true},
+		{"query OR body", "/v1/search?hybrid=true", `{"query":"q","workspace_id":"w","hybrid":false}`, true},
+		{"neither", "/v1/search", `{"query":"q","workspace_id":"w"}`, false},
+		{"query param non-true", "/v1/search?hybrid=1", `{"query":"q","workspace_id":"w"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run("TEST-39.2.1: "+tc.name, func(t *testing.T) {
+			cap := &capturingSearch{}
+			h := handleSearch(Deps{Search: cap})
+			req := httptest.NewRequest("POST", tc.url, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			h(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+			}
+			if cap.last.Hybrid != tc.want {
+				t.Errorf("forwarded Hybrid = %v, want %v", cap.last.Hybrid, tc.want)
+			}
+		})
+	}
+}
+
+// TestTask392_HybridSemanticIndependent — task-39.2: ?hybrid and ?semantic are independent
+// flags; setting ?hybrid=true must not set Semantic (core resolves precedence, hybrid first).
+func TestTask392_HybridSemanticIndependent(t *testing.T) {
+	cap := &capturingSearch{}
+	h := handleSearch(Deps{Search: cap})
+	req := httptest.NewRequest("POST", "/v1/search?hybrid=true", strings.NewReader(`{"query":"q","workspace_id":"w"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h(w, req)
+	if !cap.last.Hybrid {
+		t.Errorf("Hybrid = false, want true")
+	}
+	if cap.last.Semantic {
+		t.Errorf("Semantic = true, want false (?hybrid must not set Semantic)")
+	}
+}

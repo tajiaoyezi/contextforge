@@ -122,7 +122,12 @@ type SearchRequest struct {
 	// OR-merged from the `?semantic=true` query param or this body field by
 	// handleSearch, then forwarded to gRPC SearchRequest.Semantic. Default false
 	// → BM25 (backward-compatible, ADR-015 add-only).
-	Semantic     bool              `json:"semantic"`
+	Semantic bool `json:"semantic"`
+	// Hybrid — task-39.2 (Phase 39): add-only opt-in BM25+vector RRF fusion flag.
+	// OR-merged from the `?hybrid=true` query param or this body field by
+	// handleSearch, then forwarded to gRPC SearchRequest.Hybrid. Default false →
+	// semantic / BM25 (backward-compatible, ADR-015 add-only; mirrors Semantic).
+	Hybrid       bool              `json:"hybrid"`
 	Availability FieldAvailability `json:"field_availability"`
 }
 
@@ -150,7 +155,13 @@ type SearchResult struct {
 	// score+method). Backward-compatible additive field (ADR-015 add-only, mirroring the task-20.1
 	// Semantic precedent); the ContextForge-Console contractv1.go mirror should add the same field
 	// (cross-repo add-only signal, ADR-014 D4) — not a breaking change to existing clients.
-	VectorScore  float32           `json:"vector_score"`
+	VectorScore float32 `json:"vector_score"`
+	// HybridScore — task-39.2 (Phase 39) add-only: RRF fused score provenance (0 for
+	// semantic/BM25-only hits), parity with the console data-plane SearchResultItem
+	// .hybrid_score=17 (carried end-to-end, not inferred). Backward-compatible additive
+	// field (ADR-015 add-only, mirroring VectorScore); the ContextForge-Console
+	// contractv1.go mirror should add the same field (cross-repo add-only signal, ADR-014 D4).
+	HybridScore  float32           `json:"hybrid_score"`
 	Reason       string            `json:"reason"`
 	Citation     Citation          `json:"citation"`
 	Availability FieldAvailability `json:"field_availability"`

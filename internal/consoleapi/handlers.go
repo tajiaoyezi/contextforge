@@ -452,6 +452,12 @@ func handleSearch(deps Deps) http.HandlerFunc {
 		if r.URL.Query().Get("semantic") == "true" {
 			body.Semantic = true
 		}
+		// task-39.2 (Phase 39): `?hybrid=true` query param OR-merges into the body
+		// flag (mirrors ?semantic), so the hybrid (BM25+vector RRF) path can be
+		// requested via query param or JSON body. Default false → semantic / BM25.
+		if r.URL.Query().Get("hybrid") == "true" {
+			body.Hybrid = true
+		}
 		result, trace, err := deps.Search.Search(body)
 		if err != nil {
 			mapStorageError(w, err)
