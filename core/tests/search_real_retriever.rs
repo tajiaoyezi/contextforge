@@ -140,6 +140,7 @@ async fn test_search_real_chunks() {
             top_k: 5,
             config_snapshot: "{}".into(),
             semantic: false,
+            hybrid: false,
         })
         .await
         .expect("query ok")
@@ -184,6 +185,7 @@ async fn test_retrieval_trace_fields() {
             top_k: 5,
             config_snapshot: "{}".into(),
             semantic: false,
+            hybrid: false,
         })
         .await
         .expect("query ok")
@@ -279,5 +281,110 @@ async fn test_progress_event_emitted() {
     assert!(
         saw_progress,
         "AC4: expected ≥1 indexing.progress event within 10s"
+    );
+}
+
+// =====================================================================
+// TEST-39.1.1 (task-39.1, Phase 39): console data-plane hybrid dispatch. query() routes
+// SearchRequest.hybrid=true through search_hybrid (RRF fusion, mirrors server.rs hybrid path
+// task-21.1); hits carry retrieval_method "hybrid" + a non-zero hybrid_score (the RRF fused
+// score, carried end-to-end not inferred; ADR-013). semantic=true (hybrid=false) keeps the
+// vector path (retrieval_method "vector", hybrid_score 0); both false → BM25 byte-equivalent
+// (retrieval_method not "hybrid", hybrid_score 0; backward-compatible default, ADR-004).
+// =====================================================================
+#[tokio::test]
+async fn test_dataplane_hybrid_dispatch() {
+    let (addr, _data, workspace_id, _bus, _h) = spawn_full("hybrid").await;
+    run_index(addr, &workspace_id).await;
+
+    let mut search = SearchServiceClient::connect(format!("http://{addr}"))
+        .await
+        .expect("search connect");
+
+    // hybrid=true → search_hybrid → retrieval_method "hybrid" + hybrid_score non-zero.
+    let hyb = search
+        .query(PbSearchRequest {
+            query: "contextforge".into(),
+            workspace_id: workspace_id.clone(),
+            agent_scope: "".into(),
+            retrieval_method: "".into(),
+            top_k: 5,
+            config_snapshot: "{}".into(),
+            semantic: false,
+            hybrid: true,
+        })
+        .await
+        .expect("hybrid query ok")
+        .into_inner();
+    assert!(
+        !hyb.results.is_empty(),
+        "TEST-39.1.1: hybrid expected ≥1 result"
+    );
+    let h0 = &hyb.results[0];
+    assert_eq!(
+        h0.retrieval_method, "hybrid",
+        "TEST-39.1.1: hybrid hit retrieval_method should be \"hybrid\"; got {}",
+        h0.retrieval_method
+    );
+    assert!(
+        h0.hybrid_score > 0.0,
+        "TEST-39.1.1: hybrid hit hybrid_score should be > 0 (RRF fused, carried not inferred); got {}",
+        h0.hybrid_score
+    );
+
+    // hybrid=false + semantic=true → vector path (retrieval_method "vector"), hybrid_score 0.
+    let sem = search
+        .query(PbSearchRequest {
+            query: "contextforge".into(),
+            workspace_id: workspace_id.clone(),
+            agent_scope: "".into(),
+            retrieval_method: "".into(),
+            top_k: 5,
+            config_snapshot: "{}".into(),
+            semantic: true,
+            hybrid: false,
+        })
+        .await
+        .expect("semantic query ok")
+        .into_inner();
+    assert!(
+        !sem.results.is_empty(),
+        "TEST-39.1.1: semantic expected ≥1 result"
+    );
+    assert_eq!(
+        sem.results[0].retrieval_method, "vector",
+        "TEST-39.1.1: semantic hit retrieval_method byte-equivalent (\"vector\")"
+    );
+    assert_eq!(
+        sem.results[0].hybrid_score, 0.0,
+        "TEST-39.1.1: non-hybrid (semantic) hit hybrid_score should be 0 (not fabricated)"
+    );
+
+    // both false → BM25 byte-equivalent: retrieval_method not "hybrid", hybrid_score 0.
+    let bm25 = search
+        .query(PbSearchRequest {
+            query: "contextforge".into(),
+            workspace_id: workspace_id.clone(),
+            agent_scope: "".into(),
+            retrieval_method: "bm25".into(),
+            top_k: 5,
+            config_snapshot: "{}".into(),
+            semantic: false,
+            hybrid: false,
+        })
+        .await
+        .expect("bm25 query ok")
+        .into_inner();
+    assert!(
+        !bm25.results.is_empty(),
+        "TEST-39.1.1: bm25 expected ≥1 result"
+    );
+    assert_ne!(
+        bm25.results[0].retrieval_method, "hybrid",
+        "TEST-39.1.1: bm25 hit must not be \"hybrid\" (default byte-equivalent, ADR-004)"
+    );
+    assert_eq!(
+        bm25.results[0].hybrid_score, 0.0,
+        "TEST-39.1.1: bm25 hit hybrid_score should be 0"
     );
 }

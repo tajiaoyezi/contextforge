@@ -159,6 +159,11 @@ message SearchRequest {
   // runs the opt-in vector/semantic path (mirrors core CoreService.search, task-19.3)
   // instead of BM25. Default false → BM25 (backward-compatible, ADR-015 add-only).
   bool semantic = 7;
+  // task-39.1 (Phase 39): add-only hybrid flag. When true, SearchService.Query runs
+  // the BM25+vector RRF fusion path (mirrors core CoreService.search hybrid path,
+  // server.rs:328-376) instead of semantic-only / BM25. Default false → semantic-only
+  // / BM25 (backward-compatible, ADR-015 add-only). parity with v1/search.proto:28.
+  bool hybrid = 8;
 }
 
 message SourceChunk {
@@ -201,6 +206,9 @@ message SearchResultItem {
   // task-32.3 add-only: vector_score = 16 — semantic similarity provenance (0 for BM25 hits),
   // parity with v1 search proto RetrievalResult.vector_score=13. add-only field,既有 client 兼容。
   float vector_score = 16;
+  // task-39.1 add-only: hybrid_score = 17 — RRF 融合分 (0 表示 semantic/BM25-only 命中),
+  // parity with v1 search proto RetrievalResult.hybrid_score=15. add-only field,既有 client 兼容。
+  float hybrid_score = 17;
 }
 
 message RetrievalTrace {

@@ -272,14 +272,45 @@ impl SearchService for SearchServer {
 
         let top_k = if req.top_k <= 0 { 5 } else { req.top_k as usize };
 
+        // task-39.1 (Phase 39): opt-in hybrid path. Mirrors core CoreService.search hybrid path
+        // (server.rs, task-21.1): RRF-fuses the BM25 and vector result lists. Wires the same
+        // model-free DeterministicEmbeddingProvider + 0-dep BruteForceVectorBackend as the semantic
+        // branch (hardcoded — the env-factory backend is only wired into server.rs, an existing
+        // asymmetry [SPEC-DEFER:phase-future.console-data-plane-vector-backend-factory]), builds the
+        // on-demand index, then fuses. Hits carry retrieval_method "hybrid" + the RRF hybrid_score.
+        //
         // task-20.1 (Phase 20): opt-in semantic path. Mirrors core CoreService.search
         // (server.rs, task-19.3): wire the model-free DeterministicEmbeddingProvider +
         // the 0-dep BruteForceVectorBackend, build an on-demand in-memory index from this
         // collection's chunks (no persistence — [SPEC-DEFER:phase-future.hnsw-graph-persistence]),
         // and run the vector path. Hits carry retrieval_method "vector". Deterministic
         // embeddings prove the wiring, not recall (real recall is task-19.5/20.2; ADR-013).
-        // Default (semantic == false) keeps the BM25 path byte-for-byte unchanged.
-        let hits = if req.semantic {
+        // Default (hybrid == false && semantic == false) keeps the BM25 path byte-for-byte
+        // unchanged; hybrid takes priority over semantic when both set (ADR-004).
+        let hits = if req.hybrid {
+            let embedder = Arc::new(DeterministicEmbeddingProvider::default());
+            let backend = Arc::new(BruteForceVectorBackend::new());
+            let mut wired = retriever
+                .with_embedder(embedder)
+                .with_vector_searcher(backend.clone());
+            // task-38.2 (ADR-043 D3): opt-in reranker from CONTEXTFORGE_RERANKER_PROVIDER (same as
+            // the semantic branch). Unset / "" / "none" → None → wired unchanged (byte-equivalent
+            // no-rerank, ADR-004). feature-off / unknown → explicit Err → Status::internal (ADR-013).
+            if let Some(rr) = crate::rerank::reranker_from_env()
+                .map_err(|e| Status::internal(format!("reranker: {e}")))?
+            {
+                wired = wired.with_reranker(rr);
+            }
+            let items = wired
+                .enumerate_chunks()
+                .map_err(|e| Status::internal(format!("hybrid enumerate: {e}")))?;
+            wired
+                .index_chunks_semantic(backend.as_ref(), &items)
+                .map_err(|e| Status::internal(format!("hybrid index: {e}")))?;
+            wired
+                .search_hybrid(&req.query, top_k)
+                .map_err(|e| Status::internal(format!("hybrid search: {e}")))?
+        } else if req.semantic {
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
             let backend = Arc::new(BruteForceVectorBackend::new());
             let mut wired = retriever
@@ -357,6 +388,14 @@ impl SearchService for SearchServer {
                 // (server.rs:407) — the cosine similarity for semantic ("vector") hits, 0 for BM25
                 // (no fabricated score; ADR-013). Parity with v1 search proto vector_score=13.
                 vector_score: if h.retrieval_method == "vector" {
+                    h.score
+                } else {
+                    0.0
+                },
+                // task-39.1 add-only: hybrid_score provenance, mirroring the v1 search path
+                // (server.rs:369) — the RRF fused score for "hybrid" hits, 0 otherwise (no
+                // fabricated score; ADR-013). Parity with v1 search proto hybrid_score=15.
+                hybrid_score: if h.retrieval_method == "hybrid" {
                     h.score
                 } else {
                     0.0
@@ -998,6 +1037,7 @@ mod tests {
                 top_k: 5,
                 config_snapshot: "{}".into(),
                 semantic: false,
+                hybrid: false,
             }))
             .await
             .expect("query ok");
@@ -1061,6 +1101,7 @@ mod tests {
                 top_k: 5,
                 config_snapshot: String::new(),
                 semantic: true,
+                hybrid: false,
             }))
             .await
             .expect("semantic query ok")
@@ -1081,6 +1122,7 @@ mod tests {
                 top_k: 5,
                 config_snapshot: String::new(),
                 semantic: false,
+                hybrid: false,
             }))
             .await
             .expect("bm25 query ok")
@@ -1147,6 +1189,7 @@ mod tests {
                 top_k: 5,
                 config_snapshot: String::new(),
                 semantic: false,
+                hybrid: false,
             }))
             .await
             .expect("query ok")
@@ -1360,5 +1403,35 @@ mod tests {
         assert_eq!(listed[0].query_id, "k5");
         assert_eq!(listed[4].ts_unix, 100);
         assert_eq!(listed[4].query_id, "k1");
+    }
+
+    // TEST-39.1.2 (task-39.1): proto add-only field numbers via prost wire encoding. The leading
+    // tag byte(s) = (field_number << 3) | wire_type. SearchRequest.hybrid = field 8 (varint, wire
+    // type 0) → tag 0x40; SearchResultItem.hybrid_score = field 17 (fixed32, wire type 5) → tag
+    // 17<<3|5 = 141 → varint 0x8D 0x01. Existing field numbers (1-7 / 1-16) are unchanged
+    // (add-only, ADR-015 D1).
+    #[test]
+    fn test_hybrid_proto_field_numbers() {
+        use prost::Message;
+        // SearchRequest { hybrid: true } encodes to exactly field-8 varint = true.
+        let req = PbSearchRequest {
+            hybrid: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            req.encode_to_vec(),
+            vec![0x40, 0x01],
+            "hybrid must be field 8 (varint)"
+        );
+        // SearchResultItem { hybrid_score: 1.0 } encodes to field-17 fixed32 = 1.0f32 (LE).
+        let item = SearchResultItem {
+            hybrid_score: 1.0,
+            ..Default::default()
+        };
+        assert_eq!(
+            item.encode_to_vec(),
+            vec![0x8D, 0x01, 0x00, 0x00, 0x80, 0x3F],
+            "hybrid_score must be field 17 (fixed32)"
+        );
     }
 }
