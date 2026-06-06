@@ -617,6 +617,79 @@ func TestTask323_ProtoToSearchResult_CarriesVectorScore(t *testing.T) {
 	}
 }
 
+// fakeHybridQueryServer (task-39.2) captures the inbound SearchRequest.Hybrid so the
+// grpcclient passthrough can be asserted.
+type fakeHybridQueryServer struct {
+	pb.UnimplementedSearchServiceServer
+	mu        sync.Mutex
+	gotHybrid bool
+}
+
+func (f *fakeHybridQueryServer) Query(_ context.Context, req *pb.SearchRequest) (*pb.SearchResponse, error) {
+	f.mu.Lock()
+	f.gotHybrid = req.Hybrid
+	f.mu.Unlock()
+	return &pb.SearchResponse{
+		Results: []*pb.SearchResultItem{},
+		Trace:   &pb.RetrievalTrace{TraceId: "t", Query: req.Query},
+	}, nil
+}
+
+// TestTask392_GrpcClient_Search_ForwardsHybrid — task-39.2 §6 AC2: searchClient.Search maps
+// contractv1.SearchRequest.Hybrid onto the gRPC pb.SearchRequest.Hybrid field (both true and
+// false reach the core SearchService.Query); mirrors the task-20.1 Semantic precedent.
+func TestTask392_GrpcClient_Search_ForwardsHybrid(t *testing.T) {
+	for _, hyb := range []bool{true, false} {
+		fake := &fakeHybridQueryServer{}
+		addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+			pb.RegisterSearchServiceServer(s, fake)
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		cli, _ := New(ctx, addr)
+		_, _, err := cli.Search().Search(contractv1.SearchRequest{Query: "q", WorkspaceID: "w", Hybrid: hyb})
+		if err != nil {
+			t.Fatalf("Search(hybrid=%v): %v", hyb, err)
+		}
+		fake.mu.Lock()
+		got := fake.gotHybrid
+		fake.mu.Unlock()
+		if got != hyb {
+			t.Errorf("forwarded pb.SearchRequest.Hybrid = %v, want %v", got, hyb)
+		}
+		_ = cli.Close()
+		cancel()
+		stop()
+	}
+}
+
+// TestTask392_ProtoToSearchResult_CarriesHybridScoreAndReason — task-39.2 §6 AC2:
+// protoToSearchResult carries the add-only hybrid_score provenance (a hybrid hit's real
+// fused score maps through; a non-hybrid hit's stays 0) AND the rerank reason marker
+// (rerank provenance is visible end-to-end in the REST response; reranker stays env-driven
+// per ADR-043 D3 / ADR-044 D3 — no per-request ?rerank param).
+func TestTask392_ProtoToSearchResult_CarriesHybridScoreAndReason(t *testing.T) {
+	hyb := protoToSearchResult(&pb.SearchResultItem{
+		ChunkId:         "chk_hyb_0",
+		RetrievalMethod: "hybrid",
+		HybridScore:     0.91,
+		Reason:          "reranked:identity",
+	})
+	if hyb.HybridScore != 0.91 {
+		t.Errorf("hybrid hit HybridScore = %v, want 0.91 (provenance carried, not inferred)", hyb.HybridScore)
+	}
+	if hyb.Reason != "reranked:identity" {
+		t.Errorf("rerank reason = %q, want %q (rerank provenance visible in REST, ADR-044 D3)", hyb.Reason, "reranked:identity")
+	}
+	bm25 := protoToSearchResult(&pb.SearchResultItem{
+		ChunkId:         "chk_bm25_0",
+		RetrievalMethod: "bm25",
+		HybridScore:     0,
+	})
+	if bm25.HybridScore != 0 {
+		t.Errorf("BM25 hit HybridScore = %v, want 0", bm25.HybridScore)
+	}
+}
+
 func TestGrpcClient_GetSourceChunk_Maps_NotFound(t *testing.T) {
 	fake := &fakeSearchServer{chunkErr: status.Error(codes.NotFound, "missing")}
 	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {

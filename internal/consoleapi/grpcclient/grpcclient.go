@@ -370,6 +370,7 @@ func (s *searchClient) Search(req contractv1.SearchRequest) (contractv1.SearchRe
 		TopK:            int64(req.TopK),
 		ConfigSnapshot:  string(req.ConfigSnapshot),
 		Semantic:        req.Semantic, // task-20.1: forward opt-in semantic flag to core
+		Hybrid:          req.Hybrid,   // task-39.2: forward opt-in hybrid flag to core
 	})
 	if err != nil {
 		return contractv1.SearchResult{}, contractv1.RetrievalTrace{}, mapGrpcErr(err)
@@ -621,6 +622,7 @@ func protoToSearchResult(p *pb.SearchResultItem) contractv1.SearchResult {
 		RankBeforeRerank: int(p.RankBeforeRerank),
 		RetrievalMethod:  p.RetrievalMethod,
 		VectorScore:      p.VectorScore,
+		HybridScore:      p.HybridScore, // task-39.2: carry RRF fused score provenance
 		Reason:           p.Reason,
 		Availability:     contractv1.FieldAvailability{Object: "SearchResult"},
 	}
