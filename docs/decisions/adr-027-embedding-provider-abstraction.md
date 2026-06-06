@@ -81,3 +81,13 @@ Phase 33（ADR-038 D1）以 add-only 方式给 `CachingEmbeddingProvider` 的 **
 - **opt-in-path caveat（ADR-013 据实）**：`with_sqlite`/`with_sqlite_capacity` 无生产调用点（test-only），shipped daemon 走 memory-only L1 → 这是 **opt-in 路径的纵深防御**，据实不夸大为 live leak。带 `created_at` 列的真 LRU 须 `ALTER` 既有用户文件（破 0-migration）→ honest-defer `[SPEC-DEFER:phase-future.l2-cache-true-lru]`。
 
 依赖变更：rowid-FIFO 0 新 dep。详见 ADR-038 Ratification D1 + `docs/releases/v0.26.0-evidence.md`。
+
+## Amendment (Phase 37 / v0.30.0, 2026-06-06 — add-only, 正文不溯改)
+
+Phase 37（ADR-042 D1/D2/D3）兑现本 ADR v0.15.0 ratify 时记为 honest-defer 的 remote provider live 维度 `[SPEC-DEFER:phase-future.embedding-provider-remote]`（「真实远程端点联调 / API key / 真实召回质量 deferred — CI has no credentials」），**不溯改正文 + 不溯改本 ADR 既有 Ratification (v0.15.0) + Phase 31/33 Amendment**（ADR-014 D5）：
+
+- **`embedding-provider-remote` fulfilled（real live 联调 + 真实语义召回 measured）**：task-37.1（PR #242）新增 env-gated harness `core/tests/remote_embedding_recall.rs`，在作者手工标注集（15 case/16 doc，含故意近义干扰）+ 同一 `BruteForceVectorBackend` 精确余弦路径上对照 real remote 模型 vs deterministic（model-free）基线的 `recall@1`/`recall@3`。主 agent 本机对真实 SiliconFlow 端点（`Qwen/Qwen3-Embedding-8B`，dim=1024，3 次 run）实测：remote recall@1=0.8667–0.9333（跨 run 波动）/ recall@3=1.0000（3 次稳定）vs deterministic 0.0000/0.0667（delta@3=+0.9333）。`RemoteEmbeddingProvider`（`build_request_body`/`parse_response`/ureq `embed`）自 task-22.3 已实现——本 phase 0 行 provider 核心改动。
+- **config plumbing follow-up fulfilled**：task-37.2（PR #243）兑现 `core/src/embedding/factory.rs:52` 注释 "config plumbing is a follow-up"——Go `RemoteProviderConfig` add-only `Model` 字段 + `setRemoteEnv` 跨进程 env-bridge（镜像 `setVectorEnv`，`[remote]` 段 → 导出 `CONTEXTFORGE_REMOTE_ENDPOINT`/`_MODEL`/`_PROVIDER`，env-wins），spawned core 经既有 `select_provider` remote arm env 路径拾取；API key env-only 永不进 config.toml（安全红线）；Rust core 0 toml dep。
+- **诚实边界（ADR-013）**：小型手工标注集，recall@3=1.0 = real 模型把明显语义对排在近义干扰之上的正确性证明、**非大基准质量断言**（大语料语义质量续 `[SPEC-DEFER:phase-future.embedding-large-corpus-recall]`）；recall@1 跨 run 波动据实记录（remote 模型/服务非完全确定）；CI honest-defer——remote 是付费外部 API、无免费 service container（与 qdrant 不同），召回由本机已认证 run 实测、非每次 CI run 守护 `[SPEC-DEFER:phase-future.embedding-remote-ci-credential]`；多 provider / reranker / health-probe live 续 `[SPEC-DEFER:phase-future.embedding-multi-provider-live]` / `[SPEC-DEFER:phase-future.embedding-remote-reranker-live]` / `[SPEC-DEFER:phase-future.embedding-remote-health-probe]`。
+
+依赖变更：0 新 dep（`ureq` 自 task-22.3 已 optional）。详见 ADR-042 Ratification (v0.30.0) + `docs/releases/v0.30.0-evidence.md`。

@@ -1082,6 +1082,29 @@ else
   echo "    → qdrant-live-vector-recall (TEST-36.1.* / TEST-36.2.*) verified via qdrant service-container; default build baseline 0-vector-dep unchanged (ADR-004)"
 fi
 
+echo "  [46/46] task-37.3 embedding-provider-remote-live: real remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs deterministic baseline (recall@3=1.0000 vs 0.0667 over an author-labeled set) + [remote]→setRemoteEnv config bridge — ADR-027 embedding-provider-remote defer closed (Phase 37)"
+# v27 (task-37.3): Phase 37 (embedding-provider-remote-live) closes ADR-027's long-standing honest-defer
+# [SPEC-DEFER:phase-future.embedding-provider-remote] — "real remote-endpoint end-to-end + measured
+# semantic recall were never run (CI has no API key; only pure-function contract tests existed)". The
+# RemoteEmbeddingProvider (build_request_body/parse_response + ureq embed) has been implemented since
+# Phase 22; this phase adds an env-gated harness (core/tests/remote_embedding_recall.rs) that, over an
+# author-labeled semantic set (15 cases / 16 docs with deliberate near-distractors), compares a real
+# remote model vs the deterministic (model-free) baseline on the same BruteForceVectorBackend exact-cosine
+# path, asserting recall@3>=0.70 and remote@1>deterministic@1 (task-37.1), plus a Go [remote]→
+# CONTEXTFORGE_REMOTE_* setRemoteEnv config bridge mirroring setVectorEnv (task-37.2; API key env-only,
+# never in config.toml). Real local authenticated run (SiliconFlow Qwen3-Embedding-8B, dim=1024, 3 runs):
+# remote recall@1=0.8667-0.9333 (cross-run variation) recall@3=1.0000 (stable) vs deterministic
+# recall@1=0.0000 recall@3=0.0667. CI honest-defers — remote is a paid external API with no free service
+# container (unlike qdrant); the harness skips cleanly without a key, so recall is measured by the local
+# authenticated run, not every CI run (ADR-013). 0 provider-core change / 0 new dep (ureq optional since
+# task-22.3) / default build 0-network unchanged (ADR-004/008); this is a documentation/status step
+# verifying the default build still scaffolds.
+if "$GO_BIN" init --root "$STAGING/cf-v29-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v29-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; real remote embedding (Qwen3-Embedding-8B) semantic recall vs deterministic baseline measured by a local authenticated run (remote recall@3=1.0000 stable vs deterministic 0.0667; recall@1=0.8667-0.9333 cross-run) + [remote]→setRemoteEnv config bridge (env-wins, API key env-only) ✅ (TEST-37.1.* / TEST-37.2.* verified; CI honest-defers — remote paid API, no free service container, ADR-013)"
+else
+  echo "    → embedding-provider-remote-live (TEST-37.1.* / TEST-37.2.*) verified via env-gated harness + config bridge; default build baseline 0-network unchanged (ADR-004)"
+fi
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"

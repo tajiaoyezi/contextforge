@@ -375,6 +375,46 @@ func TestTask343_SmokeV24VectorConfigCompletenessStep(t *testing.T) {
 	}
 }
 
+// TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
+// remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
+// deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid
+// external API with no free service container, unlike qdrant), closing ADR-027's embedding-provider-remote
+// defer; the [remote]→setRemoteEnv config bridge is API-key-env-only. This preserves default behavior
+// (embedding-remote opt-in, default build 0-network), so step 46 is a documentation/status step verifying
+// the default build still scaffolds. Asserts the new [46/46] marker + Phase 37 status, and no regression
+// of the prior denominators (ADR-014 D5).
+func TestTask373_SmokeV27RemoteEmbeddingLiveStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v27 (task-37.3)") {
+		t.Fatalf("console_smoke.sh missing v27 (task-37.3) header block")
+	}
+	for _, marker := range []string{"[46/46]", "embedding-provider-remote-live", "TEST-37.1.", "TEST-37.2.", "recall@3", "remote_embedding_recall"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v27 step 46 must document embedding-provider-remote-live status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "qdrant-live-vector-recall"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v27 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-36.3.2 / AC2: smoke v26 adds step 45 — task-36.3 closeout (qdrant-live-vector-recall). The
 // qdrant live KNN recall@k vs BruteForce exact KNN is measured on every CI run via a qdrant service-
 // container (recall@10=1.0000), closing ADR-034 D2's qdrant-server-lifecycle defer; this preserves

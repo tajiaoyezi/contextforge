@@ -360,6 +360,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-042 embedding-provider-remote-live**（Proposed，D1 live 语义 recall harness 方法学（real vs deterministic 基线对照 + 作者标注集诚实范围 + env-gated honest-defer + 小集 caveat）/ D2 真实实测召回数（本机真实 SiliconFlow run；CI honest-defer 因 remote 付费 API 无免费 service container）/ D3 remote-embedding-config-bridge（Go `[remote]` Model + setRemoteEnv env-bridge，API key env-only，Rust 0-dep）/ D4 默认 0-network + 0 新 dep + 既有契约不变（ADR-004/008））；ADR-027 add-only Phase-37 Amendment（兑现 `embedding-provider-remote`，不溯改 D-body D5）。ADR-014 第二十八次激活。
 
+**v0.30.0 推进记录（已落地 2026-06-06，add-only）**：§3.19 全 3 task 合入 master，ADR-042 据 D1-D4 真实 ratify（Proposed → Accepted）：task-37.1（#242，harness `core/tests/remote_embedding_recall.rs`，本机真实 SiliconFlow `Qwen/Qwen3-Embedding-8B` dim=1024 实测 **remote recall@1=0.8667–0.9333 跨 run 波动 / recall@3=1.0000 稳定** vs deterministic 0.0000/0.0667）+ task-37.2（#243，Go `RemoteProviderConfig` add-only `Model` + `setRemoteEnv` env-bridge，env-wins，API key env-only 永不进 config，Rust 0 toml dep）+ task-37.3 closeout（smoke v27[46/46] + release docs + ADR-042 ratify + ADR-027 add-only Phase-37 Amendment 标 `embedding-provider-remote` fulfilled + roadmap/adapter）。诚实：recall@3=1.0 = real 模型把明显语义对排在近义干扰之上的小集正确性证明（非大基准质量断言，大语料续 `[SPEC-DEFER:phase-future.embedding-large-corpus-recall]`）；recall@1 跨 run 波动据实记录（remote 模型/服务非完全确定）；CI honest-defer 因 remote 付费 API 无免费 service container（与 qdrant 诚实差异），召回由本机已认证 run 实测。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
