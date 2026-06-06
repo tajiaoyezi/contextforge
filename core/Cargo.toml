@@ -138,6 +138,12 @@ reranker-fastembed = ["dep:fastembed"]
 # pulls 0 network dep (ADR-004 local-first); contract tests run under this feature with fixtures (no
 # real network; real联调/keys/recall deferred per ADR-013).
 embedding-remote = ["dep:ureq"]
+# task-38.1: remote reranker provider (OpenAI/Cohere/SiliconFlow HTTP rerank). Off by default —
+# reuses the already-present optional `ureq` dep (0 NEW crate, same as embedding-remote; default build
+# pulls 0 network dep, ADR-004 local-first; no Cargo.lock change, ADR-008). Contract tests run under
+# this feature with fixtures (no real network); real live rerank quality is env-gated + honest-defer
+# (ADR-013): the live harness skips cleanly when CONTEXTFORGE_RERANKER_API_KEY is unset.
+reranker-remote = ["dep:ureq"]
 vector-hnsw = ["dep:instant-distance"]
 # task-30.1: true-word CJK segmenter analyzer (jieba-rs). Off by default — the default build uses the
 # 0-dep overlapping-bigram `code_cjk` analyzer (ADR-029); this feature adds a parallel `cjk_segmenter`
