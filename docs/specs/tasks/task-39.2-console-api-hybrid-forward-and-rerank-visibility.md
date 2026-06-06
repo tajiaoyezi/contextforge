@@ -1,6 +1,6 @@
 # Task `39.2`: `console-api-hybrid-forward-and-rerank-visibility — (A) internal/contractv1/contractv1.go add-only SearchRequest.Hybrid bool（json hybrid，镜像 Semantic :125）+ SearchResult.HybridScore float32（json hybrid_score，镜像 VectorScore :153）。(B) internal/consoleapi/handlers.go handleSearch 加 ?hybrid=true OR-merge（镜像 ?semantic :452-454）。(C) internal/consoleapi/grpcclient/grpcclient.go Search 转发 Hybrid: req.Hybrid（镜像 Semantic :372）+ protoToSearchResult 映射 HybridScore: p.HybridScore（镜像 VectorScore :623）。对外 POST /v1/search（body {"hybrid":true} 或 ?hybrid=true）贯通到 core hybrid 路径；rerank reason provenance 在对外 REST 响应可见（reranker 保持 env 驱动、不做 per-request，?rerank=true 据 ADR-044 D3 superseded）；默认 hybrid=false 字节等价；0 新 dep / 0 proto 再改`
 
-**Status**: Draft
+**Status**: Done（v0.32.0；PR #253 合入 master @ a9cc6bc；§9 真实验证完成，AC1-AC3 全达成，见 §10）
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -94,9 +94,9 @@ pass bar：`contractv1.SearchRequest.Hybrid` + `SearchResult.HybridScore` add-on
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（contractv1 add-only + `handleSearch` `?hybrid` OR-merge 🟢）: `SearchRequest.Hybrid bool`（json `hybrid`，镜像 `Semantic`）+ `SearchResult.HybridScore float32`（json `hybrid_score`，镜像 `VectorScore`）add-only（既有字段不受影响）；`handleSearch` `?hybrid=true` ⇒ `body.Hybrid=true`；body `{"hybrid":true}` ⇒ `Hybrid=true`；两者皆无 ⇒ `Hybrid=false`（向后兼容，镜像 `?semantic` :452-454）— verified by **TEST-39.2.1**（`handleSearch` `?hybrid` OR-merge）
-- [ ] **AC2**（`grpcclient` 转发 + 映射 + rerank provenance 可见 🟢）: `Search` 转发 `Hybrid: req.Hybrid` 到 `pb.SearchRequest.Hybrid`（镜像 `Semantic` :372）；`protoToSearchResult` 映射 `HybridScore: p.HybridScore`（镜像 `VectorScore` :623）+ `Reason: p.Reason`（rerank provenance 承载，既有 :624）；reranker 保持 env 驱动（不加 `?rerank` 参数，ADR-043 D3 / ADR-044 D3）；默认 `hybrid=false` 转发 `false` 字节等价；0 新 dep — verified by **TEST-39.2.2**（`grpcclient` 转发 + 映射）
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-39.2.3**（= LAST）
+- [x] **AC1**（contractv1 add-only + `handleSearch` `?hybrid` OR-merge 🟢）: `SearchRequest.Hybrid bool`（json `hybrid`，镜像 `Semantic`）+ `SearchResult.HybridScore float32`（json `hybrid_score`，镜像 `VectorScore`）add-only（既有字段不受影响）；`handleSearch` `?hybrid=true` ⇒ `body.Hybrid=true`；body `{"hybrid":true}` ⇒ `Hybrid=true`；两者皆无 ⇒ `Hybrid=false`（向后兼容，镜像 `?semantic` :452-454）— verified by **TEST-39.2.1**（`handleSearch` `?hybrid` OR-merge）
+- [x] **AC2**（`grpcclient` 转发 + 映射 + rerank provenance 可见 🟢）: `Search` 转发 `Hybrid: req.Hybrid` 到 `pb.SearchRequest.Hybrid`（镜像 `Semantic` :372）；`protoToSearchResult` 映射 `HybridScore: p.HybridScore`（镜像 `VectorScore` :623）+ `Reason: p.Reason`（rerank provenance 承载，既有 :624）；reranker 保持 env 驱动（不加 `?rerank` 参数，ADR-043 D3 / ADR-044 D3）；默认 `hybrid=false` 转发 `false` 字节等价；0 新 dep — verified by **TEST-39.2.2**（`grpcclient` 转发 + 映射）
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-39.2.3**（= LAST）
 
 ## 7. 追踪表
 
@@ -143,7 +143,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（实施 + §9 真实验证后置 Done，逐条粘 PASS 摘要：`go test ./internal/consoleapi/...` TEST-39.2.1 / `go test ./internal/consoleapi/grpcclient/...` TEST-39.2.2 / `go test ./internal/contractv1/...` round-trip / `go test ./...` + `go vet ./...` / `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中；未跑不勾 AC）
+**Status**: Done（v0.32.0；PR #253 合入 master @ a9cc6bc。§9 真实验证完成：`go test ./internal/consoleapi/...` TEST-39.2.1（`handleSearch` `?hybrid` OR-merge 5 case + `?hybrid`/`?semantic` 独立）PASS / `go test ./internal/consoleapi/grpcclient/...` TEST-39.2.2（`Search` 转发 `Hybrid` true+false + `protoToSearchResult` 携 `HybridScore` + rerank `Reason`）PASS / `go test ./internal/contractv1/...` `Hybrid`/`HybridScore` json round-trip + legacy-absent defaults false PASS / `go test ./...` + `go vet ./...` clean + gofmt clean / `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中；CI 14/14 绿）
 
 - **§9 Verification 实证**（实施后回填）：本机真实跑 §9 全部命令、逐条粘 PASS 摘要。
 - **实际改动文件**（实施后回填）：`internal/contractv1/contractv1.go`（add-only `Hybrid` + `HybridScore`）/ `internal/consoleapi/handlers.go`（`handleSearch` `?hybrid` OR-merge）/ `internal/consoleapi/grpcclient/grpcclient.go`（`Search` 转发 `Hybrid` + `protoToSearchResult` 映射 `HybridScore`）/ `internal/consoleapi/search_semantic_test.go` 或同包 test（TEST-39.2.1）/ `internal/consoleapi/grpcclient` 同包 test（TEST-39.2.2）。

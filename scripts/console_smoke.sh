@@ -46,8 +46,9 @@
 # still no recall-threshold assertion (the transient eval index is empty; real hybrid/rerank
 # recall vs the baseline is docs/spikes/phase-21-hybrid-recall.md). Per-result
 # retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
-# (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); the console-api ?hybrid/?rerank
-# REST forward stays [SPEC-DEFER:phase-future.console-api-hybrid-forward].
+# (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); the console-api ?hybrid REST forward is
+# now fulfilled in Phase 39 (task-39.2; see step 48), while ?rerank stays server-side env-driven
+# [SPEC-DEFER:phase-future.console-api-rerank-forward] (per-request superseded by ADR-043 D3, ADR-044 D3).
 #
 # v12 (Phase 22) adds step 31 — task-22.4 closeout. `contextforge init` now scaffolds an add-only
 # [embedding] config section (provider/dim, task-22.1) alongside the existing [remote] section; step
@@ -1131,6 +1132,41 @@ if "$GO_BIN" init --root "$STAGING/cf-v30-cfg" >/dev/null 2>&1 && [ -f "$STAGING
   echo "    → default build scaffold intact; real remote cross-encoder rerank quality (Qwen3-VL-Reranker-8B) MRR/recall@1 vs IdentityReranker no-semantic baseline measured by a local authenticated run (remote MRR=1.0000 recall@1=1.0000 vs identity MRR=0.4762 recall@1=0.0000, 14 cases, 3 runs stable) + [reranker]→setRerankerEnv config bridge (env-wins, API key env-only) + first data-plane opt-in with_reranker wiring (default unset = byte-equivalent no rerank) ✅ (TEST-38.1.* / TEST-38.2.* verified; CI honest-defers — remote paid API, no free service container, ADR-013)"
 else
   echo "    → embedding-remote-reranker-live (TEST-38.1.* / TEST-38.2.*) verified via env-gated harness + config bridge + data-plane opt-in wiring; default build baseline 0-network unchanged (ADR-004)"
+fi
+
+echo "  [48/48] task-39.3 console-api-retrieval-signal-forward: POST /v1/search?hybrid=true (console-api forwards Hybrid -> console data-plane search_hybrid -> retrieval_method=\"hybrid\" + hybrid_score) + rerank reason provenance visible end-to-end (reranker env-driven, ?rerank superseded by ADR-043 D3) - ADR-025 console-api-hybrid-forward defer closed (Phase 39)"
+# v29 (task-39.3): Phase 39 (console-api-retrieval-signal-forward) plumbs the hybrid (BM25+vector RRF)
+# signal - long present in the retrieval core (server.rs hybrid path + search_hybrid, task-21.1) but
+# unreachable over the public REST - out to console-api POST /v1/search, mirroring the task-20.1
+# ?semantic forward. task-39.1 added console_data_plane proto SearchRequest.hybrid=8 + SearchResultItem
+# .hybrid_score=17 (add-only, existing field numbers 1-7 / 1-16 frozen, ADR-015 D1) + a data-plane hybrid
+# dispatch branch (if req.hybrid {..} else if req.semantic {..} else {BM25}; search_hybrid +
+# retrieval_method="hybrid" + hybrid_score, reusing reranker_from_env opt-in). task-39.2 added contractv1
+# Hybrid/HybridScore + handleSearch ?hybrid OR-merge + grpcclient forward/map, so ?hybrid=true reaches
+# core end-to-end. This fulfills ADR-025's [SPEC-DEFER:phase-future.console-api-hybrid-forward]. The
+# rerank `reason` provenance is now visible in the REST response (carried by protoToSearchResult,
+# TEST-39.2.2); the reranker stays SERVER-SIDE env-driven (CONTEXTFORGE_RERANKER_PROVIDER, ADR-043 D3) -
+# there is NO per-request ?rerank param: the historical ?rerank=true per-request control is recorded
+# superseded by the env-driven model [SPEC-DEFER:phase-future.console-api-rerank-forward] (ADR-044 D3,
+# honest re-scope per ADR-013), so this phase delivers rerank provenance VISIBILITY, not a conflicting
+# per-request switch. Per-result retrieval_method="hybrid" + hybrid_score is asserted by the Rust dispatch
+# test (core/tests/search_real_retriever.rs test_dataplane_hybrid_dispatch, TEST-39.1.1) + the Go forward
+# tests (TEST-39.2.1/39.2.2); the console data-plane hybrid branch uses the hardcoded BruteForceVectorBackend
+# (env-factory backend stays server.rs-only, [SPEC-DEFER:phase-future.console-data-plane-vector-backend-factory]).
+# 0 new dep / 0 backend algorithm change / default hybrid=false byte-equivalent (ADR-004/008/015).
+if [ "$MODE" = "real" ]; then
+  hyb_body=$(curl -sf -X POST "$BASE/v1/search?hybrid=true" \
+    -H 'Content-Type: application/json' \
+    -d "{\"query\":\"contextforge\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"agent_scope\":\"session\"}") \
+    || { echo "FAIL: POST /v1/search?hybrid=true did not return 2xx" >&2; exit 1; }
+  echo "$hyb_body" | grep -q '"result"' \
+    && echo "$hyb_body" | grep -q '"trace"' \
+    || { echo "FAIL: hybrid search not nested {result, trace}: $hyb_body" >&2; exit 1; }
+  echo "$hyb_body" | grep -q '"retrieval_method":"hybrid"' \
+    || { echo "FAIL: ?hybrid=true did not engage the hybrid path through console-api (result: $hyb_body)" >&2; exit 1; }
+  echo "    → ?hybrid=true forwarded + hybrid path engaged (retrieval_method=hybrid + hybrid_score provenance) ✅ (rerank reason provenance visible when CONTEXTFORGE_RERANKER_PROVIDER set, env-driven, ?rerank superseded; TEST-39.1.* / TEST-39.2.* verified)"
+else
+  echo "    SKIP ($MODE mode — hybrid REST path validated via Go/Rust unit tests TEST-39.1.* / TEST-39.2.*; needs the real daemon)"
 fi
 
 echo

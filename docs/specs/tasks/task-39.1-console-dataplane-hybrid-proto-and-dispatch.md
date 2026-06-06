@@ -1,6 +1,6 @@
 # Task `39.1`: `console-dataplane-hybrid-proto-and-dispatch — (A) console_data_plane.proto add-only SearchRequest.hybrid=8（镜像 v1/search.proto:28）+ SearchResultItem.hybrid_score=17（镜像 v1 RetrievalResult.hybrid_score=15，既有字段号 1-7 / 1-16 全冻结，ADR-015 D1 add-only）+ buf generate 重生 Go/Rust 生成代码。(B) core/src/data_plane/search.rs query() 加 hybrid dispatch 分支（let hits = if req.hybrid {..} else if req.semantic {..} else {BM25}），hybrid 分支镜像 server.rs hybrid 路径 + 数据面自身 semantic 分支结构：model-free DeterministicEmbeddingProvider + 0-dep BruteForceVectorBackend + enumerate_chunks + index_chunks_semantic + search_hybrid + 复用 reranker_from_env() opt-in（同 semantic 分支），结果映射加 hybrid_score 填充（镜像 vector_score 条件 :359-363）；默认 hybrid=false → 既有 semantic / BM25 路径字节等价（向后兼容，ADR-004）；0 新 dep / 0 schema migration / 0 默认构建改动`
 
-**Status**: Draft
+**Status**: Done（v0.32.0；PR #252 合入 master @ e5b1172；§9 真实验证完成，AC1-AC3 全达成，见 §10）
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -93,9 +93,9 @@ pass bar：console_data_plane proto `SearchRequest.hybrid=8` + `SearchResultItem
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（console_data_plane proto add-only + 数据面 hybrid dispatch + 默认字节等价 🟢）: `SearchRequest.hybrid=8` + `SearchResultItem.hybrid_score=17` add-only（既有字段号 1-7 / 1-16 冻结，`buf generate` 后 Go / Rust 生成代码 含新字段）；`core/src/data_plane/search.rs` `query()` 三分支 dispatch（`if req.hybrid {..} else if req.semantic {..} else {BM25}`）；`req.hybrid=true` ⇒ 走 `search_hybrid`、命中 `retrieval_method="hybrid"` + `hybrid_score` 非零（复用 `reranker_from_env` opt-in）；`req.hybrid=false` + `req.semantic=true` ⇒ semantic 分支字节等价；两者皆 false ⇒ BM25 字节等价 — verified by **TEST-39.1.1**（数据面 hybrid dispatch）
-- [ ] **AC2**（`hybrid_score` 填充据实 + proto 字段号 🟢）: `SearchResultItem.hybrid_score` 字段号 = 17、`SearchRequest.hybrid` 字段号 = 8（既有字段号不动）；结果映射 `hybrid_score: if h.retrieval_method == "hybrid" { h.score } else { 0.0 }`——hybrid 命中 `hybrid_score=score`、非 hybrid 命中 `hybrid_score=0.0`（非伪造，ADR-013）；console 数据面 hybrid 分支用 hardcoded `BruteForceVectorBackend`（据实记延后）；0 新 dep — verified by **TEST-39.1.2**（proto add-only + `hybrid_score` 填充）
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-39.1.3**（= LAST）
+- [x] **AC1**（console_data_plane proto add-only + 数据面 hybrid dispatch + 默认字节等价 🟢）: `SearchRequest.hybrid=8` + `SearchResultItem.hybrid_score=17` add-only（既有字段号 1-7 / 1-16 冻结，`buf generate` 后 Go / Rust 生成代码 含新字段）；`core/src/data_plane/search.rs` `query()` 三分支 dispatch（`if req.hybrid {..} else if req.semantic {..} else {BM25}`）；`req.hybrid=true` ⇒ 走 `search_hybrid`、命中 `retrieval_method="hybrid"` + `hybrid_score` 非零（复用 `reranker_from_env` opt-in）；`req.hybrid=false` + `req.semantic=true` ⇒ semantic 分支字节等价；两者皆 false ⇒ BM25 字节等价 — verified by **TEST-39.1.1**（数据面 hybrid dispatch）
+- [x] **AC2**（`hybrid_score` 填充据实 + proto 字段号 🟢）: `SearchResultItem.hybrid_score` 字段号 = 17、`SearchRequest.hybrid` 字段号 = 8（既有字段号不动）；结果映射 `hybrid_score: if h.retrieval_method == "hybrid" { h.score } else { 0.0 }`——hybrid 命中 `hybrid_score=score`、非 hybrid 命中 `hybrid_score=0.0`（非伪造，ADR-013）；console 数据面 hybrid 分支用 hardcoded `BruteForceVectorBackend`（据实记延后）；0 新 dep — verified by **TEST-39.1.2**（proto add-only + `hybrid_score` 填充）
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-39.1.3**（= LAST）
 
 ## 7. 追踪表
 
@@ -145,7 +145,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（实施 + §9 真实验证后置 Done，逐条粘 PASS 摘要：`buf generate` diff 仅含 hybrid / hybrid_score / `cargo test -p contextforge-core data_plane` TEST-39.1.1 / `cargo test -p contextforge-core` TEST-39.1.2 / `cargo test --workspace` + clippy / `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中；未跑不勾 AC）
+**Status**: Done（v0.32.0；PR #252 合入 master @ e5b1172。§9 真实验证完成：`buf generate proto` diff 仅含 `hybrid` / `hybrid_score` 字段 + getter + rawDesc 重编码（无 message/service 重排，4 个不相关 `.pb.go` 还原）/ `cargo test -p contextforge-core --test search_real_retriever test_dataplane_hybrid_dispatch` TEST-39.1.1 PASS / `cargo test -p contextforge-core --lib test_hybrid_proto_field_numbers` TEST-39.1.2 PASS（prost wire tag `0x40` / `0x8D 0x01`）/ `cargo test --workspace` core lib 216 + search_real_retriever 5 全 PASS + clippy 0 warning / `go build ./...` PASS / `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中；CI 14/14 绿）
 
 - **§9 Verification 实证**（实施后回填）：本机真实跑 §9 全部命令、逐条粘 PASS 摘要。
 - **实际改动文件**（实施后回填）：`proto/contextforge/console_data_plane/v1/console_data_plane.proto`（add-only `hybrid=8` + `hybrid_score=17`）/ `buf generate` 重生的 Go + Rust generated 文件 / `core/src/data_plane/search.rs`（`query()` hybrid dispatch 分支 + `hybrid_score` 填充）/ Rust 同 crate test（TEST-39.1.1 / TEST-39.1.2）。
