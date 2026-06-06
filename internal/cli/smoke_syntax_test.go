@@ -416,6 +416,44 @@ func TestTask383_SmokeV28RemoteRerankerLiveStep(t *testing.T) {
 	}
 }
 
+// TEST-39.3.1 / AC1: smoke v29 adds step 48 — task-39.3 closeout (console-api-retrieval-signal-forward).
+// In REAL mode POST /v1/search?hybrid=true is forwarded through console-api to the console data-plane
+// hybrid dispatch (search_hybrid), and the response carries retrieval_method="hybrid" + hybrid_score;
+// rerank `reason` provenance is visible end-to-end (reranker stays server-side env-driven, ?rerank
+// superseded by ADR-043 D3). Asserts the new [48/48] marker + Phase 39 status, and no regression of the
+// prior denominators (ADR-014 D5).
+func TestTask393_SmokeV29ConsoleApiSignalForwardStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v29 (task-39.3)") {
+		t.Fatalf("console_smoke.sh missing v29 (task-39.3) header block")
+	}
+	for _, marker := range []string{"[48/48]", "console-api-retrieval-signal-forward", "TEST-39.1.", "TEST-39.2.", "hybrid_score", "?hybrid=true"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v29 step 48 must document console-api-retrieval-signal-forward status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "embedding-remote-reranker-live"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v29 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid
@@ -702,8 +740,9 @@ func TestTask203_SmokeV10SemanticEngagementAssertion(t *testing.T) {
 // passes engage end-to-end. ADR-013: report shape + gate only (the transient eval index is empty;
 // real hybrid/rerank recall is docs/spikes/phase-21-hybrid-recall.md). Existing steps unchanged; the
 // per-result retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
-// (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); console-api ?hybrid/?rerank REST
-// forward stays [SPEC-DEFER:phase-future.console-api-hybrid-forward].
+// (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); the console-api ?hybrid REST forward is
+// now fulfilled in Phase 39 (task-39.2; smoke step 48 / TestTask393), while ?rerank stays server-side
+// env-driven [SPEC-DEFER:phase-future.console-api-rerank-forward] (per-request superseded by ADR-043 D3).
 func TestTask213_SmokeV11HybridRerankAssertion(t *testing.T) {
 	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
 	raw, err := os.ReadFile(script)

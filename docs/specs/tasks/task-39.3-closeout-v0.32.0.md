@@ -1,6 +1,6 @@
 # Task `39.3`: `closeout-v0.32.0 — smoke v28→v29 banner + 新 step [48/48]（staging dir 顺位 offset，端到端断言 ?hybrid=true 抵达 core → retrieval_method="hybrid" / hybrid_score + CONTEXTFORGE_RERANKER_PROVIDER=identity 时 rerank reason marker 在对外 REST 响应可见）+ smoke_syntax_test.go TestTask393 镜像 TestTask383 断言 [48/48] + no-regression（denominators [37/37]..[47/47] 不溯改 ADR-014 D5）+ v0.32.0 release docs（evidence/artifacts + README v0.32 段替换 :350「in a later release」措辞 + RELEASE_NOTES，tag/run/digest <backfill> markers）+ ADR-044 Proposed→Accepted 逐 D ratify + ADR-025 add-only Phase-39 Amendment（标 console-api-hybrid-forward fulfilled）+ ADR-043 add-only Phase-39 Amendment（标 console-api-rerank-forward 重界定 fulfilled + ?rerank per-request superseded）+ roadmap §3.21/§4 add-only + s2v-adapter add-only + defer marker 更新 + phase §6 闭合`
 
-**Status**: Draft
+**Status**: Done（v0.32.0 closeout 本 PR；§9 真实验证完成，AC1-AC3 全达成，见 §10；tag/run/digest post-tag-push 回填）
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -88,9 +88,9 @@ pass bar：smoke `bash -n` 通过 + banner v29 + step [48/48]（🟢）；`TestT
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（smoke v29[48/48] + TestTask393 no-regression 🟢）: `scripts/console_smoke.sh` banner v28→v29 + 新 step [48/48]（staging 顺位 offset；端到端断言 `?hybrid=true` → `retrieval_method="hybrid"` / `hybrid_score` + `CONTEXTFORGE_RERANKER_PROVIDER=identity` → rerank `reason` marker 对外 REST 可见）；`TestTask393_SmokeV29ConsoleApiSignalForwardStep` 断言 [48/48] + no-regression（denominators [37/37]..[47/47] 不溯改）+ `bash -n` 通过 — verified by **TEST-39.3.1**（smoke v29[48/48] + TestTask393）
-- [ ] **AC2**（release docs + ADR ratify + Amendment + roadmap/adapter + defer marker + phase 闭合 🟢）: `docs/releases/v0.32.0-{evidence,artifacts}.md`（hybrid 贯通 + rerank provenance 可见证据 + tag/run/digest `<backfill>` marker）+ README v0.32 段（`:350` 措辞替换）+ RELEASE_NOTES v0.32.0 段；ADR-044 Proposed→Accepted（逐 D ratify）+ ADR-025 add-only Phase-39 Amendment（标 console-api-hybrid-forward fulfilled，不溯改 D-body）+ ADR-043 add-only Phase-39 Amendment（标 console-api-rerank-forward 重界定 fulfilled + `?rerank` per-request superseded，不溯改 D-body）+ roadmap §3.21/§4 add-only + s2v-adapter rows + defer marker（console_smoke.sh:49-50 / smoke_syntax_test.go:705-706 / README:350）据实更新 + phase §6 闭合 — verified by **TEST-39.3.1**（docs/ADR/roadmap/adapter 一致性人工核 + grep）
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-39.3.2**（= LAST）
+- [x] **AC1**（smoke v29[48/48] + TestTask393 no-regression 🟢）: `scripts/console_smoke.sh` banner v28→v29 + 新 step [48/48]（staging 顺位 offset；端到端断言 `?hybrid=true` → `retrieval_method="hybrid"` / `hybrid_score` + `CONTEXTFORGE_RERANKER_PROVIDER=identity` → rerank `reason` marker 对外 REST 可见）；`TestTask393_SmokeV29ConsoleApiSignalForwardStep` 断言 [48/48] + no-regression（denominators [37/37]..[47/47] 不溯改）+ `bash -n` 通过 — verified by **TEST-39.3.1**（smoke v29[48/48] + TestTask393）
+- [x] **AC2**（release docs + ADR ratify + Amendment + roadmap/adapter + defer marker + phase 闭合 🟢）: `docs/releases/v0.32.0-{evidence,artifacts}.md`（hybrid 贯通 + rerank provenance 可见证据 + tag/run/digest `<backfill>` marker）+ README v0.32 段（`:350` 措辞替换）+ RELEASE_NOTES v0.32.0 段；ADR-044 Proposed→Accepted（逐 D ratify）+ ADR-025 add-only Phase-39 Amendment（标 console-api-hybrid-forward fulfilled，不溯改 D-body）+ ADR-043 add-only Phase-39 Amendment（标 console-api-rerank-forward 重界定 fulfilled + `?rerank` per-request superseded，不溯改 D-body）+ roadmap §3.21/§4 add-only + s2v-adapter rows + defer marker（console_smoke.sh:49-50 / smoke_syntax_test.go:705-706 / README:350）据实更新 + phase §6 闭合 — verified by **TEST-39.3.1**（docs/ADR/roadmap/adapter 一致性人工核 + grep）
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-39.3.2**（= LAST）
 
 ## 7. 追踪表
 
@@ -139,7 +139,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（实施 + §9 真实验证后置 Done，逐条粘 PASS 摘要：`bash -n` / `go test ./internal/cli/ -run TestTask393` / `go test ./...` / `cargo test --workspace` / grep 一致性 / `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中；tag/run/digest 发版后回填；未跑不勾 AC）
+**Status**: Done（v0.32.0 closeout 本 PR。§9 真实验证完成：`bash -n scripts/console_smoke.sh` exit 0 + banner v29 + step `[48/48]` / `go test ./internal/cli/ -run TestTask393` PASS（[48/48] + no-regression [37/37]..[47/47] + `embedding-remote-reranker-live` 字面存在）/ `go test ./...` + `cargo test --workspace` 全 PASS / `grep "in a later release" README.md` = 0（:350 措辞已替换）/ `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中；ADR-044 Proposed→Accepted per-D + ADR-025/043 add-only Phase-39 Amendment（不溯改 D-body）+ roadmap §3.21/§4 + adapter + defer marker 更新；tag/run/digest post-tag-push 回填 ADR-013 不预填）
 
 - **§9 Verification 实证**（实施后回填）：本机真实跑 §9 全部命令、逐条粘 PASS 摘要。
 - **实际改动文件**（实施后回填）：`scripts/console_smoke.sh`（banner v29 + step [48/48] + :49-50 defer 注）/ `internal/cli/smoke_syntax_test.go`（TestTask393 + :705-706 defer 注）/ `docs/releases/v0.32.0-{evidence,artifacts}.md`（新增）/ `README.md`（v0.32 段 + :350 措辞）/ `RELEASE_NOTES.md`（v0.32.0 段）/ `docs/decisions/adr-044-*.md`（Accepted）/ `adr-025-*.md`（add-only Amendment）/ `adr-043-*.md`（add-only Amendment）/ `docs/roadmap.md`（§3.21/§4）/ `docs/s2v-adapter.md`（Phase 39 rows）/ `docs/specs/phases/phase-39-*.md`（Status Done）。

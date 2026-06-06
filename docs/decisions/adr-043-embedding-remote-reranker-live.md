@@ -108,3 +108,13 @@ harness（D1）跑出的真实 rerank 质量数字是本 phase 的真实 rerank 
 - **D4 默认 0-network + 0 新 dep + 既有契约不变 — Accepted（all tasks；#247/#248 CI feature-build 含 reranker-remote 行绿）**：`reranker-remote` opt-in/off（harness `#![cfg]`-gated，默认 `cargo test --workspace` 不编译；新 `reranker-remote = ["dep:ureq"]`）；`ureq` 自 task-22.3 已 optional（0 新 dep）；数据面默认 unset 字节等价无 rerank；Go add-only `RerankerConfig` + `setRerankerEnv`（0 新 Go dep）；既有 cargo-test / go-test / lint / spec-lint / feature-build 不退化（`reranker-remote` 入 feature-build 矩阵）。
 
 **ADR-026 / ADR-042 兑现**：以 add-only `## Amendment (Phase 38 / v0.31.0)` 记 ADR-026 remote reranker 维度 fulfilled + ADR-042 `[SPEC-DEFER:phase-future.embedding-remote-reranker-live]` fulfilled（real live 联调 + 真实 rerank 质量 + config-bridge + 数据面接线），不溯改 ADR-026 D-body / Ratification (v0.14.0) + 不溯改 ADR-042 D-body / Ratification (v0.30.0)（ADR-014 D5）。ADR-014 第二十九次激活全 D 据本机真实 run ratify（task-38.3 closeout，2026-06-06）。
+
+## Amendment (Phase 39 / v0.32.0) — console-api-rerank-forward 重界定 fulfilled + ?rerank per-request superseded (add-only, 不溯改 D-body / Ratification)
+
+Phase 39（console-api-retrieval-signal-forward，ADR-044 D3）据本 ADR **D3**（reranker 为服务端 env 驱动数据面 opt-in，`reranker_from_env` → `with_reranker`，明确非 per-request）**重界定**历史 `[SPEC-DEFER:phase-future.console-api-rerank-forward]`（task-21.2 / task-21.3 记录，原设想 `?rerank=true` per-request 转发）：
+
+- **reranker 保持服务端 env 驱动（本 ADR D3 不变）**：reranker 由 `CONTEXTFORGE_RERANKER_PROVIDER` env 在服务端 opt-in；Phase 39 **不**加 `?rerank` per-request 参数。
+- **`?rerank=true` per-request 控制 superseded（不实现）**：per-request 转发与 D3 env 驱动模型冲突（对外请求会覆盖服务端 reranker 选型）；据实记为**被 D3 取代（superseded）**、不实现——不伪装为「实现了 per-request rerank 转发」（ADR-013）。
+- **改交付 rerank provenance 可见性（fulfilled）**：rerank `reason` 标记经 `grpcclient.protoToSearchResult`（`Reason: p.Reason`）端到端流通到对外 `POST /v1/search` 响应——reranker env opt-in 时用户经对外 REST 能看到结果被 rerank 过 + 服务端 reranker 配置生效。TEST-39.2.2（`protoToSearchResult` 携 `Reason` + `HybridScore`）本地绿 + task-39.3 smoke step 48 文档化。
+
+本 Amendment 仅标记 `console-api-rerank-forward` 按 provenance-visibility 口径 fulfilled + per-request superseded by D3，**不溯改 ADR-043 D-body / `## Ratification (v0.31.0 / task-38.3)`**（ADR-014 D5）。

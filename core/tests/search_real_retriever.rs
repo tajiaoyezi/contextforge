@@ -331,6 +331,25 @@ async fn test_dataplane_hybrid_dispatch() {
         "TEST-39.1.1: hybrid hit hybrid_score should be > 0 (RRF fused, carried not inferred); got {}",
         h0.hybrid_score
     );
+    // The forwarded trace must reflect the hybrid dispatch (both BM25 + vector paths fused),
+    // not be mislabeled as pure BM25 — otherwise it contradicts the per-result "hybrid" method
+    // the Console surfaces (Phase 39 trace provenance honesty).
+    let hyb_trace = hyb.trace.as_ref().expect("hybrid trace present");
+    assert!(
+        hyb_trace
+            .candidate_generation_steps
+            .contains(&"tantivy-bm25".to_string())
+            && hyb_trace
+                .candidate_generation_steps
+                .contains(&"vector-bruteforce".to_string()),
+        "TEST-39.1.1: hybrid trace must list both BM25 + vector candidate steps; got {:?}",
+        hyb_trace.candidate_generation_steps
+    );
+    assert!(
+        hyb_trace.vector_candidates_count > 0,
+        "TEST-39.1.1: hybrid trace vector_candidates_count must be > 0 (vector path contributed); got {}",
+        hyb_trace.vector_candidates_count
+    );
 
     // hybrid=false + semantic=true → vector path (retrieval_method "vector"), hybrid_score 0.
     let sem = search

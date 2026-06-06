@@ -417,13 +417,24 @@ impl SearchService for SearchServer {
             trace_id: format!("trace-{}", trace_seq()),
             query: req.query.clone(),
             expanded_query: None,
-            candidate_generation_steps: vec![if req.semantic {
-                "vector-bruteforce".to_string()
+            // task-39.1 (Phase 39): the trace must reflect the actual dispatch — a hybrid query
+            // (req.hybrid) RRF-fuses BOTH the BM25 and vector paths (search_hybrid), so it lists
+            // both candidate-generation steps and both candidate counts; otherwise it would
+            // contradict the per-result retrieval_method="hybrid" + hybrid_score provenance the
+            // Console forwards (req.semantic alone can't represent the 3-way dispatch).
+            candidate_generation_steps: if req.hybrid {
+                vec!["tantivy-bm25".to_string(), "vector-bruteforce".to_string()]
+            } else if req.semantic {
+                vec!["vector-bruteforce".to_string()]
             } else {
-                "tantivy-bm25".to_string()
-            }],
+                vec!["tantivy-bm25".to_string()]
+            },
             lexical_candidates_count: if req.semantic { 0 } else { final_context_count },
-            vector_candidates_count: if req.semantic { final_context_count } else { 0 },
+            vector_candidates_count: if req.hybrid || req.semantic {
+                final_context_count
+            } else {
+                0
+            },
             rerank_steps: vec![],
             scope_filter_result: "no-op".to_string(),
             final_context_count,
