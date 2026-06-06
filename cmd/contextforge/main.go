@@ -111,6 +111,10 @@ func doServe(_ context.Context, opts *cli.ServeOpts, stdout, stderr io.Writer) e
 	// no [remote] → unchanged; API key never bridged — env-only, security baseline).
 	restoreRemote := setRemoteEnv(opts.DataDir)
 	defer restoreRemote()
+	// task-38.2 (ADR-043 D2): bridge config.toml [reranker] → core CONTEXTFORGE_RERANKER_* env (env-wins;
+	// no [reranker] → unchanged, no rerank; API key never bridged — env-only, security baseline).
+	restoreReranker := setRerankerEnv(opts.DataDir)
+	defer restoreReranker()
 
 	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
 	if err != nil {
@@ -149,6 +153,10 @@ func doMCP(ctx context.Context, opts cli.MCPOpts, stdin io.Reader, stdout, _ io.
 	// no [remote] → unchanged; API key never bridged — env-only, security baseline).
 	restoreRemote := setRemoteEnv(opts.DataDir)
 	defer restoreRemote()
+	// task-38.2 (ADR-043 D2): bridge config.toml [reranker] → core CONTEXTFORGE_RERANKER_* env (env-wins;
+	// no [reranker] → unchanged, no rerank; API key never bridged — env-only, security baseline).
+	restoreReranker := setRerankerEnv(opts.DataDir)
+	defer restoreReranker()
 
 	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
 	if err != nil {
@@ -381,5 +389,53 @@ func setRemoteEnv(dataDir string) func() {
 	setIfAbsent("CONTEXTFORGE_REMOTE_ENDPOINT", cfg.Remote.Endpoint)
 	setIfAbsent("CONTEXTFORGE_REMOTE_MODEL", cfg.Remote.Model)
 	setIfAbsent("CONTEXTFORGE_REMOTE_PROVIDER", cfg.Remote.Provider)
+	return restore
+}
+
+// setRerankerEnv (task-38.2 / ADR-043 D2) best-effort loads config.toml from dataDir and bridges its
+// [reranker] section to the spawned core daemon via CONTEXTFORGE_RERANKER_ENDPOINT / _MODEL / _PROVIDER
+// (the core's reranker_from_env → select_reranker "remote" arm reads these), mirroring setRemoteEnv.
+// The API key is NEVER handled here — CONTEXTFORGE_RERANKER_API_KEY is supplied only via the user's
+// env and never lives in config.toml (PRD security baseline). ENV WINS: a variable already present is
+// left untouched. A missing/malformed config or an empty [reranker] exports nothing, so the core's
+// CONTEXTFORGE_RERANKER_PROVIDER stays unset → reranker_from_env returns None → no rerank, byte
+// equivalent to the prior behavior (ADR-004). Config-load errors are non-fatal. Returns a restore
+// closure.
+func setRerankerEnv(dataDir string) func() {
+	var restores []func()
+	restore := func() {
+		for _, r := range restores {
+			r()
+		}
+	}
+	if dataDir == "" {
+		return restore
+	}
+	cfg, err := config.Load(dataDir)
+	if err != nil {
+		// A MISSING config.toml is the normal default (opt-in [reranker] file source) → stay silent;
+		// only a real parse/read failure warns (mirrors setRemoteEnv). Best-effort either way.
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "contextforge: reranker config load failed (%s): %v\n", dataDir, err)
+		}
+		return restore
+	}
+	setIfAbsent := func(key, val string) {
+		if val == "" {
+			return
+		}
+		if _, had := os.LookupEnv(key); had {
+			return // env wins: an explicit env var overrides the config file
+		}
+		if err := os.Setenv(key, val); err != nil {
+			fmt.Fprintf(os.Stderr, "contextforge: reranker env setenv failed (%s): %v\n", key, err)
+		} else {
+			restores = append(restores, func() { _ = os.Unsetenv(key) })
+		}
+	}
+	// API key intentionally NOT bridged — it never lives in config.toml (security baseline).
+	setIfAbsent("CONTEXTFORGE_RERANKER_ENDPOINT", cfg.Reranker.Endpoint)
+	setIfAbsent("CONTEXTFORGE_RERANKER_MODEL", cfg.Reranker.Model)
+	setIfAbsent("CONTEXTFORGE_RERANKER_PROVIDER", cfg.Reranker.Provider)
 	return restore
 }

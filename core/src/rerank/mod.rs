@@ -18,7 +18,7 @@ pub mod cross_encoder;
 #[cfg(feature = "reranker-remote")]
 pub mod remote_reranker;
 
-pub use factory::select_reranker;
+pub use factory::{reranker_from_env, select_reranker};
 pub use identity::{IdentityReranker, IDENTITY_RERANK_REASON};
 pub use traits::{RerankError, Reranker};
 

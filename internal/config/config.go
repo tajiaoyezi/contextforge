@@ -38,6 +38,7 @@ type Config struct {
 	Remote                RemoteProviderConfig
 	Embedding             EmbeddingConfig // task-22.1: add-only embedding provider selection
 	Vector                VectorConfig    // task-34.2: add-only vector backend selection
+	Reranker              RerankerConfig  // task-38.2: add-only reranker provider selection
 }
 
 // CollectionConfig is one indexed collection's allowlist import scope.
@@ -58,6 +59,22 @@ type RemoteProviderConfig struct {
 	// this struct and never written to config.toml — it is supplied only via the
 	// CONTEXTFORGE_REMOTE_API_KEY env var (PRD security baseline).
 	Model string
+}
+
+// RerankerConfig selects which reranker the Rust core wires into the production search path
+// (task-38.2 / ADR-043 D2). Disabled by default; an absent [reranker] section ⇒ zero value ⇒ nothing
+// exported ⇒ the core's CONTEXTFORGE_RERANKER_PROVIDER stays unset ⇒ reranker_from_env returns None ⇒
+// no rerank (byte-equivalent to the prior behavior, ADR-004). Provider "" / "none" / "identity" → the
+// model-free IdentityReranker; "cross-encoder" / "remote" are feature-gated in the core. The Go side
+// bridges these to the spawned core daemon via CONTEXTFORGE_RERANKER_ENDPOINT / _MODEL / _PROVIDER
+// (setRerankerEnv), mirroring setRemoteEnv; an explicitly-set env var wins over the config file.
+// Mirrors RemoteProviderConfig — the API key is NOT in this struct and never written to config.toml;
+// it is supplied only via the CONTEXTFORGE_RERANKER_API_KEY env var (PRD security baseline).
+type RerankerConfig struct {
+	Enabled  bool
+	Provider string
+	Endpoint string
+	Model    string
 }
 
 // EmbeddingConfig selects which embedding provider the Rust core builds (task-22.1).
@@ -210,6 +227,11 @@ func encodeTOML(c Config) string {
 	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Remote.Provider))
 	fmt.Fprintf(&b, "endpoint = %s\n", tomlQuote(c.Remote.Endpoint))
 	fmt.Fprintf(&b, "model = %s\n", tomlQuote(c.Remote.Model))
+	b.WriteString("\n[reranker]\n")
+	fmt.Fprintf(&b, "enabled = %s\n", strconv.FormatBool(c.Reranker.Enabled))
+	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Reranker.Provider))
+	fmt.Fprintf(&b, "endpoint = %s\n", tomlQuote(c.Reranker.Endpoint))
+	fmt.Fprintf(&b, "model = %s\n", tomlQuote(c.Reranker.Model))
 	b.WriteString("\n[embedding]\n")
 	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Embedding.Provider))
 	fmt.Fprintf(&b, "dim = %s\n", strconv.Itoa(c.Embedding.Dim))
@@ -237,6 +259,9 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 		switch {
 		case line == "[remote]":
 			section = "remote"
+			continue
+		case line == "[reranker]":
+			section = "reranker"
 			continue
 		case line == "[embedding]":
 			section = "embedding"
@@ -267,6 +292,10 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 			}
 		case "remote":
 			if err := assignRemote(&c.Remote, key, raw); err != nil {
+				return Config{}, err
+			}
+		case "reranker":
+			if err := assignReranker(&c.Reranker, key, raw); err != nil {
 				return Config{}, err
 			}
 		case "embedding":
@@ -330,6 +359,37 @@ func assignRemote(r *RemoteProviderConfig, key, raw string) error {
 		v, err := strconv.ParseBool(raw)
 		if err != nil {
 			return fmt.Errorf("remote.enabled: %w", err)
+		}
+		r.Enabled = v
+	case "provider":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		r.Provider = s
+	case "endpoint":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		r.Endpoint = s
+	case "model":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		r.Model = s
+	}
+	return nil
+}
+
+// assignReranker mirrors assignRemote (task-38.2). The [reranker] section never carries an api key.
+func assignReranker(r *RerankerConfig, key, raw string) error {
+	switch key {
+	case "enabled":
+		v, err := strconv.ParseBool(raw)
+		if err != nil {
+			return fmt.Errorf("reranker.enabled: %w", err)
 		}
 		r.Enabled = v
 	case "provider":

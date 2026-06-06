@@ -227,3 +227,83 @@ func TestSetRemoteEnv(t *testing.T) {
 		}
 	})
 }
+
+// TEST-38.2.2 (task-38.2 / ADR-043 D2): setRerankerEnv bridges [reranker] → CONTEXTFORGE_RERANKER_*
+// env (env-wins; empty section exports nothing; the API key is NEVER bridged). Mirrors TestSetRemoteEnv.
+func TestSetRerankerEnv(t *testing.T) {
+	writeCfg := func(t *testing.T, r config.RerankerConfig) string {
+		t.Helper()
+		root := t.TempDir()
+		c := config.DefaultConfig()
+		c.DataDir = root
+		c.Reranker = r
+		if err := config.Save(root, c); err != nil {
+			t.Fatalf("save config: %v", err)
+		}
+		return root
+	}
+	const (
+		ep = "https://api.siliconflow.cn/v1/rerank"
+		md = "Qwen/Qwen3-VL-Reranker-8B"
+		pv = "siliconflow"
+	)
+	keys := []string{"CONTEXTFORGE_RERANKER_ENDPOINT", "CONTEXTFORGE_RERANKER_MODEL", "CONTEXTFORGE_RERANKER_PROVIDER"}
+
+	t.Run("[reranker] present → endpoint/model/provider env exported, restore unsets", func(t *testing.T) {
+		root := writeCfg(t, config.RerankerConfig{Enabled: true, Provider: pv, Endpoint: ep, Model: md})
+		for _, k := range keys {
+			os.Unsetenv(k)
+		}
+		restore := setRerankerEnv(root)
+		if got := os.Getenv("CONTEXTFORGE_RERANKER_ENDPOINT"); got != ep {
+			t.Errorf("endpoint env = %q want %q", got, ep)
+		}
+		if got := os.Getenv("CONTEXTFORGE_RERANKER_MODEL"); got != md {
+			t.Errorf("model env = %q want %q", got, md)
+		}
+		if got := os.Getenv("CONTEXTFORGE_RERANKER_PROVIDER"); got != pv {
+			t.Errorf("provider env = %q want %q", got, pv)
+		}
+		restore()
+		for _, k := range keys {
+			if _, had := os.LookupEnv(k); had {
+				t.Errorf("restore should unset %s", k)
+			}
+		}
+	})
+
+	t.Run("explicit env wins over config file", func(t *testing.T) {
+		root := writeCfg(t, config.RerankerConfig{Enabled: true, Provider: pv, Endpoint: ep, Model: md})
+		t.Setenv("CONTEXTFORGE_RERANKER_PROVIDER", "explicit-provider")
+		restore := setRerankerEnv(root)
+		defer restore()
+		if got := os.Getenv("CONTEXTFORGE_RERANKER_PROVIDER"); got != "explicit-provider" {
+			t.Errorf("env-wins broken: provider = %q want explicit-provider (explicit env must not be overridden)", got)
+		}
+	})
+
+	t.Run("empty [reranker] → nothing exported (no rerank, default unchanged)", func(t *testing.T) {
+		root := writeCfg(t, config.RerankerConfig{})
+		for _, k := range keys {
+			os.Unsetenv(k)
+		}
+		restore := setRerankerEnv(root)
+		defer restore()
+		for _, k := range keys {
+			if _, had := os.LookupEnv(k); had {
+				t.Errorf("empty [reranker] must export no %s", k)
+			}
+		}
+	})
+
+	t.Run("API key is NEVER bridged (security baseline)", func(t *testing.T) {
+		// even with a fully-populated [reranker] config, setRerankerEnv must not set the api-key env.
+		root := writeCfg(t, config.RerankerConfig{Enabled: true, Provider: pv, Endpoint: ep, Model: md})
+		os.Unsetenv("CONTEXTFORGE_RERANKER_API_KEY")
+		restore := setRerankerEnv(root)
+		defer restore()
+		if _, had := os.LookupEnv("CONTEXTFORGE_RERANKER_API_KEY"); had {
+			t.Errorf("setRerankerEnv must NEVER set CONTEXTFORGE_RERANKER_API_KEY (api key is env-only, never from config)")
+		}
+	})
+}

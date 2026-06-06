@@ -292,6 +292,73 @@ func TestTask372RemoteModelConfig(t *testing.T) {
 	})
 }
 
+// TEST-38.2.1 (task-38.2 / ADR-043 D2): add-only [reranker] section Save/Load round-trip; absent
+// section ⇒ zero value (backward-compatible); existing [remote]/[embedding]/[vector]/[[collections]]
+// sections are unaffected by adding [reranker]. The API key is never a [reranker] field.
+func TestTask382RerankerConfig(t *testing.T) {
+	t.Run("TEST-38.2.1: [reranker] 段显式设置后 Save/Load 保真（既有段不受影响）", func(t *testing.T) {
+		dc := DefaultConfig()
+		if dc.Reranker.Enabled || dc.Reranker.Provider != "" || dc.Reranker.Endpoint != "" || dc.Reranker.Model != "" {
+			t.Errorf("默认 Reranker 应为 zero value，got %+v", dc.Reranker)
+		}
+		root := t.TempDir()
+		c := dc
+		c.DataDir = root
+		c.Reranker = RerankerConfig{Enabled: true, Provider: "siliconflow", Endpoint: "https://api.siliconflow.cn/v1/rerank", Model: "Qwen/Qwen3-VL-Reranker-8B"}
+		c.Remote = RemoteProviderConfig{Enabled: true, Provider: "openai-compatible", Endpoint: "https://api.example.com/v1/embeddings", Model: "Qwen/Qwen3-Embedding-8B"}
+		c.Embedding = EmbeddingConfig{Provider: "remote", Dim: 1024}
+		c.Vector = VectorConfig{Backend: "qdrant", Dim: 384}
+		c.Collections = []CollectionConfig{{ID: "proj_x", Allowlist: []string{"/home/u/proj_x"}}}
+		if err := Save(root, c); err != nil {
+			t.Fatalf("Save error = %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load error = %v", err)
+		}
+		if !got.Reranker.Enabled || got.Reranker.Provider != "siliconflow" || got.Reranker.Endpoint != "https://api.siliconflow.cn/v1/rerank" || got.Reranker.Model != "Qwen/Qwen3-VL-Reranker-8B" {
+			t.Errorf("[reranker] 段未保真: %+v", got.Reranker)
+		}
+		if !got.Remote.Enabled || got.Remote.Model != "Qwen/Qwen3-Embedding-8B" {
+			t.Errorf("加 [reranker] 后 [remote] 段受影响: %+v", got.Remote)
+		}
+		if got.Embedding.Provider != "remote" || got.Embedding.Dim != 1024 {
+			t.Errorf("加 [reranker] 后 [embedding] 段受影响: %+v", got.Embedding)
+		}
+		if got.Vector.Backend != "qdrant" || got.Vector.Dim != 384 {
+			t.Errorf("加 [reranker] 后 [vector] 段受影响: %+v", got.Vector)
+		}
+		if len(got.Collections) != 1 || got.Collections[0].ID != "proj_x" {
+			t.Errorf("加 [reranker] 后 [[collections]] 段受影响: %+v", got.Collections)
+		}
+	})
+
+	t.Run("TEST-38.2.1: 不含 [reranker] 段的旧 config 仍合法加载（向后兼容 zero value）", func(t *testing.T) {
+		root := t.TempDir()
+		legacy := "schema_version = \"0.1\"\n" +
+			"data_dir = " + tomlQuote(root) + "\n" +
+			"allow_denylist_override = false\n" +
+			"denylist = []\n" +
+			"\n[remote]\n" +
+			"enabled = true\n" +
+			"provider = \"openai-compatible\"\n" +
+			"endpoint = \"https://api.example.com/v1/embeddings\"\n"
+		if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(legacy), 0o600); err != nil {
+			t.Fatalf("write legacy config: %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load legacy (no [reranker]) error = %v", err)
+		}
+		if got.Reranker.Enabled || got.Reranker.Provider != "" || got.Reranker.Endpoint != "" || got.Reranker.Model != "" {
+			t.Errorf("不含 [reranker] 段应得 zero value，got %+v", got.Reranker)
+		}
+		if got.Remote.Provider != "openai-compatible" || got.Remote.Endpoint != "https://api.example.com/v1/embeddings" {
+			t.Errorf("不含 [reranker] 段的既有 [remote] 字段须保真，got %+v", got.Remote)
+		}
+	})
+}
+
 // TEST-34.2.1 (task-34.2 / ADR-039 D2): add-only [vector] section Save/Load round-trip; absent
 // section ⇒ zero value (backward-compatible); existing [remote]/[embedding]/[[collections]]
 // sections are unaffected by adding [vector].
