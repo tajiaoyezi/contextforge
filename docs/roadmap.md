@@ -345,6 +345,21 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **v0.29.0 推进记录（已实现，发版待 tag）**：task-36.1（#236，harness `core/tests/qdrant_live_recall.rs`，本地 recall@10=1.0000）+ task-36.2（#237，`qdrant-recall` CI service-container job，**CI run 26961084355 实测 recall@10=1.0000**，`qdrant-server-lifecycle` 永久关闭）+ task-36.3（closeout：smoke v26[45/45] + ADR-041 Accepted + ADR-034 add-only Phase-36 Amendment 标 D2 fulfilled + release docs）全 Done 三门绿合入 master。诚实：recall=1.0 = qdrant 低于 HNSW indexing_threshold 服务精确 KNN 的 live 正确性证明，HNSW 近似域大语料 recall 续 `[SPEC-DEFER:phase-future.vector-large-corpus-perf]`。
 
+### 3.19 v0.30.0 / Phase 37 — embedding-provider-remote-live（承 Phase 22 embedding provider 抽象血脉，post-v0.29.0 add-only 排期）
+
+**目标**：兑现 ADR-027 一路 honest-defer 的 `[SPEC-DEFER:phase-future.embedding-provider-remote]`（真实远程 embedding 端点端到端联调 + 实测语义召回）——把「remote provider 纯函数契约层（`build_request_body`/`parse_response`）已测、但 live 端点从未联调、真实召回从未跑出」推进到「对真实 OpenAI-compatible 端点跑出真实 recall@k + Go `[remote]` config 经 env-bridge 接通」。**关键 de-risk 已由主 agent 本机真实证明**：SiliconFlow（OpenAI-compatible）+ `Qwen/Qwen3-Embedding-8B` 端到端 round-trip 跑通（native dim=4096，OpenAI 风格 `dimensions` 参数生效——MRL 用 1024，CJK 正常），Rust `RemoteEmbeddingProvider`→ureq→parse 在 Windows MSVC `--features embedding-remote` 真实编译跑通。embedding provider 抽象自 Phase 22 已全实现——本 phase 0 行 provider 核心改动、只加 harness + Go config env-bridge + closeout。默认构建不变（`embedding-remote` opt-in，0 网络 / 0 新 dep——`ureq` 自 task-22.3 已 optional，ADR-004/008）；API key env-only 永不进 config。经用户 AskUserQuestion（2026-06-06）选「解锁高价值项 → 远程 embedding live 召回（提供 SiliconFlow key）」+「完整 S2V phase + 发版 v0.30.0（无人值守）」即 v0.30.0 release 授权（ADR-012）。
+
+**来源 marker**：
+- `[SPEC-DEFER:phase-future.embedding-provider-remote]`（ADR-027 母 ADR 残留 live 端点联调 + 真实召回维度——本 phase 兑现，add-only Phase-37 Amendment 标 fulfilled、不溯改 D-body）。
+- `core/src/embedding/factory.rs:52` 注释 "config plumbing is a follow-up"（remote endpoint/model/provider 仅 env 读取、config.toml 未接通——本 phase task-37.2 兑现）。
+
+**候选 task 拆分**：
+- **task-37.1** remote-embedding-live-recall-harness：新增 `core/tests/remote_embedding_recall.rs`（`#![cfg(feature = "embedding-remote")]`，env-gated `CONTEXTFORGE_REMOTE_API_KEY` honest-defer skip）；作者手工标注语义集（15 case / 16 doc，含故意近义干扰 `config_save`/`config_load`、`bm25`/`hybrid`、`cjk_index`/`cjk_vector`）同一 `BruteForceVectorBackend` 精确余弦路径上 real 模型 vs deterministic 基线 recall@1/@3，floor `r3>=0.70` 且 remote>deterministic；非网络 well-formed 守护无 key 也跑。🟢 守护 / 🔴 live 端点。主 agent 本机真实 run（SiliconFlow Qwen3-Embedding-8B，dim=1024）实测 **remote recall@1=0.8667 / recall@3=1.0000 vs deterministic 0.0000 / 0.0667**（真实非预填，详 task-37.1 §10 / ADR-042 D2，ADR-013）。
+- **task-37.2** remote-embedding-config-bridge：Go `RemoteProviderConfig` add-only `Model` 字段 + 新 `setRemoteEnv` 跨进程 env-bridge（镜像 Phase 34 `setVectorEnv`：`[remote]` 段 → 导出 `CONTEXTFORGE_REMOTE_ENDPOINT/_MODEL/_PROVIDER`，env-wins，无段不导出）接线 doServe/doMCP；API key env-only 永不进 config；Rust 0 toml dep。🟢。
+- **task-37.3** v0.30.0 closeout：smoke v27[46/46]（staging `cf-v29-cfg` offset +2）+ release docs（真实 recall 数 + 诚实记 CI honest-defer：remote 付费外部 API 无免费 service container，召回由本机已认证 run 实测——与 qdrant 不同）+ ADR-042 ratify + ADR-027 add-only Phase-37 Amendment + roadmap §3.19/§4 + adapter。🟢。
+
+**ADR**：**ADR-042 embedding-provider-remote-live**（Proposed，D1 live 语义 recall harness 方法学（real vs deterministic 基线对照 + 作者标注集诚实范围 + env-gated honest-defer + 小集 caveat）/ D2 真实实测召回数（本机真实 SiliconFlow run；CI honest-defer 因 remote 付费 API 无免费 service container）/ D3 remote-embedding-config-bridge（Go `[remote]` Model + setRemoteEnv env-bridge，API key env-only，Rust 0-dep）/ D4 默认 0-network + 0 新 dep + 既有契约不变（ADR-004/008））；ADR-027 add-only Phase-37 Amendment（兑现 `embedding-provider-remote`，不溯改 D-body D5）。ADR-014 第二十八次激活。
+
 ---
 
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
@@ -428,6 +443,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 > **非问题（grounding 校正，非兑现亦非债，据实不实现）**：`handle-memory-pin-strict-body`（ADR-022 D2 蓄意 lenient，见行 295/387）、`memstore-degraded-observability-warn`（Phase 35 校正为 honest non-issue DROP，见行 406）、`memory-harddelete-cascade`（无可级联表，仅不变式守护，见行 387）。
 >
 > **仍真延后（承诺度低 / 需外部前置，本次不动其承诺度）**：`multi-backend-production`、`qdrant-deployment-topology`、`vector-large-corpus-perf`、`lancedb-index-tuning` / `lancedb-schema-compaction` / `lancedb-build-prereq-ci`、`vector-dim-feature-enforce`、`rust-native-eval-runner`（无 consumer）、`tracestore-multi-workspace-strict`（SQL 级隔离已交付 Phase 33 task-33.3，console e2e 续延后 🟡）、`indexing-replay-e2e`、`observability-metrics-facility`、`daemon-options-datadir`、`l2-cache-true-lru`、`sqlite-vec-inprocess-matrix`、`embed-remote-probe` / `embedding-provider-remote`（骨架已 Phase 22 落地，真实联调须 API key）、`hybrid-scoring` / `reranker-real-quality`（管道已落地，真实大语料质量曲线须语料）、`vector-incremental-index`、`hnsw-graph-persistence`（语义检索按需内存索引路径）、`chunk-source-type-filter` / `chunk-agent-scope-filter`、`multi-arch-image`。
+
+> **v0.30.0 / Phase 37 排期更新（规划中 2026-06-06，add-only，不删上方历史条目）**：§3.19 把 ADR-027 母 ADR 的 `[SPEC-DEFER:phase-future.embedding-provider-remote]`（真实远程 embedding 端点联调 + 实测语义召回）排入 **v0.30.0 / Phase 37 — embedding-provider-remote-live**（task-37.1 env-gated live recall harness：real 模型 vs deterministic 基线同标注集 recall@1/@3 / task-37.2 Go `[remote]` Model add-only + `setRemoteEnv` env-bridge 兑现 `factory.rs:52` config plumbing follow-up / task-37.3 closeout）。de-risk 已由主 agent 本机真实证明（SiliconFlow + `Qwen/Qwen3-Embedding-8B` round-trip + Windows MSVC `--features embedding-remote` 编译跑通；本机实测 remote recall@3=1.0000 vs deterministic 0.0667）。上方「仍真延后」段所列 `embedding-provider-remote` 经本 phase **真实联调 + 实测召回兑现**（task-37.3 closeout 经 ADR-027 add-only Phase-37 Amendment 标 fulfilled，不溯改 D-body）。**新增 backlog 条目（add-only）**：`embedding-remote-ci-credential`（CI 跑 live remote 召回——remote 是付费外部 API、无免费 service container，与 qdrant 诚实差异，召回由本机已认证 run 实测）/ `embedding-large-corpus-recall`（大语料 / 大基准语义质量，超小型手工标注集）/ `embedding-multi-provider-live`（多 remote provider live 矩阵：Cohere / 其它 OpenAI-compatible）/ `embedding-remote-reranker-live`（remote reranker cross-encoder over HTTP live 联调）/ `embedding-remote-health-probe`（远程探针命中 / 健康度 live 守护）。真实数值 / 受阻维度真实跑出后回填（ADR-013，不预填）。ADR-042 Proposed。
 
 ---
 
