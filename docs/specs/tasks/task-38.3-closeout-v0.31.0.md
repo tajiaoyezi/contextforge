@@ -1,6 +1,6 @@
 # Task `38.3`: `closeout-v0.31.0 — embedding-remote-reranker-live closeout（real remote reranker 端到端联调 + 实测 rerank 质量 real cross-encoder vs identity 基线兑现 + reranker 数据面首次 opt-in 接线，关闭 [SPEC-DEFER:phase-future.embedding-remote-reranker-live]）+ v0.31.0 closeout（smoke v28 step [47/47] + TestTask383 + release docs（真实 rerank 质量数 + 真实 authenticated run，<backfill>）+ ADR-043 据 D1-D4 ratify + ADR-026 add-only Phase 38 Amendment（reranker remote 维度兑现，不溯改 D-body）+ ADR-042 add-only Phase 38 Amendment（embedding-remote-reranker-live follow-up 兑现）+ roadmap §3.20/§4 + adapter）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P2
 **Owner**: 主 agent（ADR-012 自治）

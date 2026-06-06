@@ -1,6 +1,6 @@
 # Task `38.2`: `reranker-config-bridge-and-data-plane-wiring — (A) Go config.go 新 [reranker] 段（RerankerConfig{Enabled/Provider/Endpoint/Model}，add-only，无 api-key 字段，镜像 RemoteProviderConfig）+ setRerankerEnv 跨进程 env-bridge（镜像 setRemoteEnv/setVectorEnv），把 config.toml 的 [reranker] 桥接为 CONTEXTFORGE_RERANKER_ENDPOINT/_MODEL/_PROVIDER 供 spawned core daemon 经 task-38.1 的 select_reranker env 路径拾取；env-wins 覆盖 / 无 [reranker] 段 = 不导出 = 默认无 rerank（ADR-004）/ 安全红线 API KEY 永不进 config.toml，仅 CONTEXTFORGE_RERANKER_API_KEY env。(B) Rust 数据面首次 opt-in 接线（NEW）：新 reranker_from_env() 读 CONTEXTFORGE_RERANKER_PROVIDER → 非空/非 none 时 select_reranker → with_reranker，接入 server.rs hybrid/semantic 两处 + data_plane/search.rs semantic 一处生产路径；默认 unset → None → 字节等价无 rerank（向后兼容，当前行为不变）；feature-off 下 select_reranker 显式 Err → Status::internal 不静默（ADR-013）；Rust core 0 toml dep（0 新 dep，ADR-008）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -160,7 +160,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（实施 + §9 真实验证后回填）
+**Status**: Done（实施 + §9 真实验证完成：`go test ./internal/config/... ./cmd/contextforge/...` PASS（TEST-38.2.1 round-trip + TEST-38.2.2 setRerankerEnv env-wins + API-key-never-bridged）/ `cargo test -p contextforge-core` 215 lib PASS（server/data_plane semantic+hybrid handlers 验 unset→向后兼容）+ isolated `reranker_env_wiring` integration（TEST-38.2.3）/ workspace clippy / go vet / `grep -c '^toml ' core/Cargo.toml`=0；#248 CI 14/14 绿）
 
 - **§9 Verification 实证**：实施后本机真实跑 §9 全部命令、逐条粘 PASS 摘要（`go test ./internal/config/...` TEST-38.2.1 / `go test ./cmd/contextforge/...` TEST-38.2.2 / `cargo test -p contextforge-core` TEST-38.2.3 / `grep -c '^toml ' core/Cargo.toml` = 0 / `bash scripts/spec_drift_lint.sh --touched origin/master` 0 命中），未跑不勾 AC。
 - **实际改动文件**（实施后回填）：`internal/config/config.go`（新 `RerankerConfig` + `Config.Reranker` + `encodeTOML`/`decodeTOML`/`assignReranker` `[reranker]` 段）/ `cmd/contextforge/main.go`（新 `setRerankerEnv` + 接线 doServe/doMCP）/ `core/src/rerank/mod.rs`（新 `reranker_from_env()`）/ `core/src/server.rs`（hybrid/semantic 两处 opt-in `with_reranker`）/ `core/src/data_plane/search.rs`（semantic 一处 opt-in `with_reranker`）/ `internal/config/config_test.go`（TEST-38.2.1）/ `cmd/contextforge/main_test.go`（TEST-38.2.2）/ Rust 同 crate test（TEST-38.2.3）。
