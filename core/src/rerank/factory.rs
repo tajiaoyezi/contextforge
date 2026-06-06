@@ -65,6 +65,22 @@ pub fn select_reranker(provider_name: &str) -> Result<Arc<dyn Reranker>, RerankE
     Ok(reranker)
 }
 
+/// Build the production-data-plane reranker from `CONTEXTFORGE_RERANKER_PROVIDER` (task-38.2).
+///
+/// Returns `Ok(None)` when the var is unset / empty / `"none"` (case-insensitive) — the default
+/// no-rerank path, byte-equivalent to the prior behavior (ADR-004; reranker stays opt-in). Any other
+/// value is routed through [`select_reranker`], so a feature-off / unknown provider surfaces an
+/// explicit `RerankError` (no silent fallback — ADR-013). server.rs (hybrid + semantic) and
+/// data_plane/search.rs (semantic) call this to opt-in `with_reranker` on their wired retriever.
+pub fn reranker_from_env() -> Result<Option<Arc<dyn Reranker>>, RerankError> {
+    let raw = std::env::var("CONTEXTFORGE_RERANKER_PROVIDER").unwrap_or_default();
+    let name = raw.trim();
+    if name.is_empty() || name.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    select_reranker(name).map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -282,9 +282,17 @@ impl SearchService for SearchServer {
         let hits = if req.semantic {
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
             let backend = Arc::new(BruteForceVectorBackend::new());
-            let wired = retriever
+            let mut wired = retriever
                 .with_embedder(embedder)
                 .with_vector_searcher(backend.clone());
+            // task-38.2 (ADR-043 D3): opt-in reranker from CONTEXTFORGE_RERANKER_PROVIDER. Unset / ""
+            // / "none" → None → wired unchanged (byte-equivalent no-rerank, ADR-004). feature-off /
+            // unknown → explicit Err → Status::internal, never a silent fallback (ADR-013).
+            if let Some(rr) = crate::rerank::reranker_from_env()
+                .map_err(|e| Status::internal(format!("reranker: {e}")))?
+            {
+                wired = wired.with_reranker(rr);
+            }
             let items = wired
                 .enumerate_chunks()
                 .map_err(|e| Status::internal(format!("semantic enumerate: {e}")))?;
