@@ -342,6 +342,7 @@ mod tests {
             top_k: 5,
             config_snapshot: "{}".into(),
             semantic: false,
+            hybrid: false,
         };
         assert_eq!(s.top_k, 5);
 

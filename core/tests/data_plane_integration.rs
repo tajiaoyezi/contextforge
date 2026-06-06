@@ -244,6 +244,7 @@ async fn test_search_empty_response_via_grpc() {
             top_k: 5,
             config_snapshot: "{}".into(),
             semantic: false,
+            hybrid: false,
         })
         .await
         .expect("query ok");
@@ -321,6 +322,7 @@ async fn test_serve_full_listens_both_planes() {
             top_k: 1,
             config_snapshot: "{}".into(),
             semantic: false,
+            hybrid: false,
         })
         .await
         .expect("search ok");
