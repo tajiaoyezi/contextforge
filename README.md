@@ -23,7 +23,7 @@ CONTEXTFORGE_REMOTE_API_KEY=… CONTEXTFORGE_REMOTE_URL=https://api.siliconflow.
   cargo test -p contextforge-core --features embedding-remote --test remote_embedding_recall -- --nocapture
 ```
 
-发版凭据（post-tag-push backfill，ADR-013）：tag SHA `<backfill: v0.30.0 tag SHA>` / tag object `<backfill: v0.30.0 tag object>` / release run `<backfill: release run id>` / ghcr digest `<backfill: ghcr digest>` / cosign tlog `<backfill: cosign Rekor tlog index>`。
+发版凭据（post-tag-push backfill，ADR-013）：tag SHA `b49f28803e73338997f04bc3ffad85e7d386edf5` / tag object `38bf3c2f86241ba25be8f64456c8258d3c5d12ff` / release run `27050883547` / ghcr digest `sha256:ff1306bf088452df8cdc78d5f5f0c35bcda0e654258bcbfc0cbba5a4992fb95c` / cosign tlog `1738028951 (sign) / 1738031045 (attest)`。
 
 详 `RELEASE_NOTES.md` v0.30.0 段 + [Phase 37 spec](docs/specs/phases/phase-37-embedding-provider-remote-live.md) + [ADR-042](docs/decisions/adr-042-embedding-provider-remote-live.md)。
 
