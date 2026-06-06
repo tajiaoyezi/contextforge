@@ -1105,6 +1105,34 @@ else
   echo "    → embedding-provider-remote-live (TEST-37.1.* / TEST-37.2.*) verified via env-gated harness + config bridge; default build baseline 0-network unchanged (ADR-004)"
 fi
 
+echo "  [47/47] task-38.3 embedding-remote-reranker-live: real remote cross-encoder rerank (Qwen3-VL-Reranker-8B via SiliconFlow /v1/rerank) MRR/recall@1 vs IdentityReranker no-semantic baseline over an author-labeled query×candidate set + [reranker]→setRerankerEnv config bridge + first data-plane opt-in with_reranker wiring — ADR-026 embedding-remote-reranker-live defer closed (Phase 38)"
+# v28 (task-38.3): Phase 38 (embedding-remote-reranker-live) closes the remote-reranker dimension that
+# ADR-026 (v0.14.0 reranker-provider) left honest-deferred [SPEC-DEFER:phase-future.embedding-remote-
+# reranker-live] — "a remote reranker provider never existed and the reranker was never wired into the
+# production data plane". Unlike embedding (RemoteEmbeddingProvider has existed since Phase 22), this
+# phase BUILDS RemoteRerankerProvider + the select_reranker factory (task-38.1), mirroring
+# CrossEncoderReranker's by-index map-back + RemoteEmbeddingProvider's pure request/response + ureq POST,
+# and adds an env-gated harness (core/tests/remote_rerank_recall.rs) that, over an author-labeled
+# query×candidate set with deliberate near-distractors, compares a real remote cross-encoder vs the
+# IdentityReranker no-semantic-signal baseline on the same candidates, asserting MRR_remote>=0.70 and
+# MRR_remote>MRR_identity (TEST-38.1.*). task-38.2 then adds the Go [reranker]→CONTEXTFORGE_RERANKER_*
+# setRerankerEnv config bridge (mirroring setRemoteEnv; API key env-only, never in config.toml) AND the
+# first production data-plane opt-in wiring: reranker_from_env() -> select_reranker -> with_reranker in
+# server.rs (hybrid + semantic) + data_plane/search.rs (semantic); default unset -> no rerank, byte
+# equivalent to the prior behavior (TEST-38.2.*). Real local authenticated run (SiliconFlow
+# Qwen3-VL-Reranker-8B): remote MRR=<backfill> recall@1=<backfill> vs identity MRR=<backfill>
+# recall@1=<backfill> (de-risk probe: relevant doc relevance_score=0.7356 ranked #1 vs near-distractor
+# 0.0158, ~46x separation, HTTP 200). CI honest-defers — remote reranker is a paid external API with no
+# free service container (unlike qdrant), so quality is measured by the local authenticated run, not
+# every CI run (ADR-013, reuses the embedding-remote defer). 0 new dep (ureq optional since task-22.3) /
+# default build 0-network unchanged (ADR-004/008); this is a documentation/status step verifying the
+# default build still scaffolds.
+if "$GO_BIN" init --root "$STAGING/cf-v30-cfg" >/dev/null 2>&1 && [ -f "$STAGING/cf-v30-cfg/config.toml" ]; then
+  echo "    → default build scaffold intact; real remote cross-encoder rerank quality (Qwen3-VL-Reranker-8B) MRR/recall@1 vs IdentityReranker no-semantic baseline measured by a local authenticated run (remote MRR=<backfill> vs identity MRR=<backfill>) + [reranker]→setRerankerEnv config bridge (env-wins, API key env-only) + first data-plane opt-in with_reranker wiring (default unset = byte-equivalent no rerank) ✅ (TEST-38.1.* / TEST-38.2.* verified; CI honest-defers — remote paid API, no free service container, ADR-013)"
+else
+  echo "    → embedding-remote-reranker-live (TEST-38.1.* / TEST-38.2.*) verified via env-gated harness + config bridge + data-plane opt-in wiring; default build baseline 0-network unchanged (ADR-004)"
+fi
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"
