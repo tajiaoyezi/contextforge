@@ -1,6 +1,6 @@
 # Task `37.1`: `remote-embedding-live-recall-harness — 新增 core/tests/remote_embedding_recall.rs（#![cfg(feature = "embedding-remote")]，env-gated CONTEXTFORGE_REMOTE_API_KEY via factory.rs env 路径），首次以「real remote embedding 语义召回 vs deterministic（model-free）基线」方法学在 live remote 端点上量真实召回：作者手工标注语义集（15 case / 16 doc，覆盖 英文复述 / 代码概念 / CJK / 跨语言，含故意近义干扰）→ 同一标注集 + 同一 BruteForceVectorBackend 精确余弦路径上比较 real 模型 vs deterministic 基线 → recall@1 / recall@3 = mean(命中 / N) → 先 eprintln 真实测得值再 assert（floor r3>=0.70 且 remote recall@1 > deterministic recall@1）；CONTEXTFORGE_REMOTE_API_KEY 未设时 eprintln skip notice + 干净 return（honest-defer，CI 无密钥时 skip 不 fail，ADR-013，api_key 永不记录）；另有非网络 well-formed 守护测试（doc id 唯一 / 每 relevant id 存在 / case 数>=12）无 key 也总跑；0 新 dep / 0 schema migration / 0 默认构建变更（embedding-remote opt-in，ADR-004/008）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -110,17 +110,17 @@ pass bar：feature `embedding-remote` 下 `core/tests/remote_embedding_recall.rs
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（live semantic recall harness env-gated + honest-defer skip 🔴 live / 🟢 wiring）: 新增 `core/tests/remote_embedding_recall.rs`（`#![cfg(feature = "embedding-remote")]`），env-gated 经 `CONTEXTFORGE_REMOTE_API_KEY`（factory 另读 `CONTEXTFORGE_REMOTE_ENDPOINT/_MODEL/_PROVIDER`，api_key 永不记录）；live 召回测试第一步读 `CONTEXTFORGE_REMOTE_API_KEY`——未设 → eprintln skip notice + `return`（测试**干净通过不 fail**）；设密钥 + live remote 端点时同一作者手工标注集 + 同一 `BruteForceVectorBackend` 精确余弦路径上 `select_provider("remote", DIM)` 与 `select_provider("deterministic", DIM)` 对照，每个 query 取 top-k，`recall@1 = mean(top-1 命中)` / `recall@3 = mean(relevant ∈ top-3)`，先 eprintln 真实测得值 + delta 再 `assert!(r3 >= 0.70)` 且 `assert!(remote recall@1 > deterministic recall@1)`（真实数字 **真实跑出后回填**，无 key 时 honest-defer skip，绝不预填，ADR-013）；**0 新 dep + 0 schema migration + 0 默认构建变更**（默认 0-network-dep / 0-network） — verified by **TEST-37.1.1**（env-gated：设密钥 + live remote 端点时真实 `recall@3 >= 0.70` 且 `remote@1 > det@1`；无 key honest-defer 干净 skip 不 fail）
-- [ ] **AC2**（非网络标注集 well-formed 守护，无 key 🟢）: doc id 唯一 / 每个 `Case.relevant` 存在于语料 / `cases().len() >= 12`——**不触网** 即可跑、即绿，守住标注集逻辑地基（ADR-013） — verified by **TEST-37.1.2**（无 key，断言 doc id 唯一 + 每 relevant 存在 + case 数 >= 12）
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-37.1.3**（= LAST）
+- [x] **AC1**（live semantic recall harness env-gated + honest-defer skip 🔴 live / 🟢 wiring）: 新增 `core/tests/remote_embedding_recall.rs`（`#![cfg(feature = "embedding-remote")]`），env-gated 经 `CONTEXTFORGE_REMOTE_API_KEY`（factory 另读 `CONTEXTFORGE_REMOTE_ENDPOINT/_MODEL/_PROVIDER`，api_key 永不记录）；live 召回测试第一步读 `CONTEXTFORGE_REMOTE_API_KEY`——未设 → eprintln skip notice + `return`（测试**干净通过不 fail**）；设密钥 + live remote 端点时同一作者手工标注集 + 同一 `BruteForceVectorBackend` 精确余弦路径上 `select_provider("remote", DIM)` 与 `select_provider("deterministic", DIM)` 对照，每个 query 取 top-k，`recall@1 = mean(top-1 命中)` / `recall@3 = mean(relevant ∈ top-3)`，先 eprintln 真实测得值 + delta 再 `assert!(r3 >= 0.70)` 且 `assert!(remote recall@1 > deterministic recall@1)`（真实数字 **真实跑出后回填**，无 key 时 honest-defer skip，绝不预填，ADR-013）；**0 新 dep + 0 schema migration + 0 默认构建变更**（默认 0-network-dep / 0-network） — verified by **TEST-37.1.1**（env-gated：设密钥 + live remote 端点时真实 `recall@3 >= 0.70` 且 `remote@1 > det@1`；无 key honest-defer 干净 skip 不 fail）
+- [x] **AC2**（非网络标注集 well-formed 守护，无 key 🟢）: doc id 唯一 / 每个 `Case.relevant` 存在于语料 / `cases().len() >= 12`——**不触网** 即可跑、即绿，守住标注集逻辑地基（ADR-013） — verified by **TEST-37.1.2**（无 key，断言 doc id 唯一 + 每 relevant 存在 + case 数 >= 12）
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-37.1.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-37.1.1 | 🔴 live / 🟢 wiring：env-gated（`CONTEXTFORGE_REMOTE_API_KEY`）live semantic recall harness——设密钥 + live remote 端点时同一作者标注集 + 同一 `BruteForceVectorBackend` 精确余弦路径 `select_provider("remote")` vs `select_provider("deterministic")` 对照，每 query 取 top-k，`recall@1`/`recall@3` + eprintln 真实值 + delta，`assert!(r3 >= 0.70)` 且 `assert!(remote@1 > det@1)`（真实数字 真实跑出后回填，不预填）；`CONTEXTFORGE_REMOTE_API_KEY` 未设 → eprintln skip + return 干净通过（**不** fail，honest-defer ADR-013；api_key 永不记录） | `core/tests/remote_embedding_recall.rs` | Draft |
-| TEST-37.1.2 | 🟢 非网络标注集 well-formed 守护（**无 key**）：doc id 唯一（sort+dedup len 不变）+ 每个 `Case.relevant` 存在于 `docs()` + `cases().len() >= 12`——不触网 即可跑、即绿，守标注集逻辑地基（ADR-013） | `core/tests/remote_embedding_recall.rs` | Draft |
-| TEST-37.1.3 | ADR-014 D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Draft |
+| TEST-37.1.1 | 🔴 live / 🟢 wiring：env-gated（`CONTEXTFORGE_REMOTE_API_KEY`）live semantic recall harness——设密钥 + live remote 端点时同一作者标注集 + 同一 `BruteForceVectorBackend` 精确余弦路径 `select_provider("remote")` vs `select_provider("deterministic")` 对照，每 query 取 top-k，`recall@1`/`recall@3` + eprintln 真实值 + delta，`assert!(r3 >= 0.70)` 且 `assert!(remote@1 > det@1)`（真实数字 真实跑出后回填，不预填）；`CONTEXTFORGE_REMOTE_API_KEY` 未设 → eprintln skip + return 干净通过（**不** fail，honest-defer ADR-013；api_key 永不记录） | `core/tests/remote_embedding_recall.rs` | Done |
+| TEST-37.1.2 | 🟢 非网络标注集 well-formed 守护（**无 key**）：doc id 唯一（sort+dedup len 不变）+ 每个 `Case.relevant` 存在于 `docs()` + `cases().len() >= 12`——不触网 即可跑、即绿，守标注集逻辑地基（ADR-013） | `core/tests/remote_embedding_recall.rs` | Done |
+| TEST-37.1.3 | ADR-014 D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -167,19 +167,19 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（真实验收在 impl PR；本节真实实测数为主 agent 本机真实 run（SiliconFlow Qwen3-Embedding-8B），impl PR 回填正式 §10）
+**Status**: Done（本节真实实测数为主 agent 本机真实 run，SiliconFlow `Qwen/Qwen3-Embedding-8B` dim=1024，3 次 run；ADR-042 D2 ratify 在 task-37.3 closeout）
 
 **§9 Verification 预期实证**（impl PR 真实回填；以下 live 召回数为主 agent 本机真实 run（SiliconFlow `https://api.siliconflow.cn/v1/embeddings` + `Qwen/Qwen3-Embedding-8B`，dim=1024），非预填、非合成，ADR-013）：
-- **AC1 真实 live 召回**（主 agent 本机真实 run）：设 `CONTEXTFORGE_REMOTE_ENDPOINT/_MODEL/_API_KEY` 指向 SiliconFlow Qwen3-Embedding-8B → live semantic recall 测试 PASS，实测 `remote: recall@1=0.8667 (13/15) recall@3=1.0000 (15/15)` vs `deterministic: recall@1=0.0000 recall@3=0.0667` → `delta@1=+0.8667 delta@3=+0.9333`。两个 @1 miss 恰是故意埋的硬近义干扰（`config_save` 挤掉 `config_load`、`hybrid` 挤掉 `bm25`）。honest-defer 分支：未设 `CONTEXTFORGE_REMOTE_API_KEY` → live 测试干净 SKIP（eprintln "CONTEXTFORGE_REMOTE_API_KEY unset (honest-defer)" + return，**不 fail**）。
+- **AC1 真实 live 召回**（主 agent 本机真实 run）：设 `CONTEXTFORGE_REMOTE_ENDPOINT/_MODEL/_API_KEY` 指向 SiliconFlow Qwen3-Embedding-8B → live semantic recall 测试 PASS，实测（3 次 run）`remote: recall@1=0.8667–0.9333 (13–14/15，跨 run 波动) recall@3=1.0000 (15/15，3/3 稳定)` vs `deterministic: recall@1=0.0000 recall@3=0.0667（稳定）` → `delta@3=+0.9333`。**recall@1 跨 run 波动**（remote 模型/服务非完全确定：同一确定性语料/查询，SiliconFlow 多次 run 得 0.8667 或 0.9333），**recall@3=1.0000 三次均稳定**；波动仅落在故意埋的硬近义干扰对（`config_save`↔`config_load`、`hybrid`↔`bm25`）的 top-1 让位上。harness 护栏（floor `r3>=0.70` + `remote@1 > det@1`）每次 run 均过。honest-defer 分支：未设 `CONTEXTFORGE_REMOTE_API_KEY` → live 测试干净 SKIP（eprintln "CONTEXTFORGE_REMOTE_API_KEY unset (honest-defer)" + return，**不 fail**）。
 - **AC2 标注集 well-formed**（无 key 也跑）：well-formed 守护测试 PASS（doc id 唯一 / 每 relevant 存在 / case 数 >= 12），**不触网**。
 - 默认构建不退化（impl PR 真实回填）：`cargo test --workspace`（harness `#![cfg(feature = "embedding-remote")]` 不进默认构建）；`cargo clippy -p contextforge-core --features embedding-remote --tests -- -D warnings` 0 warning（impl PR 真实回填）。
 - AC3：D2 lint `--touched origin/master`（CI spec-lint 权威，impl PR 真实回填）。
 
-**诚实判读（ADR-013，关键）**：实测 `remote recall@1=0.8667 / recall@3=1.0000` vs `deterministic recall@1=0.0000 / recall@3=0.0667`——这是「real remote embedding（Qwen3-Embedding-8B）相对 model-free deterministic 基线在同一作者标注集 + 同一精确余弦路径上买到的真实语义召回」，真实关闭 ADR-027 的 `[SPEC-DEFER:phase-future.embedding-provider-remote]`「real recall quality deferred」。**为何 recall@3=1.0**：在小型作者手工标注集上，real 模型把明显语义 / 跨语言 / 概念重述对排在近义干扰之上——这是 **embedding 语义质量** 的真实证明，**非**大型标准基准的质量断言；大语料 / 标准基准语义质量续 `[SPEC-DEFER:phase-future.embedding-large-corpus-recall]`（不夸大为「已基准测过」，ADR-013）。floor `r3 >= 0.70` + `remote@1 > det@1` 为不退化 guard（real 嵌入若买不到语义则 r3<0.70 或 r1 不胜基线 → 红），真实测得 `r3=1.0000 / delta@1=+0.8667` 留足余量。CI 据实 honest-defer：remote 是付费外部 API、无免费 service container（与 qdrant 不同——qdrant 有免费 OSS service container，task-36.2 经 `qdrant-recall` job 每次 CI run 实测），故召回由本机已认证 run 实测，ADR-042 D2 记载这一诚实差异。
+**诚实判读（ADR-013，关键）**：实测 `remote recall@1=0.8667–0.9333（跨 run 波动）/ recall@3=1.0000（3/3 稳定）` vs `deterministic recall@1=0.0000 / recall@3=0.0667`——这是「real remote embedding（Qwen3-Embedding-8B）相对 model-free deterministic 基线在同一作者标注集 + 同一精确余弦路径上买到的真实语义召回」，真实关闭 ADR-027 的 `[SPEC-DEFER:phase-future.embedding-provider-remote]`「real recall quality deferred」。**为何 recall@3=1.0**：在小型作者手工标注集上，real 模型把明显语义 / 跨语言 / 概念重述对排在近义干扰之上——这是 **embedding 语义质量** 的真实证明，**非**大型标准基准的质量断言；大语料 / 标准基准语义质量续 `[SPEC-DEFER:phase-future.embedding-large-corpus-recall]`（不夸大为「已基准测过」，ADR-013）。floor `r3 >= 0.70` + `remote@1 > det@1` 为不退化 guard（real 嵌入若买不到语义则 r3<0.70 或 r1 不胜基线 → 红），真实测得 `r3=1.0000（3/3 稳定）/ delta@1>=+0.8667` 留足余量。CI 据实 honest-defer：remote 是付费外部 API、无免费 service container（与 qdrant 不同——qdrant 有免费 OSS service container，task-36.2 经 `qdrant-recall` job 每次 CI run 实测），故召回由本机已认证 run 实测，ADR-042 D2 记载这一诚实差异。
 
 **grounding（实施期，ADR-013，impl PR 回填确认）**：
 - harness live 测试名 `test_remote_embedding_semantic_recall` + 非网络守护测试名 `test_labeled_set_well_formed`（spec §7 草拟 TEST-ID）；标注集 `docs()` 16 doc / `cases()` 15 case，`const DIM: usize = 1024`，collection 名 `remote_embed_recall`——均机械命名，行为同 spec。
-- 真实 CI live run（每次 CI run 对端点跑）因 remote 是付费外部 API、无免费 service container 据实 honest-defer → `[SPEC-DEFER:phase-future.embedding-remote-ci-credential]`；本 task 的 live 证据 = 主 agent 本机对真实 SiliconFlow 端点跑出的 `recall@1=0.8667 / recall@3=1.0000`（真实非预填）。
+- 真实 CI live run（每次 CI run 对端点跑）因 remote 是付费外部 API、无免费 service container 据实 honest-defer → `[SPEC-DEFER:phase-future.embedding-remote-ci-credential]`；本 task 的 live 证据 = 主 agent 本机对真实 SiliconFlow 端点跑出的 `recall@1=0.8667–0.9333（跨 run 波动）/ recall@3=1.0000（稳定）`（真实非预填）。
 
 **实际改动文件**（impl PR 真实回填）：
 - 新增 `core/tests/remote_embedding_recall.rs`（`#![cfg(feature = "embedding-remote")]`，env-gated `CONTEXTFORGE_REMOTE_API_KEY` + 未设 honest-defer skip + api_key 永不记录；作者手工标注集 16 doc / 15 case 含近义干扰，`DIM=1024`；同一标注集 + 同一 `BruteForceVectorBackend` 精确余弦路径 `select_provider("remote")` vs `select_provider("deterministic")` 对照，每 query top-k，`recall@1/@3` + eprintln 真实值 + delta，`assert!(r3 >= 0.70)` 且 `assert!(remote@1 > det@1)`；live 测试 TEST-37.1.1 + 非网络 well-formed 守护 TEST-37.1.2）。
