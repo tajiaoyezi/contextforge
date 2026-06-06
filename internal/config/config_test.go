@@ -229,6 +229,69 @@ func TestTask221EmbeddingConfig(t *testing.T) {
 	})
 }
 
+// TEST-37.2.1 (task-37.2 / ADR-042 D3): add-only [remote] model field Save/Load round-trip; absent
+// model line ⇒ zero value (backward-compatible legacy config); existing [remote] Enabled/Provider/
+// Endpoint + [embedding]/[vector]/[[collections]] sections are unaffected by adding model. The API
+// key is NOT a config field and never round-trips through config.toml (security baseline).
+func TestTask372RemoteModelConfig(t *testing.T) {
+	t.Run("TEST-37.2.1: [remote] model 显式设置后 Save/Load 保真（既有字段/段不受影响）", func(t *testing.T) {
+		dc := DefaultConfig()
+		if dc.Remote.Model != "" {
+			t.Errorf("默认 Remote.Model 应为空，got %q", dc.Remote.Model)
+		}
+		root := t.TempDir()
+		c := dc
+		c.DataDir = root
+		c.Remote = RemoteProviderConfig{Enabled: true, Provider: "openai-compatible", Endpoint: "https://api.example.com/v1/embeddings", Model: "Qwen/Qwen3-Embedding-8B"}
+		c.Embedding = EmbeddingConfig{Provider: "remote", Dim: 1024}
+		c.Collections = []CollectionConfig{{ID: "proj_x", Allowlist: []string{"/home/u/proj_x"}}}
+		if err := Save(root, c); err != nil {
+			t.Fatalf("Save error = %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load error = %v", err)
+		}
+		if got.Remote.Model != "Qwen/Qwen3-Embedding-8B" {
+			t.Errorf("[remote] model 未保真: %+v", got.Remote)
+		}
+		if !got.Remote.Enabled || got.Remote.Provider != "openai-compatible" || got.Remote.Endpoint != "https://api.example.com/v1/embeddings" {
+			t.Errorf("加 model 后 [remote] 既有字段受影响: %+v", got.Remote)
+		}
+		if got.Embedding.Provider != "remote" || got.Embedding.Dim != 1024 {
+			t.Errorf("加 model 后 [embedding] 段受影响: %+v", got.Embedding)
+		}
+		if len(got.Collections) != 1 || got.Collections[0].ID != "proj_x" {
+			t.Errorf("加 model 后 [[collections]] 段受影响: %+v", got.Collections)
+		}
+	})
+
+	t.Run("TEST-37.2.1: 不含 model 行的旧 config 仍合法加载（向后兼容 Model=\"\"）", func(t *testing.T) {
+		root := t.TempDir()
+		legacy := "schema_version = \"0.1\"\n" +
+			"data_dir = " + tomlQuote(root) + "\n" +
+			"allow_denylist_override = false\n" +
+			"denylist = []\n" +
+			"\n[remote]\n" +
+			"enabled = true\n" +
+			"provider = \"openai-compatible\"\n" +
+			"endpoint = \"https://api.example.com/v1/embeddings\"\n"
+		if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(legacy), 0o600); err != nil {
+			t.Fatalf("write legacy config: %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load legacy (no model) error = %v", err)
+		}
+		if got.Remote.Model != "" {
+			t.Errorf("不含 model 行应得 Model=\"\"，got %q", got.Remote.Model)
+		}
+		if got.Remote.Provider != "openai-compatible" || got.Remote.Endpoint != "https://api.example.com/v1/embeddings" {
+			t.Errorf("不含 model 行的既有字段须保真，got %+v", got.Remote)
+		}
+	})
+}
+
 // TEST-34.2.1 (task-34.2 / ADR-039 D2): add-only [vector] section Save/Load round-trip; absent
 // section ⇒ zero value (backward-compatible); existing [remote]/[embedding]/[[collections]]
 // sections are unaffected by adding [vector].
