@@ -117,6 +117,7 @@ jobs:
           - embedding-fastembed
           - reranker-fastembed
           - embedding-remote
+          - reranker-remote
           - cjk-segmenter
     steps:
       - uses: actions/checkout@v4
