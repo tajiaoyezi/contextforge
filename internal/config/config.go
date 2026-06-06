@@ -53,6 +53,11 @@ type RemoteProviderConfig struct {
 	Enabled  bool
 	Provider string
 	Endpoint string
+	// Model is the remote embedding model name (toml `model`); "" ⇒ unset ⇒ the core
+	// falls back to its default model. task-37.2 add-only field. The API key is NOT in
+	// this struct and never written to config.toml — it is supplied only via the
+	// CONTEXTFORGE_REMOTE_API_KEY env var (PRD security baseline).
+	Model string
 }
 
 // EmbeddingConfig selects which embedding provider the Rust core builds (task-22.1).
@@ -204,6 +209,7 @@ func encodeTOML(c Config) string {
 	fmt.Fprintf(&b, "enabled = %s\n", strconv.FormatBool(c.Remote.Enabled))
 	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Remote.Provider))
 	fmt.Fprintf(&b, "endpoint = %s\n", tomlQuote(c.Remote.Endpoint))
+	fmt.Fprintf(&b, "model = %s\n", tomlQuote(c.Remote.Model))
 	b.WriteString("\n[embedding]\n")
 	fmt.Fprintf(&b, "provider = %s\n", tomlQuote(c.Embedding.Provider))
 	fmt.Fprintf(&b, "dim = %s\n", strconv.Itoa(c.Embedding.Dim))
@@ -338,6 +344,12 @@ func assignRemote(r *RemoteProviderConfig, key, raw string) error {
 			return err
 		}
 		r.Endpoint = s
+	case "model":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		r.Model = s
 	}
 	return nil
 }

@@ -145,3 +145,85 @@ func TestSetVectorEnv_LoadErrorSurfacing(t *testing.T) {
 		}
 	})
 }
+
+// TEST-37.2.2 (task-37.2 / ADR-042 D3): setRemoteEnv bridges config.toml [remote] → the core's
+// CONTEXTFORGE_REMOTE_ENDPOINT/_MODEL/_PROVIDER env; an explicitly-set env var wins over the config
+// file; an empty [remote] exports nothing (default provider unchanged); and the API key is NEVER
+// bridged — CONTEXTFORGE_REMOTE_API_KEY is env-only, never sourced from config (security baseline).
+func TestSetRemoteEnv(t *testing.T) {
+	writeCfg := func(t *testing.T, r config.RemoteProviderConfig) string {
+		t.Helper()
+		root := t.TempDir()
+		c := config.DefaultConfig()
+		c.DataDir = root
+		c.Remote = r
+		if err := config.Save(root, c); err != nil {
+			t.Fatalf("save config: %v", err)
+		}
+		return root
+	}
+	const (
+		ep = "https://api.example.com/v1/embeddings"
+		md = "Qwen/Qwen3-Embedding-8B"
+		pv = "openai-compatible"
+	)
+	keys := []string{"CONTEXTFORGE_REMOTE_ENDPOINT", "CONTEXTFORGE_REMOTE_MODEL", "CONTEXTFORGE_REMOTE_PROVIDER"}
+
+	t.Run("[remote] present → endpoint/model/provider env exported, restore unsets", func(t *testing.T) {
+		root := writeCfg(t, config.RemoteProviderConfig{Enabled: true, Provider: pv, Endpoint: ep, Model: md})
+		for _, k := range keys {
+			os.Unsetenv(k)
+		}
+		restore := setRemoteEnv(root)
+		if got := os.Getenv("CONTEXTFORGE_REMOTE_ENDPOINT"); got != ep {
+			t.Errorf("endpoint env = %q want %q", got, ep)
+		}
+		if got := os.Getenv("CONTEXTFORGE_REMOTE_MODEL"); got != md {
+			t.Errorf("model env = %q want %q", got, md)
+		}
+		if got := os.Getenv("CONTEXTFORGE_REMOTE_PROVIDER"); got != pv {
+			t.Errorf("provider env = %q want %q", got, pv)
+		}
+		restore()
+		for _, k := range keys {
+			if _, had := os.LookupEnv(k); had {
+				t.Errorf("restore should unset %s", k)
+			}
+		}
+	})
+
+	t.Run("explicit env wins over config file", func(t *testing.T) {
+		root := writeCfg(t, config.RemoteProviderConfig{Enabled: true, Provider: pv, Endpoint: ep, Model: md})
+		t.Setenv("CONTEXTFORGE_REMOTE_MODEL", "explicit-model")
+		restore := setRemoteEnv(root)
+		defer restore()
+		if got := os.Getenv("CONTEXTFORGE_REMOTE_MODEL"); got != "explicit-model" {
+			t.Errorf("env-wins broken: model = %q want explicit-model (explicit env must not be overridden)", got)
+		}
+	})
+
+	t.Run("empty [remote] → nothing exported (default provider unchanged)", func(t *testing.T) {
+		root := writeCfg(t, config.RemoteProviderConfig{})
+		for _, k := range keys {
+			os.Unsetenv(k)
+		}
+		restore := setRemoteEnv(root)
+		defer restore()
+		for _, k := range keys {
+			if _, had := os.LookupEnv(k); had {
+				t.Errorf("empty [remote] must export no %s", k)
+			}
+		}
+	})
+
+	t.Run("API key is NEVER bridged (security baseline)", func(t *testing.T) {
+		// even with a fully-populated [remote] config, setRemoteEnv must not set the api-key env.
+		root := writeCfg(t, config.RemoteProviderConfig{Enabled: true, Provider: pv, Endpoint: ep, Model: md})
+		os.Unsetenv("CONTEXTFORGE_REMOTE_API_KEY")
+		restore := setRemoteEnv(root)
+		defer restore()
+		if _, had := os.LookupEnv("CONTEXTFORGE_REMOTE_API_KEY"); had {
+			t.Errorf("setRemoteEnv must NEVER set CONTEXTFORGE_REMOTE_API_KEY (api key is env-only, never from config)")
+		}
+	})
+}

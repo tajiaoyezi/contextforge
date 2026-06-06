@@ -107,6 +107,10 @@ func doServe(_ context.Context, opts *cli.ServeOpts, stdout, stderr io.Writer) e
 	// core daemon's resolve_vector_backend picks them up (env-wins; no [vector] → unchanged).
 	restoreVec := setVectorEnv(opts.DataDir)
 	defer restoreVec()
+	// task-37.2 (ADR-042 D3): bridge config.toml [remote] → core CONTEXTFORGE_REMOTE_* env (env-wins;
+	// no [remote] → unchanged; API key never bridged — env-only, security baseline).
+	restoreRemote := setRemoteEnv(opts.DataDir)
+	defer restoreRemote()
 
 	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
 	if err != nil {
@@ -141,6 +145,10 @@ func doMCP(ctx context.Context, opts cli.MCPOpts, stdin io.Reader, stdout, _ io.
 	// task-34.2: bridge config.toml [vector] → core env (env-wins; no [vector] → unchanged).
 	restoreVec := setVectorEnv(opts.DataDir)
 	defer restoreVec()
+	// task-37.2 (ADR-042 D3): bridge config.toml [remote] → core CONTEXTFORGE_REMOTE_* env (env-wins;
+	// no [remote] → unchanged; API key never bridged — env-only, security baseline).
+	restoreRemote := setRemoteEnv(opts.DataDir)
+	defer restoreRemote()
 
 	d, err := daemon.Start(ctx, daemon.Options{AutoRestart: true})
 	if err != nil {
@@ -326,5 +334,52 @@ func setVectorEnv(dataDir string) func() {
 	if cfg.Vector.Dim != 0 {
 		setIfAbsent("CONTEXTFORGE_VECTOR_DIM", strconv.Itoa(cfg.Vector.Dim))
 	}
+	return restore
+}
+
+// setRemoteEnv (task-37.2 / ADR-042 D3) best-effort loads config.toml from dataDir and bridges its
+// [remote] section to the spawned core daemon via CONTEXTFORGE_REMOTE_ENDPOINT / _MODEL / _PROVIDER
+// (the core's select_provider "remote" arm reads these), mirroring setVectorEnv / setDataDirEnv. The
+// API key is NEVER handled here — CONTEXTFORGE_REMOTE_API_KEY is supplied only via the user's env and
+// never lives in config.toml (PRD security baseline). ENV WINS: a variable already present is left
+// untouched (explicit env overrides the config file). A missing/malformed config or an empty [remote]
+// exports nothing, so the core's existing env path is unchanged (no [remote] → default provider,
+// ADR-004). Config-load errors are non-fatal. Returns a restore closure.
+func setRemoteEnv(dataDir string) func() {
+	var restores []func()
+	restore := func() {
+		for _, r := range restores {
+			r()
+		}
+	}
+	if dataDir == "" {
+		return restore
+	}
+	cfg, err := config.Load(dataDir)
+	if err != nil {
+		// A MISSING config.toml is the normal default (opt-in [remote] file source) → stay silent;
+		// only a real parse/read failure warns (mirrors setVectorEnv). Best-effort either way.
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "contextforge: remote config load failed (%s): %v\n", dataDir, err)
+		}
+		return restore
+	}
+	setIfAbsent := func(key, val string) {
+		if val == "" {
+			return
+		}
+		if _, had := os.LookupEnv(key); had {
+			return // env wins: an explicit env var overrides the config file
+		}
+		if err := os.Setenv(key, val); err != nil {
+			fmt.Fprintf(os.Stderr, "contextforge: remote env setenv failed (%s): %v\n", key, err)
+		} else {
+			restores = append(restores, func() { _ = os.Unsetenv(key) })
+		}
+	}
+	// API key intentionally NOT bridged — it never lives in config.toml (security baseline).
+	setIfAbsent("CONTEXTFORGE_REMOTE_ENDPOINT", cfg.Remote.Endpoint)
+	setIfAbsent("CONTEXTFORGE_REMOTE_MODEL", cfg.Remote.Model)
+	setIfAbsent("CONTEXTFORGE_REMOTE_PROVIDER", cfg.Remote.Provider)
 	return restore
 }
