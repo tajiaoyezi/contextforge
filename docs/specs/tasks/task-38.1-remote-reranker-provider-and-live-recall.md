@@ -1,6 +1,6 @@
 # Task `38.1`: `remote-reranker-provider-and-live-recall — 构建 RemoteRerankerProvider（core/src/rerank/remote_reranker.rs，feature reranker-remote）+ select_reranker 工厂（core/src/rerank/factory.rs）+ 新增 core/tests/remote_rerank_recall.rs（#![cfg(feature = "reranker-remote")]，env-gated CONTEXTFORGE_RERANKER_API_KEY），首次以「real remote cross-encoder rerank 质量 vs IdentityReranker（no-semantic-signal）基线」方法学在 live remote rerank 端点上量真实 rerank 质量：作者手工标注 query×candidate 集（每 query 一个已知相关文档 + 故意近义干扰，候选喂入时携统一/无相关性先验 score 使 IdentityReranker 的决定性 tie-break ≈ chance）→ 同一标注集上比较 remote cross-encoder vs IdentityReranker → MRR + recall@1 → 先 eprintln 真实测得值再 assert（floor MRR_remote >= 0.70 且 MRR_remote > MRR_identity）；CONTEXTFORGE_RERANKER_API_KEY 未设时 eprintln skip notice + 干净 return（honest-defer，CI 无密钥时 skip 不 fail，ADR-013，api_key 永不记录）；另有非网络契约 + well-formed 守护测试（build_rerank_request_body/parse_rerank_response fixture 契约 + select_reranker 路由 + 标注集 well-formed）无 key 也总跑；0 新 dep（ureq 自 task-22.3 已 optional）/ 0 schema migration / 0 默认构建变更（reranker-remote opt-in，ADR-004/008）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -198,10 +198,10 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（本节真实实测 MRR/recall 数 **待回填** ——设密钥真实 run 跑出后回填，规划阶段绝不预填，ADR-013；ADR-043 D1 ratify 在 task-38.3 closeout）
+**Status**: Done（本节真实实测 MRR/recall 数已回填：主 agent 本机 3 次真实 SiliconFlow run，**remote MRR=1.0000 recall@1=1.0000 全稳定 vs identity MRR=0.4762 recall@1=0.0000，delta_MRR=+0.5238**，ADR-013 真实非预填；ADR-043 D1/D2 已 ratify Accepted @ task-38.3 closeout）
 
 **§9 Verification 预期实证**（impl PR 真实回填；以下 live rerank 质量数 **待回填** ——为主 agent 本机真实 run（SiliconFlow `https://api.siliconflow.cn/v1/rerank` + `Qwen/Qwen3-VL-Reranker-8B`）真实跑出后填，非预填、非合成，ADR-013）：
-- **AC1 真实 live rerank 质量**（**待回填**——主 agent 本机真实 run）：设 `CONTEXTFORGE_RERANKER_ENDPOINT/_MODEL/_API_KEY` 指向 SiliconFlow `Qwen/Qwen3-VL-Reranker-8B` → live rerank quality 测试 PASS，实测 `remote: MRR=<待回填> recall@1=<待回填>` vs `identity: MRR=<待回填> recall@1=<待回填>` → `delta_MRR=<待回填>`；harness 护栏（floor `MRR_remote >= 0.70` + `MRR_remote > MRR_identity`）每次 run 均过。honest-defer 分支：未设 `CONTEXTFORGE_RERANKER_API_KEY` → live 测试干净 SKIP（eprintln "CONTEXTFORGE_RERANKER_API_KEY unset (honest-defer)" + return，**不 fail**）。（可行性证据：de-risk 探针「如何保存配置到文件」对 4 文档 rerank → `config_save relevance_score=0.7356` 排 #1 vs 近义干扰 `config_load=0.0158` 排 #2、无关项 `~0.0006/0.0003`、HTTP 200、约 46x 区分度——证明端点可用 + 排序语义正确；**非**最终 MRR/recall 指标。）
+- **AC1 真实 live rerank 质量**（已回填——主 agent 本机 3 次真实 run）：设 `CONTEXTFORGE_RERANKER_ENDPOINT/_MODEL/_API_KEY` 指向 SiliconFlow `Qwen/Qwen3-VL-Reranker-8B` → live rerank quality 测试 PASS，实测 `remote: MRR=1.0000 recall@1=1.0000`（3 次 run 全稳定）vs `identity: MRR=0.4762 recall@1=0.0000` → `delta_MRR=+0.5238 delta_recall@1=+1.0000`；harness 护栏（floor `MRR_remote >= 0.70` + `MRR_remote > MRR_identity`）每次 run 均过。honest-defer 分支：未设 `CONTEXTFORGE_RERANKER_API_KEY` → live 测试干净 SKIP（eprintln "CONTEXTFORGE_RERANKER_API_KEY unset (honest-defer)" + return，**不 fail**）。（可行性证据：de-risk 探针「如何保存配置到文件」对 4 文档 rerank → `config_save relevance_score=0.7356` 排 #1 vs 近义干扰 `config_load=0.0158` 排 #2、无关项 `~0.0006/0.0003`、HTTP 200、约 46x 区分度——证明端点可用 + 排序语义正确；**非**最终 MRR/recall 指标。）
 - **AC2 非网络契约 + 路由 + well-formed**（无 key 也跑）：契约 + 路由 + well-formed 守护测试 PASS（`build_rerank_request_body`/`parse_rerank_response` fixture + `select_reranker` 路由 + 标注集 doc id 唯一 / 每 relevant ∈ candidates 且 ∈ docs / case 数 >= 12），**不触网**。
 - 默认构建不退化（impl PR 真实回填）：`cargo test --workspace`（remote provider / harness 经 `reranker-remote` feature gate 不进默认构建）；`cargo clippy -p contextforge-core --features reranker-remote --tests -- -D warnings` 0 warning（impl PR 真实回填）。
 - AC3：D2 lint `--touched origin/master`（CI spec-lint 权威，impl PR 真实回填）。

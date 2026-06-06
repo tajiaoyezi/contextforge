@@ -375,6 +375,47 @@ func TestTask343_SmokeV24VectorConfigCompletenessStep(t *testing.T) {
 	}
 }
 
+// TEST-38.3.2 / AC2: smoke v28 adds step 47 — task-38.3 closeout (embedding-remote-reranker-live). Real
+// remote cross-encoder rerank (Qwen3-VL-Reranker-8B via SiliconFlow /v1/rerank) MRR/recall@1 vs the
+// IdentityReranker no-semantic baseline is measured by a local authenticated run (CI honest-defers —
+// remote reranker is a paid external API with no free service container, unlike qdrant), closing
+// ADR-026's embedding-remote-reranker-live defer; task-38.2 also adds the [reranker]→setRerankerEnv
+// config bridge (API-key-env-only) + the first production data-plane opt-in with_reranker wiring. This
+// preserves default behavior (reranker-remote opt-in; default unset = byte-equivalent no rerank), so
+// step 47 is a documentation/status step verifying the default build still scaffolds. Asserts the new
+// [47/47] marker + Phase 38 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask383_SmokeV28RemoteRerankerLiveStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v28 (task-38.3)") {
+		t.Fatalf("console_smoke.sh missing v28 (task-38.3) header block")
+	}
+	for _, marker := range []string{"[47/47]", "embedding-remote-reranker-live", "TEST-38.1.", "TEST-38.2.", "MRR", "remote_rerank_recall"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v28 step 47 must document embedding-remote-reranker-live status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "embedding-provider-remote-live"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v28 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid
