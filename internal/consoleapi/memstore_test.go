@@ -51,7 +51,7 @@ func TestMemMemoryStore_Pin_TogglesIsPinned(t *testing.T) {
 		t.Errorf("fixture-1 preset expected IsPinned=true (ADR-022 D3 fixture-1); got false")
 	}
 
-	if err := s.Pin("mem-fixture-1", false); err != nil {
+	if err := s.Pin("mem-fixture-1", false, ""); err != nil {
 		t.Fatalf("Pin(false): %v", err)
 	}
 	item, _ = s.Get("mem-fixture-1")
@@ -59,7 +59,7 @@ func TestMemMemoryStore_Pin_TogglesIsPinned(t *testing.T) {
 		t.Errorf("after Pin(false) expected IsPinned=false; got true")
 	}
 
-	if err := s.Pin("mem-fixture-1", true); err != nil {
+	if err := s.Pin("mem-fixture-1", true, ""); err != nil {
 		t.Fatalf("Pin(true): %v", err)
 	}
 	item, _ = s.Get("mem-fixture-1")
@@ -314,7 +314,7 @@ func TestMemMemoryStore_EventParity(t *testing.T) {
 	mem.SeedFixtures()
 
 	// 5 successful write ops on a seeded item → 5 events with the expected event_type names.
-	if err := mem.Pin("mem-fixture-2", true); err != nil {
+	if err := mem.Pin("mem-fixture-2", true, ""); err != nil {
 		t.Fatalf("Pin: %v", err)
 	}
 	if err := mem.Deprecate("mem-fixture-2"); err != nil {
@@ -352,7 +352,7 @@ func TestMemMemoryStore_EventParity(t *testing.T) {
 
 	// Error path (missing item) emits nothing + returns ErrNotFound.
 	before := len(evts)
-	if err := mem.Pin("does-not-exist", true); !errors.Is(err, ErrNotFound) {
+	if err := mem.Pin("does-not-exist", true, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Pin(missing) expected ErrNotFound, got %v", err)
 	}
 	after, _ := store.Recent(100, 0)
@@ -363,7 +363,7 @@ func TestMemMemoryStore_EventParity(t *testing.T) {
 	// No sink wired → no panic, ops still succeed (observation != authority).
 	noSink := NewMemMemoryStore()
 	noSink.SeedFixtures()
-	if err := noSink.Pin("mem-fixture-1", false); err != nil {
+	if err := noSink.Pin("mem-fixture-1", false, ""); err != nil {
 		t.Fatalf("Pin without sink should still succeed: %v", err)
 	}
 }

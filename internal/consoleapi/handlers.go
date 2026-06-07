@@ -546,7 +546,12 @@ func handleMemoryPin(deps Deps) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Pin != nil {
 			pin = *body.Pin
 		}
-		if err := deps.Memory.Pin(id, pin); err != nil {
+		// task-40.1 / ADR-045 D1: propagate the calling actor from the X-Actor header (empty when
+		// absent → server falls back to "console-api", byte-equivalent default). The lenient body
+		// contract above (ADR-022 D2) is unchanged. Authenticated identity (verifying the header
+		// against an auth subject) is [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
+		actor := r.Header.Get("X-Actor")
+		if err := deps.Memory.Pin(id, pin, actor); err != nil {
 			mapStorageError(w, err)
 			return
 		}

@@ -966,3 +966,54 @@ func TestDrainTimeoutFromEnv(t *testing.T) {
 		})
 	}
 }
+
+// fakeMemoryServer captures the Pin request so we can assert grpcclient forwards Actor (task-40.1).
+type fakeMemoryServer struct {
+	pb.UnimplementedMemoryServiceServer
+	lastPin *pb.PinMemoryRequest
+}
+
+func (f *fakeMemoryServer) Pin(_ context.Context, req *pb.PinMemoryRequest) (*pb.PinMemoryResponse, error) {
+	f.lastPin = req
+	return &pb.PinMemoryResponse{}, nil
+}
+
+// TEST-40.1.4 (task-40.1 / ADR-045 D1): memoryClient.Pin forwards the actor into
+// pb.PinMemoryRequest.Actor (add-only field 3). Empty actor → empty field (server-side fallback
+// to "console-api"). memory_id / pin are unchanged.
+func TestTask401_GrpcClient_Pin_ForwardsActor(t *testing.T) {
+	fake := &fakeMemoryServer{}
+	addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+		pb.RegisterMemoryServiceServer(s, fake)
+	})
+	defer stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cli, err := New(ctx, addr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	if err := cli.Memory().Pin("m1", true, "alice"); err != nil {
+		t.Fatalf("Pin: %v", err)
+	}
+	if fake.lastPin == nil {
+		t.Fatal("server did not receive Pin")
+	}
+	if got := fake.lastPin.GetActor(); got != "alice" {
+		t.Errorf("expected forwarded Actor %q; got %q", "alice", got)
+	}
+	if fake.lastPin.GetMemoryId() != "m1" || !fake.lastPin.GetPin() {
+		t.Errorf("memory_id/pin drift: %+v", fake.lastPin)
+	}
+
+	// Empty actor → empty proto field (server falls back to "console-api").
+	if err := cli.Memory().Pin("m1", false, ""); err != nil {
+		t.Fatalf("Pin(empty actor): %v", err)
+	}
+	if got := fake.lastPin.GetActor(); got != "" {
+		t.Errorf("expected empty Actor; got %q", got)
+	}
+}

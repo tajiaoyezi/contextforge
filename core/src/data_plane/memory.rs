@@ -223,10 +223,18 @@ impl MemoryService for MemoryServer {
             .as_ref()
             .ok_or_else(|| Status::failed_precondition("memory store not configured"))?;
         // task-27.1 (ADR-032 D1): write the calling actor through to the store.
-        // console-api source is currently "console-api" (real per-user actor
-        // propagation is [SPEC-DEFER:phase-future.memory-actor-propagation]).
+        // task-40.1 (ADR-045 D1): the calling actor is now propagated from console-api
+        // (X-Actor header → PinMemoryRequest.actor → here). Empty actor falls back to
+        // "console-api" (byte-equivalent default for callers that send no header, ADR-004).
+        // Caller-supplied actor is a *declared* identity; verifying it against an
+        // authenticated subject is [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
+        let actor = if req.actor.is_empty() {
+            "console-api"
+        } else {
+            req.actor.as_str()
+        };
         memory
-            .set_pinned_with_actor(&req.memory_id, req.pin, "console-api")
+            .set_pinned_with_actor(&req.memory_id, req.pin, actor)
             .map_err(mem_err_to_status)?;
         self.emit_audit_and_event(
             if req.pin {
@@ -450,6 +458,7 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "p".into(),
                 pin: true,
+                actor: String::new(),
             }))
             .await
             .expect("pin ok");
@@ -472,6 +481,7 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "pa".into(),
                 pin: true,
+                actor: String::new(),
             }))
             .await
             .expect("pin ok");
@@ -494,12 +504,55 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "pa".into(),
                 pin: false,
+                actor: String::new(),
             }))
             .await
             .expect("unpin ok");
         let cleared = mem_store.get("pa").unwrap().unwrap();
         assert_eq!(cleared.pinned_by, "");
         assert_eq!(cleared.pinned_at_unix, 0);
+    }
+
+    // TEST-40.1.1 (task-40.1): proto add-only PinMemoryRequest.actor = field 3. prost wire encoding:
+    // tag = (field_number << 3) | wire_type. actor is field 3, string (wire type 2, length-delimited)
+    // → tag (3<<3)|2 = 26 = 0x1A, then length 1, then 'x' (0x78). Existing memory_id=1 / pin=2 field
+    // numbers are unchanged (add-only, ADR-015 D1).
+    #[test]
+    fn test_pin_actor_proto_field_number() {
+        use prost::Message;
+        let req = PinMemoryRequest {
+            actor: "x".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            req.encode_to_vec(),
+            vec![0x1A, 0x01, 0x78],
+            "actor must be field 3 (length-delimited string)"
+        );
+    }
+
+    // TEST-40.1.2 (task-40.1 / ADR-045 D1): pin RPC propagates a non-empty actor through to the
+    // store's pinned_by. An empty actor falls back to "console-api" (byte-equivalent default,
+    // covered by TEST-27.1.3 above).
+    #[tokio::test]
+    async fn test_memory_server_pin_propagates_actor() {
+        let (server, mem_store) = fresh_server();
+        mem_store
+            .seed_for_tests(vec![mem("pb", "s", "active")])
+            .unwrap();
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "pb".into(),
+                pin: true,
+                actor: "alice".into(),
+            }))
+            .await
+            .expect("pin ok");
+        let stored = mem_store.get("pb").unwrap().unwrap();
+        assert_eq!(
+            stored.pinned_by, "alice",
+            "non-empty actor propagated to pinned_by"
+        );
     }
 
     #[tokio::test]
@@ -561,6 +614,7 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "p".into(),
                 pin: true,
+                actor: String::new(),
             }))
             .await
             .expect("pin ok");
@@ -592,6 +646,7 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "q".into(),
                 pin: true,
+                actor: String::new(),
             }))
             .await
             .unwrap();
@@ -599,6 +654,7 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "q".into(),
                 pin: false,
+                actor: String::new(),
             }))
             .await
             .unwrap();
@@ -660,6 +716,7 @@ mod tests {
             .pin(Request::new(PinMemoryRequest {
                 memory_id: "ns".into(),
                 pin: true,
+                actor: String::new(),
             }))
             .await;
         assert!(resp.is_ok(), "pin should succeed despite SendError");
@@ -701,7 +758,7 @@ mod tests {
         mem_store.seed_for_tests(vec![mem("u", "s", "active")]).unwrap();
         // pin then explicit unpin.
         server
-            .pin(Request::new(PinMemoryRequest { memory_id: "u".into(), pin: true }))
+            .pin(Request::new(PinMemoryRequest { memory_id: "u".into(), pin: true, actor: String::new() }))
             .await
             .unwrap();
         server
