@@ -307,3 +307,54 @@ func TestSetRerankerEnv(t *testing.T) {
 		}
 	})
 }
+
+// TEST-41.2.2 (task-41.2 / ADR-046 D2): setTokenizerEnv bridges [retrieval] tokenizer →
+// CONTEXTFORGE_TOKENIZER (env-wins; empty section exports nothing → core defaults to code_cjk, the
+// ADR-046 flip). Mirrors TestSetRerankerEnv. Tokenizer is NOT a secret (no api-key exclusion needed).
+func TestSetTokenizerEnv(t *testing.T) {
+	writeCfg := func(t *testing.T, r config.RetrievalConfig) string {
+		t.Helper()
+		root := t.TempDir()
+		c := config.DefaultConfig()
+		c.DataDir = root
+		c.Retrieval = r
+		if err := config.Save(root, c); err != nil {
+			t.Fatalf("save config: %v", err)
+		}
+		return root
+	}
+	const key = "CONTEXTFORGE_TOKENIZER"
+
+	t.Run("[retrieval] tokenizer present → CONTEXTFORGE_TOKENIZER exported, restore unsets", func(t *testing.T) {
+		root := writeCfg(t, config.RetrievalConfig{Tokenizer: "default"})
+		os.Unsetenv(key)
+		restore := setTokenizerEnv(root)
+		if got := os.Getenv(key); got != "default" {
+			t.Errorf("tokenizer env = %q want %q (opt-out 回 legacy TEXT)", got, "default")
+		}
+		restore()
+		if _, had := os.LookupEnv(key); had {
+			t.Errorf("restore should unset %s", key)
+		}
+	})
+
+	t.Run("explicit env wins over config file", func(t *testing.T) {
+		root := writeCfg(t, config.RetrievalConfig{Tokenizer: "default"})
+		t.Setenv(key, "code_cjk")
+		restore := setTokenizerEnv(root)
+		defer restore()
+		if got := os.Getenv(key); got != "code_cjk" {
+			t.Errorf("env-wins broken: tokenizer = %q want code_cjk (explicit env must not be overridden)", got)
+		}
+	})
+
+	t.Run("empty [retrieval] → nothing exported (core defaults to code_cjk, the flip)", func(t *testing.T) {
+		root := writeCfg(t, config.RetrievalConfig{})
+		os.Unsetenv(key)
+		restore := setTokenizerEnv(root)
+		defer restore()
+		if _, had := os.LookupEnv(key); had {
+			t.Errorf("empty [retrieval] must export no %s (→ core resolve_tokenizer 默认 code_cjk)", key)
+		}
+	})
+}

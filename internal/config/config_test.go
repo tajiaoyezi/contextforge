@@ -359,6 +359,70 @@ func TestTask382RerankerConfig(t *testing.T) {
 	})
 }
 
+// TEST-41.2.1 (task-41.2 / ADR-046 D2): add-only [retrieval] section Save/Load round-trip; absent
+// section ⇒ zero value Tokenizer="" (backward-compatible → core defaults to code_cjk, the flip);
+// existing [remote]/[embedding]/[vector]/[reranker]/[[collections]] sections are unaffected.
+func TestTask412RetrievalConfig(t *testing.T) {
+	t.Run("TEST-41.2.1: [retrieval] tokenizer 段显式设置后 Save/Load 保真（既有段不受影响）", func(t *testing.T) {
+		dc := DefaultConfig()
+		if dc.Retrieval.Tokenizer != "" {
+			t.Errorf("默认 Retrieval.Tokenizer 应为空 zero value，got %q", dc.Retrieval.Tokenizer)
+		}
+		for _, tok := range []string{"code_cjk", "default", "cjk_segmenter"} {
+			root := t.TempDir()
+			c := dc
+			c.DataDir = root
+			c.Retrieval = RetrievalConfig{Tokenizer: tok}
+			c.Vector = VectorConfig{Backend: "qdrant", Dim: 384}
+			c.Reranker = RerankerConfig{Enabled: true, Provider: "siliconflow"}
+			c.Collections = []CollectionConfig{{ID: "proj_x", Allowlist: []string{"/home/u/proj_x"}}}
+			if err := Save(root, c); err != nil {
+				t.Fatalf("Save error = %v", err)
+			}
+			got, err := Load(root)
+			if err != nil {
+				t.Fatalf("Load error = %v", err)
+			}
+			if got.Retrieval.Tokenizer != tok {
+				t.Errorf("[retrieval] tokenizer 未保真: got %q want %q", got.Retrieval.Tokenizer, tok)
+			}
+			if got.Vector.Backend != "qdrant" || got.Vector.Dim != 384 {
+				t.Errorf("加 [retrieval] 后 [vector] 段受影响: %+v", got.Vector)
+			}
+			if !got.Reranker.Enabled || got.Reranker.Provider != "siliconflow" {
+				t.Errorf("加 [retrieval] 后 [reranker] 段受影响: %+v", got.Reranker)
+			}
+			if len(got.Collections) != 1 || got.Collections[0].ID != "proj_x" {
+				t.Errorf("加 [retrieval] 后 [[collections]] 段受影响: %+v", got.Collections)
+			}
+		}
+	})
+
+	t.Run("TEST-41.2.1: 不含 [retrieval] 段的旧 config 仍合法加载（向后兼容 zero value）", func(t *testing.T) {
+		root := t.TempDir()
+		legacy := "schema_version = \"0.1\"\n" +
+			"data_dir = " + tomlQuote(root) + "\n" +
+			"allow_denylist_override = false\n" +
+			"denylist = []\n" +
+			"\n[vector]\n" +
+			"backend = \"qdrant\"\n" +
+			"dim = 384\n"
+		if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte(legacy), 0o600); err != nil {
+			t.Fatalf("write legacy config: %v", err)
+		}
+		got, err := Load(root)
+		if err != nil {
+			t.Fatalf("Load legacy (no [retrieval]) error = %v", err)
+		}
+		if got.Retrieval.Tokenizer != "" {
+			t.Errorf("不含 [retrieval] 段应得 zero value（→ core 默认 code_cjk），got %q", got.Retrieval.Tokenizer)
+		}
+		if got.Vector.Backend != "qdrant" || got.Vector.Dim != 384 {
+			t.Errorf("不含 [retrieval] 段的既有 [vector] 字段须保真，got %+v", got.Vector)
+		}
+	})
+}
+
 // TEST-34.2.1 (task-34.2 / ADR-039 D2): add-only [vector] section Save/Load round-trip; absent
 // section ⇒ zero value (backward-compatible); existing [remote]/[embedding]/[[collections]]
 // sections are unaffected by adding [vector].
