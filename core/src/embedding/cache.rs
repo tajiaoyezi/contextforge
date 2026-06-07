@@ -166,6 +166,24 @@ impl CachingEmbeddingProvider {
             )
             .optional()
             .map_err(to_backend_err)?;
+        // task-40.2 (ADR-045 D2): access-order LRU. On a hit, re-write the row (same bytes) so its
+        // implicit rowid jumps to the table tail — turning `sqlite_put`'s rowid-ordered eviction
+        // (task-33.1, which was insert-order FIFO) into least-recently-USED. Reuses the implicit
+        // rowid (0 schema migration; corrects the Phase-33 assumption that true-LRU needs a
+        // created_at column), mirroring the Go memstore move-to-front-on-hit (task-33.2). Only when
+        // bounded (l2_cap > 0): an unbounded cache never evicts, so a bump would be pure write
+        // amplification with no ordering benefit. With_sqlite has no production call site
+        // (opt-in-path, Phase 33 D1), so this is a semantic completion, not a live fix (ADR-013).
+        if self.l2_cap > 0 {
+            if let Some(ref b) = blob {
+                conn.execute(
+                    "INSERT OR REPLACE INTO embedding_cache (content_hash, provider, dim, vector) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![key, self.inner.name(), self.inner.dim() as i64, b],
+                )
+                .map_err(to_backend_err)?;
+            }
+        }
         Ok(blob.map(|b| bytes_to_vec(&b)))
     }
 
@@ -451,6 +469,131 @@ mod tests {
         drop(conn);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // TEST-40.2.1 — AC1 (task-40.2): L2 access-order LRU via hit-bump. cap=2: seed a,b; a hit bumps
+    // a's rowid to the tail (most-recently-used); then put c (over cap) evicts the LEAST-recently-
+    // USED row (b) while a survives. Under the Phase-33 insert-order FIFO (no hit-bump) c's insert
+    // would have evicted a instead. Fresh-L1 providers over the same file isolate the L2 layer.
+    #[test]
+    fn test_40_2_1_l2_hit_bump_evicts_lru() {
+        let dir = std::env::temp_dir().join(format!("cf-l2lru-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("l2lru.sqlite");
+
+        // Seed a, b into L2 (cap=2).
+        let counter1 = Arc::new(CountingProvider::new(384));
+        let cache1 =
+            CachingEmbeddingProvider::with_sqlite_capacity(counter1.clone(), &db, 2).unwrap();
+        cache1.embed(&[s("a")]).unwrap();
+        cache1.embed(&[s("b")]).unwrap();
+
+        // Fresh-L1 provider over the same file: embed("a") → L2 hit, bumps a's rowid to the tail.
+        let counter2 = Arc::new(CountingProvider::new(384));
+        let cache2 =
+            CachingEmbeddingProvider::with_sqlite_capacity(counter2.clone(), &db, 2).unwrap();
+        cache2.embed(&[s("a")]).unwrap();
+        assert_eq!(counter2.embedded(), 0, "'a' is an L2 hit (inner not called)");
+        // embed("c") → miss → inner called → put over cap → evict the LRU row = b (a was just used).
+        cache2.embed(&[s("c")]).unwrap();
+        assert_eq!(counter2.embedded(), 1, "'c' is an L2 miss → inner called once");
+
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM embedding_cache", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2, "L2 row count bounded at cap");
+        drop(conn);
+
+        // Fresh-L1 provider: a survived (LRU kept the used row), b was evicted.
+        let counter3 = Arc::new(CountingProvider::new(384));
+        let cache3 =
+            CachingEmbeddingProvider::with_sqlite_capacity(counter3.clone(), &db, 2).unwrap();
+        cache3.embed(&[s("a")]).unwrap();
+        assert_eq!(
+            counter3.embedded(),
+            0,
+            "recently-used 'a' survived LRU eviction → L2 hit"
+        );
+        cache3.embed(&[s("b")]).unwrap();
+        assert_eq!(
+            counter3.embedded(),
+            1,
+            "least-recently-used 'b' was evicted → L2 miss"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // TEST-40.2.2 — AC2 (task-40.2): the hit-bump is gated on a finite cap and does not change
+    // results. (a) cap=2: a hit re-orders the implicit rowid (a moves behind b). (b) cap==0
+    // (unbounded): a hit does NOT bump (insert order preserved, no write amplification). The
+    // returned vector is identical either way (the bump re-writes the same bytes), so the existing
+    // L2 round-trip behavior is unchanged (ADR-004).
+    #[test]
+    fn test_40_2_2_cap_gates_hit_bump_and_keeps_results() {
+        let key_a = CachingEmbeddingProvider::key("a");
+        let key_b = CachingEmbeddingProvider::key("b");
+
+        let order = |db: &std::path::Path| -> Vec<String> {
+            let conn = rusqlite::Connection::open(db).unwrap();
+            let mut stmt = conn
+                .prepare("SELECT content_hash FROM embedding_cache ORDER BY rowid")
+                .unwrap();
+            let rows: Vec<String> = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect();
+            rows
+        };
+
+        // (a) bounded cap=2: a hit bumps 'a' behind 'b'.
+        let dirb = std::env::temp_dir().join(format!("cf-l2bump-{}", std::process::id()));
+        std::fs::create_dir_all(&dirb).unwrap();
+        let dbb = dirb.join("b.sqlite");
+        let c1 = Arc::new(CountingProvider::new(384));
+        let cache_b = CachingEmbeddingProvider::with_sqlite_capacity(c1, &dbb, 2).unwrap();
+        cache_b.embed(&[s("a")]).unwrap();
+        cache_b.embed(&[s("b")]).unwrap();
+        assert_eq!(
+            order(&dbb),
+            vec![key_a.clone(), key_b.clone()],
+            "insert order before any hit"
+        );
+        // fresh-L1 provider so embed("a") really reads L2 (and bumps).
+        let c2 = Arc::new(CountingProvider::new(384));
+        let cache_b2 = CachingEmbeddingProvider::with_sqlite_capacity(c2, &dbb, 2).unwrap();
+        let got = cache_b2.embed(&[s("a")]).unwrap();
+        assert_eq!(
+            order(&dbb),
+            vec![key_b.clone(), key_a.clone()],
+            "cap>0: hit bumps 'a' to the tail"
+        );
+        assert_eq!(
+            got.len(),
+            1,
+            "hit still returns the vector (bump re-writes identical bytes)"
+        );
+        let _ = std::fs::remove_dir_all(&dirb);
+
+        // (b) unbounded cap==0: a hit does NOT bump (insert order preserved).
+        let diru = std::env::temp_dir().join(format!("cf-l2nob-{}", std::process::id()));
+        std::fs::create_dir_all(&diru).unwrap();
+        let dbu = diru.join("u.sqlite");
+        let c3 = Arc::new(CountingProvider::new(384));
+        let cache_u = CachingEmbeddingProvider::with_sqlite_capacity(c3, &dbu, 0).unwrap();
+        cache_u.embed(&[s("a")]).unwrap();
+        cache_u.embed(&[s("b")]).unwrap();
+        let c4 = Arc::new(CountingProvider::new(384));
+        let cache_u2 = CachingEmbeddingProvider::with_sqlite_capacity(c4, &dbu, 0).unwrap();
+        cache_u2.embed(&[s("a")]).unwrap();
+        assert_eq!(
+            order(&dbu),
+            vec![key_a, key_b],
+            "cap==0: hit does NOT bump (insert order preserved)"
+        );
+        let _ = std::fs::remove_dir_all(&diru);
     }
 
     // TEST-22.2.4 — AC4: dim()/name() passthrough + usable as Arc<dyn EmbeddingProvider>.
