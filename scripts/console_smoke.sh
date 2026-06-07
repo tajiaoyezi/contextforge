@@ -766,12 +766,23 @@ if [ "$MODE" = "real" ]; then
   # transient core per query (searchViaDaemon) and issues BM25 + semantic (req.Semantic) + hybrid
   # (req.Hybrid → daemon search_hybrid, task-21.1) + reranked (eval-layer deterministic
   # IdentityReranker over the hybrid top-k, ADR-026 D2) passes, summarizing via SummarizePasses +
-  # MeetsRecallGate. ADR-013: assert the multi-path report SHAPE + gate line + exit 0 ONLY — the
-  # transient index is empty, so recall is not meaningful; real hybrid/rerank recall vs the baseline
-  # comes from the dogfood eval (docs/spikes/phase-21-hybrid-recall.md). Per-result
-  # retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
-  # (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path).
-  if eval_out=$("$GO_BIN" eval run --semantic --hybrid --rerank --collection=default 2>"$STAGING/eval.err"); then
+  # MeetsRecallGate. ADR-013: assert the multi-path report SHAPE + gate line + exit 0 ONLY — recall is
+  # not meaningful here (the built-in golden questions don't match this smoke's small markdown fixture);
+  # real hybrid/rerank recall vs the baseline comes from the dogfood eval
+  # (docs/spikes/phase-21-hybrid-recall.md). Per-result retrieval_method="hybrid" + hybrid_score
+  # provenance is asserted by the Rust dispatch test (core/src/server.rs
+  # test_21_1_hybrid_dispatches_fusion_path).
+  #
+  # Self-contained: searchViaDaemon's transient daemon reads CONTEXTFORGE_DATA_DIR — without it the
+  # daemon defaults to ~/.contextforge and the query hits a non-existent "default" collection, so on a
+  # clean checkout the step died with "collection not found: default" (the prior `--collection=default`
+  # silently depended on a pre-existing dogfood collection). Point it at a COPY of THIS smoke's
+  # already-indexed data dir (the $WS_ID collection from steps 6-7) so it queries a real existing
+  # collection. The copy (vs the live $DATA_DIR still open by the main daemon) avoids any
+  # concurrent index-open contention.
+  EVAL_DATA_DIR="$STAGING/cf-eval-data"
+  cp -r "$DATA_DIR" "$EVAL_DATA_DIR"
+  if eval_out=$(CONTEXTFORGE_DATA_DIR="$EVAL_DATA_DIR" "$GO_BIN" eval run --semantic --hybrid --rerank --collection="$WS_ID" 2>"$STAGING/eval.err"); then
     echo "$eval_out" | grep -q '^total=' \
       && echo "$eval_out" | grep -q 'semantic_recall_at_10=' \
       && echo "$eval_out" | grep -q 'hybrid_recall_at_10=' \
@@ -1191,7 +1202,11 @@ echo "  [49/49] task-40.3 governance-debt-cleanup-3: memory pin actor propagatio
 # TEST-40.1.1 (prost wire-tag actor=3) / TEST-40.1.2 (Rust pin() propagate / empty-fallback) / TEST-40.1.3
 # (Go handleMemoryPin reads X-Actor) / TEST-40.1.4 (grpcclient fills Actor) / TEST-40.2.1 (LRU evicts LRU
 # not FIFO) / TEST-40.2.2 (cap gates the bump + results unchanged) — all in the default cargo/go test gate.
-if [ "$MODE" = "real" ]; then
+# The REAL assertion pins the sqlite3-seeded mem-seed-1 (step 13), so it is gated on sqlite3 exactly
+# like the other seeded-id memory steps (15-18 / 28). Without sqlite3 the store is empty (step 13
+# skips the seed) and an unconditional pin of mem-seed-1 would 404 — so SKIP honestly (the X-Actor →
+# pinned_by propagation is also covered by TEST-40.1.3 in the default Go test gate).
+if [ "$MODE" = "real" ] && command -v sqlite3 >/dev/null 2>&1; then
   pin_code=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/pin" \
     -H 'Content-Type: application/json' -H 'X-Actor: smoke-actor' -d '{"pin":true}' || true)
   [ "$pin_code" = "204" ] \
@@ -1201,7 +1216,7 @@ if [ "$MODE" = "real" ]; then
     || { echo "FAIL: X-Actor header not propagated to pinned_by (body: $pin_body)" >&2; exit 1; }
   echo "    → X-Actor header propagated end-to-end to pinned_by=\"smoke-actor\" ✅ (caller-propagation; authenticated identity honest-deferred; L2 access-order LRU verified via TEST-40.2.* in the default test gate)"
 else
-  echo "    SKIP ($MODE mode — memory pin actor propagation + L2 access-order LRU validated via Go/Rust unit tests TEST-40.1.* / TEST-40.2.*; needs the real daemon)"
+  echo "    SKIP ($MODE mode or sqlite3 unavailable — memory pin actor propagation + L2 access-order LRU validated via Go/Rust unit tests TEST-40.1.* / TEST-40.2.*; REAL path needs the sqlite3-seeded mem-seed-1 from step 13)"
 fi
 
 echo "  [50/50] task-41.3 tokenizer-default-on: production indexing default flips to code_cjk (camelCase subword 'runner' of JobRunner hits via the code/CJK analyzer; legacy TEXT keeps 'jobrunner' single token -> miss) + opt-out via CONTEXTFORGE_TOKENIZER / [retrieval] tokenizer - ADR-029/035 tokenizer-default-on defer closed (Phase 41)"
@@ -1266,12 +1281,14 @@ if [ "$MODE" = "real" ] && [ "${status:-}" = "succeeded" ]; then
   # The index-job-real fixture is all-markdown (allowlist *.md), so 'runner' (of JobRunner,
   # documented in the .md files) classifies to source_type="doc". A REAL filter keeps it for
   # ?source_type=doc and drops it for ?source_type=code — distinguishing (a no-op would return it
-  # for BOTH buckets). Matching bucket (doc) keeps:
+  # for BOTH buckets). Detect a REAL hit via a non-empty chunk id ("chunk_id":"chk…) — the console-api
+  # SearchResult always serializes an empty "chunk_id":"" on a 0-hit result, so a bare grep '"chunk_id"'
+  # false-matches an empty (filtered) response. Matching bucket (doc) keeps:
   st_doc=$(curl -sf -X POST "$BASE/v1/search?source_type=doc" \
     -H 'Content-Type: application/json' \
     -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
     || { echo "FAIL: POST /v1/search?source_type=doc did not return 2xx" >&2; exit 1; }
-  echo "$st_doc" | grep -q '"chunk_id"' \
+  echo "$st_doc" | grep -q '"chunk_id":"chk' \
     || { echo "FAIL: source_type=doc returned no chunk for 'runner' (JobRunner is documented in .md = doc; the filter dropped a matching hit?) (body: $st_doc)" >&2; exit 1; }
   echo "$st_doc" | grep -q '"source_file_type":"doc"' \
     || { echo "FAIL: source_type=doc hit missing source_file_type=doc provenance (body: $st_doc)" >&2; exit 1; }
@@ -1280,7 +1297,7 @@ if [ "$MODE" = "real" ] && [ "${status:-}" = "succeeded" ]; then
     -H 'Content-Type: application/json' \
     -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
     || { echo "FAIL: POST /v1/search?source_type=code did not return 2xx" >&2; exit 1; }
-  if echo "$st_code" | grep -q '"chunk_id"'; then
+  if echo "$st_code" | grep -q '"chunk_id":"chk'; then
     echo "FAIL: source_type=code still returned the all-markdown 'runner' chunk — source_type is a no-op, not a real filter (body: $st_code)" >&2; exit 1
   fi
   echo "    → source_type=doc keeps the JobRunner doc hit (source_file_type=doc) + source_type=code filters it out ✅ (all-markdown fixture; real chunk filter; Phase 32 no-op superseded; TEST-42.1.* / TEST-42.2.* in the default gate)"
