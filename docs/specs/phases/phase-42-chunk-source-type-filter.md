@@ -39,7 +39,7 @@ v0.34.0 ship 后，ContextForge 把 chunk 检索的 `source_type` 过滤从 Phas
 - `search()`（BM25）加 source_type post-filter：`if !opts.filters.source_type.is_empty() && !opts.filters.source_type.iter().any(|s| s == derived_source_type) { continue; }`（镜像 `:386` language post-filter；空 source_type filter → 不过滤 → byte-equiv）。
 - `agent_scope` 续 **documented no-op**：窄化 `:321-336` 既有 no-op 块——仅 `!opts.filters.agent_scope.is_empty()` 时 stderr note「agent_scope 是 memory 层 filter、非 chunk 检索维度」（source_type 不再 no-op）。
 - **0 schema migration**：source_type 由 file_path 在 query 时确定性派生（与 `language` 同源信号），chunks/files/provenance 三表 §5.3 **保持 FROZEN**——比加列 + importer 打标 + 既有 chunk backfill 更 surgical 且等价正确（确定性派生 == 存储值）。
-- **真实行为（ADR-013，不预填）**：source_type 过滤的真实命中行为（混合扩展名 fixture：`?source_type=doc` 仅返 .md / `?source_type=code` 仅返 .rs / 空 filter 返全部）由 task-42.1 单测 + task-42.3 smoke 实测断言、真实跑出后记录（非预填）。
+- **真实行为（ADR-013，不预填）**：source_type 过滤的真实命中行为由 task-42.1 单测（TEST-42.1.2 混合扩展名 fixture `a.rs`+`b.md`+`c.toml`：`source_type=[doc]` 仅返 .md / `[code]` 仅返 .rs / 空 filter 返全部）+ task-42.3 smoke（复用既有 `index-job-real` **全 markdown** fixture：`runner`/JobRunner 文档于 .md → source_type=doc → `?source_type=doc` 保留 doc hit / `?source_type=code` 过滤掉它）实测断言、真实跑出后记录（非预填）。
 
 ### 42.2 console-api source_type 请求侧 forward（console-api-source-type-forward，🟢）
 
@@ -75,7 +75,7 @@ v0.34.0 ship 后，ContextForge 把 chunk 检索的 `source_type` 过滤从 Phas
 
 ### 42.3 closeout（task-42.3）
 
-- 修改 `scripts/console_smoke.sh`——banner v31→v32 + v32 changelog block + 新 step [51/51]（REAL 模式：索引含 .rs + .md 混合 fixture、`POST /v1/search?source_type=doc` → 仅返 .md chunk（`source_file_type="doc"`）、`?source_type=code` → 仅返 .rs chunk，证真实过滤；不可达则 doc/status；current Phase 41 [50/50] → Phase 42 顺位 [51/51]）
+- 修改 `scripts/console_smoke.sh`——banner v31→v32 + v32 changelog block + 新 step [51/51]（REAL 模式：复用既有 `index-job-real` **全 markdown** fixture（`runner`/JobRunner 文档于 .md → source_type=doc），`POST /v1/search?source_type=doc` → 保留 doc chunk（`source_file_type="doc"`）、`?source_type=code` → 过滤掉它（fixture 无 code 文件），证真实过滤（no-op 会两者皆返回）；不可达则 doc/status；current Phase 41 [50/50] → Phase 42 顺位 [51/51]）
 - 修改 `internal/cli/smoke_syntax_test.go`——新 `TestTask423`（镜像 `TestTask413`）断言 [51/51] + markers（chunk-source-type-filter / source_type / classify / TEST-42.1. / TEST-42.2.）+ no-regression（denominators [37/37]..[50/50] 不溯改，ADR-014 D5）
 - 新增 `docs/releases/v0.35.0-evidence.md` + `v0.35.0-artifacts.md`（tag SHA / run id / digest 为 angle-bracket backfill marker）+ `README.md` v0.35 段 + `RELEASE_NOTES.md` v0.35.0 段（含「source_type 过滤落地 + `?source_type=` REST + 空 filter byte-equiv + agent_scope 续 memory 层 no-op」段）
 - 修改 `docs/decisions/adr-047-chunk-source-type-filter.md`——Status Proposed→Accepted（逐 D 如实）+ 新 `## Ratification（v0.35.0 / task-42.3）`
@@ -111,7 +111,7 @@ v0.34.0 ship 后，ContextForge 把 chunk 检索的 `source_type` 过滤从 Phas
 - [x] **AC3**（agent_scope honest-defer + 0-dep/0-migration 守线 + v0.35.0 closeout）: `agent_scope` 据 grounding 为 memory 层概念（`memory_items` 0013 / `ListMemory` scope）续 documented no-op + `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`（不伪造，ADR-013）；0 新依赖（`classify_source_type` 纯 std）+ 0 网络 + 0 schema migration（§5.3 FROZEN）；空 source_type filter byte-equiv（ADR-004）；honest-defer：`chunk-agent-scope-filter`（须 ingest-path schema）/ `chunk-importer-source-type-tagging`（须 §5.3 解冻）/ `semantic-path-source-type-filter` 据实保持延后；v0.35.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ `scripts/console_smoke.sh` v32[51/51] + `internal/cli/smoke_syntax_test.go` `TestTask423`（no-regression [37/37]..[50/50]）+ ADR-047 据真实测试 ratify + ADR-037 add-only Amendment + roadmap §3.24/§4 add-only + phase §6 闭合 — verified by **TEST-42.3.1**（smoke v32[51/51] + smoke_syntax_test + ADR-047 ratify + roadmap/adapter add-only + phase §6 闭合）
 - [x] **AC4**（ADR-014 cross-validation gate）: ADR-014 D1-D5（**第三十三次**激活）全通过 — D1 mapping + D2 lint `bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中 + D3 verified-by + D4 自治 + D5 历史 Phase 1-41 不溯改（ADR 改动 add-only Amendment）— verified by task-42.3 closeout PR body + 各 task LAST TEST（TEST-42.1.3 / TEST-42.2.3 / TEST-42.3.2）
 
-**端到端 smoke（C1 集成兜底）**：(1) 索引 .rs + .md 混合 fixture → `POST /v1/search?source_type=doc` 仅返 .md chunk（`source_file_type="doc"`）/ `?source_type=code` 仅返 .rs / 空 filter 返全部（byte-equiv）全 PASS（真实过滤据实标注）；(2) console `?source_type=` 请求侧 forward（query param + body 并集 → 下游 + 响应 source_file_type 真实值）全 PASS；(3) v0.35.0 收口 + agent_scope honest-defer（memory 层据实标注）+ 0-dep/0-migration 守线全 PASS。
+**端到端 smoke（C1 集成兜底）**：(1) 复用既有 `index-job-real` 全 markdown fixture（`runner`/JobRunner 文档于 .md → source_type=doc）→ `POST /v1/search?source_type=doc` 保留 doc chunk（`source_file_type="doc"`）/ `?source_type=code` 过滤掉它（fixture 无 code 文件）/ 空 filter 返全部（byte-equiv）全 PASS（真实过滤据实标注，no-op 会两者皆返回）；(2) console `?source_type=` 请求侧 forward（query param + body 并集 → 下游 + 响应 source_file_type 真实值）全 PASS；(3) v0.35.0 收口 + agent_scope honest-defer（memory 层据实标注）+ 0-dep/0-migration 守线全 PASS。
 
 ## 7. 阶段级风险
 

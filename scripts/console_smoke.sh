@@ -1242,7 +1242,7 @@ else
   echo "    SKIP ($MODE mode — production tokenizer default flip (code_cjk) + [retrieval] config bridge validated via Rust/Go unit tests TEST-41.1.* / TEST-41.2.*; needs the real daemon + indexed fixture)"
 fi
 
-echo "  [51/51] task-42.3 chunk-source-type-filter: POST /v1/search?source_type= filters chunk results by the derived source_type bucket (code/doc/config/other from file_path); source_type=code keeps the JobRunner code hit (source_file_type=code), source_type=doc filters it out (a REAL chunk filter, not the Phase 32 no-op) - ADR-037 source_type no-op superseded (Phase 42)"
+echo "  [51/51] task-42.3 chunk-source-type-filter: POST /v1/search?source_type= filters chunk results by the derived source_type bucket (code/doc/config/other from file_path); the index-job-real fixture is all-markdown so 'runner' (of JobRunner, documented in .md) is a doc hit: source_type=doc keeps it (source_file_type=doc), source_type=code filters it out (a REAL chunk filter, not the Phase 32 no-op) - ADR-037 source_type no-op superseded (Phase 42)"
 # v32 (task-42.3): Phase 42 (chunk-source-type-filter) lands the chunk source_type filter that Phase 32
 # (task-32.3 / ADR-037) honestly recorded as a documented no-op ([SPEC-DEFER:phase-future.chunk-source-type-filter]).
 # Grounding: source_type is DERIVABLE from file_path (task-42.1 core/src/retriever/mod.rs classify_source_type,
@@ -1263,22 +1263,27 @@ echo "  [51/51] task-42.3 chunk-source-type-filter: POST /v1/search?source_type=
 # (prost wire-tag field 9) / TEST-42.2.2 (handleSearch union + grpcclient forward + data_plane post-filter) — all
 # in the default cargo/go test gate (no honest-defer; the filter has no external dep).
 if [ "$MODE" = "real" ] && [ "${status:-}" = "succeeded" ]; then
-  st_code=$(curl -sf -X POST "$BASE/v1/search?source_type=code" \
-    -H 'Content-Type: application/json' \
-    -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
-    || { echo "FAIL: POST /v1/search?source_type=code did not return 2xx" >&2; exit 1; }
-  echo "$st_code" | grep -q '"chunk_id"' \
-    || { echo "FAIL: source_type=code returned no chunk for 'runner' (JobRunner is code; the filter dropped a matching hit?) (body: $st_code)" >&2; exit 1; }
-  echo "$st_code" | grep -q '"source_file_type":"code"' \
-    || { echo "FAIL: source_type=code hit missing source_file_type=code provenance (body: $st_code)" >&2; exit 1; }
+  # The index-job-real fixture is all-markdown (allowlist *.md), so 'runner' (of JobRunner,
+  # documented in the .md files) classifies to source_type="doc". A REAL filter keeps it for
+  # ?source_type=doc and drops it for ?source_type=code — distinguishing (a no-op would return it
+  # for BOTH buckets). Matching bucket (doc) keeps:
   st_doc=$(curl -sf -X POST "$BASE/v1/search?source_type=doc" \
     -H 'Content-Type: application/json' \
     -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
     || { echo "FAIL: POST /v1/search?source_type=doc did not return 2xx" >&2; exit 1; }
-  if echo "$st_doc" | grep -q '"chunk_id"'; then
-    echo "FAIL: source_type=doc still returned the JobRunner code chunk — source_type is a no-op, not a real filter (body: $st_doc)" >&2; exit 1
+  echo "$st_doc" | grep -q '"chunk_id"' \
+    || { echo "FAIL: source_type=doc returned no chunk for 'runner' (JobRunner is documented in .md = doc; the filter dropped a matching hit?) (body: $st_doc)" >&2; exit 1; }
+  echo "$st_doc" | grep -q '"source_file_type":"doc"' \
+    || { echo "FAIL: source_type=doc hit missing source_file_type=doc provenance (body: $st_doc)" >&2; exit 1; }
+  # Non-matching bucket (code) filters it out (the fixture has no code files):
+  st_code=$(curl -sf -X POST "$BASE/v1/search?source_type=code" \
+    -H 'Content-Type: application/json' \
+    -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
+    || { echo "FAIL: POST /v1/search?source_type=code did not return 2xx" >&2; exit 1; }
+  if echo "$st_code" | grep -q '"chunk_id"'; then
+    echo "FAIL: source_type=code still returned the all-markdown 'runner' chunk — source_type is a no-op, not a real filter (body: $st_code)" >&2; exit 1
   fi
-  echo "    → source_type=code keeps the JobRunner code hit (source_file_type=code) + source_type=doc filters it out ✅ (real chunk filter; Phase 32 no-op superseded; TEST-42.1.* / TEST-42.2.* in the default gate)"
+  echo "    → source_type=doc keeps the JobRunner doc hit (source_file_type=doc) + source_type=code filters it out ✅ (all-markdown fixture; real chunk filter; Phase 32 no-op superseded; TEST-42.1.* / TEST-42.2.* in the default gate)"
 else
   echo "    SKIP ($MODE mode — chunk source_type filter (derive + post-filter + console forward) validated via Rust/Go unit tests TEST-42.1.* / TEST-42.2.*; needs the real daemon + indexed fixture)"
 fi
