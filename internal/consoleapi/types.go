@@ -121,7 +121,7 @@ type MemoryListFilter struct {
 type MemoryClient interface {
 	List(filter MemoryListFilter) ([]contractv1.MemoryItem, error)
 	Get(memoryID string) (*contractv1.MemoryItem, error) // nil if not found
-	Pin(memoryID string, pin bool) error                 // pin=false = unpin (toggle)
+	Pin(memoryID string, pin bool, actor string) error   // pin=false = unpin (toggle); actor="" → server falls back to "console-api" (task-40.1)
 	Deprecate(memoryID string) error
 	SoftDelete(memoryID string) error
 	// task-27.2 (ADR-032 D2, add-only): explicit Unpin (non-destructive) +

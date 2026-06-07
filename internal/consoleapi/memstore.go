@@ -650,7 +650,12 @@ func (s *MemMemoryStore) Get(id string) (*contractv1.MemoryItem, error) {
 	return nil, nil
 }
 
-func (s *MemMemoryStore) Pin(id string, pin bool) error {
+// task-40.1: actor carries the calling actor through (X-Actor header → here). The in-memory
+// fallback store does not persist a pinned_by column (the real first-class actor field lives on
+// the SqliteMemoryStore via the gRPC data plane, task-27.1 / ADR-032 D1), so actor is accepted
+// for interface parity and is a no-op here; the real propagation path is grpcclient.Pin.
+func (s *MemMemoryStore) Pin(id string, pin bool, actor string) error {
+	_ = actor
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[id]

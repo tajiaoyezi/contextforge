@@ -336,6 +336,11 @@ message GetMemoryRequest {
 message PinMemoryRequest {
   string memory_id = 1;
   bool pin = 2;
+  // task-40.1 / ADR-045 D1 (add-only, 推进 ADR-032 §D1 [SPEC-DEFER:phase-future.memory-actor-propagation]):
+  // 调用方 actor 透传——console-api 从 X-Actor header 读取并填入；空串 → 服务端回落
+  // "console-api"（默认 byte-equivalent）。认证身份（校验为已认证 auth subject）须 console-api
+  // 鉴权层 [SPEC-DEFER:phase-future.memory-actor-authenticated-identity]。
+  string actor = 3;
 }
 
 message PinMemoryResponse {}
