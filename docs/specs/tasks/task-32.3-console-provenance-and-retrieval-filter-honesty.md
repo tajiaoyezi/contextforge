@@ -1,6 +1,6 @@
 # Task `32.3`: `console-provenance-and-retrieval-filter-honesty — console_data_plane SearchResultItem add-only vector_score=16（parity v1 search proto vector_score=13）携带 provenance + retrieval-filter 契约诚实化（mod.rs:325 误导性 WARN → 准确 no-op 契约 + 新 SPEC-DEFER backlog）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -88,9 +88,9 @@ pass bar：A 经 proto add-only 编译 + 控制面 wiring 单测验证（🟢，
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-32.3.1 | console_data_plane `SearchResultItem` add-only `vector_score = 16`（parity v1 `RetrievalResult.vector_score = 13`）+ `protoToSearchResult` 携带 `VectorScore`：语义命中透出真实值、BM25 命中为 0、既有字段不动、旧 client 兼容 | `proto/contextforge/console_data_plane/v1/console_data_plane.proto` + `internal/consoleapi/grpcclient/grpcclient.go`（同源 test `*_test.go`） | Planned |
-| TEST-32.3.2 | retrieval-filter 契约诚实化：默认空 filter 结果与改前逐条一致；非空 source_type/agent_scope filter 准确 no-op（与不传一致）；WARN 措辞诚实（不含「待落地 / 待 reverse-fill」暗示）+ 新 backlog [SPEC-DEFER:phase-future.chunk-source-type-filter] + [SPEC-DEFER:phase-future.chunk-agent-scope-filter] | `core/src/retriever/mod.rs`（同源 test） | Planned |
-| TEST-32.3.3 (LAST) | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-32.3.1 | console_data_plane `SearchResultItem` add-only `vector_score = 16`（parity v1 `RetrievalResult.vector_score = 13`）+ `protoToSearchResult` 携带 `VectorScore`：语义命中透出真实值、BM25 命中为 0、既有字段不动、旧 client 兼容 | `proto/contextforge/console_data_plane/v1/console_data_plane.proto` + `internal/consoleapi/grpcclient/grpcclient.go`（同源 test `internal/consoleapi/grpcclient/grpcclient_test.go::TestTask323_ProtoToSearchResult_CarriesVectorScore`） | Done |
+| TEST-32.3.2 | retrieval-filter 契约诚实化：默认空 filter 结果与改前逐条一致；非空 source_type/agent_scope filter 准确 no-op（与不传一致）；WARN 措辞诚实（不含「待落地 / 待 reverse-fill」暗示）+ 新 backlog [SPEC-DEFER:phase-future.chunk-source-type-filter] + [SPEC-DEFER:phase-future.chunk-agent-scope-filter] | `core/src/retriever/mod.rs`（同源 test `test_32_3_2_source_type_agent_scope_filter_is_noop`） | Done |
+| TEST-32.3.3 (LAST) | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -125,12 +125,14 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`buf generate` + `go test ./internal/consoleapi/grpcclient/ -run TestProtoToSearchResult` —— console_data_plane `SearchResultItem` add-only `vector_score = 16`（parity v1 `RetrievalResult.vector_score = 13`）+ `protoToSearchResult` 携带 `VectorScore`（语义命中真实值 / BM25 命中为 0），既有字段不动、旧 client 兼容；真实测试通过后回填实测证据（ADR-013，不伪造数值）。
-- AC2：`cargo test -p contextforge-core retriever::` —— 默认空 filter search 结果与改前逐条一致（默认行为不变）+ 非空 source_type/agent_scope filter 准确 no-op（与不传一致）+ WARN 措辞诚实（不含「待落地 / 待 reverse-fill」暗示）+ 新 backlog tag 已落地；真实跑出后回填。
-- AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` —— PR 触及行 0 未标注命中（CI spec-lint 权威）；真实跑出后回填。
-- 不退化：`cargo test --workspace` + `go test ./...` 0 failed 真实结果待实施回填。
-- 0 新 dep / 默认行为不变 / proto 既有字段不变 / 既有契约不变 真实结果待实施回填（ADR-004 / ADR-008 守线）。
-- honest-defer：real chunk source_type/agent_scope filter feature [SPEC-DEFER:phase-future.chunk-source-type-filter] + [SPEC-DEFER:phase-future.chunk-agent-scope-filter]——受阻 / 未驱动维度据 ADR-013 如实记录，不伪造已实现。
+**§9 Verification（v0.25.0 / impl PR #214，squash commit `eaa37bd`，真实证据）**：
+- AC1：`buf generate` + `go test ./...`（grpcclient）PASS —— `console_data_plane.proto` `SearchResultItem` add-only `vector_score = 16`（parity v1 `RetrievalResult.vector_score = 13`）→ buf generate 重生 Go binding（真实 rawDesc descriptor 位移 0xdc→0xff，非 EOL churn；grpc/v1 文件回退保持 surgical）→ Rust 生产端 `core/src/data_plane/search.rs` 填 `vector_score`（"vector" 命中=cosine / BM25=0，镜像 v1 `server.rs:407`，ADR-013 不伪造）→ Go 消费端 `grpcclient::protoToSearchResult` 映射 `VectorScore` + `contractv1.SearchResult` add-only `VectorScore`（ADR-015 add-only，承 task-20.1 Semantic 先例，旧 client 兼容）；**TEST-32.3.1** = `internal/consoleapi/grpcclient/grpcclient_test.go::TestTask323_ProtoToSearchResult_CarriesVectorScore`（语义命中真实值 / BM25 命中为 0）PASS。
+- AC2：`cargo test -p contextforge-core`（retriever）PASS —— `retriever/mod.rs:325` 误导性 WARN（含「not yet implemented … SPEC-DRIFT-task-2.4 pending」）改为准确 no-op 契约（chunks 表 SQL_SCHEMA §5.3 FROZEN 无 source_type/agent_scope 列、`SearchResult.source_type` 为 `DEFAULT_SOURCE_TYPE` 常量、`agent_scope` 恒空属 memory 层概念 memory_items/migration 0013）+ 新 backlog `[SPEC-DEFER:phase-future.chunk-source-type-filter]` + `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`；**TEST-32.3.2** = `core/src/retriever/mod.rs::test_32_3_2_source_type_agent_scope_filter_is_noop`（非空 source_type/agent_scope filter 结果与空 filter **逐字节相同**，默认空 filter 路径不触 WARN 分支、结果与改前一致）PASS。
+- AC3：**TEST-32.3.3**（LAST）`bash scripts/spec_drift_lint.sh --touched origin/master` —— PR #214 触及行 0 未标注命中（CI spec-lint 权威，四门绿）。
+- 不退化：`cargo test --workspace` 199 passed / 0 failed + `go test ./...` 全过 + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning + `go vet ./...` clean（v0.25.0 dev box Windows MSVC rustc 1.95.0；CI 四门 cargo-test / go-test / spec-lint / lint 全 PASS）。
+- 0 新 dep（proto add-only field + Go wiring + Rust 措辞改，无 Cargo / go.mod 依赖增量）/ 默认行为不变 / proto 既有字段不变 / 既有契约不变（ADR-004 / ADR-008 守线，旧 client 对 `vector_score = 16` 未知 field 兼容忽略）。
+- honest-defer：real chunk source_type/agent_scope filter 是真实 import-path feature（importer 侧 source_type tagging + chunks 表 FROZEN §5.3 schema 迁移），本 task **不实现** [SPEC-DEFER:phase-future.chunk-source-type-filter] + [SPEC-DEFER:phase-future.chunk-agent-scope-filter]——受阻 / 未驱动维度据 ADR-013 如实记录，不伪造已实现（filter no-op 行为本就如此，本 task 仅契约诚实化）。
+
+**实际改动文件（PR #214 / `eaa37bd`）**：`proto/contextforge/console_data_plane/v1/console_data_plane.proto`（add-only `vector_score = 16`）+ buf 重生 Go binding + `core/src/data_plane/search.rs`（Rust 生产端填 vector_score）+ `internal/consoleapi/grpcclient/grpcclient.go` + `internal/contractv1/contractv1.go`（add-only `VectorScore`）+ `internal/consoleapi/grpcclient/grpcclient_test.go`（`TestTask323_ProtoToSearchResult_CarriesVectorScore`）+ `core/src/retriever/mod.rs`（WARN 诚实化 + `test_32_3_2_source_type_agent_scope_filter_is_noop`）。

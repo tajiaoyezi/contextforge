@@ -1,6 +1,8 @@
 # Phase 18 · vector-backend-selection
 
-**Status**: Ready
+**Status**: Done
+
+> **完成口径（drift 回填 2026-06-07）**：本 phase 目标（向量后端选型 + trait 抽象层 ship，v0.11.0）已达成；§6 AC3（ADR-023 ratify）+ AC4（默认 backend 生产集成 + smoke v9）当时如实缩范围延后，**已在 Phase 19 / v0.12.0 解除**——task-19.6 ADR-023 ratify Accepted + task-19.2/19.3/19.5 生产向量召回 live（real recall@10=0.9333），记录于 ADR-023 Amendment 与 adapter §Phase 状态索引。§6 AC3/AC4 复选框保留为本 phase 当时的冻结记录（ADR-014 D5 不溯改正文）。
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 解决 PRD §Open Questions **O2 向量后端最终选型**（源自 D2 / 技术 TBD：SQLite vec ext / Qdrant local / LanceDB / 内嵌 HNSW，需核心开发在 Phase 5-6 期间做 spike 压测后定）。v0.11.0 收口。
 >
