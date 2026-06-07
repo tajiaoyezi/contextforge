@@ -1,6 +1,6 @@
 # Task `32.1`: `vector-backend-config-plumbing — server.rs hybrid + semantic 两热路径经 env/config 选 vector backend（factory 接线，替代硬编码 select_vector_backend("",0)）；未设/"" → BruteForce byte-equivalent（ADR-004 默认行为不变 + 0 新 dep）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -76,17 +76,17 @@ pass bar：两热路径 env 接线经确定性单测 / 集成测试验证（🟢
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（config plumbing 两热路径 🟢）: `server.rs` hybrid（`:340`）+ semantic（`:382`）两热路径经 env（`CONTEXTFORGE_VECTOR_BACKEND` + 可选 `CONTEXTFORGE_VECTOR_DIM`）解析后传入 `select_vector_backend(&name, dim)`（替代硬编码 `("", 0)`）；env 解析 helper 镜像 `resolve_data_dir`（`:504-525`）pattern；设 unknown backend → 工厂 honest Err 浮出 `Status::internal`，不静默回落 — verified by **TEST-32.1.1**
-- [ ] **AC2**（default 未设/"" → BruteForce byte-equiv 默认行为不变 🟢）: 未设 `CONTEXTFORGE_VECTOR_BACKEND` → 两热路径解析得 `""` → `BruteForceVectorBackend`（`name()=="brute-force"`），与改前 byte-equivalent；既有 hybrid / semantic 行为 + `factory.rs` TEST-29.1.1/.2/.3 不退化；默认行为 / proto / 既有契约不变（ADR-004）+ 0 新 dep（ADR-023 baseline）— verified by **TEST-32.1.2**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-32.1.3**（= LAST）
+- [x] **AC1**（config plumbing 两热路径 🟢）: `server.rs` hybrid（`:340`）+ semantic（`:382`）两热路径经 env（`CONTEXTFORGE_VECTOR_BACKEND` + 可选 `CONTEXTFORGE_VECTOR_DIM`）解析后传入 `select_vector_backend(&name, dim)`（替代硬编码 `("", 0)`）；env 解析 helper 镜像 `resolve_data_dir`（`:504-525`）pattern；设 unknown backend → 工厂 honest Err 浮出 `Status::internal`，不静默回落 — verified by **TEST-32.1.1**
+- [x] **AC2**（default 未设/"" → BruteForce byte-equiv 默认行为不变 🟢）: 未设 `CONTEXTFORGE_VECTOR_BACKEND` → 两热路径解析得 `""` → `BruteForceVectorBackend`（`name()=="brute-force"`），与改前 byte-equivalent；既有 hybrid / semantic 行为 + `factory.rs` TEST-29.1.1/.2/.3 不退化；默认行为 / proto / 既有契约不变（ADR-004）+ 0 新 dep（ADR-023 baseline）— verified by **TEST-32.1.2**
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-32.1.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-32.1.1 | env→两热路径接线：设 `CONTEXTFORGE_VECTOR_BACKEND` → hybrid（`:340`）+ semantic（`:382`）经工厂选该 backend；env 解析 helper 镜像 `resolve_data_dir`；unknown name → honest Err 浮出 `Status::internal`，不静默回落 | `core/src/server.rs`（同源 / 集成 test） | Planned |
-| TEST-32.1.2 | default byte-equiv：未设 env → 两热路径 `""` → `BruteForceVectorBackend`（`name()=="brute-force"`），既有 hybrid / semantic 行为 + TEST-29.1.x 不退化；0 新 dep | `core/src/server.rs` + `core/src/retriever/vector/factory.rs` | Planned |
-| TEST-32.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-32.1.1 | env→两热路径接线：设 `CONTEXTFORGE_VECTOR_BACKEND` → hybrid（`:340`）+ semantic（`:382`）经工厂选该 backend；env 解析 helper 镜像 `resolve_data_dir`；unknown name → honest Err 浮出 `Status::internal`，不静默回落 | `core/src/server.rs`（同源 / 集成 test） | Done |
+| TEST-32.1.2 | default byte-equiv：未设 env → 两热路径 `""` → `BruteForceVectorBackend`（`name()=="brute-force"`），既有 hybrid / semantic 行为 + TEST-29.1.x 不退化；0 新 dep | `core/src/server.rs` + `core/src/retriever/vector/factory.rs` | Done |
+| TEST-32.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -120,15 +120,17 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`cargo test -p contextforge-core server::` —— 设 `CONTEXTFORGE_VECTOR_BACKEND` → hybrid（`:340`）+ semantic（`:382`）两热路径经 `select_vector_backend(&name, dim)` 选该 backend；env 解析 helper 镜像 `resolve_data_dir`（`:504-525`）；unknown name → 工厂 honest Err 浮出 `Status::internal`，不静默回落（真实测试结果待实施回填，ADR-013 不伪造）。
-- AC2：`cargo test -p contextforge-core retriever::vector::factory` —— 未设 env → 两热路径 `""` → `BruteForceVectorBackend`（`name()=="brute-force"`），既有 hybrid / semantic 行为 + `factory.rs` TEST-29.1.1/.2/.3 byte-equiv 基线不退化；0 新 dep（默认构建仍 0-vector-dep，ADR-023）。真实结果待实施回填。
-- AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-- 0 新 dep / 默认行为不变 / 既有契约不变 / honest Err 不静默回落 真实结果待实施回填（ADR-013 受阻 / 数值不预填，真实跑出才记数）。
+**§9 Verification（PR #212 / squash commit `c7358ed`，v0.25.0 impl，真实证据）**：
+- AC1：`cargo test -p contextforge-core`（server backend resolve/parse）PASS —— TEST-32.1.1 `parse_vector_backend`/`resolve_vector_backend` 读 `CONTEXTFORGE_VECTOR_BACKEND` env name + 可选 `CONTEXTFORGE_VECTOR_DIM`（parse/trim/blank→0），unknown name → 工厂 honest Err；server.rs hybrid（`:340`）+ semantic（`:382`）两热路径经 `select_vector_backend(&name, dim)` 接线（镜像 `resolve_data_dir` env pattern）；unknown/feature-off 经 `Status::internal` 诚实暴露（无静默回退，ADR-013）。
+- AC2：`cargo test -p contextforge-core`（factory）PASS —— TEST-32.1.2 env 未设 → `("", 0)` → BruteForce 路径与 v0.24.0 字节等价（`name()=="brute-force"`，默认行为不变）；既有 hybrid / semantic 行为 + `factory.rs` TEST-29.1.1/.2/.3 byte-equiv 基线不退化；0 新 dep（默认构建仍 0-vector-dep，ADR-023）。
+- AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威；PR #212 触及行 0 未标注命中）。
+- 全量不退化：`cargo test --workspace` 199 passed / 0 failed + `cargo clippy --workspace --all-targets -- -D warnings` exit 0 + `go test ./...` 全过；CI 四门（cargo-test / go-test / spec-lint / lint）PASS（v0.25.0-evidence §4）。0 新 dep / 默认行为不变 / 既有契约不变 / honest Err 不静默回落（ADR-004/008/013/023）。
 
-**实际改动文件**（计划，待实施回填）：
-- `core/src/server.rs`——加 env 解析 helper（镜像 `resolve_data_dir` `:504-525`）；hybrid 热路径（`:340`）+ semantic 热路径（`:382`）`select_vector_backend("", 0)` 改为 env 解析结果传入；两热路径注释（`:337-339` / `:380-381`）更新为 env 接线描述。+ 同源 / 集成测试（env 接线 + default byte-equiv）。
-- `core/src/retriever/vector/factory.rs`——不改逻辑（既有 `select_vector_backend(name, dim)` 签名 / arm 即调用契约；`dim` 沿用 `:37` 预留契约 [SPEC-DEFER:phase-future.vector-dim-auto-negotiation]）；sqlite-vec arm 补全在 task-32.2 [SPEC-OWNER:task-32.2]。
+**实际改动文件**：
+- `core/src/server.rs`——加 `resolve_vector_backend`/`parse_vector_backend` env 解析 helper（镜像 `resolve_data_dir` `:504-525` pattern，读 `CONTEXTFORGE_VECTOR_BACKEND` + 可选 `CONTEXTFORGE_VECTOR_DIM`）；hybrid 热路径（`:340`）+ semantic 热路径（`:382`）`select_vector_backend("", 0)` 改为 env 解析结果传入；两热路径注释更新为 env 接线描述。+ 同源测试（TEST-32.1.1 env 接线 + TEST-32.1.2 default byte-equiv）。
+- `core/src/retriever/vector/factory.rs`——不改逻辑（既有 `select_vector_backend(name, dim)` 签名 / arm 即调用契约；`dim` 沿用 `:37` 预留契约 [SPEC-DEFER:phase-future.vector-dim-auto-negotiation]）；sqlite-vec arm 补全在 task-32.2（#213，squash `76a3137`）[SPEC-OWNER:task-32.2]。
 - ADR-034 sqlite-vec arm add-only Amendment 落点在 task-32.4 closeout（非本 task body）。
+
+**honest-defer 维度（据真实受限如实保持延后，ADR-013，不伪造）**：sqlite-vec in-process recall/latency CELL `[SPEC-DEFER:phase-future.sqlite-vec-inprocess-matrix]`（属 task-32.2 矩阵，须本机 MSVC feature build + 真实语料）；embedder-dim 自动协商 `[SPEC-DEFER:phase-future.vector-dim-auto-negotiation]`（`dim` 沿用 task-29.1 占位契约，本 task 仅透传不消费）；real per-user/per-collection vector config UI `[SPEC-DEFER:phase-future.per-user-vector-config-ui]`。

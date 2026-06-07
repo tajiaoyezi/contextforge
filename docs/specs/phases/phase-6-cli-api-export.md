@@ -1,6 +1,6 @@
 # Phase 6 · cli-api-export
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。`/s2v-init` 生成，Status=Draft。§6 端到端 smoke 初始留待用户审定，本 phase 最后一个 task 完工/合并前必须填实（`s2v_preflight_phase` C1）。
 

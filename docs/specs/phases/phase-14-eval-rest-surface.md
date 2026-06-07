@@ -1,6 +1,6 @@
 # Phase 14 · eval-rest-surface
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.7.0 minor release + **Console 22-endpoint conformance 100% PASS 收口 phase** — 把 [ADR-017](../../decisions/adr-017-console-contract-completion-22-endpoint.md) D1 Wave 4 共 2 个 Eval endpoint 落地，至此 22/22 Console contract endpoint 全部 ship：
 >

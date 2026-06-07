@@ -1,6 +1,6 @@
 # Phase 13 · memory-rest-surface
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 v0.6.0 minor release 收口 phase — 把 [ADR-017](../../decisions/adr-017-console-contract-completion-22-endpoint.md) D1 Wave 3 共 5 个 Memory endpoint 落地：
 >
