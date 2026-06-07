@@ -1,6 +1,6 @@
 # Task `40.3`: `closeout-v0.33.0 — smoke v30[49/49] + v0.33.0 release docs + ADR-045 Proposed→Accepted 逐 D ratify + ADR-032/038/027/015 add-only Phase-40 Amendment + roadmap §3.22/§4 add-only + s2v-adapter add-only + phase §6 闭合（governance-debt-cleanup-3）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -70,16 +70,16 @@ pass bar：smoke v30[49/49] + `TestTask403`（no-regression [37/37]..[48/48]）+
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（smoke v30[49/49] + TestTask403 🟢）: `scripts/console_smoke.sh` banner v29→v30 + 新 step [49/49]（pin actor 透传 + L2 访问序 LRU）+ defer-note 更新；`internal/cli/smoke_syntax_test.go` `TestTask403`（[49/49] + markers + no-regression [37/37]..[48/48] + `bash -n`） — verified by **TEST-40.3.1**
-- [ ] **AC2**（v0.33.0 release docs + ADR ratify + add-only Amendment + roadmap/adapter + phase 闭合）: `docs/releases/v0.33.0-{evidence,artifacts}.md`（`<backfill>` marker）+ README v0.33 段 + RELEASE_NOTES v0.33.0 段；ADR-045 Proposed→Accepted 逐 D ratify + Ratification 段；ADR-032/038/027/015 add-only Phase-40 Amendment（不溯改正文）；roadmap §3.22/§4 add-only；s2v-adapter Phase 40 / tasks / ADR-045 / BDD 行；phase-40 §6 AC1-4 全 `[x]` — verified by **TEST-40.3.1**（同源收口验证）
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-40.3.2**（= LAST）
+- [x] **AC1**（smoke v30[49/49] + TestTask403 🟢）: `scripts/console_smoke.sh` banner v29→v30 + 新 step [49/49]（pin actor 透传 + L2 访问序 LRU）+ defer-note 更新；`internal/cli/smoke_syntax_test.go` `TestTask403`（[49/49] + markers + no-regression [37/37]..[48/48] + `bash -n`） — verified by **TEST-40.3.1**
+- [x] **AC2**（v0.33.0 release docs + ADR ratify + add-only Amendment + roadmap/adapter + phase 闭合）: `docs/releases/v0.33.0-{evidence,artifacts}.md`（`<backfill>` marker）+ README v0.33 段 + RELEASE_NOTES v0.33.0 段；ADR-045 Proposed→Accepted 逐 D ratify + Ratification 段；ADR-032/038/027/015 add-only Phase-40 Amendment（不溯改正文）；roadmap §3.22/§4 add-only；s2v-adapter Phase 40 / tasks / ADR-045 / BDD 行；phase-40 §6 AC1-4 全 `[x]` — verified by **TEST-40.3.1**（同源收口验证）
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-40.3.2**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-40.3.1 | smoke v30[49/49] + `TestTask403`（[49/49] + markers + no-regression [37/37]..[48/48] + `bash -n`）+ release docs + ADR-045 ratify + ADR-032/038/027/015 add-only Amendment + roadmap §3.22/§4 + s2v-adapter + phase §6 AC1-4 闭合 | `scripts/console_smoke.sh` / `internal/cli/smoke_syntax_test.go` / `docs/**` | Planned |
-| TEST-40.3.2 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-40.3.1 | smoke v30[49/49] + `TestTask403`（[49/49] + markers + no-regression [37/37]..[48/48] + `bash -n`）+ release docs + ADR-045 ratify + ADR-032/038/027/015 add-only Amendment + roadmap §3.22/§4 + s2v-adapter + phase §6 AC1-4 闭合 | `scripts/console_smoke.sh` / `internal/cli/smoke_syntax_test.go` / `docs/**` | Done |
+| TEST-40.3.2 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -109,7 +109,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
 **§9 Verification 计划** (will record real evidence at impl)：
 - AC1：`bash -n scripts/console_smoke.sh` + `go test ./internal/cli/ -run TestTask403` —— smoke v30[49/49] + `TestTask403`（[49/49] + markers + no-regression [37/37]..[48/48]）（真实结果待实施回填，ADR-013 不伪造）。

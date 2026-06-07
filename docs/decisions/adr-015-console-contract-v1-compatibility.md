@@ -164,3 +164,9 @@ Rollback 通过新 ADR superseding 完成；Phase 10 已 ship 的 9 endpoint 保
 - **Cross-repo 治理 follow-up**：ADR-014 D5 的 cross-repo amendment 机制（Console 端字段变更 → ContextForge 镜像更新流程）需 v0.4 governance retrospective 评估是否制度化
 - **关联 PRD §Open Questions O13**：本 ADR Accepted 后可 mark O13 resolved by ADR-015（PRD update 在 closeout PR 内）
 - **关联 ADR-014 D2 lint**：Phase 10 全程 spec PR 跑 `bash scripts/spec_drift_lint.sh --touched origin/master` + closeout PR 含 D1 mapping 表 + D2 输出 (playbook §自决规则 #9 / #10)
+
+## Amendment (Phase 40 / v0.33.0) — PinMemoryRequest.actor=3 add-only field (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body，ADR-014 D5）。
+
+Phase 40 / v0.33.0（ADR-045 D1）为 `console_data_plane` `PinMemoryRequest` 加 add-only `string actor = 3`（既有 `memory_id=1` / `pin=2` 字段号冻结，遵本 ADR D1 既有字段号冻结 + add-only D2）。`buf generate` 重生 Go binding（`Actor` 字段 + `GetActor()` getter，既有 client proto3 未知字段忽略、向后兼容）。承 task-27.1 / ADR-032 D1 已落的 `MemoryItem.pinned_by=11`——本字段是把调用方 actor 透传到 store `pinned_by` 的入口（task-40.1）。详见 ADR-045 Ratification (v0.33.0)。

@@ -83,3 +83,15 @@ ADR-022 §Trade-offs / Conscious limitations 三条刻意缩范围延后的 mark
 - `[SPEC-DEFER:phase-future.is-pinned-backfill-from-audit]` → task-27.3 `reconcile_is_pinned_from_audit` 落地。
 
 详见 `docs/decisions/adr-022-memory-is-pinned-field-amendment.md` §Amendment (Phase 27 / v0.20.0)。
+
+## Amendment (Phase 40 / v0.33.0) — memory-actor-propagation 入口透传维度兑现 (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body / Ratification (v0.20.0)，ADR-014 D5）。承本 ADR §D1 — pin actor 做成 store first-class 字段（`set_pinned_with_actor` + `MemoryItem.pinned_by=11`）时自记的入口透传债 `[SPEC-DEFER:phase-future.memory-actor-propagation]`。
+
+Phase 40 / v0.33.0（ADR-045 D1）兑现 pin actor 的**入口到 store 透传链**：此前 `pin()` RPC 只能硬编码 actor `"console-api"`（因 `PinMemoryRequest` 无 actor field、Go `MemoryClient.Pin(id,pin)` 无 actor 参数、`handleMemoryPin` 不读调用方标识）。task-40.1（PR #257）补：
+
+- `PinMemoryRequest` add-only `string actor = 3`（既有 `memory_id=1` / `pin=2` 字段号冻结，ADR-015 D1）+ `buf generate`；
+- Go `MemoryClient.Pin(id,pin)` → `Pin(id,pin,actor)`（interface + `memoryClient` / `MemMemoryStore` / `degradedMemory` 三实现）+ `grpcclient` 填 `pb.PinMemoryRequest.Actor` + `handleMemoryPin` 读 `r.Header.Get("X-Actor")`（缺省空串）；
+- Rust `pin()` `set_pinned_with_actor(.., if req.actor.is_empty() { "console-api" } else { req.actor.as_str() })`（空回落 byte-equiv）。
+
+console 部署在设 `X-Actor` / `X-Forwarded-User` 的 auth 代理后可把 pin/unpin 归因真实调用方（写入既有 `pinned_by`）。**诚实校正（ADR-013）**：本轮交付**调用方透传**（actor 取自 header、未做认证校验）；**认证身份**（校验为已认证 auth subject）须 console-api 鉴权层 → 续延后 `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`；其它 memory RPC 的 actor 透传续 `[SPEC-DEFER:phase-future.memory-actor-all-rpc]`。`handleMemoryPin` 宽松 body 契约（ADR-022 D2）保持不变。验证 TEST-40.1.1/40.1.2/40.1.3/40.1.4。详见 ADR-045 Ratification (v0.33.0) + `docs/releases/v0.33.0-evidence.md`。

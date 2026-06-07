@@ -117,3 +117,11 @@ ContextForge 截至 Phase 32（vector-backend-config-plumbing-and-completeness, 
 - **ADR-008（dep add-only）→ 守线**：本 phase 加 **0 新依赖**（rowid-FIFO / LRU / migration / proto field 均 0-dep）。
 - **ADR-013（禁伪造红线）→ 守线**：indexing replay e2e / TraceStore 多 workspace e2e console 等 🟡 受阻维度真实跑出后回填、不预填；L2 cache opt-in-path caveat 据实不夸大为 live leak；cascade 非问题 / drain verify-only / dropped-nits（`%v→%w` non-bug / tracestore-fts 已修 / datadir 🟡）逐项据实分级（D1 / D2 / D3 / D4）。
 - **ADR-014（cross-phase-exit-criteria-validation）→ 第二十四次激活**：D1-D5 mapping + 各 task LAST D2 lint（touched 行 0 未标注命中）+ D3 verified-by + D4 自治 + D5 历史 Phase 1-32 不溯改（ADR 改动 add-only Amendment）；本 ADR ratify 在 task-33.4 closeout，Draft 阶段不 ratify。
+
+## Amendment (Phase 40 / v0.33.0) — l2-cache-true-lru 兑现 + 真-LRU 假设据实更正 (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body / §A2 / §D4 / Ratification (v0.26.0)，ADR-014 D5）。承本 ADR §D1（L2 rowid-FIFO bound）+ §A2/§D4 据「带 created_at 列的真 LRU 须 ALTER 既有用户文件 → 破 0-migration」延后的 `[SPEC-DEFER:phase-future.l2-cache-true-lru]`。
+
+Phase 40 / v0.33.0（ADR-045 D2）兑现 L2 缓存访问序 LRU 维度并据实**更正本 ADR §A2/§D4 的延后假设**：本 ADR 当时判定真-LRU 须新增 `created_at` 列 + ALTER 既有文件——grounding 更正：访问序 LRU **不**须时间列。task-40.2（PR #258）在 `sqlite_get` 命中分支（仅 `l2_cap > 0`）对命中行 `INSERT OR REPLACE` 原样回写（`INSERT OR REPLACE` 对既有 PK 行先 DELETE 再 INSERT → 获新最大 rowid），把隐式 rowid 由插入序变访问序，既有 `sqlite_put` 的 rowid 序驱逐（本 ADR §D1）随之由插入序 FIFO 升访问序 LRU。**复用既有隐式 rowid、0 schema migration**，与 Go memstore 命中 move-to-front（本 ADR §D2 / task-33.2）同技法。
+
+本 ADR §D1 的 rowid-FIFO（row-count cap 本身）仍是正确且必要的前序；Phase 40 仅补「命中 bump 使 rowid 序由插入序变访问序」增量。**诚实校正（ADR-013）**：命中 bump 给 L2 读路径加一次行重写（写放大），是访问序 LRU 固有代价；`with_sqlite` 无生产调用点（本 ADR §D1 已据实标注 opt-in-path）→ 现网零影响，本项是 opt-in 路径语义补全、非已确认线上问题。cap==0（不限）不 bump（保插入序、零额外写）。验证 TEST-40.2.1/40.2.2。详见 ADR-045 Ratification (v0.33.0) + `docs/releases/v0.33.0-evidence.md`。

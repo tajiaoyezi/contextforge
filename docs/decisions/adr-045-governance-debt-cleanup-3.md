@@ -1,6 +1,6 @@
 # ADR `045`: `governance-debt-cleanup-3`
 
-**Status**: Proposed（Draft 阶段不 ratify；task-40.1/40.2 通过后于 v0.33.0 closeout（task-40.3）据真实 CI 逐 D ratify Proposed→Accepted——见 §Ratification）
+**Status**: Accepted（v0.33.0 / task-40.3 closeout 据真实 CI 逐 D ratify；D1/D2/D3 Accepted——见 §Ratification）
 
 **Category**: 治理债清理（第三轮）/ actor 透传 / 缓存访问序 LRU / 契约诚实化
 **Date**: 2026-06-07
@@ -48,11 +48,11 @@ ContextForge 截至 Phase 39（console-api-retrieval-signal-forward, Done / v0.3
 
 ## Ratification（v0.33.0 / task-40.3）
 
-> 本 ADR 于 v0.33.0 closeout（task-40.3）据 task-40.1/40.2 真实 CI（cargo-test / go-test / lint / spec-lint）逐 D ratify Proposed→Accepted。各 D 真实依据 task-40.3 实施时回填（ADR-013 不预填）：
+本 ADR 于 v0.33.0 closeout（task-40.3）据 task-40.1/40.2 真实 CI（cargo-test / go-test / lint / spec-lint 四门绿）逐 D ratify Proposed→Accepted。各 D 真实依据：
 
-- **D1（memory pin actor add-only 透传）→ ratify 待 task-40.1 真实测试回填**（PR / master SHA + `PinMemoryRequest{actor=3}` wire-tag 断言 + Rust `pin()` 空回落 / 非空透传 + Go `handleMemoryPin` 读 `X-Actor` + grpcclient 填 `Actor` 真实测试名 + 认证身份 honest-defer）。
-- **D2（L2 embedding 缓存访问序 LRU）→ ratify 待 task-40.2 真实测试回填**（PR / master SHA + 命中 bump 访问序 LRU 驱逐最久未用 + cap==0 不 bump + 真-LRU 假设据实更正真实测试名 + 写放大 / opt-in-path 现网零影响据实）。
-- **D3（默认行为 + proto add-only + 0-dep / 0-network + honest-defer 边界）→ ratify 待真实回填**（0 新 dep + proto `actor=3` add-only 既有字段号不动 + 默认 byte-equiv + 三门不退化 + 其余 marker 据实保持延后）。
+- **D1（memory pin actor add-only 透传）→ Accepted 🟢**：task-40.1（PR #257，master @ `68046c3`）落 `PinMemoryRequest` add-only `actor=3`（既有 `memory_id=1` / `pin=2` 字段号冻结）+ Go `MemoryClient.Pin(id,pin)` → `Pin(id,pin,actor)`（interface + `memoryClient` / `MemMemoryStore` / `degradedMemory` 三实现）+ `grpcclient` 填 `pb.PinMemoryRequest.Actor` + `handleMemoryPin` 读 `r.Header.Get("X-Actor")` + Rust `pin()` `if req.actor.is_empty() { "console-api" } else { req.actor.as_str() }`。`test_pin_actor_proto_field_number`（TEST-40.1.1，prost wire-tag actor=3 = `[0x1A,0x01,0x78]`）+ `test_memory_server_pin_propagates_actor`（TEST-40.1.2，非空透传 `pinned_by`）+ `test_memory_server_pin_writes_actor_and_projects`（守护空回落 `"console-api"` byte-equiv）+ `TestTask401_HandleMemoryPin_ForwardsXActorHeader`（TEST-40.1.3）+ `TestTask401_GrpcClient_Pin_ForwardsActor`（TEST-40.1.4）全绿。认证身份 honest-defer `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`；ADR-022 D2 宽松 body 契约不改。
+- **D2（L2 embedding 缓存访问序 LRU）→ Accepted 🟢**：task-40.2（PR #258，master @ `08e8db6`）`sqlite_get` 命中分支（仅 `l2_cap > 0`）`INSERT OR REPLACE` 原样回写命中行 bump 隐式 rowid → 既有 `sqlite_put` rowid 序驱逐由插入序 FIFO 升访问序 LRU；cap==0 不 bump。`test_40_2_1_l2_hit_bump_evicts_lru`（TEST-40.2.1，cap=2 命中 a → 驱逐最久未用 b 而非 a，对比 FIFO 旧行为驱逐 a）+ `test_40_2_2_cap_gates_hit_bump_and_keeps_results`（TEST-40.2.2，cap>0 命中 bump rowid `[a,b]`→`[b,a]` / cap==0 不 bump 保插入序 + 返回结果不变）全绿（含 TEST-33.1.* / 22.2.* 回归）。真-LRU 假设据实更正（命中 bump 隐式 rowid，0 schema migration，与 Go memstore move-to-front 同技法）；写放大 + `with_sqlite` 无生产调用点现网零影响据实记。
+- **D3（默认行为 + proto add-only + 0-dep / 0-network + honest-defer 边界）→ Accepted 🟢**：全 phase 0 新 dep；proto `actor=3` add-only（既有字段号 1-2 不动）；默认（无 `X-Actor` header / 既有 client）→ 空 actor 回落 `"console-api"` byte-equiv + L2 cap==0 / 命中 bump 结果不变；既有 `cargo test --workspace` + `go test ./...` + `cargo clippy` 三门不退化。其余治理 marker（`vector-dim-feature-enforce` / `tracestore-multi-workspace-strict` / `chunk-source-type-filter`）据实保持延后、不强行扩面。多 agent 对抗审查（4 维度 review + 每 finding 3 独立 skeptic 对抗核实，承 Phase 38/39 实践）核实 0 真实缺陷后方 ratify。
 
 真实 v0.33.0 tag/run/digest 经用户授权后由 post-tag-push backfill 填实（release docs `<backfill>`，ADR-013 不预填）。
 

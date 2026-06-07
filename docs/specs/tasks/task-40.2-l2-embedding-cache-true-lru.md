@@ -1,6 +1,6 @@
 # Task `40.2`: `l2-embedding-cache-true-lru — cache.rs sqlite_get 命中即对命中行 INSERT OR REPLACE bump 隐式 rowid 到表尾（仅有限 l2_cap），使既有 sqlite_put 的 rowid 序驱逐由插入序 FIFO（Phase 33 D1）升为访问序 LRU；复用既有隐式 rowid、0 新 dep / 0 schema migration；据实更正 Phase 33「真 LRU 须加 created_at 列 + ALTER」假设；命中 bump 写放大据实记 + L2 无生产调用点现网零影响（opt-in-path 语义补全非已确认线上问题）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -77,17 +77,17 @@ pass bar：访问序 LRU 经确定性单测验证（cap=2，put a,b → 命中 a
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（L2 命中 bump → 访问序 LRU 🟢）: `sqlite_get`（:140-150）命中时（仅 `l2_cap > 0`）`INSERT OR REPLACE` 原样回写命中行 bump 其隐式 rowid 到表尾，使 `sqlite_put`（:153-195）rowid 序驱逐由插入序 FIFO 升访问序 LRU；cap=2 put a,b → get a（bump）→ put c → 驱逐 b（最久未用，重读 miss）、保留 a（重读 hit），对比 FIFO 旧行为驱逐 a；`cap==0` 不 bump（保插入序、零额外写）；复用既有隐式 rowid、**0 新 dep + 0 schema migration** — verified by **TEST-40.2.1**
-- [ ] **AC2**（默认行为不变 + 既有基线不退化 🟢）: 默认 cap 下既有 L2 round-trip（TEST-22.2.3）返回结果不变（命中 bump 只改 rowid 不改 vector）；L1 cap（TEST-31.2.1）+ L2 rowid cap（TEST-33.1.1）+ 既有 TEST-22.2.* 不退化；公共构造源码兼容；`embedding_cache` schema + L1 行为 + 既有契约不变（ADR-004）+ 0 新 dep（ADR-008）；命中 bump 写放大 + L2 无生产调用点现网零影响据实记（opt-in-path 语义补全，ADR-013） — verified by **TEST-40.2.2**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-40.2.3**（= LAST）
+- [x] **AC1**（L2 命中 bump → 访问序 LRU 🟢）: `sqlite_get`（:140-150）命中时（仅 `l2_cap > 0`）`INSERT OR REPLACE` 原样回写命中行 bump 其隐式 rowid 到表尾，使 `sqlite_put`（:153-195）rowid 序驱逐由插入序 FIFO 升访问序 LRU；cap=2 put a,b → get a（bump）→ put c → 驱逐 b（最久未用，重读 miss）、保留 a（重读 hit），对比 FIFO 旧行为驱逐 a；`cap==0` 不 bump（保插入序、零额外写）；复用既有隐式 rowid、**0 新 dep + 0 schema migration** — verified by **TEST-40.2.1**
+- [x] **AC2**（默认行为不变 + 既有基线不退化 🟢）: 默认 cap 下既有 L2 round-trip（TEST-22.2.3）返回结果不变（命中 bump 只改 rowid 不改 vector）；L1 cap（TEST-31.2.1）+ L2 rowid cap（TEST-33.1.1）+ 既有 TEST-22.2.* 不退化；公共构造源码兼容；`embedding_cache` schema + L1 行为 + 既有契约不变（ADR-004）+ 0 新 dep（ADR-008）；命中 bump 写放大 + L2 无生产调用点现网零影响据实记（opt-in-path 语义补全，ADR-013） — verified by **TEST-40.2.2**
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-40.2.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-40.2.1 | L2 命中 bump 访问序 LRU：`with_sqlite_capacity` cap=2 put a,b → get a（命中 bump rowid）→ put c → L2 行数 ≤ 2 + 驱逐 b（最久未用，新 provider 同文件重读 = miss，inner 重算）、保留 a（重读 hit，inner 不调）；对比 FIFO（命中不 bump 会驱逐 a）；`cap==0` 不 bump（保插入序、零额外写）；0 新 dep + 0 schema migration（隐式 rowid） | `core/src/embedding/cache.rs`（同源 test） | Planned |
-| TEST-40.2.2 | 默认行为不变：默认 cap 下既有 L2 round-trip（TEST-22.2.3）返回结果不变 + L1 cap（TEST-31.2.1）+ L2 rowid cap（TEST-33.1.1）+ TEST-22.2.* 不退化；公共构造源码兼容；`embedding_cache` schema 不变 + 0 新 dep | `core/src/embedding/cache.rs` | Planned |
-| TEST-40.2.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-40.2.1 | L2 命中 bump 访问序 LRU：`with_sqlite_capacity` cap=2 put a,b → get a（命中 bump rowid）→ put c → L2 行数 ≤ 2 + 驱逐 b（最久未用，新 provider 同文件重读 = miss，inner 重算）、保留 a（重读 hit，inner 不调）；对比 FIFO（命中不 bump 会驱逐 a）；`cap==0` 不 bump（保插入序、零额外写）；0 新 dep + 0 schema migration（隐式 rowid） | `core/src/embedding/cache.rs`（同源 test） | Done |
+| TEST-40.2.2 | 默认行为不变：默认 cap 下既有 L2 round-trip（TEST-22.2.3）返回结果不变 + L1 cap（TEST-31.2.1）+ L2 rowid cap（TEST-33.1.1）+ TEST-22.2.* 不退化；公共构造源码兼容；`embedding_cache` schema 不变 + 0 新 dep | `core/src/embedding/cache.rs` | Done |
+| TEST-40.2.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -123,7 +123,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
 **§9 Verification 计划** (will record real evidence at impl)：
 - AC1：`cargo test -p contextforge-core embedding::cache` —— cap=2 put a,b → get a（命中 bump rowid）→ put c → L2 行数 ≤ 2 + 驱逐 b（最久未用，重读 miss inner 重算）、保留 a（重读 hit inner 不调），对比 FIFO 旧行为驱逐 a；cap==0 不 bump；复用隐式 rowid、0 新 dep + 0 schema migration（真实结果待实施回填，ADR-013 不伪造）。
