@@ -1,6 +1,6 @@
 # ADR `047`: `chunk-source-type-filter`
 
-**Status**: Proposed（规划稿；ratify 在 v0.35.0 / task-42.3 closeout 据 task-42.1/42.2 真实 CI + 实测过滤行为逐 D ratify）
+**Status**: Accepted（v0.35.0 / task-42.3 closeout 据 task-42.1/42.2 真实 CI + 实测过滤行为逐 D ratify；D1/D2/D3/D4 Accepted——见 §Ratification）
 
 **Category**: 检索质量 / chunk 过滤落地 / 诚实 no-op→真实契约 / proto add-only console forward
 **Date**: 2026-06-07
@@ -53,6 +53,17 @@ chunk source_type 过滤采用 **「file_path 确定性派生（0 migration）+ 
 - **Negative / open**（受阻 / 另一层项如实，不伪造、不夸大）：source_type value 由空串变真实派生值是可观测响应字段变化（填补 v0.1 schema gap，非永久空契约破坏，由本 ADR D1 据实记）；chunk-level `agent_scope` 真实过滤须 ingest-path schema 工程 + agent_scope 本质 memory 层概念 → `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`（不伪造）；importer 显式 source_type 打标须 §5.3 解冻 → `[SPEC-DEFER:phase-future.chunk-importer-source-type-tagging]`（本 phase 由 file_path 派生粗粒度桶）；v1 semantic 路径 retriever-内 source_type 过滤镜像 language 当前 scope（console 经 data_plane post-filter 覆盖）→ `[SPEC-DEFER:phase-future.semantic-path-source-type-filter]`；classify_source_type 扩展名 → 桶映射是确定性约定（未知 → other），用户自定义续 importer 打标 marker。
 - **Ratification**: 本 ADR **Proposed**。task-42.1/42.2 通过后于 v0.35.0 closeout（task-42.3）据真实 CI（cargo-test / go-test / lint / spec-lint）+ 实测过滤行为（classify 矩阵 + 真实过滤 + populate + console forward + post-filter + smoke v32[51/51] distinguishing）逐 D ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）。
 - **Follow-ups**: chunk-level agent_scope 过滤 `[SPEC-DEFER:phase-future.chunk-agent-scope-filter]`；importer 显式 source_type 打标 `[SPEC-DEFER:phase-future.chunk-importer-source-type-tagging]`；semantic 路径 retriever-内 source_type 过滤 `[SPEC-DEFER:phase-future.semantic-path-source-type-filter]`。ADR-037（source_type no-op 被本 phase 真实过滤 supersede / agent_scope no-op 据实保持）以 add-only Amendment 于 task-42.3 记录（不溯改正文，ADR-014 D5）；ADR-015 / ADR-024 / ADR-044 / ADR-004 / ADR-008 / ADR-013 引用均不溯改其正文。
+
+## Ratification（v0.35.0 / task-42.3）
+
+本 ADR 于 v0.35.0 closeout（task-42.3）据 task-42.1/42.2 真实 CI（cargo-test / go-test / lint / spec-lint 四门绿）+ 实测过滤行为逐 D ratify Proposed→Accepted。各 D 真实依据：
+
+- **D1（source_type 由 file_path 确定性派生 0 migration §5.3 FROZEN）→ Accepted 🟢**：task-42.1（PR #267，master @ `e290649`）落 `core/src/retriever/mod.rs` `pub(crate) fn classify_source_type(file_path) -> &'static str`（扩展名确定性桶 code/doc/config/other，纯 std `Path::extension`，镜像 `lang_hint_from_path`）+ 三构造点 populate 真实 source_type。`test_42_1_1_classify_source_type_buckets`（TEST-42.1.1，扩展名→桶矩阵穷举 + 大小写不敏感 + dotfile `.env`→other）全绿。chunks/files/provenance SQL_SCHEMA §5.3 保持 FROZEN（0 schema migration）；**grounding 校正**：`DEFAULT_SOURCE_TYPE` 三构造点改派生后成孤儿（`-D warnings` dead_code）→ 删除（规划稿「不删常量」plan 假设被编译期 grounding 覆盖）。
+- **D2（v1 retriever 真实过滤 + 三路径 populate 空 filter byte-equiv）→ Accepted 🟢**：`search()` BM25 在 SQLite JOIN 后加 source_type post-filter（镜像 `:386` language post-filter）；`test_42_1_2_source_type_filter_populate_and_agent_scope_noop`（TEST-42.1.2）全绿（混合 fixture .rs+.md+.toml：baseline 3 hit 且 source_type ∈ {code,doc,config} 真实派生 / `[doc]` 仅 .md / `[code]` 仅 .rs / `[code,config]` 并集 / 空 filter byte-equiv；非空 agent_scope filter byte-identical 于 baseline）。v1 `server.rs:440-453` 已映射 proto `filters.source_type` → 真实过滤后 v1 gRPC/REST body 立即生效（无须改 v1 server/proto）。populate 连带更新断言旧 schema-gap "" 的既有测试（`test_4_2_1`/`test_6_2_e1`/`server.rs` search wire/`phase4_smoke`/`phase6_smoke`，契约演进、当前测试码随之更新）。
+- **D3（console proto add-only source_type=9 + data_plane post-filter + Go forward）→ Accepted 🟢**：task-42.2（PR #268，master @ `5f88604`）`console_data_plane.proto` `SearchRequest` add-only `repeated string source_type = 9`（既有字段 1-8 号冻结）+ `data_plane/search.rs` hits 装配后 post-filter（覆盖 BM25/semantic/hybrid 一致，利用 populate 的 `h.source_type`）+ Go `contractv1.SearchRequest.SourceType` + `handleSearch` `?source_type=` query/body 并集 + grpcclient → pb。`test_42_2_1_source_type_proto_field_number`（TEST-42.2.1，wire-tag field 9 → `[0x4A,0x01,0x78]`，空 → 0 字节）+ `test_42_2_2_dataplane_source_type_filter` + `TestTask422_HandleSearchSourceTypeUnion` + `TestTask422_GrpcClient_Search_ForwardsSourceType`（TEST-42.2.2）全绿。**grounding 校正**：`buf generate proto`（module 根 `proto/buf.yaml`）非裸 `buf generate`；buf 重写的 4 不相关 pb.go 据实还原仅留 `console_data_plane.pb.go`；既有显式 `PbSearchRequest` 字面量补 `source_type: Vec::new()`（mod.rs + 2 integration test）。
+- **D4（agent_scope honest-defer memory 层概念续 no-op）→ Accepted 🟢**：`agent_scope` 经 grounding 为 memory 层概念（`memory_items` 0013 / `MemoryListFilter` / `ListMemory` scope / `memstore.go:629-635`），chunks 无 agent 关联、无可派生维度 → retriever 窄化 no-op 块仅覆盖 agent_scope（非空 → byte-equiv，TEST-42.1.2 守护），`[SPEC-DEFER:phase-future.chunk-agent-scope-filter]` 据实保持（不伪造，ADR-013）。smoke v32[51/51]（REAL `?source_type=code` 保留 JobRunner code hit / `?source_type=doc` 过滤掉它，distinguishing）+ TestTask423（无 [37/37]..[50/50] 回归）。默认构建 0 新 dep（`classify_source_type` 纯 std）+ 0 网络 + 0 schema migration + 空 filter byte-equiv；`cargo test --workspace`（core lib 225）+ `go test ./...` 三门不退化。
+
+真实 v0.35.0 tag/run/digest/tlog 经用户授权后由 post-tag-push backfill 填实（release docs `<backfill>`，ADR-013 不预填）。
 
 ## Alternatives
 

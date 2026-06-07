@@ -530,6 +530,46 @@ func TestTask413_SmokeV31TokenizerDefaultOnStep(t *testing.T) {
 	}
 }
 
+// TEST-42.3.1 / AC1: smoke v32 adds step 51 — task-42.3 closeout (chunk-source-type-filter). The chunk
+// source_type filter Phase 32 recorded as a documented no-op becomes a REAL filter: source_type is derived
+// from file_path (classify_source_type), populated on every hit, and post-filtered (0 schema migration,
+// §5.3 FROZEN); console-api forwards ?source_type= (proto add-only source_type=9). In REAL mode
+// source_type=code keeps the JobRunner code hit (source_file_type=code) and source_type=doc filters it out
+// (distinguishing — a no-op would still return it); TEST-42.1.* / TEST-42.2.* prove derive+filter+forward in
+// the default cargo/go gate. agent_scope stays a documented no-op (memory-layer; honest-deferred). Asserts the
+// new [51/51] marker + Phase 42 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask423_SmokeV32ChunkSourceTypeFilterStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v32 (task-42.3)") {
+		t.Fatalf("console_smoke.sh missing v32 (task-42.3) header block")
+	}
+	for _, marker := range []string{"[51/51]", "chunk-source-type-filter", "source_type", "classify_source_type", "TEST-42.1.", "TEST-42.2."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v32 step 51 must document chunk-source-type-filter status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "[50/50]", "tokenizer-default-on"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v32 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid

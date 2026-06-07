@@ -1242,6 +1242,47 @@ else
   echo "    SKIP ($MODE mode — production tokenizer default flip (code_cjk) + [retrieval] config bridge validated via Rust/Go unit tests TEST-41.1.* / TEST-41.2.*; needs the real daemon + indexed fixture)"
 fi
 
+echo "  [51/51] task-42.3 chunk-source-type-filter: POST /v1/search?source_type= filters chunk results by the derived source_type bucket (code/doc/config/other from file_path); source_type=code keeps the JobRunner code hit (source_file_type=code), source_type=doc filters it out (a REAL chunk filter, not the Phase 32 no-op) - ADR-037 source_type no-op superseded (Phase 42)"
+# v32 (task-42.3): Phase 42 (chunk-source-type-filter) lands the chunk source_type filter that Phase 32
+# (task-32.3 / ADR-037) honestly recorded as a documented no-op ([SPEC-DEFER:phase-future.chunk-source-type-filter]).
+# Grounding: source_type is DERIVABLE from file_path (task-42.1 core/src/retriever/mod.rs classify_source_type,
+# mirroring indexer::lang_hint_from_path: extension -> coarse bucket code/doc/config/other), so it needs NO
+# storage and NO chunks-schema migration (chunks/files/provenance SQL_SCHEMA stays §5.3 FROZEN) — a deterministic
+# derivation equals a stored value. task-42.1 derives + populates source_type on every hit (was the
+# DEFAULT_SOURCE_TYPE "" v0.1 schema gap) and post-filters search() BM25 (mirrors the language post-filter; empty
+# source_type -> no filtering -> byte-equivalent); the v1 server.rs:440-453 mapping was already wired so v1
+# gRPC/REST work immediately. task-42.2 forwards the filter to console-api: console_data_plane SearchRequest
+# add-only repeated string source_type=9 (existing fields 1-8 frozen, ADR-015) + data_plane post-filter on the
+# populated h.source_type (covers BM25/semantic/hybrid uniformly) + Go contractv1.SearchRequest.SourceType +
+# handleSearch ?source_type= query/body union (mirrors ?semantic/?hybrid) + grpcclient -> pb.source_type. agent_scope
+# stays a documented no-op: it is a memory-layer concept (memory_items 0013 / ListMemory scope), chunks carry no
+# agent dimension and none is derivable, so a real chunk agent_scope filter is honest-deferred
+# [SPEC-DEFER:phase-future.chunk-agent-scope-filter] (not faked, ADR-013). 0 new dep (classify_source_type is
+# pure-std) / 0 network / 0 schema migration / empty filter byte-equivalent (ADR-004/008/015/037). Verified by
+# TEST-42.1.1 (classify bucket matrix) / TEST-42.1.2 (real filter + populate + agent_scope no-op) / TEST-42.2.1
+# (prost wire-tag field 9) / TEST-42.2.2 (handleSearch union + grpcclient forward + data_plane post-filter) — all
+# in the default cargo/go test gate (no honest-defer; the filter has no external dep).
+if [ "$MODE" = "real" ] && [ "${status:-}" = "succeeded" ]; then
+  st_code=$(curl -sf -X POST "$BASE/v1/search?source_type=code" \
+    -H 'Content-Type: application/json' \
+    -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
+    || { echo "FAIL: POST /v1/search?source_type=code did not return 2xx" >&2; exit 1; }
+  echo "$st_code" | grep -q '"chunk_id"' \
+    || { echo "FAIL: source_type=code returned no chunk for 'runner' (JobRunner is code; the filter dropped a matching hit?) (body: $st_code)" >&2; exit 1; }
+  echo "$st_code" | grep -q '"source_file_type":"code"' \
+    || { echo "FAIL: source_type=code hit missing source_file_type=code provenance (body: $st_code)" >&2; exit 1; }
+  st_doc=$(curl -sf -X POST "$BASE/v1/search?source_type=doc" \
+    -H 'Content-Type: application/json' \
+    -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
+    || { echo "FAIL: POST /v1/search?source_type=doc did not return 2xx" >&2; exit 1; }
+  if echo "$st_doc" | grep -q '"chunk_id"'; then
+    echo "FAIL: source_type=doc still returned the JobRunner code chunk — source_type is a no-op, not a real filter (body: $st_doc)" >&2; exit 1
+  fi
+  echo "    → source_type=code keeps the JobRunner code hit (source_file_type=code) + source_type=doc filters it out ✅ (real chunk filter; Phase 32 no-op superseded; TEST-42.1.* / TEST-42.2.* in the default gate)"
+else
+  echo "    SKIP ($MODE mode — chunk source_type filter (derive + post-filter + console forward) validated via Rust/Go unit tests TEST-42.1.* / TEST-42.2.*; needs the real daemon + indexed fixture)"
+fi
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"
