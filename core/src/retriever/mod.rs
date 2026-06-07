@@ -39,9 +39,44 @@ use vector::types::{ChunkId, VectorChunk, VectorIndexConfig, VectorMetric};
 
 // ---- task-4.2 §2A v0.1 schema-gap default 常量（task-2.4 indexer 未存 → 合成兜底）----
 const DEFAULT_CONTEXT_ID: &str = "";
-const DEFAULT_SOURCE_TYPE: &str = "";
+// task-42.1 (Phase 42 / ADR-047 D1): the former `DEFAULT_SOURCE_TYPE = ""` v0.1 schema-gap
+// placeholder is gone — source_type is now a real value derived from file_path at every
+// construction site via `classify_source_type` (filling the task-4.2 §2A schema gap).
 const DEFAULT_REDACTION_STATUS: &str = "applied"; // BINDING: indexer 仅消费 redacted_content
 const SYNTHESIZED_IMPORTER: &str = "scanner"; // provenance 合成 importer 标识
+
+/// task-42.1 (Phase 42 / ADR-047 D1): derive a chunk's coarse `source_type` bucket from its
+/// file path extension. Deterministic, pure-std, 0-dep — mirrors `indexer::lang_hint_from_path`
+/// (extension → fine-grained language) but maps to the coarse retrieval-filter bucket
+/// (`code` / `doc` / `config` / `other`). source_type is a *derivable* property of file_path
+/// (same source signal as `language`), so it needs no storage and no chunks-schema migration
+/// (chunks/files/provenance SQL_SCHEMA stays §5.3 FROZEN); a deterministic derivation equals a
+/// stored value. Unknown / extension-less paths → `"other"` (deterministic floor; importer-tagged
+/// custom source_type is [SPEC-DEFER:phase-future.chunk-importer-source-type-tagging]).
+pub(crate) fn classify_source_type(file_path: &str) -> &'static str {
+    match std::path::Path::new(file_path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some(
+            "rs" | "go" | "py" | "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" | "java" | "kt"
+            | "kts" | "scala" | "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "hh" | "cs" | "rb"
+            | "php" | "swift" | "m" | "mm" | "sh" | "bash" | "zsh" | "fish" | "ps1" | "sql"
+            | "lua" | "r" | "jl" | "dart" | "ex" | "exs" | "erl" | "hs" | "clj" | "pl" | "pm"
+            | "vue" | "svelte",
+        ) => "code",
+        Some("md" | "markdown" | "mdx" | "txt" | "rst" | "adoc" | "asciidoc" | "org" | "tex") => {
+            "doc"
+        }
+        Some(
+            "toml" | "yaml" | "yml" | "json" | "jsonc" | "ini" | "cfg" | "conf" | "env" | "xml"
+            | "properties",
+        ) => "config",
+        _ => "other",
+    }
+}
 
 /// Read-only 检索会话；与 task-2.4 IndexSession 共享数据目录。
 pub struct Retriever {
@@ -318,20 +353,19 @@ impl Retriever {
             return Ok(Vec::new());
         }
 
-        // task-32.3: honest no-op contract (not "not yet implemented"). source_type / agent_scope
-        // live on SearchFilters but are NOT chunk-retrieval dimensions: the chunks table (see
-        // indexer SQL_SCHEMA, §5.3 FROZEN) has no source_type / agent_scope columns, SearchResult's
-        // source_type is the DEFAULT_SOURCE_TYPE constant and its agent_scope is always empty, and
-        // agent_scope is fundamentally a memory-layer concept (memory_items, migration 0013). So a
-        // non-empty value here is a deliberate, documented no-op for chunk search — the empty-filter
-        // result is byte-for-byte identical. A *real* chunk filter is an import-path feature (it
-        // needs importer-side source_type tagging + a chunks schema migration), tracked as new
-        // backlog [SPEC-DEFER:phase-future.chunk-source-type-filter] +
-        // [SPEC-DEFER:phase-future.chunk-agent-scope-filter]; this code does not fake it (ADR-013).
-        if !opts.filters.source_type.is_empty() || !opts.filters.agent_scope.is_empty() {
+        // task-42.1 (Phase 42 / ADR-047 D2/D4): source_type is now a *real* chunk-retrieval filter
+        // — derived from file_path via classify_source_type and applied below after the SQLite JOIN
+        // (mirrors the language post-filter). agent_scope remains a *documented no-op* for chunk
+        // search: it is fundamentally a memory-layer concept (memory_items, migration 0013;
+        // MemoryListFilter / ListMemory scope), chunks carry no agent association and none is
+        // derivable — so a non-empty agent_scope here returns byte-for-byte the same hits as the
+        // empty-filter default. A real chunk-level agent_scope filter is an ingest-path schema
+        // feature, tracked as [SPEC-DEFER:phase-future.chunk-agent-scope-filter]; this code does
+        // not fake it (ADR-013).
+        if !opts.filters.agent_scope.is_empty() {
             eprintln!(
-                "[retriever] note: source_type/agent_scope are memory-layer filters, not chunk-search \
-                 dimensions (chunks carry no such columns) — ignored as a documented no-op"
+                "[retriever] note: agent_scope is a memory-layer filter, not a chunk-search \
+                 dimension (chunks carry no agent association) — ignored as a documented no-op"
             );
         }
 
@@ -436,6 +470,17 @@ impl Retriever {
                 }
             }
 
+            // task-42.1 (ADR-047 D2): source_type post-filter — derive the chunk's coarse
+            // source_type bucket from file_path and keep the hit only when it matches a requested
+            // bucket (mirrors the language post-filter above; empty source_type filter → no
+            // filtering → byte-equivalent).
+            let source_type = classify_source_type(&file_path);
+            if !opts.filters.source_type.is_empty()
+                && !opts.filters.source_type.iter().any(|s| s == source_type)
+            {
+                continue;
+            }
+
             // task-4.2 AC3 黑盒守护：优先 JOIN provenance 表；缺失合成 scanner-default
             let mut provenance = self.read_provenance(&chunk_id)?;
             if provenance.is_empty() {
@@ -463,7 +508,8 @@ impl Retriever {
             results.push(SearchResult {
                 chunk_id,
                 context_id: DEFAULT_CONTEXT_ID.to_string(),
-                source_type: DEFAULT_SOURCE_TYPE.to_string(),
+                // task-42.1 (ADR-047 D1): real derived source_type (was DEFAULT_SOURCE_TYPE "")
+                source_type: source_type.to_string(),
                 file_path,
                 line_start: line_start.max(0) as u64,
                 line_end: line_end.max(0) as u64,
@@ -555,7 +601,8 @@ impl Retriever {
         Ok(Some(SearchResult {
             chunk_id: chunk_id_db,
             context_id: DEFAULT_CONTEXT_ID.to_string(),
-            source_type: DEFAULT_SOURCE_TYPE.to_string(),
+            // task-42.1 (ADR-047 D1): real derived source_type (was DEFAULT_SOURCE_TYPE "")
+            source_type: classify_source_type(&file_path).to_string(),
             file_path,
             line_start: line_start.max(0) as u64,
             line_end: line_end.max(0) as u64,
@@ -803,7 +850,8 @@ impl Retriever {
         Ok(Some(SearchResult {
             chunk_id: chunk_id_db,
             context_id: DEFAULT_CONTEXT_ID.to_string(),
-            source_type: DEFAULT_SOURCE_TYPE.to_string(),
+            // task-42.1 (ADR-047 D1): real derived source_type (was DEFAULT_SOURCE_TYPE "")
+            source_type: classify_source_type(&file_path).to_string(),
             file_path,
             line_start: line_start.max(0) as u64,
             line_end: line_end.max(0) as u64,
@@ -900,50 +948,107 @@ mod tests {
         (src, data, coll)
     }
 
-    // ---- TEST-32.3.2 — source_type / agent_scope are a documented no-op for chunk search ----
-    // Honest contract guard: a non-empty source_type/agent_scope filter returns byte-for-byte the
-    // same hits (and order) as the empty-filter default — chunks carry no such columns and
-    // agent_scope is a memory-layer concept. Real chunk filtering is import-path backlog
-    // [SPEC-DEFER:phase-future.chunk-source-type-filter] + [SPEC-DEFER:phase-future.chunk-agent-scope-filter].
+    // ---- TEST-42.1.1 (Phase 42 / ADR-047 D1) — classify_source_type extension → bucket matrix ----
+    // Deterministic, pure-std mapping from file_path extension to the coarse source_type bucket
+    // (code / doc / config / other). Unknown / extension-less paths → "other" (deterministic floor).
     #[test]
-    fn test_32_3_2_source_type_agent_scope_filter_is_noop() {
+    fn test_42_1_1_classify_source_type_buckets() {
+        // code
+        for p in ["a.rs", "x/b.go", "c.py", "d.ts", "e.jsx", "f.java", "g.sh", "h.sql", "i.cpp"] {
+            assert_eq!(classify_source_type(p), "code", "{p} should be code");
+        }
+        // doc
+        for p in ["README.md", "notes.txt", "guide.rst", "book.adoc", "spec.mdx"] {
+            assert_eq!(classify_source_type(p), "doc", "{p} should be doc");
+        }
+        // config
+        for p in ["Cargo.toml", "ci.yaml", "pkg.json", "app.ini", "prod.env", "pom.xml"] {
+            assert_eq!(classify_source_type(p), "config", "{p} should be config");
+        }
+        // other: unknown extension / no extension / dotfile (no Path::extension) / extension-less
+        for p in ["data.bin", "image.png", "Makefile", "LICENSE", "noext", ".env"] {
+            assert_eq!(classify_source_type(p), "other", "{p} should be other");
+        }
+        // case-insensitive on the extension
+        assert_eq!(classify_source_type("MAIN.RS"), "code");
+        assert_eq!(classify_source_type("READ.MD"), "doc");
+    }
+
+    // ---- TEST-42.1.2 (Phase 42 / ADR-047 D2/D4) — real source_type filter + populate + agent_scope no-op ----
+    // Phase 42 supersedes the Phase 32 (task-32.3 / ADR-037) source_type documented no-op:
+    //   * source_type is now a *real* chunk-retrieval filter (derived from file_path) and the
+    //     source_type value is populated on every hit (was the DEFAULT_SOURCE_TYPE "" schema gap);
+    //   * agent_scope *remains* a documented no-op (memory-layer concept; chunks carry no agent
+    //     dimension) → [SPEC-DEFER:phase-future.chunk-agent-scope-filter].
+    #[test]
+    fn test_42_1_2_source_type_filter_populate_and_agent_scope_noop() {
         let (_src, data, coll) = build_fixture(
-            "filter-noop",
+            "source-type-filter",
             &[
-                ("a.md", "# Doc A\nthe shared marker noopfiltermarkerz is here\n"),
-                ("b.txt", "Doc B\nthe shared marker noopfiltermarkerz is here\n"),
+                ("a.rs", "// code A\nthe shared marker sourcetypemarkerz is here\n"),
+                ("b.md", "# Doc B\nthe shared marker sourcetypemarkerz is here\n"),
+                ("c.toml", "# config C\nthe shared marker sourcetypemarkerz is here\n"),
             ],
         );
         let retr = Retriever::open(&data, &coll).expect("open");
-        let baseline = retr
-            .search(&SearchOptions {
-                query: "noopfiltermarkerz".into(),
+        let q = |filters: SearchFilters| {
+            retr.search(&SearchOptions {
+                query: "sourcetypemarkerz".into(),
                 top_k: 10,
-                filters: SearchFilters::default(),
+                filters,
                 explain: false,
             })
-            .expect("baseline search");
-        assert!(!baseline.is_empty(), "baseline should hit the shared marker");
+            .expect("search")
+        };
 
-        // non-empty source_type + agent_scope → identical results (documented no-op)
-        let filtered = retr
-            .search(&SearchOptions {
-                query: "noopfiltermarkerz".into(),
-                top_k: 10,
-                filters: SearchFilters {
-                    source_type: vec!["code".into()],
-                    agent_scope: vec!["agent-x:ns".into()],
-                    ..SearchFilters::default()
-                },
-                explain: false,
-            })
-            .expect("filtered search");
+        // baseline (empty filter) → all three files hit, every source_type value populated (non-empty,
+        // derived) — no longer the DEFAULT_SOURCE_TYPE "" placeholder.
+        let baseline = q(SearchFilters::default());
+        assert_eq!(baseline.len(), 3, "baseline should hit all three files");
+        for r in &baseline {
+            assert!(
+                ["code", "doc", "config"].contains(&r.source_type.as_str()),
+                "source_type must be a real derived bucket, got {:?}",
+                r.source_type
+            );
+        }
 
+        // source_type=[doc] → only the .md hit
+        let docs = q(SearchFilters {
+            source_type: vec!["doc".into()],
+            ..SearchFilters::default()
+        });
+        assert_eq!(docs.len(), 1, "source_type=[doc] should return exactly the .md");
+        assert!(docs[0].file_path.ends_with("b.md"));
+        assert_eq!(docs[0].source_type, "doc");
+
+        // source_type=[code] → only the .rs hit
+        let code = q(SearchFilters {
+            source_type: vec!["code".into()],
+            ..SearchFilters::default()
+        });
+        assert_eq!(code.len(), 1, "source_type=[code] should return exactly the .rs");
+        assert!(code[0].file_path.ends_with("a.rs"));
+        assert_eq!(code[0].source_type, "code");
+
+        // multi-bucket source_type=[code, config] → .rs + .toml (union), not the .md
+        let code_cfg = q(SearchFilters {
+            source_type: vec!["code".into(), "config".into()],
+            ..SearchFilters::default()
+        });
+        assert_eq!(code_cfg.len(), 2, "source_type=[code,config] should return .rs + .toml");
+        assert!(code_cfg.iter().all(|r| r.source_type != "doc"));
+
+        // agent_scope remains a documented no-op: non-empty agent_scope → byte-identical to baseline
+        let scoped = q(SearchFilters {
+            agent_scope: vec!["agent-x:ns".into()],
+            ..SearchFilters::default()
+        });
         let base_ids: Vec<&str> = baseline.iter().map(|r| r.chunk_id.as_str()).collect();
-        let filt_ids: Vec<&str> = filtered.iter().map(|r| r.chunk_id.as_str()).collect();
+        let scoped_ids: Vec<&str> = scoped.iter().map(|r| r.chunk_id.as_str()).collect();
         assert_eq!(
-            base_ids, filt_ids,
-            "source_type/agent_scope must be a no-op for chunk search (identical hits + order)"
+            base_ids, scoped_ids,
+            "agent_scope must remain a no-op for chunk search (identical hits + order)"
         );
     }
 
@@ -1274,8 +1379,9 @@ mod tests {
     //
     // Schema parity (PRD §Technical Approach REST/MCP search response + proto
     // RetrievalResult)：每条 SearchResult 必有全部 12 字段 PRESENT（struct 强制 = compile gate）.
-    // v0.1 schema gap 字段（context_id / source_type / agent_scope / redaction_status）
-    // 返 §2A default 常量（"" / "" / vec![] / "applied"）.
+    // v0.1 schema gap 字段（context_id / agent_scope / redaction_status）返 §2A default 常量
+    // （"" / vec![] / "applied"）；source_type 自 Phase 42（ADR-047 D1）起改为由 file_path 派生
+    // 的真实值（不再是 "" schema-gap default）—— readme.md → "doc"。
     #[test]
     fn test_4_2_1_search_result_has_all_12_explainable_fields() {
         let (_src, data, coll) = build_fixture(
@@ -1302,8 +1408,8 @@ mod tests {
             "AC1 §2A v0.1 schema gap: context_id 默认 \"\""
         );
         assert_eq!(
-            r.source_type, "",
-            "AC1 §2A v0.1 schema gap: source_type 默认 \"\""
+            r.source_type, "doc",
+            "Phase 42 (ADR-047 D1): source_type 由 file_path 派生（readme.md → doc）"
         );
         assert!(!r.file_path.is_empty(), "AC1: file_path non-empty");
         assert!(
@@ -1559,7 +1665,10 @@ mod tests {
         assert_eq!(r.chunk_id, target_chunk_id, "AC2-E: chunk_id 一致");
         assert!(!r.file_path.is_empty(), "AC2-E: file_path non-empty");
         assert_eq!(r.context_id, "", "AC2-E §2A default schema gap");
-        assert_eq!(r.source_type, "", "AC2-E §2A default");
+        assert_eq!(
+            r.source_type, "doc",
+            "Phase 42 (ADR-047 D1): source_type 由 file_path 派生（readme.md → doc）"
+        );
         assert!(r.line_end >= r.line_start, "AC2-E: line range valid");
         assert_eq!(
             r.retrieval_method, "bm25",
