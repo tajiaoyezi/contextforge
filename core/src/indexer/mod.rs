@@ -1286,6 +1286,68 @@ mod tests {
         );
     }
 
+    // ---- TEST-41.1.2 (AC2) — production default flip (ADR-046 D1): the production indexing path
+    // binds a NEW collection's content field to resolve_tokenizer()'s result. Default (unset env →
+    // parse_tokenizer(None) == code_cjk) binds code_cjk; opt-out (parse_tokenizer(Some("default")) ==
+    // default) binds legacy TEXT; an EXISTING collection keeps its persisted analyzer even when the
+    // flipped default is passed (open_with_tokenizer reads meta.json for an existing index). ----
+    #[test]
+    fn test_41_1_2_production_default_flip_and_existing_collection_safe() {
+        use crate::server::parse_tokenizer;
+
+        // 1) production default (unset env): new collection binds code_cjk → camel 子词 'user' 命中.
+        let data_flip = temp_root("tok-flip-default");
+        let mut sess = IndexSession::open_with_tokenizer(&data_flip, "c", &parse_tokenizer(None)).unwrap();
+        write_one_doc(&mut sess, "fn getUserById() 配置加载");
+        sess.commit().unwrap();
+        assert_eq!(
+            content_tokenizer_name(&sess.tantivy_index.schema()),
+            CODE_CJK_TOKENIZER,
+            "unset env → 新建 collection 绑 code_cjk（翻默认）"
+        );
+        assert!(
+            !sess.tantivy_search("user", 10).unwrap().is_empty(),
+            "翻默认: camel 子词 'user' 应命中"
+        );
+
+        // 2) opt-out (CONTEXTFORGE_TOKENIZER=default): new collection binds legacy TEXT → 子词 miss.
+        let data_optout = temp_root("tok-flip-optout");
+        let mut sess_o =
+            IndexSession::open_with_tokenizer(&data_optout, "c", &parse_tokenizer(Some("default"))).unwrap();
+        write_one_doc(&mut sess_o, "fn getUserById() 配置加载");
+        sess_o.commit().unwrap();
+        assert_eq!(
+            content_tokenizer_name(&sess_o.tantivy_index.schema()),
+            DEFAULT_TOKENIZER,
+            "opt-out 'default' → 新建 collection 绑 legacy TEXT（byte-equivalent 翻默认前）"
+        );
+        assert!(
+            sess_o.tantivy_search("user", 10).unwrap().is_empty(),
+            "opt-out: camel 子词 'user' 不应命中（legacy TEXT）"
+        );
+
+        // 3) existing-collection safety: a collection created with TEXT keeps TEXT even when the
+        // flipped default (code_cjk) is later passed — open_with_tokenizer reads the persisted schema.
+        let data_existing = temp_root("tok-flip-existing");
+        {
+            let mut s0 = IndexSession::open_with_tokenizer(&data_existing, "c", DEFAULT_TOKENIZER).unwrap();
+            write_one_doc(&mut s0, "fn getUserById() 配置加载");
+            s0.commit().unwrap();
+            assert_eq!(content_tokenizer_name(&s0.tantivy_index.schema()), DEFAULT_TOKENIZER);
+        }
+        // re-open the existing collection with the flipped default (code_cjk) — must stay TEXT.
+        let s1 = IndexSession::open_with_tokenizer(&data_existing, "c", &parse_tokenizer(None)).unwrap();
+        assert_eq!(
+            content_tokenizer_name(&s1.tantivy_index.schema()),
+            DEFAULT_TOKENIZER,
+            "既有 TEXT collection 经翻默认 open 仍保持 TEXT（open_in_dir 读回持久化 schema、不被静默失效）"
+        );
+        assert!(
+            s1.tantivy_search("user", 10).unwrap().is_empty(),
+            "既有 collection 保持 TEXT: camel 子词 'user' 仍不命中"
+        );
+    }
+
     // ---- TEST-30.2.2 (AC2) — reindex/migration 工具按目标 analyzer 绑定重建（默认构建可验，0-dep）----
     // 既有 default-bound collection → reindex 到 code_cjk bigram 绑定 → migrated 索引 bigram 子词命中
     // + chunk 数保留（SQLite 真相源不动）；既有默认读路径在迁移前不破（向后兼容）.

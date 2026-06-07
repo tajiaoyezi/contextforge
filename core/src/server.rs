@@ -20,7 +20,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::chunker::{ChunkPolicy, Provenance as ChunkerProvenance, Provenance as RetrieverProvenance};
-use crate::indexer::{IndexProgressSnapshot, IndexSession};
+use crate::indexer::{
+    IndexProgressSnapshot, IndexSession, CJK_SEGMENTER_TOKENIZER, CODE_CJK_TOKENIZER,
+    DEFAULT_TOKENIZER,
+};
 use crate::pb::context_service_server::{ContextService, ContextServiceServer};
 use crate::pb::{
     ChunkContent, HealthRequest, HealthResponse, IndexProgress, IndexRequest,
@@ -138,7 +141,11 @@ impl ContextService for CoreService {
         let src = PathBuf::from(&source_path);
         let tx_indexer = tx.clone();
         tokio::task::spawn_blocking(move || {
-            let mut session = match IndexSession::open(&data_dir, &collection_id) {
+            let mut session = match IndexSession::open_with_tokenizer(
+                &data_dir,
+                &collection_id,
+                &resolve_tokenizer(),
+            ) {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = tx_indexer.blocking_send(Ok(IndexProgress {
@@ -574,6 +581,51 @@ fn parse_vector_backend(name_var: Option<&str>, dim_var: Option<&str>) -> (Strin
     (name, dim)
 }
 
+/// task-41.1 (ADR-046 D1): resolve the analyzer the production indexing hot paths bind on a *newly*
+/// created collection's `content` field, from `$CONTEXTFORGE_TOKENIZER`.
+///
+/// Mirrors [`resolve_data_dir`] / [`resolve_vector_backend`]'s env conventions. This is the one
+/// deliberate default-behavior flip (ADR-046): **unset / blank → `code_cjk`** (the pure-std, 0-dep
+/// code/CJK analyzer, task-24.1), so new collections get the +0.0909 recall uplift Phase 24 measured
+/// by default. Opt-out back to the legacy Tantivy `default` (`TEXT`) analyzer with
+/// `CONTEXTFORGE_TOKENIZER=default`. Existing collections are unaffected: `open_with_tokenizer` reads
+/// the persisted `meta.json` schema for an existing index and ignores this value (see
+/// `IndexSession::open_with_tokenizer`), so the flip only touches collections created from now on.
+pub fn resolve_tokenizer() -> String {
+    parse_tokenizer(std::env::var("CONTEXTFORGE_TOKENIZER").ok().as_deref())
+}
+
+/// Pure resolver behind [`resolve_tokenizer`] (env value injected as an arg → unit-testable without
+/// mutating process-global env). Unset / blank / `code_cjk` → `code_cjk` (the flipped default);
+/// `default` → the legacy `TEXT` analyzer (opt-out, byte-equivalent to the pre-flip behavior);
+/// `cjk_segmenter` → the jieba analyzer **only** when the `cjk-segmenter` feature is built (otherwise a
+/// stderr WARN + fall back to `code_cjk`, since the analyzer would be bound-but-not-registered);
+/// any other value → stderr WARN + `code_cjk` (best-effort, never silently falls to `TEXT` which would
+/// make the flip a no-op — mirrors Phase 35 stderr surfacing). Never panics.
+pub(crate) fn parse_tokenizer(var: Option<&str>) -> String {
+    let name = var.map(str::trim).unwrap_or("");
+    if name.is_empty() || name == CODE_CJK_TOKENIZER {
+        CODE_CJK_TOKENIZER.to_string()
+    } else if name == DEFAULT_TOKENIZER {
+        DEFAULT_TOKENIZER.to_string()
+    } else if name == CJK_SEGMENTER_TOKENIZER {
+        #[cfg(feature = "cjk-segmenter")]
+        let resolved = CJK_SEGMENTER_TOKENIZER.to_string();
+        #[cfg(not(feature = "cjk-segmenter"))]
+        let resolved = {
+            eprintln!(
+                "contextforge: CONTEXTFORGE_TOKENIZER=cjk_segmenter requires the cjk-segmenter \
+                 feature (not built in this binary); using code_cjk"
+            );
+            CODE_CJK_TOKENIZER.to_string()
+        };
+        resolved
+    } else {
+        eprintln!("contextforge: unknown CONTEXTFORGE_TOKENIZER={name:?}; using code_cjk");
+        CODE_CJK_TOKENIZER.to_string()
+    }
+}
+
 /// AC1: resolve a *safe* listen address.
 ///
 /// - `None` -> built-in loopback default (`DEFAULT_LISTEN`).
@@ -1004,6 +1056,43 @@ mod tests {
         // a whitespace-only backend name also collapses to the empty default arm
         let (blank, bdim) = parse_vector_backend(Some("   "), None);
         assert_eq!((blank.as_str(), bdim), ("", 0), "blank name → empty default arm");
+    }
+
+    // ---- TEST-41.1.1 (AC1) — parse_tokenizer maps CONTEXTFORGE_TOKENIZER to the analyzer the
+    // production indexing hot paths bind on a new collection. unset/blank → code_cjk (the ADR-046
+    // flip), "default" → legacy TEXT (opt-out), unknown / feature-off → WARN + code_cjk (never
+    // silently TEXT, which would make the flip a no-op). ----
+    #[test]
+    fn test_41_1_1_parse_tokenizer_flips_default_with_opt_out() {
+        // unset / blank → code_cjk (the deliberate default flip, ADR-046 D1)
+        assert_eq!(parse_tokenizer(None), CODE_CJK_TOKENIZER, "unset → code_cjk flip");
+        assert_eq!(parse_tokenizer(Some("")), CODE_CJK_TOKENIZER, "blank → code_cjk");
+        assert_eq!(parse_tokenizer(Some("  ")), CODE_CJK_TOKENIZER, "whitespace → code_cjk (trim)");
+        // explicit code_cjk → code_cjk
+        assert_eq!(parse_tokenizer(Some("code_cjk")), CODE_CJK_TOKENIZER, "explicit code_cjk");
+        // opt-out back to legacy TEXT
+        assert_eq!(
+            parse_tokenizer(Some("default")),
+            DEFAULT_TOKENIZER,
+            "\"default\" → legacy TEXT opt-out (byte-equivalent to pre-flip)"
+        );
+        assert_eq!(parse_tokenizer(Some(" default ")), DEFAULT_TOKENIZER, "opt-out trimmed");
+        // unknown value → WARN (stderr) + code_cjk, never silently TEXT
+        assert_eq!(parse_tokenizer(Some("bogus")), CODE_CJK_TOKENIZER, "unknown → code_cjk (not TEXT)");
+        // cjk_segmenter without the feature falls back to code_cjk (analyzer would be unregistered).
+        // The default test build has no cjk-segmenter feature → code_cjk; under the feature → jieba.
+        #[cfg(not(feature = "cjk-segmenter"))]
+        assert_eq!(
+            parse_tokenizer(Some("cjk_segmenter")),
+            CODE_CJK_TOKENIZER,
+            "cjk_segmenter without feature → code_cjk fallback"
+        );
+        #[cfg(feature = "cjk-segmenter")]
+        assert_eq!(
+            parse_tokenizer(Some("cjk_segmenter")),
+            CJK_SEGMENTER_TOKENIZER,
+            "cjk_segmenter with feature → jieba analyzer"
+        );
     }
 
     // ---- TEST-21.1.2 — hybrid=true dispatches the RRF fusion path ----
