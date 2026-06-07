@@ -1,6 +1,6 @@
 # Task `42.1`: `chunk-source-type-derivation-and-filter — core/src/retriever/mod.rs 加 classify_source_type(file_path) 纯函数（扩展名 → code/doc/config/other 确定性桶，镜像 indexer::lang_hint_from_path）+ 三处 SearchResult 构造点（search() BM25 / get_chunk / search_semantic）source_type 由 DEFAULT_SOURCE_TYPE 改真实派生 + search() BM25 加 source_type post-filter（镜像 language post-filter，空 filter byte-equiv）+ agent_scope 续 documented no-op（窄化既有 WARN 块仅 agent_scope）；0 schema migration（chunks/files/provenance §5.3 FROZEN，source_type 由 file_path 派生不存储）；据真契约改写 TEST-32.3.2`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -42,8 +42,9 @@ pass bar：`classify_source_type` 扩展名 → 桶矩阵经穷举单测（code/
 - 改 `search()`（BM25）加 source_type post-filter：`if !opts.filters.source_type.is_empty()` 时 `let st = classify_source_type(&file_path); if !opts.filters.source_type.iter().any(|s| s == st) { continue; }`（紧随 language post-filter，镜像 :386）
 - 窄化 `:321-336` no-op 块——仅 `!opts.filters.agent_scope.is_empty()` 时 stderr note（source_type 从 no-op 措辞移除；agent_scope 据实续 no-op）
 - 据真契约改写 `TEST-32.3.2`（:903-940）——拆为 agent_scope-only no-op 守护 + source_type 真实过滤断言（非新增第三测试，而是把原双 no-op 测试随契约演进改写；新 source_type 行为另由 TEST-42.1.2 全面断言）
-- **不改**：chunks/files/provenance SQL_SCHEMA（`indexer/mod.rs:115-147` §5.3 FROZEN）/ `DEFAULT_SOURCE_TYPE` 常量（`:42`，库其他消费方 / 历史语义保留——本 task 在构造点改用 `classify_source_type` 不删常量）/ v1 `server.rs:440-453` filter mapping（已就绪）/ `lang_hint_from_path`（:483，不改，仅作镜像范式）
-- 同源测试：`classify_source_type` 扩展名 → 桶穷举（TEST-42.1.1）+ 真实过滤 + populate + agent_scope no-op（TEST-42.1.2）
+- **不改**：chunks/files/provenance SQL_SCHEMA（`indexer/mod.rs:115-147` §5.3 FROZEN）/ v1 `server.rs:440-453` filter mapping（已就绪）/ `lang_hint_from_path`（:483，不改，仅作镜像范式）
+- **grounding 校正（实施编译期发现，ADR-013 据实）**：`DEFAULT_SOURCE_TYPE` 常量（`:42`）在三构造点全改用 `classify_source_type` 后成为**孤儿**（仅 retriever 模块私有、无其他消费方），`-D warnings` 下 dead_code 卡红 → 据 CLAUDE.md「移除本次改动造成的孤儿」**删除该常量**（替为注释）。规划稿「不删常量」是 plan 假设、编译期 grounding 覆盖；`DEFAULT_CONTEXT_ID`/`DEFAULT_REDACTION_STATUS` 仍在用、不动。
+- 同源测试：`classify_source_type` 扩展名 → 桶穷举（TEST-42.1.1）+ 真实过滤 + populate + agent_scope no-op（TEST-42.1.2）；populate（source_type value 由 "" 变派生）连带更新断言旧「v0.1 schema gap source_type==""」的既有测试（`test_4_2_1` / `test_6_2_e1` / `server.rs` search RPC wire test / `core/tests/phase4_smoke.rs` / `core/tests/phase6_smoke.rs` 改断言「有效桶 ∈ {code,doc,config,other}」）——契约演进、当前测试码随之更新（非溯改闭合 spec 文档，ADR-014 D5）
 
 ### 范围外（[SPEC-DEFER] / [SPEC-OWNER]）
 
@@ -90,17 +91,17 @@ pass bar：`classify_source_type` 扩展名 → 桶矩阵经穷举单测（code/
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（classify_source_type 扩展名 → 桶矩阵 🟢）: `core/src/retriever/mod.rs` `classify_source_type(file_path) -> &'static str` 据扩展名（小写）确定性映射 code/doc/config/other（§2 固化表）；无扩展名 / 未知 → `other`；纯 std 0-dep — verified by **TEST-42.1.1**
-- [ ] **AC2**（真实过滤 + populate + agent_scope no-op 🟢）: 三构造点（`:466`/`:558`/`:806`）`source_type` 由 `DEFAULT_SOURCE_TYPE` 改 `classify_source_type(&file_path)` 真实派生；`search()` BM25 source_type post-filter（`source_type=[doc]` 仅返 doc / `[code]` 仅返 code / 空 filter byte-equiv 返全部，镜像 language）；`agent_scope` 续 documented no-op（非空 → byte-equiv）；0 schema migration（§5.3 FROZEN） — verified by **TEST-42.1.2**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-42.1.3**（= LAST）
+- [x] **AC1**（classify_source_type 扩展名 → 桶矩阵 🟢）: `core/src/retriever/mod.rs` `classify_source_type(file_path) -> &'static str` 据扩展名（小写）确定性映射 code/doc/config/other（§2 固化表）；无扩展名 / 未知 / dotfile → `other`；纯 std 0-dep — verified by **TEST-42.1.1**
+- [x] **AC2**（真实过滤 + populate + agent_scope no-op 🟢）: 三构造点（`search()` / `get_chunk` / `assemble_vector_result`）`source_type` 由 `DEFAULT_SOURCE_TYPE` 改 `classify_source_type(&file_path)` 真实派生；`search()` BM25 source_type post-filter（`source_type=[doc]` 仅返 doc / `[code]` 仅返 code / `[code,config]` 并集 / 空 filter byte-equiv 返全部，镜像 language）；`agent_scope` 续 documented no-op（非空 → byte-equiv）；0 schema migration（§5.3 FROZEN） — verified by **TEST-42.1.2**
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-42.1.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-42.1.1 | `classify_source_type` 扩展名 → 桶矩阵穷举：code（.rs/.go/.py/.ts/…）/ doc（.md/.txt/.rst/…）/ config（.toml/.yaml/.json/…）/ other（无扩展名 / 未知）+ 大小写不敏感（.RS → code）；纯 std 0-dep | `core/src/retriever/mod.rs`（同源 test） | Draft |
-| TEST-42.1.2 | 真实过滤 + populate + agent_scope no-op：混合扩展名 fixture（.rs + .md + .toml）`source_type=[doc]` 仅返 .md / `[code]` 仅返 .rs / 空 filter byte-equiv 返全部 + 三路径（search/get_chunk/search_semantic）source_type value 非空派生 + 非空 agent_scope filter 返与空 byte-identical | `core/src/retriever/mod.rs`（同源 test，含据真契约改写的原 TEST-32.3.2） | Draft |
-| TEST-42.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Draft |
+| TEST-42.1.1 | `classify_source_type` 扩展名 → 桶矩阵穷举：code（.rs/.go/.py/.ts/.jsx/.java/.sh/.sql/.cpp）/ doc（.md/.txt/.rst/.adoc/.mdx）/ config（.toml/.yaml/.json/.ini/prod.env/.xml）/ other（.bin/.png/Makefile/LICENSE/noext/.env dotfile）+ 大小写不敏感（MAIN.RS→code / READ.MD→doc）；纯 std 0-dep | `core/src/retriever/mod.rs`（同源 test） | Done |
+| TEST-42.1.2 | 真实过滤 + populate + agent_scope no-op：混合扩展名 fixture（.rs + .md + .toml）baseline 3 hit + source_type value ∈ {code,doc,config} / `source_type=[doc]` 仅返 .md / `[code]` 仅返 .rs / `[code,config]` 并集 2 hit 非 doc / 非空 agent_scope filter 返与空 byte-identical | `core/src/retriever/mod.rs`（同源 test，含据真契约改写的原 TEST-32.3.2） | Done |
+| TEST-42.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -136,4 +137,16 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft（实施后置 Done + 回填真实 §9 证据 + 实际改动文件 + 真实过滤行为实测）
+**Status**: Done
+
+**§9 Verification（feat/task-42.1-source-type-filter，真实证据）**：
+- AC1：`cargo test -p contextforge-core --lib retriever::test_42_1_1` —— `test_42_1_1_classify_source_type_buckets` PASS（扩展名 → 桶矩阵穷举 code/doc/config/other + 大小写不敏感 MAIN.RS→code / READ.MD→doc + dotfile `.env` → other（`Path::extension` 对 leading-dot 文件返 None））。
+- AC2：`cargo test -p contextforge-core --lib retriever::test_42_1_2` —— `test_42_1_2_source_type_filter_populate_and_agent_scope_noop` PASS（混合 fixture .rs+.md+.toml：baseline 3 hit 且每条 source_type ∈ {code,doc,config} 真实派生 / `source_type=[doc]` 仅返 b.md / `[code]` 仅返 a.rs / `[code,config]` 并集 2 hit 非 doc / 非空 agent_scope filter byte-identical 于 baseline）；`cargo test --workspace` 全绿（retriever lib 37→39，含连带更新的 `test_4_2_1`/`test_6_2_e1`/`server.rs` search wire test/`phase4_smoke`/`phase6_smoke` 改断言「有效桶」）。
+- AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
+- 0 新 dep（`classify_source_type` 纯 std）/ 0 网络 / 0 schema migration（chunks/files/provenance §5.3 FROZEN，source_type 由 file_path 派生不存储）/ 空 source_type filter byte-equiv / agent_scope 续 documented no-op；`cargo clippy --workspace --all-targets -- -D warnings` clean。
+
+**实际改动文件**：
+- `core/src/retriever/mod.rs`——add `pub(crate) fn classify_source_type(file_path) -> &'static str`（扩展名确定性桶，镜像 `indexer::lang_hint_from_path`）+ `search()` BM25 source_type 派生 + post-filter（time filter 后、provenance 前）+ 三构造点（`search()`/`get_chunk`/`assemble_vector_result`）`source_type` 真实派生 + 窄化 no-op 块仅 agent_scope + **删除孤儿 `DEFAULT_SOURCE_TYPE` 常量**（grounding 校正，替注释）+ TEST-42.1.1/.2（含据真契约改写的原 TEST-32.3.2）。
+- `core/src/server.rs` / `core/tests/phase4_smoke.rs` / `core/tests/phase6_smoke.rs`——既有 source_type=="" schema-gap 断言改「有效桶 ∈ {code,doc,config,other}」（populate 契约演进连带更新）。
+
+**grounding 校正（ADR-013 据实）**：(1) `DEFAULT_SOURCE_TYPE` 在三构造点改派生后成孤儿（`-D warnings` dead_code 卡红）→ 删除（规划稿「不删常量」plan 假设被编译期 grounding 覆盖）；(2) populate（source_type value 由 "" 变派生值）连带需更新 4 处既有断言旧「v0.1 schema gap """ 的测试（非仅 TEST-32.3.2）——契约演进、当前测试码随之更新（非溯改闭合 spec 文档，ADR-014 D5）；(3) source_type 由 file_path 确定性派生 == 存储值，0 schema migration（§5.3 FROZEN）；(4) agent_scope 据实续 documented no-op（memory 层概念，不伪造）。

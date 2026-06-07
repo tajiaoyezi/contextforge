@@ -900,7 +900,11 @@ mod tests {
         // 12 explainable fields PRESENT + 内容 sanity
         assert!(!r.chunk_id.is_empty(), "AC1: chunk_id non-empty");
         assert_eq!(r.context_id, "", "AC1 §2A v0.1 schema gap default");
-        assert_eq!(r.source_type, "", "AC1 §2A v0.1 schema gap default");
+        assert!(
+            ["code", "doc", "config", "other"].contains(&r.source_type.as_str()),
+            "Phase 42 (ADR-047 D1): source_type 由 file_path 派生为有效桶, got {:?}",
+            r.source_type
+        );
         assert!(!r.file_path.is_empty(), "AC1: file_path non-empty");
         assert!(r.line_end >= r.line_start, "AC1: line range valid");
         assert!(r.score > 0.0, "AC1: score > 0, got {}", r.score);

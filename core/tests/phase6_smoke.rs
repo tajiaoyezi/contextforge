@@ -128,7 +128,12 @@ async fn phase_6_search_grpc_end_to_end_smoke() {
         // 12 explainable fields PRESENT (proto-generated struct 强制) + 内容 sanity
         assert!(!r.chunk_id.is_empty(), "AC5 #{}: chunk_id non-empty", i);
         assert_eq!(r.context_id, "", "AC5 #{}: §2A schema gap default", i);
-        assert_eq!(r.source_type, "", "AC5 #{}: §2A schema gap default", i);
+        assert!(
+            ["code", "doc", "config", "other"].contains(&r.source_type.as_str()),
+            "AC5 #{}: source_type 自 Phase 42 (ADR-047 D1) 由 file_path 派生为有效桶, got {:?}",
+            i,
+            r.source_type
+        );
         assert!(!r.file_path.is_empty(), "AC5 #{}: file_path non-empty", i);
         assert!(r.line_end >= r.line_start, "AC5 #{}: line range valid", i);
         assert!(r.score > 0.0, "AC5 #{}: score > 0", i);
