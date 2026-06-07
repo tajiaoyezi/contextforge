@@ -1,6 +1,6 @@
 # Task `41.2`: `tokenizer-config-bridge — internal/config/config.go add-only RetrievalConfig{Tokenizer} + Config.Retrieval + [retrieval] 段 encode/decode round-trip（镜像 VectorConfig/[vector]）+ cmd/contextforge/main.go setTokenizerEnv（镜像 setVectorEnv：[retrieval] tokenizer 非空且 CONTEXTFORGE_TOKENIZER 未设 → 导出，env-wins，无段/空值不导出 → Rust resolve_tokenizer 默认 code_cjk）接线 doServe/doMCP；tokenizer 非密钥；Rust core 0 toml dep`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -75,17 +75,17 @@ pass bar：`[retrieval] tokenizer` Save→Load round-trip 等价（🟢）；`se
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（config `[retrieval] tokenizer` round-trip 🟢）: `internal/config/config.go` add-only `RetrievalConfig{Tokenizer string}` + `Config.Retrieval` + `[retrieval]` 段 encode/decode；Save→Load round-trip 等价（含 `tokenizer = "code_cjk"` / `"default"` / `""`）；既有段 / 字段不变（既有 config.toml 无 `[retrieval]` → 零值 `Tokenizer=""`） — verified by **TEST-41.2.1**
-- [ ] **AC2**（setTokenizerEnv env-bridge 🟢）: `cmd/contextforge/main.go` `setTokenizerEnv`（镜像 `setVectorEnv`）：`[retrieval] tokenizer` 非空且 `CONTEXTFORGE_TOKENIZER` 未设 → 导出（env-wins：已设不覆盖）；无段 / 空值 → 不导出（→ Rust 默认 code_cjk）；missing config 静默 / 真 parse-err stderr WARN；doServe/doMCP 接线 + restore；既有 setVectorEnv/setRerankerEnv 不退化；Rust core 0 toml dep — verified by **TEST-41.2.2**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-41.2.3**（= LAST）
+- [x] **AC1**（config `[retrieval] tokenizer` round-trip 🟢）: `internal/config/config.go` add-only `RetrievalConfig{Tokenizer string}` + `Config.Retrieval` + `[retrieval]` 段 encode/decode；Save→Load round-trip 等价（含 `tokenizer = "code_cjk"` / `"default"` / `""`）；既有段 / 字段不变（既有 config.toml 无 `[retrieval]` → 零值 `Tokenizer=""`） — verified by **TEST-41.2.1**
+- [x] **AC2**（setTokenizerEnv env-bridge 🟢）: `cmd/contextforge/main.go` `setTokenizerEnv`（镜像 `setVectorEnv`）：`[retrieval] tokenizer` 非空且 `CONTEXTFORGE_TOKENIZER` 未设 → 导出（env-wins：已设不覆盖）；无段 / 空值 → 不导出（→ Rust 默认 code_cjk）；missing config 静默 / 真 parse-err stderr WARN；doServe/doMCP 接线 + restore；既有 setVectorEnv/setRerankerEnv 不退化；Rust core 0 toml dep — verified by **TEST-41.2.2**
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-41.2.3**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-41.2.1 | config `[retrieval] tokenizer` Save→Load round-trip 等价（`code_cjk` / `default` / 空）；既有段不变（无 `[retrieval]` → 零值） | `internal/config/config_test.go` | Planned |
-| TEST-41.2.2 | `setTokenizerEnv` env-wins（已设不覆盖）/ 无段 / 空值不导出（→ Rust 默认 code_cjk）/ 非空导出 `CONTEXTFORGE_TOKENIZER` / missing config 静默 / restore（镜像 setVectorEnv test）；既有 setVectorEnv/setRerankerEnv 不退化 | `cmd/contextforge/main_test.go` | Planned |
-| TEST-41.2.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-41.2.1 | config `[retrieval] tokenizer` Save→Load round-trip 等价（`code_cjk` / `default` / 空）；既有段不变（无 `[retrieval]` → 零值） | `internal/config/config_test.go` | Done |
+| TEST-41.2.2 | `setTokenizerEnv` env-wins（已设不覆盖）/ 无段 / 空值不导出（→ Rust 默认 code_cjk）/ 非空导出 `CONTEXTFORGE_TOKENIZER` / missing config 静默 / restore（镜像 setVectorEnv test）；既有 setVectorEnv/setRerankerEnv 不退化 | `cmd/contextforge/main_test.go` | Done |
+| TEST-41.2.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -120,15 +120,15 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`go test ./internal/config/...` —— `[retrieval] tokenizer` Save→Load round-trip 等价（code_cjk / default / 空）+ 既有段不变（真实结果待实施回填，ADR-013 不伪造）。
-- AC2：`go test ./cmd/contextforge/...` —— `setTokenizerEnv` env-wins / 无段不导出 / 非空导出 `CONTEXTFORGE_TOKENIZER` / missing config 静默 / restore；既有 setVectorEnv/setRerankerEnv 不退化。真实结果待实施回填。
-- AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-- Rust core 0 toml dep（ADR-008）/ 无段默认 code_cjk / env-wins / tokenizer 非密钥 真实结果待实施回填（ADR-013 不预填）。
+**§9 Verification（PR #263，master @ `2cead8b`，真实证据）**：
+- AC1：`go test ./internal/config/... -run TestTask412RetrievalConfig` —— PASS（`[retrieval] tokenizer` Save→Load round-trip code_cjk / default / cjk_segmenter 保真 + 既有 `[vector]`/`[reranker]`/`[[collections]]` 段不受影响 + 旧 config 无 `[retrieval]` 段向后兼容 zero value）。
+- AC2：`go test ./cmd/contextforge/... -run TestSetTokenizerEnv` —— PASS（`setTokenizerEnv` 非空导出 `CONTEXTFORGE_TOKENIZER` + restore unset / env-wins 已设不覆盖 / 空段不导出 → core 默认 code_cjk）；既有 `setVectorEnv`/`setRerankerEnv`/config round-trip 不退化（`go test ./...` 全过）。
+- AC3：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威，PR #263 spec-lint pass）。
+- Rust core 0 toml dep（ADR-008）/ 无段默认 code_cjk / env-wins / tokenizer 非密钥（无 api-key 字段）；`go vet ./...` clean；`gofmt` 0 diff（4 文件 LF-normalized）。
 
-**实际改动文件**（计划，待实施回填）：
+**实际改动文件**（PR #263）：
 - `internal/config/config.go`——add-only `RetrievalConfig{Tokenizer}` + `Config.Retrieval` + `[retrieval]` encode/decode（镜像 `VectorConfig`/`[vector]`）+ `assignRetrieval`。
 - `cmd/contextforge/main.go`——add `setTokenizerEnv`（镜像 `setVectorEnv`）+ doServe/doMCP 接线。
 - `internal/config/config_test.go` + `cmd/contextforge/main_test.go`——round-trip + env-bridge test。

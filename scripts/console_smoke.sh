@@ -1204,6 +1204,44 @@ else
   echo "    SKIP ($MODE mode — memory pin actor propagation + L2 access-order LRU validated via Go/Rust unit tests TEST-40.1.* / TEST-40.2.*; needs the real daemon)"
 fi
 
+echo "  [50/50] task-41.3 tokenizer-default-on: production indexing default flips to code_cjk (camelCase subword 'runner' of JobRunner hits via the code/CJK analyzer; legacy TEXT keeps 'jobrunner' single token -> miss) + opt-out via CONTEXTFORGE_TOKENIZER / [retrieval] tokenizer - ADR-029/035 tokenizer-default-on defer closed (Phase 41)"
+# v31 (task-41.3): Phase 41 (tokenizer-default-on) makes the deliberate product decision Phase 30 /
+# ADR-035 D3 honest-deferred ([SPEC-DEFER:phase-future.tokenizer-default-on]): the code/CJK analyzer
+# code_cjk (task-24.1, pure-std, 0-dep: camelCase/snake_case/dotted.path/kebab-case subword split +
+# original-token-preserving + CJK bigram) flips from opt-in to the PRODUCTION DEFAULT for NEWLY created
+# collections, so every user gets the recall uplift Phase 24 measured by default. task-41.1 added
+# core/src/server.rs resolve_tokenizer() (mirrors resolve_data_dir/resolve_vector_backend): unset/"" ->
+# code_cjk (the flip) / "default" -> legacy TEXT (opt-out, byte-equivalent) / unknown|feature-off ->
+# stderr WARN + code_cjk (never silently TEXT); the two production indexing call sites (server.rs:141
+# CoreService::index + jobs/index_session_backend.rs:151) now open_with_tokenizer(.., &resolve_tokenizer()).
+# IndexSession::open / DEFAULT_TOKENIZER (the library convenience entry + constant) are unchanged. This is
+# the FIRST deliberate default-behavior change (a new collection's content inverted-index terms go TEXT ->
+# code_cjk, NOT byte-equivalent), owned by ADR-046: existing collections are unaffected (open_with_tokenizer
+# reads the persisted meta.json schema for an existing index and ignores the flip), CONTEXTFORGE_TOKENIZER=
+# default / [retrieval] tokenizer opt-out back to legacy TEXT, and existing collections upgrade only via the
+# user-initiated reindex_with_tokenizer (no auto-migration). task-41.2 added the Go [retrieval] tokenizer
+# config + setTokenizerEnv bridge (mirrors setVectorEnv; env-wins; no [retrieval] -> nothing exported ->
+# core defaults to code_cjk; Rust core 0 toml dep). jieba cjk_segmenter stays feature-gated opt-in (0-dep
+# baseline + Phase 30 measured jieba-vs-bigram delta=+0.0000). Real measured recall delta over the current
+# golden (14 files / 16 queries): before(default TEXT) recall@5/@10=0.8750 mrr=0.8750 -> after(code_cjk)
+# recall@5/@10=1.0000 mrr=0.9375, delta recall@5/@10=+0.1250 mrr=+0.0625 (ADR-013 real number for the
+# current golden, not the historical Phase 24 +0.0909). 0 new dep / 0 network / default code_cjk owned by
+# ADR-046 (ADR-004/008/029/035). Verified by TEST-41.1.1 (resolve_tokenizer env matrix) / TEST-41.1.2
+# (production path binds code_cjk + opt-out TEXT + existing-collection safety) / TEST-41.2.1 ([retrieval]
+# round-trip) / TEST-41.2.2 (setTokenizerEnv env-wins) — all in the default cargo/go test gate (no honest-
+# defer; the tokenizer has no external dep).
+if [ "$MODE" = "real" ] && [ "${status:-}" = "succeeded" ]; then
+  tok_body=$(curl -sf -X POST "$BASE/v1/search" \
+    -H 'Content-Type: application/json' \
+    -d "{\"query\":\"runner\",\"workspace_id\":\"${WS_ID}\",\"top_k\":5,\"retrieval_method\":\"bm25\",\"agent_scope\":\"session\"}") \
+    || { echo "FAIL: POST /v1/search query=runner did not return 2xx" >&2; exit 1; }
+  echo "$tok_body" | grep -q '"chunk_id"' \
+    || { echo "FAIL: tokenizer default flip not active — camelCase subword 'runner' (of JobRunner) returned no chunk; expected the code_cjk production default to split camelCase (body: $tok_body)" >&2; exit 1; }
+  echo "    → camelCase subword 'runner' (of JobRunner) hit via the code_cjk production default ✅ (legacy TEXT keeps 'jobrunner' single token -> miss; opt-out via CONTEXTFORGE_TOKENIZER=default / [retrieval] tokenizer; TEST-41.1.* / TEST-41.2.* in the default gate)"
+else
+  echo "    SKIP ($MODE mode — production tokenizer default flip (code_cjk) + [retrieval] config bridge validated via Rust/Go unit tests TEST-41.1.* / TEST-41.2.*; needs the real daemon + indexed fixture)"
+fi
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"

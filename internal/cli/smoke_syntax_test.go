@@ -491,6 +491,45 @@ func TestTask403_SmokeV30GovernanceDebtCleanup3Step(t *testing.T) {
 	}
 }
 
+// TEST-41.3.1 / AC1: smoke v31 adds step 50 — task-41.3 closeout (tokenizer-default-on). The code/CJK
+// analyzer code_cjk flips from opt-in to the production default for newly created collections (the first
+// deliberate default-behavior change, owned by ADR-046; existing collections unaffected; opt-out via
+// CONTEXTFORGE_TOKENIZER=default / [retrieval] tokenizer). In REAL mode the camelCase subword "runner"
+// (of JobRunner) hits via the code_cjk default (legacy TEXT would keep "jobrunner" single token → miss);
+// TEST-41.1.* / TEST-41.2.* prove the flip + config bridge in the default cargo/go gate. Asserts the new
+// [50/50] marker + Phase 41 status, and no regression of the prior denominators (ADR-014 D5).
+func TestTask413_SmokeV31TokenizerDefaultOnStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v31 (task-41.3)") {
+		t.Fatalf("console_smoke.sh missing v31 (task-41.3) header block")
+	}
+	for _, marker := range []string{"[50/50]", "tokenizer-default-on", "code_cjk", "CONTEXTFORGE_TOKENIZER", "TEST-41.1.", "TEST-41.2."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v31 step 50 must document tokenizer-default-on status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "governance-debt-cleanup-3"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v31 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid
