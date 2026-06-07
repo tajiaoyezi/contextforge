@@ -345,6 +345,19 @@ impl SearchService for SearchServer {
                 .map_err(|e| Status::internal(format!("retriever search: {e}")))?
         };
 
+        // task-42.2 (Phase 42 / ADR-047 D3): source_type request-side filter. Each hit's
+        // source_type is the real derived bucket (task-42.1 classify_source_type); keep only hits
+        // matching a requested bucket. Empty req.source_type → no filtering (backward-compatible,
+        // byte-equivalent, ADR-004). Applied as a post-filter on the assembled hits so it covers
+        // the BM25 / semantic / hybrid branches uniformly.
+        let hits: Vec<_> = if req.source_type.is_empty() {
+            hits
+        } else {
+            hits.into_iter()
+                .filter(|h| req.source_type.iter().any(|s| s == &h.source_type))
+                .collect()
+        };
+
         // task-11.4 §6 AC2: build RetrievalTrace.retrieved_chunks (score +
         // source_file + content snippet ≤ 200 UTF-8 chars).
         let chunks: Vec<PbSourceChunk> = hits
@@ -1049,6 +1062,7 @@ mod tests {
                 config_snapshot: "{}".into(),
                 semantic: false,
                 hybrid: false,
+                source_type: Vec::new(),
             }))
             .await
             .expect("query ok");
@@ -1113,6 +1127,7 @@ mod tests {
                 config_snapshot: String::new(),
                 semantic: true,
                 hybrid: false,
+                source_type: Vec::new(),
             }))
             .await
             .expect("semantic query ok")
@@ -1134,6 +1149,7 @@ mod tests {
                 config_snapshot: String::new(),
                 semantic: false,
                 hybrid: false,
+                source_type: Vec::new(),
             }))
             .await
             .expect("bm25 query ok")
@@ -1201,6 +1217,7 @@ mod tests {
                 config_snapshot: String::new(),
                 semantic: false,
                 hybrid: false,
+                source_type: Vec::new(),
             }))
             .await
             .expect("query ok")
@@ -1444,5 +1461,105 @@ mod tests {
             vec![0x8D, 0x01, 0x00, 0x00, 0x80, 0x3F],
             "hybrid_score must be field 17 (fixed32)"
         );
+    }
+
+    // TEST-42.2.1 (task-42.2 / ADR-047 D3): console_data_plane SearchRequest add-only
+    // source_type = field 9 (repeated string, wire type 2). Tag byte = (9 << 3) | 2 = 0x4A.
+    // Existing field numbers 1-8 are unchanged (add-only, ADR-015).
+    #[test]
+    fn test_42_2_1_source_type_proto_field_number() {
+        use prost::Message;
+        // SearchRequest { source_type: ["x"] } encodes to exactly field-9 LEN = "x".
+        let req = PbSearchRequest {
+            source_type: vec!["x".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            req.encode_to_vec(),
+            vec![0x4A, 0x01, 0x78],
+            "source_type must be field 9 (repeated string): tag 0x4A, len 1, 'x'"
+        );
+        // empty source_type → byte-equivalent to a bare SearchRequest (no field 9 on the wire).
+        let empty = PbSearchRequest::default();
+        assert_eq!(
+            empty.encode_to_vec(),
+            Vec::<u8>::new(),
+            "empty source_type adds no bytes (backward-compatible)"
+        );
+    }
+
+    // TEST-42.2.2 (task-42.2 / ADR-047 D3): the data plane applies req.source_type as a post-filter
+    // on the assembled hits (using the real derived source_type from task-42.1). Empty → no filter
+    // (byte-equivalent); non-empty → only matching buckets. Covers the BM25 branch here; the same
+    // post-filter covers semantic / hybrid uniformly.
+    #[tokio::test]
+    async fn test_42_2_2_dataplane_source_type_filter() {
+        use crate::chunker::ChunkPolicy;
+        use crate::indexer::IndexSession;
+        use crate::scanner::{default_denylist, ScanOptions};
+
+        let src = temp_data_dir("st-src");
+        let data = temp_data_dir("st-data");
+        let coll = "ws-st".to_string();
+        std::fs::write(src.join("a.rs"), "// code\nthe shared datafiltermarker token\n").unwrap();
+        std::fs::write(src.join("b.md"), "# doc\nthe shared datafiltermarker token\n").unwrap();
+        let scan_opts = ScanOptions {
+            denylist: default_denylist(),
+            allowlist: Vec::new(),
+            allow_denylist_override: false,
+            dry_run: false,
+            max_file_bytes: 10 * 1024 * 1024,
+        };
+        let mut sess = IndexSession::open(&data, &coll).expect("open indexer");
+        sess.index_path(&src, &scan_opts, &ChunkPolicy::default(), vec![])
+            .expect("index_path");
+        sess.commit().expect("commit");
+        drop(sess);
+
+        let ws = Arc::new(SqliteWorkspaceStore::open(&data).unwrap());
+        let js = Arc::new(SqliteJobStore::open(&data).unwrap());
+        let mut stores = DataPlaneStores::new(ws, js);
+        Arc::get_mut(&mut stores)
+            .expect("stores Arc is unique here")
+            .data_dir = data.clone();
+        let server = SearchServer::new(stores);
+
+        let run = |source_type: Vec<String>| {
+            let server = &server;
+            let coll = coll.clone();
+            async move {
+                server
+                    .query(Request::new(PbSearchRequest {
+                        query: "datafiltermarker".into(),
+                        workspace_id: coll,
+                        agent_scope: String::new(),
+                        retrieval_method: String::new(),
+                        top_k: 10,
+                        config_snapshot: String::new(),
+                        semantic: false,
+                        hybrid: false,
+                        source_type,
+                    }))
+                    .await
+                    .expect("query ok")
+                    .into_inner()
+            }
+        };
+
+        // empty source_type → both files (byte-equivalent baseline)
+        let all = run(Vec::new()).await;
+        assert_eq!(all.results.len(), 2, "empty filter → both .rs + .md");
+
+        // source_type=[doc] → only the .md hit (source_file_type populated to "doc")
+        let docs = run(vec!["doc".into()]).await;
+        assert_eq!(docs.results.len(), 1, "source_type=[doc] → only .md");
+        assert!(docs.results[0].source_file_path.ends_with("b.md"));
+        assert_eq!(docs.results[0].source_file_type, "doc");
+
+        // source_type=[code] → only the .rs hit
+        let code = run(vec!["code".into()]).await;
+        assert_eq!(code.results.len(), 1, "source_type=[code] → only .rs");
+        assert!(code.results[0].source_file_path.ends_with("a.rs"));
+        assert_eq!(code.results[0].source_file_type, "code");
     }
 }

@@ -127,7 +127,13 @@ type SearchRequest struct {
 	// OR-merged from the `?hybrid=true` query param or this body field by
 	// handleSearch, then forwarded to gRPC SearchRequest.Hybrid. Default false →
 	// semantic / BM25 (backward-compatible, ADR-015 add-only; mirrors Semantic).
-	Hybrid       bool              `json:"hybrid"`
+	Hybrid bool `json:"hybrid"`
+	// SourceType — task-42.2 (Phase 42 / ADR-047 D3): add-only source_type filter. Each value is a
+	// coarse source_type bucket (code / doc / config / other, derived from file_path by the
+	// retriever). Union-merged from the `?source_type=` query param(s) and this body field by
+	// handleSearch, then forwarded to gRPC SearchRequest.source_type. Empty → no filtering
+	// (backward-compatible, ADR-015 add-only).
+	SourceType   []string          `json:"source_type"`
 	Availability FieldAvailability `json:"field_availability"`
 }
 

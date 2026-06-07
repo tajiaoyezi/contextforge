@@ -245,6 +245,7 @@ async fn test_search_empty_response_via_grpc() {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: false,
+            source_type: Vec::new(),
         })
         .await
         .expect("query ok");
@@ -323,6 +324,7 @@ async fn test_serve_full_listens_both_planes() {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: false,
+            source_type: Vec::new(),
         })
         .await
         .expect("search ok");

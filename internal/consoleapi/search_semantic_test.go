@@ -3,6 +3,7 @@ package consoleapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
@@ -115,5 +116,42 @@ func TestTask392_HybridSemanticIndependent(t *testing.T) {
 	}
 	if cap.last.Semantic {
 		t.Errorf("Semantic = true, want false (?hybrid must not set Semantic)")
+	}
+}
+
+// TestTask422_HandleSearchSourceTypeUnion — task-42.2 §6 AC2: handleSearch union-merges the
+// `?source_type=` query param(s) with the body `source_type` slice (mirrors ?semantic/?hybrid),
+// and forwards the result to the downstream SearchClient. Empty → nil (no filter, backward-compat).
+func TestTask422_HandleSearchSourceTypeUnion(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		body string
+		want []string
+	}{
+		{"query params", "/v1/search?source_type=code&source_type=doc", `{"query":"q","workspace_id":"w"}`, []string{"code", "doc"}},
+		{"body field", "/v1/search", `{"query":"q","workspace_id":"w","source_type":["config"]}`, []string{"config"}},
+		{"query + body union", "/v1/search?source_type=code", `{"query":"q","workspace_id":"w","source_type":["doc"]}`, []string{"code", "doc"}},
+		{"neither", "/v1/search", `{"query":"q","workspace_id":"w"}`, nil},
+	}
+	for _, tc := range cases {
+		t.Run("TEST-42.2.2: "+tc.name, func(t *testing.T) {
+			cap := &capturingSearch{}
+			h := handleSearch(Deps{Search: cap})
+			req := httptest.NewRequest("POST", tc.url, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			h(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+			}
+			got := append([]string(nil), cap.last.SourceType...)
+			sort.Strings(got)
+			want := append([]string(nil), tc.want...)
+			sort.Strings(want)
+			if strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Errorf("forwarded SourceType = %v, want %v (order-insensitive)", got, want)
+			}
+		})
 	}
 }
