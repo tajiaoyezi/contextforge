@@ -71,3 +71,13 @@ D1/D2 的真分词器（`cjk-segmenter` feature 默认不编译）、D3 的 defa
 - **D5（默认构建默认 tokenization 不变）→ ✅ Accepted**：默认 `cargo test --workspace` 0 failed + `cargo clippy --workspace --all-targets -- -D warnings` 0 warning；`cjk-segmenter` 默认 off → 不编译 jieba（0 新 dep at default features）；默认 `content` tokenization + 6-field schema 不变；bigram `code_cjk` opt-in 保留。
 
 ratify 范围 = 真分词器 feature-gated（D1）+ parallel name 双站点对称（D2）+ reindex 迁移工具（D3 partial）+ 真实 recall delta 含诚实零 delta（D4）+ 默认 baseline 不变（D5）。**tokenizer default flip 据「已达维度 ratify + 受阻维度如实记录」honest-defer，不伪造**（ADR-013）。证据见 `docs/releases/v0.23.0-evidence.md` §3。
+
+## Amendment (Phase 41 / v0.34.0, 2026-06-07 — tokenizer-default-on，add-only，正文 / D1-D5 / Ratification 不溯改)
+
+本 ADR D3 把 **tokenizer default flip 据「迁移工具已备 + 翻默认是产品决策」诚实延后** `[SPEC-DEFER:phase-future.tokenizer-default-on]`（默认仍 opt-in）。**Phase 41（ADR-046，Accepted）做出该产品决策、兑现 default flip**，**不溯改本 ADR 正文 / D1-D5 / Ratification**（ADR-014 D5）：
+
+- **D3 的 `[SPEC-DEFER:phase-future.tokenizer-default-on]` → 🟢 兑现（default flip）**：`code_cjk`（D1 的纯 std 0-dep bigram analyzer）从 opt-in 翻为**新建 collection 的生产默认**——task-41.1 `core/src/server.rs` `resolve_tokenizer()`（unset → `code_cjk` 翻默认 / `CONTEXTFORGE_TOKENIZER=default` opt-out 回 legacy `TEXT`）+ 生产索引两调用点 `open_with_tokenizer(.., &resolve_tokenizer())`；`IndexSession::open`/`DEFAULT_TOKENIZER` 不动。既有 collection 经 `open_in_dir` 读回持久化 schema **自动安全**（不被静默失效，TEST-41.1.2 守护）；既有 collection 升级由用户经 D3 的 `reindex_with_tokenizer` 主动触发（不自动迁移）。task-41.2 加 Go `[retrieval] tokenizer` config + `setTokenizerEnv` env 桥（opt-out / override 通道，env-wins，无段 → core 默认 `code_cjk`，Rust core 0 toml dep）。`RetrieverConfig.tokenizer` 仍按 D3 方案 B schema-driven 对称（vestigial 状态不改，续 `[SPEC-DEFER:phase-future.retriever-config-tokenizer-routing]`）。
+- **默认翻 `code_cjk` 非 jieba `cjk_segmenter`（守 D5 0-dep baseline）**：默认翻纯 std `code_cjk` bigram；jieba `cjk_segmenter`（D1）仍 feature-gated opt-in——据本 ADR D4 实测「真分词 vs bigram delta=+0.0000」（小语料无增益）+ ADR-008 0-dep baseline，默认不取重词典 dep。default→code_cjk 实测 recall delta **+0.1250 recall@5/@10**（与 D4 测量 delta(seg−default)=+0.1250 一致）。
+- **首次刻意默认变更由 ADR-046 承接**：新建 collection `TEXT`→`code_cjk` 非 byte-equiv，由 ADR-046 显式承接（三重安全 + 实测 justify）；本 ADR D5「默认构建默认 tokenization 不变」正文不溯改——Phase 41 的默认变更由 ADR-046 owned，本 amendment 仅 add-only 标 default flip 维度由 Phase 41 兑现。
+
+依赖变更：0 新 dep（`code_cjk` 纯 std；jieba `cjk_segmenter` 仍 feature-gated 不进默认构建）。详见 ADR-046 Ratification + `docs/releases/v0.34.0-evidence.md`。

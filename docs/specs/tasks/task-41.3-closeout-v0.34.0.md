@@ -1,6 +1,6 @@
 # Task `41.3`: `closeout-v0.34.0 — smoke v30→v31[50/50]（production 默认 code_cjk + CONTEXTFORGE_TOKENIZER=default opt-out 端到端断言，TestTask413 镜像 TestTask403 无 [37/37]..[49/49] 回归，bash -n）+ v0.34.0 release docs（tag/run/digest <backfill> marker）+ ADR-046 据 D1-D4 ratify + ADR-029 add-only Phase-41 Amendment（标 默认开启维度 fulfilled）+ ADR-035 add-only Phase-41 Amendment（标 D3 产品决策 fulfilled）+ ADR-004/008 守线引用（刻意默认变更例外承接 + 0-dep）+ roadmap §3.23/§4 + adapter + defer marker 更新 + phase §6 闭合`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -75,16 +75,16 @@ pass bar：smoke v31[50/50] `bash -n` 通过 + TestTask413 绿（无 [37/37]..[4
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（smoke v31[50/50] + TestTask413 🟢）: `scripts/console_smoke.sh` banner v30→v31 + 新 step [50/50]（production 默认 code_cjk + opt-out 端到端断言或 doc/status）+ 既有 step 不退化（denominators [37/37]..[49/49] 不溯改）+ `bash -n`；`internal/cli/smoke_syntax_test.go` `TestTask413`（镜像 `TestTask403`）断言 [50/50] + markers（tokenizer-default-on / code_cjk / CONTEXTFORGE_TOKENIZER）+ no-regression — verified by **TEST-41.3.1**
-- [ ] **AC2**（v0.34.0 release docs + ADR ratify + Amendment + roadmap/adapter 🟢）: `docs/releases/v0.34.0-{evidence,artifacts}.md` + README v0.34 段 + RELEASE_NOTES v0.34.0 段（tag/run/digest `<backfill>`，Upgrade 记翻默认 + opt-out + 既有 collection 不受影响）；ADR-046 Proposed→Accepted（逐 D ratify）+ Ratification 段；ADR-029/035 add-only Phase-41 Amendment（不溯改正文 D5）+ ADR-004/008 守线引用；`docs/roadmap.md §3.23/§4` add-only；`docs/s2v-adapter.md` Phase 41 Draft→Done + Tasks 0→3 + Task/ADR/BDD 行；phase §6 AC1-4 勾选 + 3 task spec Status Draft→Done — verified by **TEST-41.3.1**（同 smoke step 收口校验）
-- [ ] **AC3**（ADR-014 D2 lint + D5 不溯改）: `bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中 + 历史 Phase 1-40 ADR/spec 正文不溯改（仅 add-only Amendment） — verified by **TEST-41.3.2**（= LAST）
+- [x] **AC1**（smoke v31[50/50] + TestTask413 🟢）: `scripts/console_smoke.sh` banner v30→v31 + 新 step [50/50]（production 默认 code_cjk + opt-out 端到端断言或 doc/status）+ 既有 step 不退化（denominators [37/37]..[49/49] 不溯改）+ `bash -n`；`internal/cli/smoke_syntax_test.go` `TestTask413`（镜像 `TestTask403`）断言 [50/50] + markers（tokenizer-default-on / code_cjk / CONTEXTFORGE_TOKENIZER）+ no-regression — verified by **TEST-41.3.1**
+- [x] **AC2**（v0.34.0 release docs + ADR ratify + Amendment + roadmap/adapter 🟢）: `docs/releases/v0.34.0-{evidence,artifacts}.md` + README v0.34 段 + RELEASE_NOTES v0.34.0 段（tag/run/digest `<backfill>`，Upgrade 记翻默认 + opt-out + 既有 collection 不受影响）；ADR-046 Proposed→Accepted（逐 D ratify）+ Ratification 段；ADR-029/035 add-only Phase-41 Amendment（不溯改正文 D5）+ ADR-004/008 守线引用；`docs/roadmap.md §3.23/§4` add-only；`docs/s2v-adapter.md` Phase 41 Draft→Done + Tasks 0→3 + Task/ADR/BDD 行；phase §6 AC1-4 勾选 + 3 task spec Status Draft→Done — verified by **TEST-41.3.1**（同 smoke step 收口校验）
+- [x] **AC3**（ADR-014 D2 lint + D5 不溯改）: `bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中 + 历史 Phase 1-40 ADR/spec 正文不溯改（仅 add-only Amendment） — verified by **TEST-41.3.2**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-41.3.1 | smoke v31[50/50]（`bash -n` + REAL/SKIP）+ `TestTask413`（镜像 `TestTask403`，[50/50] + markers + no-regression [37/37]..[49/49]）+ v0.34.0 release docs（`<backfill>`）+ ADR-046 ratify + ADR-029/035 add-only Amendment + roadmap §3.23/§4 + adapter Phase 41 Draft→Done + phase §6 闭合 | `scripts/console_smoke.sh` / `internal/cli/smoke_syntax_test.go` / `docs/**` | Planned |
-| TEST-41.3.2 | D2 lint `--touched origin/master` 0 未标注命中 + D5 历史 Phase 1-40 不溯改（add-only Amendment）（= LAST） | `scripts/spec_drift_lint.sh` / `docs/decisions/**` | Planned |
+| TEST-41.3.1 | smoke v31[50/50]（`bash -n` + REAL/SKIP）+ `TestTask413`（镜像 `TestTask403`，[50/50] + markers + no-regression [37/37]..[49/49]）+ v0.34.0 release docs（`<backfill>`）+ ADR-046 ratify + ADR-029/035 add-only Amendment + roadmap §3.23/§4 + adapter Phase 41 Draft→Done + phase §6 闭合 | `scripts/console_smoke.sh` / `internal/cli/smoke_syntax_test.go` / `docs/**` | Done |
+| TEST-41.3.2 | D2 lint `--touched origin/master` 0 未标注命中 + D5 历史 Phase 1-40 不溯改（add-only Amendment）（= LAST） | `scripts/spec_drift_lint.sh` / `docs/decisions/**` | Done |
 
 ## 8. Risks
 
@@ -116,7 +116,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
 **§9 Verification 计划** (will record real evidence at impl)：
 - AC1：`bash -n scripts/console_smoke.sh` + `go test ./internal/cli/ -run TestTask413` —— smoke v31[50/50] + TestTask413 no-regression（真实结果待实施回填，ADR-013 不伪造）。

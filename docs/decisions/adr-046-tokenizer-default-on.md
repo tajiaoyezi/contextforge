@@ -1,6 +1,6 @@
 # ADR `046`: `tokenizer-default-on`
 
-**Status**: Proposed（Draft 阶段不 ratify；ratify 在 task-41.3 closeout 据真实 CI / 实测产物逐 D 进行）
+**Status**: Accepted（v0.34.0 / task-41.3 closeout 据真实 CI / 实测 recall delta 逐 D ratify；D1/D2/D3/D4 Accepted——见 §Ratification）
 
 **Category**: 检索质量 / 默认行为演进（首次刻意默认变更）/ tokenizer 默认化 / config env-bridge
 **Date**: 2026-06-07
@@ -55,6 +55,17 @@ Phase 24 harness（`phase24_tokenizer_recall.rs`）复测 default `TEXT` vs `cod
 - **Negative / open**（受阻 / 另一层项如实，不伪造、不夸大）：本项**非 byte-equivalent**（新建 collection 倒排词项 `TEXT`→`code_cjk`，首次刻意默认变更，由本 ADR 承接）；既有 collection 升级到 `code_cjk` 须用户主动 reindex（不自动迁移用户数据）→ `[SPEC-DEFER:phase-future.tokenizer-auto-reindex-on-upgrade]`；jieba 真分词 `cjk_segmenter` 默认不取（重 dep + Phase 30 实测 delta=0）→ `[SPEC-DEFER:phase-future.cjk-segmenter-default-on]`；recall delta +0.0909 系小 golden 实测、大语料续 `[SPEC-DEFER:phase-future.tokenizer-large-corpus-recall]`；`RetrieverConfig.tokenizer` vestigial 状态不改（ADR-035 D3 schema-driven 对称）→ `[SPEC-DEFER:phase-future.retriever-config-tokenizer-routing]`。
 - **Ratification**: 本 ADR **Proposed**。task-41.1/41.2 通过后于 v0.34.0 closeout（task-41.3）据真实 CI / 实测产物（resolve_tokenizer 矩阵 + 绑定断言 + config round-trip + Phase 24 harness real recall delta + smoke v31[50/50]）逐 D ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）。
 - **Follow-ups**: jieba `cjk_segmenter` 默认开启 `[SPEC-DEFER:phase-future.cjk-segmenter-default-on]`；既有 collection 升级自动 reindex `[SPEC-DEFER:phase-future.tokenizer-auto-reindex-on-upgrade]`；大语料 recall `[SPEC-DEFER:phase-future.tokenizer-large-corpus-recall]`；`RetrieverConfig.tokenizer` 真路由 `[SPEC-DEFER:phase-future.retriever-config-tokenizer-routing]`。ADR-029（默认开启维度兑现）/ ADR-035（D3 产品决策兑现）以 add-only Amendment 于 task-41.3 记录（不溯改正文，ADR-014 D5）；ADR-004（刻意默认变更例外承接 + safety intent 保持）/ ADR-008 / ADR-013 引用均不溯改其正文。
+
+## Ratification（v0.34.0 / task-41.3）
+
+本 ADR 于 v0.34.0 closeout（task-41.3）据 task-41.1/41.2 真实 CI（cargo-test / go-test / lint / spec-lint 四门绿）+ phase24 harness 实测 recall delta 逐 D ratify Proposed→Accepted。各 D 真实依据：
+
+- **D1（production tokenizer 默认翻 `code_cjk`）→ Accepted 🟢 / 🟡**：task-41.1（PR #262，master @ `35bb421`）落 `core/src/server.rs` `resolve_tokenizer()`（pub fn）+ `parse_tokenizer()`（pub(crate) 纯函数）+ `CoreService::index`（:141）+ `jobs/index_session_backend.rs`（:151）改 `open_with_tokenizer(.., &resolve_tokenizer())`；`IndexSession::open`/`DEFAULT_TOKENIZER` 不动。`test_41_1_1_parse_tokenizer_flips_default_with_opt_out`（TEST-41.1.1，env 矩阵 unset→code_cjk / "default"→TEXT opt-out / unknown→code_cjk 不落 TEXT / cjk_segmenter feature 守护）+ `test_41_1_2_production_default_flip_and_existing_collection_safe`（TEST-41.1.2，生产路径新建 collection 绑 code_cjk camel 子词 'user' 命中 / opt-out 绑 TEXT 子词 miss / 既有 TEXT collection 经翻默认 open 仍保持 TEXT）全绿（lib 220→222）。**实测真实 recall delta（phase24_tokenizer_recall harness，当前 golden 14 files / 16 queries）**：before(default TEXT) recall@5/@10=0.8750 mrr=0.8750 → after(code_cjk) recall@5/@10=1.0000 mrr=0.9375，**delta recall@5/@10=+0.1250 mrr=+0.0625**（ADR-013 据实记录当前 golden 实测，非沿用 Phase 24 旧 golden 的 +0.0909——golden 自 Phase 24 已增长）。
+- **D2（env opt-out + Go `[retrieval]` config 桥）→ Accepted 🟢**：task-41.2（PR #263，master @ `2cead8b`）`internal/config/config.go` add-only `RetrievalConfig{Tokenizer}` + `[retrieval]` 段 round-trip + `cmd/contextforge/main.go` `setTokenizerEnv`（镜像 `setVectorEnv`，env-wins，无段不导出）接线 doServe/doMCP；Rust core 0 toml dep。`TestTask412RetrievalConfig`（TEST-41.2.1，round-trip code_cjk/default/cjk_segmenter 保真 + 既有段不受影响 + 旧 config 向后兼容）+ `TestSetTokenizerEnv`（TEST-41.2.2，导出 / env-wins / 空段不导出→core 默认 code_cjk）全绿；`go test ./...` 全过；gofmt 0 diff；go vet clean。
+- **D3（recall delta 复测 + honest-defer 边界）→ Accepted 🟡 / 🟢**：实测 +0.1250（小 golden caveat，大语料续 `[SPEC-DEFER:phase-future.tokenizer-large-corpus-recall]`）；jieba `cjk_segmenter` 默认不取据实延后 `[SPEC-DEFER:phase-future.cjk-segmenter-default-on]`（0-dep + Phase 30 delta=0）/ 既有 collection 自动迁移 `[SPEC-DEFER:phase-future.tokenizer-auto-reindex-on-upgrade]` / `RetrieverConfig.tokenizer` 路由 `[SPEC-DEFER:phase-future.retriever-config-tokenizer-routing]` 据实保持延后。
+- **D4（首次刻意默认变更承接 + 0-dep / 0-network + opt-out byte-equiv）→ Accepted 🟢**：本 phase 0 新 dep（`code_cjk` 纯 std；jieba feature-gated）+ 0 网络；新建 collection `TEXT`→`code_cjk` 非 byte-equiv 由本 ADR 承接；既有 collection 经 `open_in_dir` 不受影响（TEST-41.1.2 守护）+ `CONTEXTFORGE_TOKENIZER=default`/`[retrieval]` opt-out 回 legacy byte-equiv + 不自动迁移；既有 `cargo test --workspace`（222 lib）+ `go test ./...` 三门不退化。smoke v31[50/50]（REAL 模式 camel 子词 `runner`(of JobRunner) 经 code_cjk 默认命中、legacy TEXT 会 miss，distinguishing）+ TestTask413（无 [37/37]..[49/49] 回归）。
+
+真实 v0.34.0 tag/run/digest/tlog 经用户授权后由 post-tag-push backfill 填实（release docs `<backfill>`，ADR-013 不预填）。
 
 ## Alternatives
 

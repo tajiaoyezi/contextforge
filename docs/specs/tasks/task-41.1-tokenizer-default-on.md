@@ -1,6 +1,6 @@
 # Task `41.1`: `tokenizer-default-on — core/src/server.rs 加 resolve_tokenizer() env-resolution（读 CONTEXTFORGE_TOKENIZER：unset→code_cjk 翻默认 / "default"→opt-out 回 legacy TEXT / "code_cjk"/"cjk_segmenter"(feature) passthrough / unknown/feature-off→stderr WARN+code_cjk）+ 生产索引两调用点（server.rs:141 CoreService::index + jobs/index_session_backend.rs:151）由 IndexSession::open(..) 改 open_with_tokenizer(.., &resolve_tokenizer())；IndexSession::open/DEFAULT_TOKENIZER 库 API+常量不动（向后兼容库调用方+既有单测）；既有 collection 经 open_in_dir 保持持久化 TEXT 不被静默失效；Phase 24 harness 复测 default vs code_cjk 真实 recall delta +0.0909（首次刻意默认变更非 byte-equiv，由 ADR-046 承接）`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -82,19 +82,19 @@ pass bar：`resolve_tokenizer` env 矩阵经确定性单测验证（unset→`cod
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（resolve_tokenizer env 矩阵 + 翻默认 🟢）: `core/src/server.rs` `resolve_tokenizer()` 读 `CONTEXTFORGE_TOKENIZER`：unset/"" → `code_cjk`（翻默认）/ `"default"` → `default`（opt-out）/ `"code_cjk"` → `code_cjk` / `"cjk_segmenter"` → feature 在则 `cjk_segmenter`、缺则 WARN+`code_cjk` / unknown → WARN+`code_cjk`（不静默落 `TEXT`）；生产两调用点（`server.rs:141` + `jobs/index_session_backend.rs:151`）改 `open_with_tokenizer(.., &resolve_tokenizer())` — verified by **TEST-41.1.1**
-- [ ] **AC2**（生产路径绑定 + 既有 collection 安全 🟢）: 生产路径新建 collection 默认绑 `code_cjk`（`content_tokenizer_name`）；`CONTEXTFORGE_TOKENIZER=default` → 新建 collection 绑 `default`（opt-out legacy）；既有 `TEXT` collection 经生产路径 open 保持 `default`（`open_in_dir` 读回持久化 schema、不被静默改）；`IndexSession::open`/`DEFAULT_TOKENIZER`/既有 indexer/retriever 单测不退化（库 API 不破） — verified by **TEST-41.1.2**
-- [ ] **AC3**（Phase 24 harness 真实 recall delta 复测 🟡）: `phase24_tokenizer_recall` harness 复测 default `TEXT` vs `code_cjk` recall delta +0.0909（默认化后此增益成出厂基线，小 golden caveat、大语料续 SPEC-DEFER，真实数 §10 回填不预填 ADR-013）；刻意默认变更（非 byte-equiv）由 ADR-046 承接 + 安全边界据实记 — verified by **TEST-41.1.3**
-- [ ] **AC4**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-41.1.4**（= LAST）
+- [x] **AC1**（resolve_tokenizer env 矩阵 + 翻默认 🟢）: `core/src/server.rs` `resolve_tokenizer()` 读 `CONTEXTFORGE_TOKENIZER`：unset/"" → `code_cjk`（翻默认）/ `"default"` → `default`（opt-out）/ `"code_cjk"` → `code_cjk` / `"cjk_segmenter"` → feature 在则 `cjk_segmenter`、缺则 WARN+`code_cjk` / unknown → WARN+`code_cjk`（不静默落 `TEXT`）；生产两调用点（`server.rs:141` + `jobs/index_session_backend.rs:151`）改 `open_with_tokenizer(.., &resolve_tokenizer())` — verified by **TEST-41.1.1**
+- [x] **AC2**（生产路径绑定 + 既有 collection 安全 🟢）: 生产路径新建 collection 默认绑 `code_cjk`（`content_tokenizer_name`）；`CONTEXTFORGE_TOKENIZER=default` → 新建 collection 绑 `default`（opt-out legacy）；既有 `TEXT` collection 经生产路径 open 保持 `default`（`open_in_dir` 读回持久化 schema、不被静默改）；`IndexSession::open`/`DEFAULT_TOKENIZER`/既有 indexer/retriever 单测不退化（库 API 不破） — verified by **TEST-41.1.2**
+- [x] **AC3**（Phase 24 harness 真实 recall delta 复测 🟡）: `phase24_tokenizer_recall` harness 复测 default `TEXT` vs `code_cjk` recall delta +0.0909（默认化后此增益成出厂基线，小 golden caveat、大语料续 SPEC-DEFER，真实数 §10 回填不预填 ADR-013）；刻意默认变更（非 byte-equiv）由 ADR-046 承接 + 安全边界据实记 — verified by **TEST-41.1.3**
+- [x] **AC4**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-41.1.4**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-41.1.1 | `resolve_tokenizer` env 矩阵：unset→`code_cjk`（翻默认）/ `"default"`→`default`（opt-out）/ `"code_cjk"`→`code_cjk` / `"cjk_segmenter"`→feature 在则 `cjk_segmenter`/缺则 WARN+`code_cjk` / unknown→WARN+`code_cjk`（不静默落 `TEXT`）；生产两调用点改 `open_with_tokenizer(.., &resolve_tokenizer())` | `core/src/server.rs`（同源 test） | Planned |
-| TEST-41.1.2 | 生产路径绑定 + 既有 collection 安全：生产路径新建 collection 绑 `code_cjk` / `CONTEXTFORGE_TOKENIZER=default` → 绑 `default` / 既有 `TEXT` collection open 保持 `default`（`content_tokenizer_name` 断言）；`IndexSession::open`/`DEFAULT_TOKENIZER`/既有单测不退化 | `core/src/server.rs` / `core/src/indexer/mod.rs`（既有 test 回归） | Planned |
-| TEST-41.1.3 | Phase 24 harness 真实 recall delta：default `TEXT` vs `code_cjk` recall delta +0.0909（复测确认默认化后成出厂基线，小 golden caveat，真实数回填不预填） | `core/examples/phase24_tokenizer_recall.rs`（复测，不改源） | Planned |
-| TEST-41.1.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-41.1.1 | `resolve_tokenizer` env 矩阵：unset→`code_cjk`（翻默认）/ `"default"`→`default`（opt-out）/ `"code_cjk"`→`code_cjk` / `"cjk_segmenter"`→feature 在则 `cjk_segmenter`/缺则 WARN+`code_cjk` / unknown→WARN+`code_cjk`（不静默落 `TEXT`）；生产两调用点改 `open_with_tokenizer(.., &resolve_tokenizer())` | `core/src/server.rs`（同源 test） | Done |
+| TEST-41.1.2 | 生产路径绑定 + 既有 collection 安全：生产路径新建 collection 绑 `code_cjk` / `CONTEXTFORGE_TOKENIZER=default` → 绑 `default` / 既有 `TEXT` collection open 保持 `default`（`content_tokenizer_name` 断言）；`IndexSession::open`/`DEFAULT_TOKENIZER`/既有单测不退化 | `core/src/server.rs` / `core/src/indexer/mod.rs`（既有 test 回归） | Done |
+| TEST-41.1.3 | Phase 24 harness 真实 recall delta：default `TEXT` vs `code_cjk` recall delta +0.0909（复测确认默认化后成出厂基线，小 golden caveat，真实数回填不预填） | `core/examples/phase24_tokenizer_recall.rs`（复测，不改源） | Done |
+| TEST-41.1.4 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -136,17 +136,18 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
-**§9 Verification 计划** (will record real evidence at impl)：
-- AC1：`cargo test -p contextforge-core server::` —— `resolve_tokenizer` env 矩阵 unset→code_cjk / default→default / code_cjk→code_cjk / unknown→WARN+code_cjk；生产两调用点改 open_with_tokenizer(.., &resolve_tokenizer())（真实结果待实施回填，ADR-013 不伪造）。
-- AC2：`cargo test -p contextforge-core server:: / indexer::` —— 生产路径新建 collection 绑 code_cjk / opt-out env 绑 default / 既有 TEXT collection open 保持 default（content_tokenizer_name 断言）；IndexSession::open/DEFAULT_TOKENIZER/既有单测不退化。真实结果待实施回填。
-- AC3：`cargo run --example phase24_tokenizer_recall` —— default TEXT vs code_cjk recall delta +0.0909（默认化后成出厂基线，小 golden caveat，真实数待实施回填不预填）。
-- AC4：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威）。
-- 0 新 dep（`code_cjk` 纯 std）/ 0 网络 / 既有 collection 安全 / opt-out byte-equiv / 首次刻意默认变更据实定性 真实结果待实施回填（ADR-013 不预填）。
+**§9 Verification（PR #262，master @ `35bb421`，真实证据）**：
+- AC1：`cargo test -p contextforge-core --lib test_41_1_1` —— `test_41_1_1_parse_tokenizer_flips_default_with_opt_out` PASS（env 矩阵 unset/""→code_cjk 翻默认 / "default"→DEFAULT_TOKENIZER opt-out / code_cjk→code_cjk / unknown→WARN+code_cjk 不落 TEXT / cjk_segmenter feature 守护）；生产两调用点（`server.rs:141` + `jobs/index_session_backend.rs:151`）改 `open_with_tokenizer(.., &resolve_tokenizer())`。
+- AC2：`cargo test -p contextforge-core --lib test_41_1_2` —— `test_41_1_2_production_default_flip_and_existing_collection_safe` PASS（生产路径新建 collection 绑 code_cjk + camel 子词 'user' 命中 / opt-out env 绑 default + 子词 miss / 既有 TEXT collection 经翻默认 open 仍保持 default + 子词仍 miss）；`IndexSession::open`/`DEFAULT_TOKENIZER`/既有 indexer·retriever 单测不退化（`cargo test --lib` 222 passed = 220 baseline + 2）。
+- AC3：`cargo run -p contextforge-core --example phase24_tokenizer_recall` —— **实测 default(TEXT) recall@5/@10=0.8750 mrr=0.8750 → after(code_cjk) recall@5/@10=1.0000 mrr=0.9375，delta recall@5/@10=+0.1250 mrr=+0.0625**（over 当前 16-题 golden / 14 file；与 ADR-035 Amendment D4 测量 delta(seg−default)=+0.1250 一致；ADR-029 §Negative 的 +0.0909 系 Phase 24 原始 11-题 golden，golden 自 Phase 24 已增长 → 据实记当前 +0.1250 不沿用旧数，ADR-013）。
+- AC4：`bash scripts/spec_drift_lint.sh --touched origin/master` 0 未标注命中（CI spec-lint 权威，PR #262 spec-lint pass）。
+- 0 新 dep（`code_cjk` 纯 std；jieba `cjk_segmenter` 仍 feature opt-in）/ 0 网络 / 既有 collection 安全 / opt-out byte-equiv / 首次刻意默认变更据实定性非 byte-equiv（由 ADR-046 承接）；`cargo clippy --all-targets -- -D warnings` clean。
 
-**实际改动文件**（计划，待实施回填）：
-- `core/src/server.rs`——add `resolve_tokenizer()` env-resolution + `CoreService::index`（:141）改 `open_with_tokenizer(.., &resolve_tokenizer())` + 同源 test（resolve_tokenizer 矩阵 + 生产路径绑定）。
-- `core/src/jobs/index_session_backend.rs`——`IndexSession::open`（:151）改 `open_with_tokenizer(.., &resolve_tokenizer())`。
-- `core/examples/phase24_tokenizer_recall.rs`——复测（不改源），recall delta +0.0909 真实数回填。
-- `docs/decisions/adr-029-*.md` + `adr-035-*.md` 默认开启维度 / D3 产品决策兑现 add-only Amendment 落点在 task-41.3 closeout（非本 task body）。
+**实际改动文件**（PR #262）：
+- `core/src/server.rs`——add `resolve_tokenizer()`（pub fn）+ `parse_tokenizer()`（pub(crate) 纯函数）+ import `CODE_CJK_TOKENIZER`/`DEFAULT_TOKENIZER`/`CJK_SEGMENTER_TOKENIZER` + `CoreService::index`（:141）改 `open_with_tokenizer(.., &resolve_tokenizer())` + TEST-41.1.1。
+- `core/src/jobs/index_session_backend.rs`——`IndexSession::open`（:151）改 `open_with_tokenizer(.., &crate::server::resolve_tokenizer())`。
+- `core/src/indexer/mod.rs`——TEST-41.1.2（生产路径绑定 + 既有 collection 安全，用 `content_tokenizer_name` + `parse_tokenizer`）。
+- `core/examples/phase24_tokenizer_recall.rs`——复测（未改源），实测 recall delta +0.1250。
+- `docs/decisions/adr-029-*.md` + `adr-035-*.md` 默认开启维度 / D3 产品决策兑现 add-only Amendment 落点在 task-41.3 closeout（非本 task body，已落地）。
