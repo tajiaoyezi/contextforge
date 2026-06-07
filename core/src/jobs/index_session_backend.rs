@@ -148,8 +148,12 @@ impl IndexerBackend for IndexSessionBackend {
         self.set_job_context(job_id);
         // task-11.3 §6 AC2: open IndexSession for the workspace; workspace_id
         // maps 1:1 to collection_id (ADR-015 D2).
-        let mut session = IndexSession::open(data, workspace_id)
-            .map_err(|e| format!("IndexSession::open({}): {}", workspace_id, e))?;
+        // task-41.1 (ADR-046 D1): bind the production-default analyzer (code_cjk, opt-out via
+        // CONTEXTFORGE_TOKENIZER) for a newly-created collection; existing collections keep their
+        // persisted schema (open_with_tokenizer reads meta.json and ignores this for an existing index).
+        let mut session =
+            IndexSession::open_with_tokenizer(data, workspace_id, &crate::server::resolve_tokenizer())
+                .map_err(|e| format!("IndexSession::open({}): {}", workspace_id, e))?;
 
         // Cancel token captured by the inner closure — JobRunner's heartbeat
         // logic sets it when SqliteJobStore.cancel_requested=1 is observed.
