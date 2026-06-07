@@ -164,6 +164,12 @@ message SearchRequest {
   // server.rs:328-376) instead of semantic-only / BM25. Default false → semantic-only
   // / BM25 (backward-compatible, ADR-015 add-only). parity with v1/search.proto:28.
   bool hybrid = 8;
+  // task-42.2 (Phase 42 / ADR-047 D3): add-only source_type filter. Each value is a coarse
+  // source_type bucket (code / doc / config / other, derived from file_path by the retriever,
+  // task-42.1); the data plane keeps only hits whose source_type matches one of these. Empty →
+  // no filtering (backward-compatible, ADR-015 add-only). Parity with v1/search.proto
+  // SearchFilters.source_type=1.
+  repeated string source_type = 9;
 }
 
 message SourceChunk {

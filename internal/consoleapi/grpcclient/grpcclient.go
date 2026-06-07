@@ -369,8 +369,9 @@ func (s *searchClient) Search(req contractv1.SearchRequest) (contractv1.SearchRe
 		RetrievalMethod: req.RetrievalMethod,
 		TopK:            int64(req.TopK),
 		ConfigSnapshot:  string(req.ConfigSnapshot),
-		Semantic:        req.Semantic, // task-20.1: forward opt-in semantic flag to core
-		Hybrid:          req.Hybrid,   // task-39.2: forward opt-in hybrid flag to core
+		Semantic:        req.Semantic,   // task-20.1: forward opt-in semantic flag to core
+		Hybrid:          req.Hybrid,     // task-39.2: forward opt-in hybrid flag to core
+		SourceType:      req.SourceType, // task-42.2: forward source_type filter to core
 	})
 	if err != nil {
 		return contractv1.SearchResult{}, contractv1.RetrievalTrace{}, mapGrpcErr(err)

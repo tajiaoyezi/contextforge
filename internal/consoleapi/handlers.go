@@ -458,6 +458,12 @@ func handleSearch(deps Deps) http.HandlerFunc {
 		if r.URL.Query().Get("hybrid") == "true" {
 			body.Hybrid = true
 		}
+		// task-42.2 (Phase 42 / ADR-047 D3): `?source_type=` query param(s) union-merge into the
+		// body SourceType slice (mirrors ?semantic/?hybrid), so the source_type filter can be
+		// requested via query param or JSON body. Empty → no filtering (backward-compatible).
+		if qst := r.URL.Query()["source_type"]; len(qst) > 0 {
+			body.SourceType = append(body.SourceType, qst...)
+		}
 		result, trace, err := deps.Search.Search(body)
 		if err != nil {
 			mapStorageError(w, err)

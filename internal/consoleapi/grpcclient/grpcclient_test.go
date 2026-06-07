@@ -1017,3 +1017,49 @@ func TestTask401_GrpcClient_Pin_ForwardsActor(t *testing.T) {
 		t.Errorf("expected empty Actor; got %q", got)
 	}
 }
+
+// fakeSourceTypeQueryServer (task-42.2) captures the inbound SearchRequest.SourceType so the
+// grpcclient passthrough can be asserted.
+type fakeSourceTypeQueryServer struct {
+	pb.UnimplementedSearchServiceServer
+	mu    sync.Mutex
+	gotST []string
+}
+
+func (f *fakeSourceTypeQueryServer) Query(_ context.Context, req *pb.SearchRequest) (*pb.SearchResponse, error) {
+	f.mu.Lock()
+	f.gotST = req.SourceType
+	f.mu.Unlock()
+	return &pb.SearchResponse{
+		Results: []*pb.SearchResultItem{},
+		Trace:   &pb.RetrievalTrace{TraceId: "t", Query: req.Query},
+	}, nil
+}
+
+// TestTask422_GrpcClient_Search_ForwardsSourceType — task-42.2 §6 AC2: searchClient.Search maps
+// contractv1.SearchRequest.SourceType onto the gRPC pb.SearchRequest.source_type field; mirrors
+// the Semantic/Hybrid precedent. Empty → nil (no filter, backward-compatible).
+func TestTask422_GrpcClient_Search_ForwardsSourceType(t *testing.T) {
+	cases := [][]string{{"code", "doc"}, nil}
+	for _, want := range cases {
+		fake := &fakeSourceTypeQueryServer{}
+		addr, stop := spawnFakeServer(t, func(s *grpc.Server) {
+			pb.RegisterSearchServiceServer(s, fake)
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		cli, _ := New(ctx, addr)
+		_, _, err := cli.Search().Search(contractv1.SearchRequest{Query: "q", WorkspaceID: "w", SourceType: want})
+		if err != nil {
+			t.Fatalf("Search(source_type=%v): %v", want, err)
+		}
+		fake.mu.Lock()
+		got := fake.gotST
+		fake.mu.Unlock()
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("forwarded pb.SearchRequest.SourceType = %v, want %v", got, want)
+		}
+		_ = cli.Close()
+		cancel()
+		stop()
+	}
+}

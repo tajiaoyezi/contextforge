@@ -343,6 +343,7 @@ mod tests {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: false,
+            source_type: Vec::new(),
         };
         assert_eq!(s.top_k, 5);
 

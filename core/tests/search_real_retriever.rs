@@ -141,6 +141,7 @@ async fn test_search_real_chunks() {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: false,
+            source_type: Vec::new(),
         })
         .await
         .expect("query ok")
@@ -186,6 +187,7 @@ async fn test_retrieval_trace_fields() {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: false,
+            source_type: Vec::new(),
         })
         .await
         .expect("query ok")
@@ -312,6 +314,7 @@ async fn test_dataplane_hybrid_dispatch() {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: true,
+            source_type: Vec::new(),
         })
         .await
         .expect("hybrid query ok")
@@ -362,6 +365,7 @@ async fn test_dataplane_hybrid_dispatch() {
             config_snapshot: "{}".into(),
             semantic: true,
             hybrid: false,
+            source_type: Vec::new(),
         })
         .await
         .expect("semantic query ok")
@@ -390,6 +394,7 @@ async fn test_dataplane_hybrid_dispatch() {
             config_snapshot: "{}".into(),
             semantic: false,
             hybrid: false,
+            source_type: Vec::new(),
         })
         .await
         .expect("bm25 query ok")
