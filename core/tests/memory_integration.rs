@@ -124,6 +124,7 @@ async fn test_memory_crud_via_grpc() {
         .pin(Request::new(PinMemoryRequest {
             memory_id: "m1".into(),
             pin: true,
+            actor: String::new(),
         }))
         .await
         .unwrap();
@@ -271,6 +272,7 @@ async fn test_pin_rpc_unpin_reverses_state() {
         .pin(Request::new(PinMemoryRequest {
             memory_id: "u".into(),
             pin: true,
+            actor: String::new(),
         }))
         .await
         .unwrap();
@@ -279,6 +281,7 @@ async fn test_pin_rpc_unpin_reverses_state() {
         .pin(Request::new(PinMemoryRequest {
             memory_id: "u".into(),
             pin: false,
+            actor: String::new(),
         }))
         .await
         .unwrap();

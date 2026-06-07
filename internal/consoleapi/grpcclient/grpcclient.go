@@ -721,8 +721,10 @@ func (m *memoryClient) Get(id string) (*contractv1.MemoryItem, error) {
 	return &item, nil
 }
 
-func (m *memoryClient) Pin(id string, pin bool) error {
-	_, err := m.c.Pin(context.Background(), &pb.PinMemoryRequest{MemoryId: id, Pin: pin})
+func (m *memoryClient) Pin(id string, pin bool, actor string) error {
+	// task-40.1: forward the calling actor (X-Actor header → handler → here) to the data plane.
+	// Empty actor → server falls back to "console-api" (byte-equivalent default, ADR-004).
+	_, err := m.c.Pin(context.Background(), &pb.PinMemoryRequest{MemoryId: id, Pin: pin, Actor: actor})
 	return mapGrpcErr(err)
 }
 
