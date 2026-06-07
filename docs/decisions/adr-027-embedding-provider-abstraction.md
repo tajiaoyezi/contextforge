@@ -91,3 +91,9 @@ Phase 37（ADR-042 D1/D2/D3）兑现本 ADR v0.15.0 ratify 时记为 honest-defe
 - **诚实边界（ADR-013）**：小型手工标注集，recall@3=1.0 = real 模型把明显语义对排在近义干扰之上的正确性证明、**非大基准质量断言**（大语料语义质量续 `[SPEC-DEFER:phase-future.embedding-large-corpus-recall]`）；recall@1 跨 run 波动据实记录（remote 模型/服务非完全确定）；CI honest-defer——remote 是付费外部 API、无免费 service container（与 qdrant 不同），召回由本机已认证 run 实测、非每次 CI run 守护 `[SPEC-DEFER:phase-future.embedding-remote-ci-credential]`；多 provider / reranker / health-probe live 续 `[SPEC-DEFER:phase-future.embedding-multi-provider-live]` / `[SPEC-DEFER:phase-future.embedding-remote-reranker-live]` / `[SPEC-DEFER:phase-future.embedding-remote-health-probe]`。
 
 依赖变更：0 新 dep（`ureq` 自 task-22.3 已 optional）。详见 ADR-042 Ratification (v0.30.0) + `docs/releases/v0.30.0-evidence.md`。
+
+## Amendment (Phase 40 / v0.33.0) — L2 embedding 缓存访问序 LRU 增量 (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body / 既有 Amendment，ADR-014 D5）。承 L2 SQLite embedding 缓存有界化（Phase 33 / ADR-038 D1 在本 ADR 之上加 rowid-FIFO bound）。
+
+Phase 40 / v0.33.0（ADR-045 D2）在 L2 缓存有界化（rowid-FIFO，Phase 33）之上补**访问序 LRU**：`core/src/embedding/cache.rs` `sqlite_get` 命中时（仅有限 cap）`INSERT OR REPLACE` 原样回写命中行 bump 隐式 rowid 到表尾，使既有 rowid 序驱逐由插入序 FIFO 升访问序 LRU（驱逐最久未用而非最早插入）。复用既有隐式 rowid、**0 新 dep / 0 schema migration**；默认返回结果不变（bump 原样回写相同字节）。`with_sqlite` 无生产调用点（opt-in-path）→ 现网零影响。验证 TEST-40.2.1/40.2.2。详见 ADR-045 Ratification (v0.33.0)。

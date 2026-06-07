@@ -454,6 +454,43 @@ func TestTask393_SmokeV29ConsoleApiSignalForwardStep(t *testing.T) {
 	}
 }
 
+// TEST-40.3.1 / AC1: smoke v30 adds step 49 — task-40.3 closeout (governance-debt-cleanup-3). In REAL
+// mode POST /v1/memory/{id}/pin with an X-Actor header propagates the caller through to pinned_by
+// (caller-propagation; authenticated identity honest-deferred), and the L2 cache access-order LRU is
+// verified via TEST-40.2.* in the default test gate. Asserts the new [49/49] marker + Phase 40 status,
+// and no regression of the prior denominators (ADR-014 D5).
+func TestTask403_SmokeV30GovernanceDebtCleanup3Step(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v30 (task-40.3)") {
+		t.Fatalf("console_smoke.sh missing v30 (task-40.3) header block")
+	}
+	for _, marker := range []string{"[49/49]", "governance-debt-cleanup-3", "memory-actor-propagation", "l2-cache-true-lru", "TEST-40.1.", "TEST-40.2.", "X-Actor"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v30 step 49 must document governance-debt-cleanup-3 status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "console-api-retrieval-signal-forward"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v30 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid

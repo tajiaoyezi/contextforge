@@ -1169,6 +1169,41 @@ else
   echo "    SKIP ($MODE mode — hybrid REST path validated via Go/Rust unit tests TEST-39.1.* / TEST-39.2.*; needs the real daemon)"
 fi
 
+echo "  [49/49] task-40.3 governance-debt-cleanup-3: memory pin actor propagation (POST /v1/memory/{id}/pin with X-Actor header -> pinned_by reflects caller) + L2 embedding cache access-order LRU (sqlite_get hit-bump) - ADR-032 memory-actor-propagation + ADR-038 l2-cache-true-lru defers closed (Phase 40)"
+# v30 (task-40.3): Phase 40 (governance-debt-cleanup-3) clears two real code-local governance markers.
+# (1) memory-actor-propagation [SPEC-DEFER:phase-future.memory-actor-propagation] (ADR-032 D1): pin()
+# hardcoded the actor "console-api" because PinMemoryRequest had no actor field, Go MemoryClient.Pin had
+# no actor param, and handleMemoryPin read no caller identity. task-40.1 added PinMemoryRequest.actor=3
+# (add-only, existing memory_id=1 / pin=2 frozen, ADR-015 D1) + Go Pin(id,pin,actor) across the interface
+# + 3 impls + grpcclient fills pb.PinMemoryRequest.Actor + handleMemoryPin reads r.Header.Get("X-Actor")
+# (empty -> server falls back to "console-api", byte-equivalent default); Rust pin() writes req.actor to
+# pinned_by when non-empty. Caller-supplied actor is a DECLARED identity; authenticated identity
+# (verifying it against an auth subject) is [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
+# The lenient body contract (ADR-022 D2) is unchanged. (2) l2-cache-true-lru
+# [SPEC-DEFER:phase-future.l2-cache-true-lru] (ADR-038 A2/D4): Phase 33 bounded L2 with rowid-FIFO
+# (insert order) but sqlite_get did not re-order on hit. task-40.2 makes sqlite_get, on a hit and only
+# when l2_cap>0, re-write the row (same bytes) to bump its implicit rowid to the tail, turning
+# sqlite_put's rowid-ordered eviction into access-order LRU (reuses the implicit rowid -> 0 schema
+# migration, correcting the Phase-33 assumption that true-LRU needs a created_at column; mirrors the Go
+# memstore move-to-front, task-33.2). cap==0 skips the bump (no write amplification). with_sqlite has no
+# production call site (opt-in path, Phase 33 D1) -> 现网零影响; this is a semantic completion, not a live
+# fix (ADR-013). 0 new dep / 0 schema migration / default byte-equivalent (ADR-004/008/015). Verified by
+# TEST-40.1.1 (prost wire-tag actor=3) / TEST-40.1.2 (Rust pin() propagate / empty-fallback) / TEST-40.1.3
+# (Go handleMemoryPin reads X-Actor) / TEST-40.1.4 (grpcclient fills Actor) / TEST-40.2.1 (LRU evicts LRU
+# not FIFO) / TEST-40.2.2 (cap gates the bump + results unchanged) — all in the default cargo/go test gate.
+if [ "$MODE" = "real" ]; then
+  pin_code=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/pin" \
+    -H 'Content-Type: application/json' -H 'X-Actor: smoke-actor' -d '{"pin":true}' || true)
+  [ "$pin_code" = "204" ] \
+    || { echo "FAIL: POST pin with X-Actor expected 204; got $pin_code" >&2; exit 1; }
+  pin_body=$(curl -sf "$BASE/v1/memory/mem-seed-1")
+  echo "$pin_body" | grep -q '"pinned_by":"smoke-actor"' \
+    || { echo "FAIL: X-Actor header not propagated to pinned_by (body: $pin_body)" >&2; exit 1; }
+  echo "    → X-Actor header propagated end-to-end to pinned_by=\"smoke-actor\" ✅ (caller-propagation; authenticated identity honest-deferred; L2 access-order LRU verified via TEST-40.2.* in the default test gate)"
+else
+  echo "    SKIP ($MODE mode — memory pin actor propagation + L2 access-order LRU validated via Go/Rust unit tests TEST-40.1.* / TEST-40.2.*; needs the real daemon)"
+fi
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"

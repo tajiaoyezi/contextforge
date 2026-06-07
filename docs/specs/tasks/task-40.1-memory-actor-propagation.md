@@ -1,6 +1,6 @@
 # Task `40.1`: `memory-actor-propagation — PinMemoryRequest add-only actor=3 + MemoryStore.Pin(id,pin,actor) Go 参数链 + handleMemoryPin 读 X-Actor header 透传 + Rust pin() 用 req.actor 非空透传 / 空回落 "console-api"（默认 byte-equiv，ADR-004）；认证身份据实延后；ADR-022 D2 宽松 body 契约不改`
 
-**Status**: Draft
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -78,21 +78,21 @@ pass bar：`PinMemoryRequest{actor}` wire-tag 字段号 3 经 in-crate prost 断
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（proto add-only `actor=3` + wire-tag 🟢）: `PinMemoryRequest`（proto:336-339）add-only `string actor = 3`（既有 memory_id=1 / pin=2 字段号冻结，ADR-015 D1）+ buf generate 重生 Go/Rust binding；in-crate prost 断言 `PinMemoryRequest{actor}` 编码字段号 3（tag 0x1A）；0 新 dep — verified by **TEST-40.1.1**
-- [ ] **AC2**（Rust `pin()` actor 空回落 / 非空透传 🟢）: `pin()`（:225-229）`set_pinned_with_actor` 第三参 `if req.actor.is_empty() { "console-api" } else { req.actor.as_str() }`——空 actor 回落 `"console-api"`（默认 byte-equiv，ADR-004）、非空 actor 透传写入 `pinned_by`；marker 措辞更新为认证身份延后 — verified by **TEST-40.1.2**
-- [ ] **AC3**（Go `handleMemoryPin` 读 `X-Actor` 透传 🟢）: `handleMemoryPin`（:525-549）读 `r.Header.Get("X-Actor")`（缺省空串）传入 `Pin(id,pin,actor)`；`MemoryStore.Pin` interface + 两实现加 `actor` 参数；ADR-022 D2 宽松 body 契约不改 — verified by **TEST-40.1.3**
-- [ ] **AC4**（grpcclient 填 `pb.PinMemoryRequest.Actor` 🟢）: `memoryClient.Pin`（:724-726）填 `pb.PinMemoryRequest{MemoryId:id, Pin:pin, Actor:actor}` — verified by **TEST-40.1.4**
-- [ ] **AC5**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-40.1.5**（= LAST）
+- [x] **AC1**（proto add-only `actor=3` + wire-tag 🟢）: `PinMemoryRequest`（proto:336-339）add-only `string actor = 3`（既有 memory_id=1 / pin=2 字段号冻结，ADR-015 D1）+ buf generate 重生 Go/Rust binding；in-crate prost 断言 `PinMemoryRequest{actor}` 编码字段号 3（tag 0x1A）；0 新 dep — verified by **TEST-40.1.1**
+- [x] **AC2**（Rust `pin()` actor 空回落 / 非空透传 🟢）: `pin()`（:225-229）`set_pinned_with_actor` 第三参 `if req.actor.is_empty() { "console-api" } else { req.actor.as_str() }`——空 actor 回落 `"console-api"`（默认 byte-equiv，ADR-004）、非空 actor 透传写入 `pinned_by`；marker 措辞更新为认证身份延后 — verified by **TEST-40.1.2**
+- [x] **AC3**（Go `handleMemoryPin` 读 `X-Actor` 透传 🟢）: `handleMemoryPin`（:525-549）读 `r.Header.Get("X-Actor")`（缺省空串）传入 `Pin(id,pin,actor)`；`MemoryStore.Pin` interface + 两实现加 `actor` 参数；ADR-022 D2 宽松 body 契约不改 — verified by **TEST-40.1.3**
+- [x] **AC4**（grpcclient 填 `pb.PinMemoryRequest.Actor` 🟢）: `memoryClient.Pin`（:724-726）填 `pb.PinMemoryRequest{MemoryId:id, Pin:pin, Actor:actor}` — verified by **TEST-40.1.4**
+- [x] **AC5**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-40.1.5**（= LAST）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-40.1.1 | proto add-only `PinMemoryRequest.actor=3`：in-crate prost wire-tag 断言 `{actor:"x"}` 编码含字段号 3 的 tag（0x1A）；既有 memory_id=1 / pin=2 字段号不动；buf generate 重生 binding；0 新 dep | `core/src/data_plane/memory.rs`（in-crate `#[cfg(test)]`） | Planned |
-| TEST-40.1.2 | Rust `pin()` actor 空回落 / 非空透传：空 `req.actor` → `set_pinned_with_actor(.., "console-api")`（byte-equiv，`pinned_by`=console-api）；非空 → 透传写 `pinned_by` | `core/src/data_plane/memory.rs`（in-crate test 或 tests/ 集成） | Planned |
-| TEST-40.1.3 | Go `handleMemoryPin` 读 `X-Actor` 透传：设 `X-Actor: alice` → `Pin(id,pin,"alice")`；无 header → `Pin(id,pin,"")`（缺省空串）；ADR-022 D2 宽松 body 契约不变 | `internal/consoleapi/handlers_test.go`（或同源 test） | Planned |
-| TEST-40.1.4 | Go grpcclient 填 `pb.PinMemoryRequest.Actor`：`memoryClient.Pin(id,pin,"alice")` → fake server 收到 `Actor=="alice"` | `internal/consoleapi/grpcclient/grpcclient_test.go` | Planned |
-| TEST-40.1.5 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Planned |
+| TEST-40.1.1 | proto add-only `PinMemoryRequest.actor=3`：in-crate prost wire-tag 断言 `{actor:"x"}` 编码含字段号 3 的 tag（0x1A）；既有 memory_id=1 / pin=2 字段号不动；buf generate 重生 binding；0 新 dep | `core/src/data_plane/memory.rs`（in-crate `#[cfg(test)]`） | Done |
+| TEST-40.1.2 | Rust `pin()` actor 空回落 / 非空透传：空 `req.actor` → `set_pinned_with_actor(.., "console-api")`（byte-equiv，`pinned_by`=console-api）；非空 → 透传写 `pinned_by` | `core/src/data_plane/memory.rs`（in-crate test 或 tests/ 集成） | Done |
+| TEST-40.1.3 | Go `handleMemoryPin` 读 `X-Actor` 透传：设 `X-Actor: alice` → `Pin(id,pin,"alice")`；无 header → `Pin(id,pin,"")`（缺省空串）；ADR-022 D2 宽松 body 契约不变 | `internal/consoleapi/handlers_test.go`（或同源 test） | Done |
+| TEST-40.1.4 | Go grpcclient 填 `pb.PinMemoryRequest.Actor`：`memoryClient.Pin(id,pin,"alice")` → fake server 收到 `Actor=="alice"` | `internal/consoleapi/grpcclient/grpcclient_test.go` | Done |
+| TEST-40.1.5 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done |
 
 ## 8. Risks
 
@@ -130,7 +130,7 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Draft
+**Status**: Done
 
 **§9 Verification 计划** (will record real evidence at impl)：
 - AC1：`cargo test -p contextforge-core data_plane::memory` —— `PinMemoryRequest{actor:"x"}` in-crate prost wire-tag 断言字段号 3（tag 0x1A）；既有 memory_id=1 / pin=2 字段号不动；buf generate 重生 binding；0 新 dep（真实结果待实施回填，ADR-013 不伪造）。
