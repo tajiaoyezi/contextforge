@@ -39,6 +39,7 @@ type Config struct {
 	Embedding             EmbeddingConfig // task-22.1: add-only embedding provider selection
 	Vector                VectorConfig    // task-34.2: add-only vector backend selection
 	Reranker              RerankerConfig  // task-38.2: add-only reranker provider selection
+	Retrieval             RetrievalConfig // task-41.2: add-only tokenizer selection
 }
 
 // CollectionConfig is one indexed collection's allowlist import scope.
@@ -96,6 +97,18 @@ type EmbeddingConfig struct {
 type VectorConfig struct {
 	Backend string // "" | "brute" | "qdrant" | "lancedb" | "sqlite-vec"
 	Dim     int    // 0 ⇒ no dim constraint
+}
+
+// RetrievalConfig selects the analyzer the Rust core binds on a NEWLY created collection's content
+// field (task-41.2 / ADR-046 D2). The Go side bridges Tokenizer to the spawned core daemon via
+// CONTEXTFORGE_TOKENIZER (setTokenizerEnv), mirroring setVectorEnv; an explicitly-set env var wins
+// over the config file. The flip to code_cjk lives in the core's resolve_tokenizer default — so an
+// absent [retrieval] section ⇒ zero value ⇒ nothing exported ⇒ the core defaults to code_cjk (the
+// flipped default, ADR-046 D1). Tokenizer "default" opts back out to the legacy Tantivy TEXT analyzer;
+// "code_cjk" / "cjk_segmenter" select the code/CJK analyzers. Tokenizer is NOT a secret (unlike the
+// remote/reranker api keys) and may live in config.toml. Add-only.
+type RetrievalConfig struct {
+	Tokenizer string // "" | "default" | "code_cjk" | "cjk_segmenter"
 }
 
 // DefaultRootDir returns the default data root (~/.contextforge).
@@ -238,6 +251,8 @@ func encodeTOML(c Config) string {
 	b.WriteString("\n[vector]\n")
 	fmt.Fprintf(&b, "backend = %s\n", tomlQuote(c.Vector.Backend))
 	fmt.Fprintf(&b, "dim = %s\n", strconv.Itoa(c.Vector.Dim))
+	b.WriteString("\n[retrieval]\n")
+	fmt.Fprintf(&b, "tokenizer = %s\n", tomlQuote(c.Retrieval.Tokenizer))
 	for _, col := range c.Collections {
 		b.WriteString("\n[[collections]]\n")
 		fmt.Fprintf(&b, "id = %s\n", tomlQuote(col.ID))
@@ -268,6 +283,9 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 			continue
 		case line == "[vector]":
 			section = "vector"
+			continue
+		case line == "[retrieval]":
+			section = "retrieval"
 			continue
 		case line == "[[collections]]":
 			section = "collections"
@@ -304,6 +322,10 @@ func decodeTOML(sc *bufio.Scanner) (Config, error) {
 			}
 		case "vector":
 			if err := assignVector(&c.Vector, key, raw); err != nil {
+				return Config{}, err
+			}
+		case "retrieval":
+			if err := assignRetrieval(&c.Retrieval, key, raw); err != nil {
 				return Config{}, err
 			}
 		case "collections":
@@ -446,6 +468,19 @@ func assignVector(v *VectorConfig, key, raw string) error {
 			return fmt.Errorf("vector.dim: %w", err)
 		}
 		v.Dim = n
+	}
+	return nil
+}
+
+// assignRetrieval mirrors assignVector (task-41.2). The [retrieval] section carries no api key.
+func assignRetrieval(r *RetrievalConfig, key, raw string) error {
+	switch key {
+	case "tokenizer":
+		s, err := parseTOMLString(raw)
+		if err != nil {
+			return err
+		}
+		r.Tokenizer = s
 	}
 	return nil
 }
