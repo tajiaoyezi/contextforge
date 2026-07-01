@@ -280,6 +280,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 
 | 43 | `governance-debt-cleanup-4` | `docs/specs/phases/phase-43-governance-debt-cleanup-4.md` | Done | 2 | master（v0.36.0：第四轮治理债清扫，单聚焦 indexing-replay-e2e 拼接缺口——承 Phase 33 task-33.3（ADR-038 D3）血脉的"最后一公里"：mapper `indexing_rows_to_pb_events`（events.rs:438）已写好 + test_33_3_2 守护但**从未在 live subscribe 路径调用**（4 拼接缺口：list 缺 since_ts / DataPlaneStores 无 indexing_event_store 字段 / serve_full full() 未传 store / subscribe replay 只 splice audit 漏 indexing）— task-43.1 indexing-replay-splice（`list_since(limit, since_ts)` 镜像 audit since_ts + DataPlaneStores 字段 + full() 第 10 参 + serve_full clone 接线 + subscribe splice audit 后 live 前 + TEST-43.1.1/.2a/.2b/.2c，lib 225→229）+ task-43.3 closeout（smoke v33[52/52] + ADR-048 ratify + ADR-038 add-only Phase-43 Amendment）。🟢 纯本地单测 + 0 dep/0 migration（复用 0019）/0 proto + 默认 byte-equiv（since_ts<=0/store=None）；live daemon restart-then-replay e2e 🟡 honest-defer `[SPEC-DEFER:phase-future.indexing-replay-daemon-e2e]`；memory-actor-all-rpc（Deprecate/SoftDelete 7 层+新 migration / HardDelete 须 audit 重设计=非小债）据实延后留独立 phase（ADR-013 不强行扩面）。ADR-048 **Accepted**（per-D ratify；D1-D3 unit 🟢 / D4 默认 byte-equiv 🟢 + live daemon e2e 🟡 honest-defer）；ADR-038 add-only Phase-43 Amendment；ADR-014 第三十四次激活；#275 规划 + #276 task-43.1（2c98cc2）+ closeout 合入 master；真实 v0.36.0 tag/release 经用户授权 push（ADR-012），tag SHA/digest/tlog post-tag-push 回填（ADR-013 不预填））|
 
+| 44 | `memory-unpin-actor-propagation` | `docs/specs/phases/phase-44-memory-unpin-actor-propagation.md` | Draft | 2 | plan/feat-task-44.0-phase44-plan（v0.37.0 规划：闭环 pin/unpin actor 透传不对称——Phase 40 task-40.1 给 pin 加了 actor 透传，unpin 漏了；grounding 发现真实价值在 audit/event（store pinned=false 丢弃 actor）→ emit_audit_and_event 加 actor 参数让 audit/event source 归因真实调用方（pin 顺带闭环）— task-44.1 proto actor=2 + Rust unpin/pin handler + Go 透传链 + TEST-44.1.* + task-44.3 closeout）。🟢 纯本地 + 0 dep/0 migration/proto add-only + 默认 byte-equiv；认证身份 🔴 defer；deprecate/softdelete/harddelete actor 透传 🔴 defer（本 phase 仅做共用基础）。ADR-049 Proposed；ADR-032/045 add-only Amendment；ADR-014 第三十五次激活；实现 + 发版经用户全权授权 ADR-012）|
+
 ## Task 总索引
 
 > 全部 task spec 应通过 `/s2v-add task <name>` 创建；agent 进 worktree 后**禁止自创 task spec**（违反 s2v R5 单一事实源）。
@@ -439,6 +441,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 42.3 | closeout-v0.35.0：smoke v32[51/51] REAL source_type 真实过滤端到端 + ADR-047 据 D1-D4 ratify + ADR-037 add-only Phase-42 Amendment（source_type no-op superseded / agent_scope no-op reaffirmed，不溯改 D5）+ roadmap §3.24/§4 + adapter（pre-tag 对抗审查校正 smoke code/doc 方向 #270 review-fix） | docs/specs/tasks/task-42.3-closeout-v0.35.0.md | Done | Phase42 #3（#269 + #270 0fd4a75；dep 42.1+42.2；收口，真实 v0.35.0 tag/release 经用户授权 push）| - |
 | 43.1 | indexing-replay-splice：`indexing_events.rs` add `list_since(limit, since_ts)`（since_ts 时序过滤镜像 replay_events_from_audit）+ `DataPlaneStores` add `indexing_event_store: Option<Arc<...>>` 字段 + `full()` 加第 10 参数（既有 constructor 补 None byte-equiv）+ `server.rs` serve_full 传入 `Some(indexing_event_store.clone())`（store 已在 :756 构造）+ `events.rs` subscribe replay 段 splice indexing replay（since_ts>0 时 list_since + indexing_rows_to_pb_events，audit 后、live 前；store None/lock 失败 unwrap_or_default 空）；0 dep/0 migration（复用 0019）/0 proto | docs/specs/tasks/task-43.1-indexing-replay-splice.md | Done | Phase43 #1（#276 2c98cc2；dep task-33.3 mapper+store + DataPlaneStores + serve_full :756 store 局部构造 + subscribe :241 audit replay 范式；ADR-048 D1/D2/D3；TEST-43.1.1/.2a/.2b/.2c PASS lib 225→229）| - |
 | 43.3 | closeout-v0.36.0：smoke v32→v33[52/52] indexing replay splice 可达断言（不可达诚实归因 unit TEST-43.1.2）+ TestTask433 no-regression（[37/37]..[51/51] 不溯改）+ release docs + ADR-048 据 D1-D4 ratify（D4 live daemon e2e 🟡 honest-defer）+ ADR-038 add-only Phase-43 Amendment（indexing-replay-e2e splice 维度兑现，不溯改 D5）+ roadmap §3.25/§4 + adapter | docs/specs/tasks/task-43.3-closeout-v0.36.0.md | Done | Phase43 #2（dep 43.1；收口，真实 v0.36.0 tag/release 经用户授权 push）| - |
+| 44.1 | unpin-actor-propagation：proto UnpinMemoryRequest add-only actor=2 + Rust unpin handler 透传 actor（镜像 pin）+ emit_audit_and_event 加 actor 参数（audit/event source 归因）+ pin 顺带闭环 + Go Unpin(id,actor) 透传链（types/grpcclient/handlers X-Actor/memstore）+ TEST-44.1.*；0 dep/0 migration/proto add-only | docs/specs/tasks/task-44.1-unpin-actor-propagation.md | Ready | Phase44 #1（dep task-40.1 pin actor + set_pinned_with_actor + emit_audit_and_event + X-Actor 范式；ADR-049 D1/D2/D3；TEST-44.1.* 待实施）| - |
+| 44.3 | closeout-v0.37.0：smoke v33→v34[53/53] unpin X-Actor 端到端（不可达诚实归因 unit）+ TestTask443 no-regression（[37/37]..[52/52]）+ release docs + ADR-049 据 D1-D4 ratify + ADR-032/045 add-only Phase-44 Amendment（unpin actor 透传维度兑现，deprecate/softdelete/harddelete 续延后）+ roadmap §3.26/§4 + adapter | docs/specs/tasks/task-44.3-closeout-v0.37.0.md | Ready | Phase44 #2（dep 44.1；收口，真实 v0.37.0 tag/release 经用户全权授权 push）| - |
 
 ## ADR 索引
 
@@ -495,6 +499,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 046 | tokenizer-default-on | Accepted | docs/decisions/adr-046-tokenizer-default-on.md |
 | 047 | chunk-source-type-filter | Accepted | docs/decisions/adr-047-chunk-source-type-filter.md |
 | 048 | indexing-replay-splice | Accepted | docs/decisions/adr-048-indexing-replay-splice.md |
+| 049 | memory-unpin-actor-propagation | Proposed | docs/decisions/adr-049-memory-unpin-actor-propagation.md |
 
 ## BDD Feature 索引
 
@@ -551,6 +556,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 41.1 / 41.2 / 41.3 | test/features/phase-41-tokenizer-default-on.feature |
 | 42.1 / 42.2 / 42.3 | test/features/phase-42-chunk-source-type-filter.feature |
 | 43.1 / 43.3 | test/features/phase-43-governance-debt-cleanup-4.feature |
+| 44.1 / 44.3 | test/features/phase-44-memory-unpin-actor-propagation.feature |
 
 ---
 
