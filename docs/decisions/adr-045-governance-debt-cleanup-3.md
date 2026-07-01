@@ -77,3 +77,11 @@ ContextForge 截至 Phase 39（console-api-retrieval-signal-forward, Done / v0.3
 - **ADR-008（dep add-only）→ 守线**：本 phase 加 **0 新依赖**（actor 透传 / L2 命中 bump 均 0-dep）。
 - **ADR-013（禁伪造红线）→ 守线**：pin actor 真实透传非合成、L2 命中 bump 真实重排经单测；认证身份据实延后 / L2 写放大据实记 / opt-in-path 现网零影响不夸大 / 其余 marker 据实保持延后（D1 / D2 / D3）。
 - **ADR-014（cross-phase-exit-criteria-validation）→ 第三十一次激活**：D1-D5 mapping + 各 task LAST D2 lint（touched 行 0 未标注命中）+ D3 verified-by + D4 自治 + D5 历史 Phase 1-39 不溯改（ADR 改动 add-only Amendment）；本 ADR ratify 在 task-40.3 closeout，Draft 阶段不 ratify。
+
+## Amendment (Phase 44 / v0.37.0) — memory-actor-all-rpc Unpin 子项 + emit_audit_and_event 共用基础兑现 (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body / Ratification (v0.33.0)，ADR-014 D5）。承本 ADR §D1（memory pin actor 透传）+ roadmap 行 556 新增 backlog `memory-actor-all-rpc`（其它 memory RPC 的 actor 透传）的 Unpin 子项。
+
+Phase 44 / v0.37.0（ADR-049）兑现 `memory-actor-all-rpc` 的 **Unpin 子项** + `emit_audit_and_event` actor 参数共用基础——本 ADR §D1 task-40.1 给 pin 加了 actor 透传，roadmap 行 556 把 `memory-actor-all-rpc`（其它 memory RPC 的 actor 透传）列为新增 backlog。Phase 44 grounding 发现真实价值在 audit/event（store pinned=false 丢弃 actor）→ `emit_audit_and_event` 加 actor 参数让 audit/event source 归因（unpin + pin 顺带闭环）。task-44.1（PR #280）闭环 unpin 透传 + Go 透传链 + proto add-only。
+
+**`memory-actor-all-rpc` 部分兑现（Unpin 子项 + 共用基础）**：Unpin actor 透传 ✅（本 phase）；`emit_audit_and_event` actor 参数共用基础 ✅（deprecate/softdelete/harddelete 未来顺带受益）。**仍延后**：Deprecate/SoftDelete actor 透传（须 7 层 + 新 schema migration——`set_status` 无 actor 参数 + 无列记录 actor）；HardDelete actor 透传（须 audit 层重设计——hard_delete 物理删行无落点）→ 续 `[SPEC-DEFER:phase-future.memory-actor-all-rpc]`。不溯改本 ADR D-body（ADR-014 D5）。验证 TEST-44.1.1/.2/.3/.4。详见 ADR-049 Ratification (v0.37.0)。
