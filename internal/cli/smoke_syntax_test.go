@@ -611,6 +611,44 @@ func TestTask433_SmokeV33IndexingReplaySpliceStep(t *testing.T) {
 	}
 }
 
+// TEST-44.3.1a / AC1: smoke v34 adds step 53 — task-44.3 closeout (memory-unpin-actor-propagation).
+// Phase 40 task-40.1 gave pin actor propagation; unpin was missed. task-44.1 closes the loop: emit_audit_and_event
+// gains an actor param (audit/event source attribution), unpin propagates + pin 顺带 propagates. The actor
+// propagation is unit-verified by TEST-44.1.1/.2/.3 (Rust) + TEST-44.1.4 (Go grep); REAL-mode audit-log
+// inspection is bonus. Authenticated identity + deprecate/softdelete/harddelete honest-deferred. 0 dep / 0
+// migration / proto add-only (actor=2) / default byte-equiv.
+func TestTask443_SmokeV34UnpinActorPropagationStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v34 (task-44.3)") {
+		t.Fatalf("console_smoke.sh missing v34 (task-44.3) header block")
+	}
+	for _, marker := range []string{"[53/53]", "memory-unpin-actor-propagation", "X-Actor", "emit_audit_and_event", "TEST-44.1."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v34 step 53 must document unpin-actor-propagation status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "[50/50]", "[51/51]", "[52/52]", "indexing-replay-splice"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v34 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid

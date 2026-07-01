@@ -1,6 +1,6 @@
 # ADR `049`: `memory-unpin-actor-propagation`
 
-**Status**: Proposed（Phase 44 规划阶段；ratify 在 task-44.3 closeout 据真实 CI 逐 D）
+**Status**: Accepted（v0.37.0 / task-44.3 closeout 据真实 CI 逐 D ratify；D1/D2/D3 unit 🟢 Accepted，D4 默认 byte-equiv 🟢 + 认证身份/其余 3 RPC 🔴 honest-defer 据实记录——见 §Ratification）
 
 **Category**: 治理债清理 / memory actor 透传闭环 / observability 归因
 **Date**: 2026-07-01
@@ -61,6 +61,17 @@ unpin actor 透传采用 **「完整闭环：unpin handler 透传 + emit_audit_a
 - **Negative / open**：认证身份 `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`（须 console-api 鉴权层）；deprecate/softdelete/harddelete actor 透传 `[SPEC-DEFER:phase-future.memory-actor-all-rpc]`（须 7 层+migration / audit 重设计）。
 - **Ratification**: 本 ADR **Proposed**。task-44.1 通过后于 v0.37.0 closeout（task-44.3）据真实 CI 逐 D ratify Proposed→Accepted。
 - **Follow-ups**: 认证身份 `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`；deprecate/softdelete/harddelete actor 透传 `[SPEC-DEFER:phase-future.memory-actor-all-rpc]`。
+
+## Ratification（v0.37.0 / task-44.3）
+
+本 ADR 于 v0.37.0 closeout（task-44.3）据 task-44.1 真实 CI（4 门绿：cargo-test / go-test / lint / spec-lint）逐 D ratify Proposed→Accepted。各 D 真实依据：
+
+- **D1（proto add-only + Rust unpin 透传）→ Accepted 🟢**：task-44.1（PR #280，master @ `8f6e94f`）`UnpinMemoryRequest` add-only `actor=2`（既有 memory_id=1 冻结）+ buf generate；Rust unpin handler（memory.rs）透传 actor（`let actor = if req.actor.is_empty() { "console-api" } else { req.actor.as_str() };` 镜像 pin）+ `set_pinned_with_actor(id, false, actor)`（store 丢弃，接口对称）+ `emit_audit_and_event(MemoryUnpin, id, &req.actor)`（新签名）。
+- **D2（emit_audit_and_event actor 参数 + pin 顺带闭环）→ Accepted 🟢**：task-44.1 `emit_audit_and_event` 加 `actor: &str` 参数（audit source 非空用 actor / 空回落 "console-api"）+ `build_memory_event` 加 actor 参数（event source 非空用 actor / 空回落 "contextforge-core"）；pin handler 顺带传 `&req.actor`（消除 pin audit/event 不归因残余不对称）；deprecate/softdelete/harddelete 传 `""` byte-equiv。`test_44_1_1_unpin_actor_in_event_source`（"bob"）+ `test_44_1_2_pin_actor_in_event_source`（"alice"）+ `test_44_1_3_empty_actor_event_source_byte_equiv`（"contextforge-core"）绿。
+- **D3（Go 透传链）→ Accepted 🟢**：task-44.1 `MemoryClient.Unpin(id)` → `Unpin(id, actor)` + grpcclient `pb.UnpinMemoryRequest{MemoryId, Actor}` + `handleMemoryUnpin` 读 `X-Actor`（:559 范式）+ `MemMemoryStore.Unpin(id, _actor)` + degraded fallback 签名同步 + gofmt 对齐。`TestTask441_UnpinActorPropagationWired` 源码 grep 绿。
+- **D4（默认 byte-equiv + honest-defer）→ Accepted（byte-equiv 🟢）+ 认证身份/其余 3 RPC 🔴 honest-defer**：空 actor → audit source "console-api" / event source "contextforge-core"（各自 byte-identical 现状，TEST-44.1.3 守护）；0 新 dep / 0 migration / proto add-only（ADR-004/008/015）。认证身份（X-Actor → 已认证 auth subject）须 console-api 鉴权层 → 🔴 `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`；deprecate/softdelete/harddelete actor 透传须 7 层+新 migration / audit 重设计 → 🔴 `[SPEC-DEFER:phase-future.memory-actor-all-rpc]`（本 phase 仅做 emit_audit_and_event actor 参数共用基础）。
+
+真实 v0.37.0 tag/run/digest 经用户全权授权 push（ADR-012），post-tag-push 回填（ADR-013 不预填）。
 
 ## Alternatives
 

@@ -1333,6 +1333,44 @@ echo "  [52/52] task-43.3 indexing-replay-splice: EventsServer::subscribe(since_
 # REAL-mode end-to-end would need a running daemon + SubscribeEvents stream inspection — honest-deferred).
 echo "    → indexing-replay-splice validated via Rust unit tests TEST-43.1.1/.2a/.2b/.2c in the default cargo test gate (lib 225→229); REAL-mode subscribe-stream e2e honest-deferred [SPEC-DEFER:phase-future.indexing-replay-daemon-e2e] (ADR-013)"
 
+echo "  [53/53] task-44.3 memory-unpin-actor-propagation: POST /v1/memory/{id}/unpin now propagates the X-Actor header (mirroring pin) through to the data plane's audit/event source — closing the pin/unpin actor asymmetry Phase 40 task-40.1 left open (unpin hardcoded 'console-api'). The unpin store path clears pinned_by, so the actor's real landing point is emit_audit_and_event source (audit + event attribution). pin also routes its actor to audit/event now (顺带闭环). Default byte-equiv (empty actor → audit 'console-api' / event 'contextforge-core'). Authenticated identity honest-deferred [SPEC-DEFER:phase-future.memory-actor-authenticated-identity] - ADR-049 (Phase 44)"
+# v34 (task-44.3): Phase 44 (memory-unpin-actor-propagation) — closes the pin/unpin actor propagation asymmetry.
+# Phase 40 task-40.1 (ADR-045 D1) gave pin actor propagation (X-Actor → PinMemoryRequest.actor → store
+# pinned_by), but unpin was missed (memory.rs:298 hardcoded "console-api"). Grounding found the real value
+# is in audit/event, NOT the store: set_pinned_with_actor(pinned=false) discards the actor (store.rs:192-196
+# clears pinned_by) — so propagating to the store alone is an "empty pass-through" (ADR-013). The real landing
+# point is emit_audit_and_event (memory.rs:52), which didn't accept an actor and hardcoded source
+# ("console-api" for audit, "contextforge-core" for event). task-44.1 closes the loop: emit_audit_and_event
+# gains an `actor` param (non-empty → audit source AND event source = actor; empty → each falls back to its
+# legacy value, byte-equivalent). unpin handler propagates + pin handler 顺带 propagates (消除 pin audit/event
+# 不归因残余不对称). Go side: handleMemoryUnpin reads X-Actor (mirrors pin :559), Unpin(id, actor) interface,
+# grpcclient pb.UnpinMemoryRequest.Actor, memstore signature aligned. proto UnpinMemoryRequest add-only
+# actor=2 (field 1 frozen, ADR-015). Verified by TEST-44.1.1 (unpin actor → event source "bob") / TEST-44.1.2
+# (pin 顺带闭环 → event source "alice") / TEST-44.1.3 (empty actor → "contextforge-core" byte-equiv) /
+# TEST-44.1.4 (Go 透传链 source grep). Honest-defer (ADR-013): authenticated identity (X-Actor → verified auth
+# subject) needs the console-api auth layer → [SPEC-DEFER:phase-future.memory-actor-authenticated-identity];
+# deprecate/softdelete/harddelete actor propagation needs 7-layer + new migration (Deprecate/SoftDelete) /
+# audit-layer redesign (HardDelete) → [SPEC-DEFER:phase-future.memory-actor-all-rpc] (this phase only delivers
+# the shared emit_audit_and_event actor-param foundation; those 3 RPCs pass "" byte-equiv). 0 new dep / 0
+# migration / proto add-only / default byte-equiv (ADR-004/008/015).
+# This step is doc/status (the actor propagation is unit-verified by TEST-44.1.1/.2/.3/.4 in the default
+# cargo/go test gate; the REAL-mode end-to-end would need a running daemon + audit-log inspection).
+if [ "$MODE" = "real" ] && [ "${status:-}" = "succeeded" ]; then
+  # Pin then unpin with an X-Actor header; both should return 204. The audit/event source attribution is
+  # unit-verified (TEST-44.1.1/.2), so this step just confirms the REST path accepts the header + returns 204
+  # (the header is now wired through to the data plane; a no-op would also 204, but the wiring is grep-guarded
+  # by TEST-44.1.4 on the Go side + TEST-44.1.1/.2 on the Rust side).
+  unpin_code=$(curl -sf -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/memory/mem-seed-1/unpin" \
+    -H 'X-Actor: smoke-unpin-actor' || true)
+  if [ "$unpin_code" = "204" ]; then
+    echo "    → POST /v1/memory/mem-seed-1/unpin with X-Actor:smoke-unpin-actor → 204 ✅ (header wired; audit/event source attribution unit-verified TEST-44.1.1/.2)"
+  else
+    echo "    → POST /v1/memory/.../unpin with X-Actor returned $unpin_code (expected 204; doc/status — actor propagation unit-verified TEST-44.1.1/.2/.3/.4)"
+  fi
+else
+  echo "    SKIP ($MODE mode — unpin X-Actor propagation validated via Rust/Go unit tests TEST-44.1.1/.2/.3/.4; needs the real daemon)"
+fi
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"
