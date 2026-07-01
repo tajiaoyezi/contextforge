@@ -1,6 +1,6 @@
 # Task `43.1`: `indexing-replay-splice — core/src/data_plane/indexing_events.rs add list_since(limit, since_ts)（since_ts 时序过滤镜像 replay_events_from_audit）+ DataPlaneStores add indexing_event_store: Option<Arc<SqliteIndexingEventStore>> 字段 + full() 加第 10 参数（既有 constructor 补 None byte-equiv）+ server.rs serve_full 传入 Some(indexing_event_store.clone())（store 已在 :756 构造）+ events.rs subscribe replay 段 splice indexing replay（since_ts>0 时 list_since + indexing_rows_to_pb_events，audit replay 后、live forward 前；store None / lock 失败 unwrap_or_default 空）；0 新 dep / 0 schema migration（复用 Phase 33 migration 0019）/ 0 proto 改动；默认 byte-equiv（since_ts<=0 / store=None 两条退化路径）`
 
-**Status**: Ready
+**Status**: Done
 
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
@@ -91,17 +91,17 @@ pass bar：`list_since` since_ts 过滤 + id ASC 时序（TEST-43.1.1 🟢）；
 
 ## 6. Acceptance Criteria（Draft 阶段未勾选，实施后逐条置 `[x]`）
 
-- [ ] **AC1**（list_since 时序过滤 🟢）: `SqliteIndexingEventStore::list_since(limit, since_ts)` since_ts>0 时 `WHERE ts_unix >= ?` ORDER BY id ASC LIMIT（镜像 audit），since_ts<=0 不过滤返全量；既有 `list(limit)` 不动 — verified by **TEST-43.1.1**
-- [ ] **AC2**（subscribe splice 时序 + 默认 byte-equiv 🟢）: `DataPlaneStores` add `indexing_event_store` 字段 + `full()` 加参数（既有 constructor 补 None byte-equiv）+ `serve_full` 传入 + `subscribe` splice indexing replay（since_ts>0 时 list_since + mapper，audit 后、live 前）；subscribe 带 since_ts → 先 indexing replay 再 audit replay 再 live；since_ts<=0 无 replay byte-equiv；store=None 退化；0 新 dep / 0 migration / 0 proto — verified by **TEST-43.1.2**
-- [ ] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-43.1.3**（= LAST）
+- [x] **AC1**（list_since 时序过滤 🟢）: `SqliteIndexingEventStore::list_since(limit, since_ts)` since_ts>0 时 `WHERE ts_unix >= ?` ORDER BY id ASC LIMIT（镜像 audit），since_ts<=0 不过滤返全量；既有 `list(limit)` 不动 — verified by **TEST-43.1.1**
+- [x] **AC2**（subscribe splice 时序 + 默认 byte-equiv 🟢）: `DataPlaneStores` add `indexing_event_store` 字段 + `full()` 加参数（既有 constructor 补 None byte-equiv）+ `serve_full` 传入 + `subscribe` splice indexing replay（since_ts>0 时 list_since + mapper，audit 后、live 前）；subscribe 带 since_ts → 先 indexing replay 再 audit replay 再 live；since_ts<=0 无 replay byte-equiv；store=None 退化；0 新 dep / 0 migration / 0 proto — verified by **TEST-43.1.2**
+- [x] **AC3**（ADR-014 D2 lint）: `bash scripts/spec_drift_lint.sh --touched origin/master` PR 触及行 0 未标注命中 — verified by **TEST-43.1.3**（= LAST，task-43.3 closeout 跑）
 
 ## 7. 追踪表
 
 | TEST-ID | 描述 | 落地文件 | Status |
 |---|---|---|---|
-| TEST-43.1.1 | `list_since` 时序过滤：append 3 行 ts=100/200/300（id ASC）→ `list_since(100, 150)` 返 ts=200/300 两行 id ASC（since_ts>0 过滤）；`list_since(100, 0)` / `list_since(100, -1)` 返全量 3 行（since_ts<=0 不过滤，与 `list()` 一致）；既有 `list(100)` 不受影响仍返全量 | `core/src/data_plane/indexing_events.rs`（同源 test） | Not Started |
-| TEST-43.1.2 | subscribe splice 时序 + 默认 byte-equiv：构造 DataPlaneStores 含 audit + indexing_event_store；append audit entries + indexing rows（ts > since_ts）；subscribe(since_ts=T) → 先收到 indexing replay（evt-idx-*，ts ASC）再 audit replay（evt-audit-*）再 live（eb.send 触发）；subscribe(since_ts=0) → 无 replay（byte-equiv 现状）；store=None（DataPlaneStores::with_runner 不设）→ 无 indexing replay 退化 | `core/src/data_plane/events.rs`（同源 test） | Not Started |
-| TEST-43.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Not Started |
+| TEST-43.1.1 | `list_since` 时序过滤：append 3 行 ts=100/200/300（id ASC）→ `list_since(100, 150)` 返 ts=200/300 两行 id ASC（since_ts>0 过滤）；`list_since(100, 0)` / `list_since(100, -1)` 返全量 3 行（since_ts<=0 不过滤，与 `list()` 一致）；既有 `list(100)` 不受影响仍返全量 | `core/src/data_plane/indexing_events.rs`（同源 test） | Done |
+| TEST-43.1.2 | subscribe splice 时序 + 默认 byte-equiv：构造 DataPlaneStores 含 audit + indexing_event_store；append audit entries + indexing rows（ts > since_ts）；subscribe(since_ts=T) → 先收到 indexing replay（evt-idx-*，ts ASC）再 audit replay（evt-audit-*）再 live（eb.send 触发）；subscribe(since_ts=0) → 无 replay（byte-equiv 现状）；store=None（DataPlaneStores::with_runner 不设）→ 无 indexing replay 退化 | `core/src/data_plane/events.rs`（同源 test） | Done |
+| TEST-43.1.3 | D2 lint `--touched origin/master` 0 未标注命中（CI spec-lint 权威）（= LAST） | `scripts/spec_drift_lint.sh` | Done（task-43.3 closeout 跑） |
 
 ## 8. Risks
 
@@ -135,4 +135,30 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 
 ## 10. Completion Notes (s2v 6 项标准)
 
-**Status**: Ready（待实施回填）
+**Status**: Done
+
+**完成日期**：2026-07-01
+
+**改动文件**：
+- `core/src/data_plane/indexing_events.rs`（新增 `list_since(limit, since_ts)` 方法 + TEST-43.1.1 同源测试）
+- `core/src/data_plane/mod.rs`（`DataPlaneStores` add `indexing_event_store` 字段 + `full()` 加第 10 参数 + 5 既有 constructor 补 None）
+- `core/src/server.rs`（`serve_full` `IndexSessionBackend` 改 clone + `DataPlaneStores::full()` 传入第 10 参数）
+- `core/src/data_plane/events.rs`（`subscribe` replay 段 splice indexing replay + helper `server_with_replay_sources` + TEST-43.1.2a/b/c）
+- `core/src/data_plane/memory.rs`（test struct literal 补 `indexing_event_store: None`）
+
+**commit 列表**：
+- `2c98cc2` feat(events): task-43.1 indexing-replay-splice — 接进 live subscribe 路径
+
+**§9 Verification 结果**：
+- install: skipped（无新 dep，复用既有 rusqlite + Phase 33 migration 0019）
+- lint: ✅ `cargo clippy -p contextforge-core --all-targets -- -D warnings` 0 warning
+- typecheck: ✅ `cargo check -p contextforge-core` pass
+- unit-test: 229 passed / 0 failed（lib 225→229，+4 新测试 TEST-43.1.1/.2a/.2b/.2c；workspace 全绿含 integration + doc-test）
+- integration / e2e / build: ✅ `cargo test --workspace` 全绿
+- coverage: N/A（无 CI coverage gate）
+- runtime-smoke: skipped（本 task 单测级，smoke v33[52/52] 在 task-43.3 closeout）
+- manual: ✅ splice 顺序 indexing→audit→live 经 TEST-43.1.2a 真实验证 + since_ts<=0 byte-equiv（TEST-43.1.2b timeout 守护）+ store=None 退化（TEST-43.1.2c 仅 audit replay）
+
+**剩余风险 / 未做项**：live daemon restart-then-replay 端到端 e2e（真起进程 + 跨 restart 双窗口断言）🟡 honest-defer `[SPEC-DEFER:phase-future.indexing-replay-daemon-e2e]`（须 running daemon / console 跨进程，ADR-013 不预填）；本 task 交付 unit 级 splice + 时序单测。
+
+**下游 task 影响**：task-43.3 closeout（ADR-048 ratify D1-D3 🟢 + D4 live daemon e2e 🟡 honest-defer + ADR-038 add-only Amendment + smoke v33[52/52]）。

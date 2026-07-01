@@ -238,13 +238,33 @@ impl EventsService for EventsServer {
             // log (id ASC) before splicing the live stream. Replay event_ids
             // are `evt-audit-{id}` so the SSE client can dedup the splice
             // boundary. Best-effort: audit lock / list failure → no replay.
+            //
+            // task-43.1 (ADR-048 D3): also replay the indexing lifecycle events
+            // (`indexing.progress`/`.cancelled`/`.error`) the subscriber missed
+            // from the persistent `indexing_events` store (id ASC), the indexing
+            // counterpart of the audit replay. Replay event_ids are
+            // `evt-idx-{id}` (independent namespace from `evt-audit-{id}`, so the
+            // client dedup's the splice boundary across both). Best-effort: store
+            // absent / lock failure → no indexing replay (byte-equivalent to
+            // pre-task-43.1). Both replays are sent before the live forward
+            // (subscribe-first at line above guarantees no live event is lost).
             let replay: Vec<PbEvent> = if req.since_ts > 0 {
-                self.stores
+                let mut out: Vec<PbEvent> = self
+                    .stores
+                    .indexing_event_store
+                    .as_ref()
+                    .and_then(|s| s.list_since(1000, req.since_ts).ok())
+                    .map(|rows| indexing_rows_to_pb_events(&rows))
+                    .unwrap_or_default();
+                let audit: Vec<PbEvent> = self
+                    .stores
                     .audit
                     .as_ref()
                     .and_then(|a| a.lock().ok().and_then(|s| s.list().ok()))
                     .map(|entries| replay_events_from_audit(&entries, req.since_ts))
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                out.extend(audit);
+                out
             } else {
                 Vec::new()
             };
@@ -733,5 +753,182 @@ mod tests {
         // After drop(tx), stream returns None
         let second = stream.next().await;
         assert!(second.is_none(), "stream should close after keepalive");
+    }
+
+    /// task-43.1 helper: build an `EventsServer` whose `DataPlaneStores` carry
+    /// a real `EventBus` + `audit` (memory state-op entries via `record`, ts
+    /// stamped now) + `indexing_event_store` (indexing lifecycle rows via
+    /// `append`, ts stamped now), so `subscribe(since_ts > 0)` exercises the
+    /// indexing + audit replay splice (ADR-048 D3). `n_audit`/`n_indexing` count
+    /// the entries to seed; a small `since_ts` (e.g. 1) keeps all (now >> 1).
+    fn server_with_replay_sources(
+        n_audit: usize,
+        n_indexing: usize,
+    ) -> (EventsServer, std::path::PathBuf) {
+        use crate::data_plane::indexing_events::SqliteIndexingEventStore;
+        use crate::memoryops::audit::{AuditEvent, AuditOperation, AuditSink};
+        let dir = temp_data_dir("replay-splice");
+        let ws = Arc::new(SqliteWorkspaceStore::open(&dir).unwrap());
+        let js = Arc::new(SqliteJobStore::open(&dir).unwrap());
+        let audit_sink = Arc::new(std::sync::Mutex::new(
+            AuditSink::open(&dir, "memory").unwrap(),
+        ));
+        {
+            let mut sink = audit_sink.lock().unwrap();
+            for i in 0..n_audit {
+                sink.record(AuditEvent {
+                    operation: if i % 2 == 0 {
+                        AuditOperation::MemoryPin
+                    } else {
+                        AuditOperation::MemorySoftDelete
+                    },
+                    collection: "memory".to_string(),
+                    source: "console-api".to_string(),
+                    result_count: 1,
+                    redaction_count: 0,
+                    query: None,
+                    redacted_terms: vec![],
+                    chunk_ids: vec![format!("m{i}")],
+                    export_total_byte_count: None,
+                })
+                .unwrap();
+            }
+        }
+        let idx_store = Arc::new(SqliteIndexingEventStore::open(&dir).unwrap());
+        for i in 0..n_indexing {
+            idx_store
+                .append("job-1", if i % 2 == 0 { "indexing" } else { "cancelled" }, 1, 1, "")
+                .unwrap();
+        }
+        let event_bus = EventBus::new();
+        let stores = Arc::new(DataPlaneStores {
+            workspace_store: ws,
+            job_store: js,
+            job_runner: None,
+            data_dir: std::path::PathBuf::new(),
+            event_bus: Some(event_bus),
+            memory: None,
+            audit: Some(audit_sink),
+            eval: None,
+            trace_persist: None,
+            indexing_event_store: Some(idx_store),
+        });
+        (EventsServer::new(stores), dir)
+    }
+
+    /// TEST-43.1.2 (task-43.1 / ADR-048 D2/D3): `subscribe(since_ts > 0)`
+    /// splices indexing replay (evt-idx-*, id ASC) BEFORE audit replay
+    /// (evt-audit-*, id ASC) BEFORE the live stream — the indexing counterpart
+    /// of the task-26.2 audit replay, now wired into the live subscribe path.
+    #[tokio::test]
+    async fn test_43_1_2_subscribe_splices_indexing_then_audit_then_live() {
+        let (server, _dir) = server_with_replay_sources(2, 2);
+        // since_ts=1 keeps all (indexing/audit ts = now >> 1).
+        let resp = server
+            .subscribe(Request::new(SubscribeEventsRequest {
+                job_id: None,
+                workspace_id: None,
+                since_ts: 1,
+                last_event_id: String::new(),
+            }))
+            .await
+            .expect("subscribe ok");
+        let mut stream = resp.into_inner();
+        // Order: indexing replay (2) → audit replay (2). Then live forwarder
+        // blocks on broadcast (no sender here) — we read exactly 4 and stop.
+        let mut got = Vec::new();
+        for _ in 0..4 {
+            let evt = stream.next().await.expect("event").expect("ok");
+            got.push(evt.event_id);
+        }
+        // Indexing replay first (evt-idx-*), id ASC.
+        assert!(got[0].starts_with("evt-idx-"), "first is indexing replay: {}", got[0]);
+        assert!(got[1].starts_with("evt-idx-"), "second is indexing replay: {}", got[1]);
+        let idx0: i64 = got[0].trim_start_matches("evt-idx-").parse().unwrap();
+        let idx1: i64 = got[1].trim_start_matches("evt-idx-").parse().unwrap();
+        assert!(idx0 < idx1, "indexing replay id ASC: {idx0} < {idx1}");
+        // Audit replay after (evt-audit-*), id ASC.
+        assert!(got[2].starts_with("evt-audit-"), "third is audit replay: {}", got[2]);
+        assert!(got[3].starts_with("evt-audit-"), "fourth is audit replay: {}", got[3]);
+        let aud0: i64 = got[2].trim_start_matches("evt-audit-").parse().unwrap();
+        let aud1: i64 = got[3].trim_start_matches("evt-audit-").parse().unwrap();
+        assert!(aud0 < aud1, "audit replay id ASC: {aud0} < {aud1}");
+    }
+
+    /// TEST-43.1.2b: since_ts <= 0 → no replay (byte-equivalent to pre-task-43.1).
+    /// The subscribe path takes the `else { Vec::new() }` branch, so the stream
+    /// goes straight to the live forwarder (which blocks with no sender).
+    #[tokio::test]
+    async fn test_43_1_2b_since_ts_zero_no_replay_byte_equiv() {
+        let (server, _dir) = server_with_replay_sources(1, 1);
+        let resp = server
+            .subscribe(Request::new(SubscribeEventsRequest {
+                job_id: None,
+                workspace_id: None,
+                since_ts: 0,
+                last_event_id: String::new(),
+            }))
+            .await
+            .expect("subscribe ok");
+        let mut stream = resp.into_inner();
+        // No replay emitted — the live forwarder has no sender, so it blocks.
+        // Timeout confirms NO event arrives quickly (replay batch was empty).
+        let none = tokio::time::timeout(std::time::Duration::from_millis(150), stream.next()).await;
+        assert!(none.is_err(), "since_ts=0 → no replay (timeout = no early event)");
+    }
+
+    /// TEST-43.1.2c: indexing_event_store=None → no indexing replay, but audit
+    /// replay still splices (the store-absent退化 path, byte-equivalent to
+    /// pre-task-43.1 which only had audit replay).
+    #[tokio::test]
+    async fn test_43_1_2c_store_none_no_indexing_replay() {
+        use crate::memoryops::audit::{AuditEvent, AuditOperation, AuditSink};
+        let dir = temp_data_dir("store-none");
+        let ws = Arc::new(SqliteWorkspaceStore::open(&dir).unwrap());
+        let js = Arc::new(SqliteJobStore::open(&dir).unwrap());
+        let audit_sink = Arc::new(std::sync::Mutex::new(
+            AuditSink::open(&dir, "memory").unwrap(),
+        ));
+        audit_sink.lock().unwrap().record(AuditEvent {
+            operation: AuditOperation::MemoryPin,
+            collection: "memory".to_string(),
+            source: "console-api".to_string(),
+            result_count: 1,
+            redaction_count: 0,
+            query: None,
+            redacted_terms: vec![],
+            chunk_ids: vec!["m9".to_string()],
+            export_total_byte_count: None,
+        }).unwrap();
+        let event_bus = EventBus::new();
+        let stores = Arc::new(DataPlaneStores {
+            workspace_store: ws,
+            job_store: js,
+            job_runner: None,
+            data_dir: std::path::PathBuf::new(),
+            event_bus: Some(event_bus),
+            memory: None,
+            audit: Some(audit_sink),
+            eval: None,
+            trace_persist: None,
+            indexing_event_store: None, // <- the退化 path under test
+        });
+        let server = EventsServer::new(stores);
+        let resp = server
+            .subscribe(Request::new(SubscribeEventsRequest {
+                job_id: None,
+                workspace_id: None,
+                since_ts: 1,
+                last_event_id: String::new(),
+            }))
+            .await
+            .expect("subscribe ok");
+        let mut stream = resp.into_inner();
+        let first = stream.next().await.expect("event").expect("ok");
+        assert!(
+            first.event_id.starts_with("evt-audit-"),
+            "store=None → only audit replay, no evt-idx-*: {}",
+            first.event_id
+        );
     }
 }

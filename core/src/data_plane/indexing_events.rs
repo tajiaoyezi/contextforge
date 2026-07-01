@@ -132,6 +132,54 @@ impl SqliteIndexingEventStore {
         }
         Ok(out)
     }
+
+    /// task-43.1 (ADR-048 D1): list rows with `since_ts` filtering — the
+    /// replay input for `EventsServer::subscribe` when a subscriber reconnects
+    /// with `since_ts > 0` and wants the indexing lifecycle events it missed.
+    /// Mirrors `replay_events_from_audit`'s `ts < since_ts → skip` semantics
+    /// (i.e. keeps rows with `ts_unix >= since_ts`, inclusive boundary).
+    ///
+    /// - `since_ts > 0` → `WHERE ts_unix >= ?since_ts ORDER BY id ASC LIMIT ?lim`
+    /// - `since_ts <= 0` → no filter (returns the oldest `limit` rows, identical
+    ///   to `list(limit)`) — so first-connect subscribers (no `since_ts`) get no
+    ///   replay, byte-equivalent to the pre-task-43.1 behavior.
+    ///
+    /// `limit` is clamped to [1, 10_000]. Output is id ASC (chronological), the
+    /// order `indexing_rows_to_pb_events` expects. 0 new dep / 0 schema migration
+    /// (reuses the `ts_unix` column from migration 0019).
+    pub fn list_since(
+        &self,
+        limit: usize,
+        since_ts: i64,
+    ) -> Result<Vec<IndexingEventRow>, IndexingEventStoreError> {
+        let lim = limit.clamp(1, 10_000) as i64;
+        let conn = self.conn.lock().map_err(|_| IndexingEventStoreError::Poisoned)?;
+        // Single SQL with a `(?1 = 0 OR ts_unix >= ?1)` guard: when `since_ts <= 0`
+        // the first disjunct is true (no filter, like `list`); when `since_ts > 0`
+        // the second disjunct filters. Keeps one prepared statement + one param
+        // layout (`params![since_ts, lim]`) instead of two branches.
+        let mut stmt = conn.prepare(
+            "SELECT id, job_id, stage, processed, total, message, ts_unix \
+             FROM indexing_events WHERE (?1 = 0 OR ts_unix >= ?1) \
+             ORDER BY id ASC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![since_ts, lim], |r| {
+            Ok(IndexingEventRow {
+                id: r.get(0)?,
+                job_id: r.get(1)?,
+                stage: r.get(2)?,
+                processed: r.get(3)?,
+                total: r.get(4)?,
+                message: r.get(5)?,
+                ts_unix: r.get(6)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
 }
 
 /// task-33.3: persistent backing store for indexing lifecycle events.
@@ -202,5 +250,61 @@ mod tests {
         drop(store);
         let store2 = SqliteIndexingEventStore::open(&dir).expect("re-open ok");
         assert_eq!(store2.list(100).expect("list2").len(), 3, "re-open preserves rows, no schema error");
+    }
+
+    /// TEST-43.1.1 (task-43.1 / ADR-048 D1): `list_since(limit, since_ts)`
+    /// since_ts filtering + id ASC ordering + since_ts<=0 no-filter byte-equiv
+    /// with `list(limit)`. Mirrors `replay_events_from_audit`'s
+    /// `ts < since_ts → skip` semantics (inclusive `>=` boundary).
+    #[test]
+    fn test_43_1_1_list_since_ts_filter_and_byte_equiv() {
+        let dir = temp_dir("list_since");
+        let store = SqliteIndexingEventStore::open(&dir).expect("open ok");
+        // Append 3 rows; ts is stamped by now_unix() at append time. Sleep a few
+        // ms between appends so each row gets a distinct, monotonic ts.
+        store.append("job-a", "indexing", 1, 3, "").expect("append r1");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        store.append("job-a", "indexing", 2, 3, "").expect("append r2");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        store.append("job-a", "error", 0, 0, "boom").expect("append r3");
+
+        let all = store.list(100).expect("list all");
+        assert_eq!(all.len(), 3, "3 rows appended");
+        let ts1 = all[0].ts_unix;
+        let ts2 = all[1].ts_unix;
+        let ts3 = all[2].ts_unix;
+        assert!(ts1 <= ts2 && ts2 <= ts3, "ts monotonic non-strict: {ts1} {ts2} {ts3}");
+
+        // since_ts > 0: keep rows with ts_unix >= since_ts.
+        // Use ts2 as the boundary → rows r2 (ts2) and r3 (ts3) kept (inclusive >=).
+        let kept = store.list_since(100, ts2).expect("list_since ts2");
+        assert_eq!(kept.len(), 2, "since_ts=ts2 keeps r2 + r3 (inclusive boundary)");
+        assert_eq!(kept[0].id, all[1].id, "first kept is r2 (id ASC)");
+        assert_eq!(kept[1].id, all[2].id, "second kept is r3");
+        assert_eq!(kept[1].stage, "error", "fields verbatim");
+
+        // since_ts > max ts → empty.
+        let none = store.list_since(100, ts3 + 60).expect("list_since future");
+        assert!(none.is_empty(), "since_ts beyond all rows → empty");
+
+        // since_ts <= 0 → no filter, byte-equiv with list(limit).
+        let unfilt = store.list_since(100, 0).expect("list_since 0");
+        assert_eq!(unfilt.len(), 3, "since_ts=0 no filter returns all");
+        assert_eq!(unfilt, all, "since_ts<=0 byte-equiv with list(limit)");
+        let unfilt_neg = store.list_since(100, -5).expect("list_since -5");
+        assert_eq!(unfilt_neg.len(), 3, "since_ts<0 no filter returns all");
+
+        // limit clamp applies.
+        let lim = store.list_since(2, 0).expect("list_since limit 2");
+        assert_eq!(lim.len(), 2, "limit clamps result count");
+
+        // 0 schema migration: re-open preserves rows + list_since still works.
+        drop(store);
+        let store2 = SqliteIndexingEventStore::open(&dir).expect("re-open ok");
+        assert_eq!(
+            store2.list_since(100, ts2).expect("re-open list_since").len(),
+            2,
+            "re-open preserves rows, list_since still filters"
+        );
     }
 }
