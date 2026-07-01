@@ -1,6 +1,6 @@
 # ADR `048`: `indexing-replay-splice`
 
-**Status**: Proposed（Phase 43 规划阶段；ratify 在 task-43.3 closeout 据真实 CI 逐 D）
+**Status**: Accepted（v0.36.0 / task-43.3 closeout 据真实 CI 逐 D ratify；D1/D2/D3 unit 🟢 Accepted，D4 live daemon e2e 🟡 honest-defer 据实记录——见 §Ratification）
 
 **Category**: 治理债清理（第四轮）/ observability replay 拼接 / 默认 byte-equiv 守线
 **Date**: 2026-07-01
@@ -61,6 +61,17 @@ ContextForge 截至 Phase 42（chunk-source-type-filter, Done / v0.35.0）已完
 - **Negative / open**（受阻维度如实，不伪造、不预填）：live daemon restart-then-replay 端到端 e2e（真起进程 + 跨 restart 双窗口断言）须 running daemon（须 console 跨进程）→ 🟡 `[SPEC-DEFER:phase-future.indexing-replay-daemon-e2e]`；memory-actor-all-rpc（Deprecate/SoftDelete 7 层改动 + 新 schema migration / HardDelete 须 audit 层重设计）据实 honest-defer 留独立 phase（本 ADR 单聚焦 indexing-replay，不强行扩面）。
 - **Ratification**: 本 ADR **Proposed**。task-43.1 通过后于 v0.36.0 closeout（task-43.3）据真实 CI 逐 D ratify Proposed→Accepted（ADR-013：禁据合成 / 伪造 ratify）；live daemon e2e 🟡 维度据已达 unit 级 splice ratify + 如实记录受阻，不强 ratify e2e。
 - **Follow-ups**: live daemon restart-then-replay e2e `[SPEC-DEFER:phase-future.indexing-replay-daemon-e2e]`；memory-actor-all-rpc（独立 phase）；其余 roadmap §4 backlog 项据实保持延后。
+
+## Ratification（v0.36.0 / task-43.3）
+
+本 ADR 于 v0.36.0 closeout（task-43.3）据 task-43.1 真实 CI（4 门绿：cargo-test / go-test / lint / spec-lint）逐 D ratify Proposed→Accepted。各 D 真实依据：
+
+- **D1（list_since 时序过滤）→ Accepted 🟢**：task-43.1（PR #276，master @ `2c98cc2`）落 `SqliteIndexingEventStore::list_since(limit, since_ts)`（since_ts>0 时 `WHERE (?1 = 0 OR ts_unix >= ?1) ORDER BY id ASC LIMIT ?2`，单 SQL 守护统一 params；since_ts<=0 不过滤 byte-equiv `list()`）；既有 `list(limit)` 不动。`test_43_1_1_list_since_ts_filter_and_byte_equiv` 绿（since_ts 过滤 + id ASC + since_ts<=0 byte-equiv + limit clamp + re-open idempotent）。
+- **D2（DataPlaneStores 接线）→ Accepted 🟢**：task-43.1 `DataPlaneStores` add `indexing_event_store: Option<Arc<SqliteIndexingEventStore>>` 字段 + `full()` 第 10 参数 + 5 既有 constructor 补 None byte-equiv + `memory.rs` test struct literal 同步；`server.rs` serve_full `IndexSessionBackend` 改 clone（写路径持 clone）+ `DataPlaneStores::full()` 传入 Some(原件)（读路径 subscribe 可达，共享 Mutex<Connection>）。
+- **D3（subscribe splice）→ Accepted 🟢**：task-43.1 `events.rs` `subscribe` replay 段 splice indexing replay（since_ts>0 时 list_since + `indexing_rows_to_pb_events`，audit replay 后、live forward 前；store None/lock 失败 `unwrap_or_default` 空 best-effort 镜像 audit）。`test_43_1_2_subscribe_splices_indexing_then_audit_then_live` 绿（splice 顺序 indexing→audit→live）+ `test_43_1_2b_since_ts_zero_no_replay_byte_equiv` 绿（since_ts<=0 无 replay timeout 守护）+ `test_43_1_2c_store_none_no_indexing_replay` 绿（store=None 仅 audit replay）。
+- **D4（默认 byte-equiv + honest-defer 边界）→ Accepted（默认 byte-equiv 🟢）+ live daemon e2e 🟡 honest-defer**：两条退化路径 byte-equiv（since_ts<=0 / store=None）经 TEST-43.1.2b/.2c 守护；0 新 dep / 0 schema migration（复用 Phase 33 migration 0019）/ 0 proto 改动 / 0 网络（ADR-004/008）。live daemon restart-then-replay 端到端 e2e（真起进程 + 跨 restart 双窗口断言）须 running daemon（须 console 跨进程）→ 🟡 honest-defer `[SPEC-DEFER:phase-future.indexing-replay-daemon-e2e]`（ADR-013 不预填）；memory-actor-all-rpc（Deprecate/SoftDelete 7 层 + 新 migration / HardDelete 须 audit 重设计 = 非小债）据实延后留独立 phase。
+
+真实 v0.36.0 tag/run/digest 经用户授权后由 post-tag-push backfill 填实（release docs `<backfill>`，ADR-013 不预填）。
 
 ## Alternatives
 
