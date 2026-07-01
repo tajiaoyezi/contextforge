@@ -570,6 +570,47 @@ func TestTask423_SmokeV32ChunkSourceTypeFilterStep(t *testing.T) {
 	}
 }
 
+// TEST-43.3.1a / AC1: smoke v33 adds step 52 — task-43.3 closeout (governance-debt-cleanup-4 /
+// indexing-replay-splice). Phase 33 task-33.3 wrote the indexing replay mapper (indexing_rows_to_pb_events) +
+// persistent store (migration 0019) but never wired it into the live subscribe path. task-43.1 closes the 4
+// splice gaps (list_since + DataPlaneStores field + serve_full wiring + subscribe splice), so since_ts>0
+// subscribers now receive missed indexing.* lifecycle events (the indexing counterpart of the task-26.2 audit
+// replay). The splice is unit-verified by TEST-43.1.1/.2a/.2b/.2c in the default cargo test gate (lib 225→229);
+// REAL-mode subscribe-stream e2e is honest-deferred [SPEC-DEFER:phase-future.indexing-replay-daemon-e2e] (needs
+// a running daemon + cross-restart dual-window assertion, ADR-013). memory-actor-all-rpc (not a small debt) is
+// honest-deferred to an independent phase. 0 new dep / 0 migration (reuses 0019) / 0 proto / default byte-equiv.
+func TestTask433_SmokeV33IndexingReplaySpliceStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v33 (task-43.3)") {
+		t.Fatalf("console_smoke.sh missing v33 (task-43.3) header block")
+	}
+	for _, marker := range []string{"[52/52]", "indexing-replay-splice", "list_since", "indexing_event_store", "TEST-43.1."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v33 step 52 must document indexing-replay-splice status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "[50/50]", "[51/51]", "chunk-source-type-filter"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v33 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid

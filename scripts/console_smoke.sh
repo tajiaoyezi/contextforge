@@ -1305,6 +1305,34 @@ else
   echo "    SKIP ($MODE mode — chunk source_type filter (derive + post-filter + console forward) validated via Rust/Go unit tests TEST-42.1.* / TEST-42.2.*; needs the real daemon + indexed fixture)"
 fi
 
+echo "  [52/52] task-43.3 indexing-replay-splice: EventsServer::subscribe(since_ts>0) now splices indexing replay (evt-idx-*) BEFORE audit replay (evt-audit-*) BEFORE the live stream — the indexing counterpart of the task-26.2 audit replay, wiring the Phase 33 mapper (indexing_rows_to_pb_events) into the live path (was written but never called). 4 splice gaps closed: list_since(limit,since_ts) + DataPlaneStores.indexing_event_store field + serve_full wiring + subscribe splice. Default byte-equiv (since_ts<=0 / store=None); live daemon restart-then-replay e2e honest-deferred [SPEC-DEFER:phase-future.indexing-replay-daemon-e2e] - ADR-048 (Phase 43)"
+# v33 (task-43.3): Phase 43 (governance-debt-cleanup-4) — fourth governance-debt sweep, single-focus on the
+# indexing-replay-e2e splice gap. Inherits the Phase 33 task-33.3 (ADR-038 D3) bloodline's "last mile": the
+# replay mapper indexing_rows_to_pb_events (core/src/data_plane/events.rs:438) was written + test_33_3_2-guarded
+# but NEVER called on the live subscribe path (4 splice gaps, grounding verified first-hand):
+#   (1) SqliteIndexingEventStore::list(limit) had no since_ts param (replay could not filter "missed since ts");
+#   (2) DataPlaneStores (mod.rs:43-74) had no indexing_event_store field (subscribe read path unreachable);
+#   (3) serve_full (server.rs:788) DataPlaneStores::full() did not pass the already-constructed store (write path
+#       had it via IndexSessionBackend, read path did not);
+#   (4) EventsServer::subscribe (events.rs:241-250) replay segment only spliced memory audit replay, not indexing.
+# task-43.1 closes all 4: list_since(limit, since_ts) (WHERE ts_unix >= ? when since_ts>0, mirroring
+# replay_events_from_audit's ts<since_ts→skip; since_ts<=0 no filter, byte-equiv list()) + DataPlaneStores field +
+# full() 10th param (existing ctors get None byte-equiv) + serve_full clones the store into DataPlaneStores (write
+# path keeps original Arc, read path gets clone — shared Mutex<Connection>) + subscribe splices indexing replay
+# (since_ts>0: list_since + indexing_rows_to_pb_events, AFTER audit replay, BEFORE live forward; store None / lock
+# failure → unwrap_or_default empty, best-effort mirroring audit). Verified by TEST-43.1.1 (list_since ts filter +
+# id ASC + since_ts<=0 byte-equiv) / TEST-43.1.2a (subscribe splice order indexing→audit→live) / TEST-43.1.2b
+# (since_ts<=0 no replay byte-equiv, timeout-guarded) / TEST-43.1.2c (store=None → only audit replay, no evt-idx-*).
+# Honest-defer (ADR-013): this task delivers unit-level splice + timing tests; live daemon restart-then-replay e2e
+# (real process + cross-restart dual-window assertion) needs a running daemon (needs console cross-process) → 🟡
+# honest-deferred [SPEC-DEFER:phase-future.indexing-replay-daemon-e2e], not pre-filled. memory-actor-all-rpc
+# (Deprecate/SoftDelete 7-layer + new migration / HardDelete needs audit-layer redesign = not a small debt) is
+# honest-deferred to an independent phase (roadmap §3.17/§3.22 "schedule small, don't pad"). 0 new dep / 0 network
+# / 0 schema migration (reuses Phase 33 migration 0019) / 0 proto change / default byte-equiv (ADR-004/008).
+# This step is doc/status (the splice is unit-verified by TEST-43.1.2a/b/c in the default cargo test gate; the
+# REAL-mode end-to-end would need a running daemon + SubscribeEvents stream inspection — honest-deferred).
+echo "    → indexing-replay-splice validated via Rust unit tests TEST-43.1.1/.2a/.2b/.2c in the default cargo test gate (lib 225→229); REAL-mode subscribe-stream e2e honest-deferred [SPEC-DEFER:phase-future.indexing-replay-daemon-e2e] (ADR-013)"
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"
