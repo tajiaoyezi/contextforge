@@ -607,6 +607,10 @@ func handleMemorySoftDelete(deps Deps) http.HandlerFunc {
 
 // handleMemoryUnpin — POST /v1/memory/{id}/unpin → 204 (non-destructive; aligns
 // with pin, no confirmMiddleware). task-27.2 (ADR-032 D2): explicit unpin.
+// task-44.1 (ADR-049 D3): propagate the calling actor from the X-Actor header
+// (empty when absent → server falls back to "console-api", byte-equivalent default),
+// mirroring handleMemoryPin. Authenticated identity (verifying the header against an
+// auth subject) is [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
 func handleMemoryUnpin(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Memory == nil {
@@ -618,7 +622,8 @@ func handleMemoryUnpin(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
 			return
 		}
-		if err := deps.Memory.Unpin(id); err != nil {
+		actor := r.Header.Get("X-Actor")
+		if err := deps.Memory.Unpin(id, actor); err != nil {
 			mapStorageError(w, err)
 			return
 		}

@@ -49,14 +49,24 @@ impl MemoryServer {
     /// paths are best-effort: `AuditSink.record` failure or `EventBus.send`
     /// no-subscriber `SendError` is swallowed and the state-op return is
     /// unaffected (observability != authority).
-    fn emit_audit_and_event(&self, op: AuditOperation, memory_id: &str) {
+    ///
+    /// task-44.1 (ADR-049 D2): the `actor` parameter is the *raw* calling actor
+    /// (possibly empty). When non-empty it becomes the audit `source` AND the
+    /// event `source` (so a console-api behind an auth proxy can attribute
+    /// pin/unpin to the real caller). When empty, audit source falls back to
+    /// `"console-api"` and event source to `"contextforge-core"` — each the
+    /// pre-task-44.1 hardcoded value, so empty-actor is byte-equivalent (ADR-004).
+    /// Note: the two legacy defaults *differ* (audit was "console-api", event was
+    /// "contextforge-core"), so the fallbacks are resolved independently here.
+    fn emit_audit_and_event(&self, op: AuditOperation, memory_id: &str, actor: &str) {
+        let audit_source = if actor.is_empty() { "console-api" } else { actor };
         // 1. AuditSink (既有路径 — Phase 13 task-13.1 ship)
         if let Some(audit) = self.stores.audit.as_ref() {
             if let Ok(mut sink) = audit.lock() {
                 let event = AuditEvent {
                     operation: op,
                     collection: "memory".to_string(),
-                    source: "console-api".to_string(),
+                    source: audit_source.to_string(),
                     result_count: 1,
                     redaction_count: 0,
                     query: None,
@@ -69,7 +79,7 @@ impl MemoryServer {
         }
         // 2. EventBus broadcast (task-15.2 / ADR-021 D1 新增桥接)
         if let Some(bus) = self.stores.event_bus.as_ref() {
-            if let Some(evt) = build_memory_event(op, memory_id) {
+            if let Some(evt) = build_memory_event(op, memory_id, actor) {
                 // ADR-021 D4: SendError swallowed (no subscriber is fine; events
                 // are observability, not durable state).
                 let _ = bus.send(evt);
@@ -100,7 +110,7 @@ fn audit_op_to_event_type(op: AuditOperation) -> Option<&'static str> {
 /// contract for memory events. `trace_id` and `job_id` are `None` (memory ops
 /// have no trace / job context); `payload_json` carries `memory_id` + `op`
 /// so subscribers can disambiguate pin vs unpin without parsing the message.
-fn build_memory_event(op: AuditOperation, memory_id: &str) -> Option<PbEvent> {
+fn build_memory_event(op: AuditOperation, memory_id: &str, actor: &str) -> Option<PbEvent> {
     let event_type = audit_op_to_event_type(op)?;
     let op_str = match op {
         AuditOperation::MemoryPin => "pin",
@@ -115,11 +125,18 @@ fn build_memory_event(op: AuditOperation, memory_id: &str) -> Option<PbEvent> {
         serde_json::to_string(memory_id).unwrap_or_else(|_| String::from("\"\"")),
         op_str,
     );
+    // task-44.1 (ADR-049 D2): event source = actor when non-empty, else the
+    // legacy "contextforge-core" (byte-equivalent pre-task-44.1).
+    let source = if actor.is_empty() {
+        "contextforge-core"
+    } else {
+        actor
+    };
     Some(PbEvent {
         event_id: format!("evt-memory-{}", now_unix_nanos()),
         event_type: event_type.to_string(),
         severity: "info".to_string(),
-        source: "contextforge-core".to_string(),
+        source: source.to_string(),
         message: format!("memory {op_str}: {memory_id}"),
         ts_unix: now_unix(),
         trace_id: None,
@@ -236,6 +253,11 @@ impl MemoryService for MemoryServer {
         memory
             .set_pinned_with_actor(&req.memory_id, req.pin, actor)
             .map_err(mem_err_to_status)?;
+        // task-44.1 (ADR-049 D2): pass the *raw* actor (pre-fallback) so
+        // emit_audit_and_event can resolve audit-source ("console-api") and
+        // event-source ("contextforge-core") fallbacks independently — the two
+        // legacy defaults differ, so passing the already-fallbacked `actor`
+        // here would change the event source and break byte-equivalence.
         self.emit_audit_and_event(
             if req.pin {
                 AuditOperation::MemoryPin
@@ -243,6 +265,7 @@ impl MemoryService for MemoryServer {
                 AuditOperation::MemoryUnpin
             },
             &req.memory_id,
+            &req.actor,
         );
         Ok(Response::new(PinMemoryResponse {}))
     }
@@ -260,7 +283,7 @@ impl MemoryService for MemoryServer {
         memory
             .set_status(&id, "deprecated")
             .map_err(mem_err_to_status)?;
-        self.emit_audit_and_event(AuditOperation::MemoryDeprecate, &id);
+        self.emit_audit_and_event(AuditOperation::MemoryDeprecate, &id, "");
         Ok(Response::new(DeprecateMemoryResponse {}))
     }
 
@@ -277,7 +300,7 @@ impl MemoryService for MemoryServer {
         memory
             .set_status(&id, "soft_deleted")
             .map_err(mem_err_to_status)?;
-        self.emit_audit_and_event(AuditOperation::MemorySoftDelete, &id);
+        self.emit_audit_and_event(AuditOperation::MemorySoftDelete, &id, "");
         Ok(Response::new(SoftDeleteMemoryResponse {}))
     }
 
@@ -288,16 +311,27 @@ impl MemoryService for MemoryServer {
         &self,
         req: Request<UnpinMemoryRequest>,
     ) -> Result<Response<UnpinMemoryResponse>, Status> {
-        let id = req.into_inner().memory_id;
+        let req = req.into_inner();
         let memory = self
             .stores
             .memory
             .as_ref()
             .ok_or_else(|| Status::failed_precondition("memory store not configured"))?;
+        // task-44.1 (ADR-049 D1): the unpin counterpart of pin's actor
+        // propagation. The store path (set_pinned_with_actor pinned=false) clears
+        // pinned_by — so the actor's real landing point is emit_audit_and_event
+        // source (audit/event attribution), not the store. Empty actor falls back
+        // to "console-api" for the store call (byte-equivalent); emit_audit_and_event
+        // gets the raw actor and resolves the two source fallbacks independently.
+        let actor = if req.actor.is_empty() {
+            "console-api"
+        } else {
+            req.actor.as_str()
+        };
         memory
-            .set_pinned_with_actor(&id, false, "console-api")
+            .set_pinned_with_actor(&req.memory_id, false, actor)
             .map_err(mem_err_to_status)?;
-        self.emit_audit_and_event(AuditOperation::MemoryUnpin, &id);
+        self.emit_audit_and_event(AuditOperation::MemoryUnpin, &req.memory_id, &req.actor);
         Ok(Response::new(UnpinMemoryResponse {}))
     }
 
@@ -315,7 +349,7 @@ impl MemoryService for MemoryServer {
             .as_ref()
             .ok_or_else(|| Status::failed_precondition("memory store not configured"))?;
         memory.hard_delete(&id).map_err(mem_err_to_status)?;
-        self.emit_audit_and_event(AuditOperation::MemoryHardDelete, &id);
+        self.emit_audit_and_event(AuditOperation::MemoryHardDelete, &id, "");
         Ok(Response::new(HardDeleteMemoryResponse {}))
     }
 }
@@ -556,6 +590,100 @@ mod tests {
         );
     }
 
+    // TEST-44.1.1 (task-44.1 / ADR-049 D1/D2): unpin RPC propagates a non-empty actor
+    // through to the audit/event source (the real landing point — the unpin store path
+    // clears pinned_by, so the actor's observable effect is emit_audit_and_event source).
+    #[tokio::test]
+    async fn test_44_1_1_unpin_actor_in_event_source() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store
+            .seed_for_tests(vec![mem("ub", "s", "active")])
+            .unwrap();
+        // pin first so unpin has something to clear.
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "ub".into(),
+                pin: true,
+                actor: "".into(),
+            }))
+            .await
+            .unwrap();
+        // drain the pin event before subscribing for the unpin event.
+        let mut rx = bus.subscribe();
+        server
+            .unpin(Request::new(UnpinMemoryRequest {
+                memory_id: "ub".into(),
+                actor: "bob".into(),
+            }))
+            .await
+            .expect("unpin ok");
+        let evt = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("event within 2s")
+            .expect("event ok");
+        assert_eq!(
+            evt.source, "bob",
+            "non-empty unpin actor → event source attributed to caller (not hardcoded)"
+        );
+    }
+
+    // TEST-44.1.2 (task-44.1 / ADR-049 D2): pin RPC now also routes its actor to the
+    // event source (顺带闭环 — pin previously only wrote pinned_by, its audit/event
+    // source was still hardcoded). Non-empty pin actor → event source = actor.
+    #[tokio::test]
+    async fn test_44_1_2_pin_actor_in_event_source() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store
+            .seed_for_tests(vec![mem("pb2", "s", "active")])
+            .unwrap();
+        let mut rx = bus.subscribe();
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "pb2".into(),
+                pin: true,
+                actor: "alice".into(),
+            }))
+            .await
+            .unwrap();
+        let evt = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("event within 2s")
+            .expect("event ok");
+        assert_eq!(
+            evt.source, "alice",
+            "non-empty pin actor → event source attributed (顺带闭环)"
+        );
+    }
+
+    // TEST-44.1.3 (task-44.1 / ADR-049 D4): empty actor → event source falls back to
+    // "contextforge-core" (byte-equivalent pre-task-44.1). The audit source falls back
+    // to "console-api" (not directly observable here, but resolved by the same
+    // actor.is_empty() check in emit_audit_and_event).
+    #[tokio::test]
+    async fn test_44_1_3_empty_actor_event_source_byte_equiv() {
+        let (server, mem_store, bus) = fresh_server_with_event_bus();
+        mem_store
+            .seed_for_tests(vec![mem("eb", "s", "active")])
+            .unwrap();
+        let mut rx = bus.subscribe();
+        server
+            .pin(Request::new(PinMemoryRequest {
+                memory_id: "eb".into(),
+                pin: true,
+                actor: "".into(),
+            }))
+            .await
+            .unwrap();
+        let evt = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("event within 2s")
+            .expect("event ok");
+        assert_eq!(
+            evt.source, "contextforge-core",
+            "empty actor → event source byte-equivalent (legacy 'contextforge-core')"
+        );
+    }
+
     #[tokio::test]
     async fn test_memory_server_deprecate_persists_and_emits_audit() {
         let (server, mem_store) = fresh_server();
@@ -763,7 +891,7 @@ mod tests {
             .await
             .unwrap();
         server
-            .unpin(Request::new(UnpinMemoryRequest { memory_id: "u".into() }))
+            .unpin(Request::new(UnpinMemoryRequest { memory_id: "u".into(), ..Default::default() }))
             .await
             .expect("unpin ok");
         let got = mem_store.get("u").unwrap().unwrap();
@@ -771,7 +899,7 @@ mod tests {
         assert_eq!(got.pinned_by, "");
         // idempotent: unpin already-unpinned → still Ok.
         server
-            .unpin(Request::new(UnpinMemoryRequest { memory_id: "u".into() }))
+            .unpin(Request::new(UnpinMemoryRequest { memory_id: "u".into(), ..Default::default() }))
             .await
             .expect("idempotent unpin ok");
         let audit = server.stores.audit.as_ref().unwrap().lock().unwrap();
