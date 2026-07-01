@@ -127,7 +127,7 @@ type MemoryClient interface {
 	// task-27.2 (ADR-032 D2, add-only): explicit Unpin (non-destructive) +
 	// HardDelete (destructive — physical row removal; console-api gates it
 	// behind confirmMiddleware).
-	Unpin(memoryID string) error
+	Unpin(memoryID string, actor string) error // task-44.1: actor forward (X-Actor header → here); empty → server falls back to "console-api" (byte-equiv)
 	HardDelete(memoryID string) error
 }
 

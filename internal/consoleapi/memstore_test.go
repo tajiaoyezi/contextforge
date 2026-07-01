@@ -320,7 +320,7 @@ func TestMemMemoryStore_EventParity(t *testing.T) {
 	if err := mem.Deprecate("mem-fixture-2"); err != nil {
 		t.Fatalf("Deprecate: %v", err)
 	}
-	if err := mem.Unpin("mem-fixture-2"); err != nil {
+	if err := mem.Unpin("mem-fixture-2", ""); err != nil {
 		t.Fatalf("Unpin: %v", err)
 	}
 	if err := mem.SoftDelete("mem-fixture-2"); err != nil {

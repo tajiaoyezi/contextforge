@@ -700,7 +700,9 @@ func (s *MemMemoryStore) SoftDelete(id string) error {
 }
 
 // task-27.2 (ADR-032 D2): explicit Unpin (idempotent; clears the pin snapshot).
-func (s *MemMemoryStore) Unpin(id string) error {
+// task-44.1 (ADR-049 D3): signature aligned with the gRPC client (actor param);
+// the in-memory fallback has no audit/event path so the actor is accepted but unused.
+func (s *MemMemoryStore) Unpin(id string, _actor string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[id]

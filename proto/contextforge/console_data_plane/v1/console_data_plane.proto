@@ -368,6 +368,14 @@ message SoftDeleteMemoryResponse {}
 // RPC + PinMemoryRequest{bool pin} unchanged (proto-freeze guard).
 message UnpinMemoryRequest {
   string memory_id = 1;
+  // task-44.1 / ADR-049 D1 (add-only, unpin counterpart of PinMemoryRequest.actor=3):
+  // calling actor propagation — console-api reads X-Actor header and fills it; empty
+  // → server falls back to "console-api" (byte-equivalent default). Used for audit/event
+  // source attribution (the unpin store path clears pinned_by, so the actor's real landing
+  // point is emit_audit_and_event source, not store). Authenticated identity (verifying
+  // the header against an auth subject) needs the console-api auth layer
+  // [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
+  string actor = 2;
 }
 
 message UnpinMemoryResponse {}

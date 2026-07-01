@@ -89,7 +89,7 @@ func (degradedMemory) Pin(_ string, _ bool, _ string) error {
 }
 func (degradedMemory) Deprecate(_ string) error  { return consoleapi.ErrDataPlaneUnavailable }
 func (degradedMemory) SoftDelete(_ string) error { return consoleapi.ErrDataPlaneUnavailable }
-func (degradedMemory) Unpin(_ string) error      { return consoleapi.ErrDataPlaneUnavailable }
+func (degradedMemory) Unpin(_ string, _ string) error { return consoleapi.ErrDataPlaneUnavailable }
 func (degradedMemory) HardDelete(_ string) error { return consoleapi.ErrDataPlaneUnavailable }
 
 type degradedEval struct{}

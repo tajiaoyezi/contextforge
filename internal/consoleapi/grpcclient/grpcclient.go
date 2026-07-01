@@ -740,8 +740,10 @@ func (m *memoryClient) SoftDelete(id string) error {
 }
 
 // task-27.2 (ADR-032 D2): explicit Unpin RPC (non-destructive).
-func (m *memoryClient) Unpin(id string) error {
-	_, err := m.c.Unpin(context.Background(), &pb.UnpinMemoryRequest{MemoryId: id})
+// task-44.1 (ADR-049 D3): forward the calling actor (X-Actor header → handler → here) to the
+// data plane. Empty actor → server falls back to "console-api" (byte-equivalent default, ADR-004).
+func (m *memoryClient) Unpin(id string, actor string) error {
+	_, err := m.c.Unpin(context.Background(), &pb.UnpinMemoryRequest{MemoryId: id, Actor: actor})
 	return mapGrpcErr(err)
 }
 
