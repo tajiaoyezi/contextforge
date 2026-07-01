@@ -71,6 +71,15 @@ pub struct DataPlaneStores {
     /// `None` keeps the in-memory-only behavior (task-11.1/12.3/15.5 baseline);
     /// `Some` enables write-through + warm restore on daemon boot.
     pub trace_persist: Option<Arc<search_persist::SqliteTracePersist>>,
+    /// task-43.1 (Phase 43 / ADR-048 D2): persistent indexing-event store used by
+    /// `EventsServer::subscribe` as the replay source for missed `indexing.*`
+    /// lifecycle events when a subscriber reconnects with `since_ts > 0`. `None`
+    /// (task-11.1 baseline / unit tests / non-`serve_full` constructors) → no
+    /// indexing replay (byte-equivalent to pre-task-43.1 behavior). The store is
+    /// already constructed in `serve_full` (`server.rs`) and passed to the
+    /// `IndexSessionBackend` write path; this field exposes it to the read path
+    /// (events subscribe) via a shared `Arc` clone.
+    pub indexing_event_store: Option<Arc<indexing_events::SqliteIndexingEventStore>>,
 }
 
 impl DataPlaneStores {
@@ -91,6 +100,7 @@ impl DataPlaneStores {
             audit: None,
             eval: None,
             trace_persist: None,
+            indexing_event_store: None,
         })
     }
 
@@ -110,6 +120,7 @@ impl DataPlaneStores {
             audit: None,
             eval: Some(eval),
             trace_persist: None,
+            indexing_event_store: None,
         })
     }
 
@@ -132,6 +143,7 @@ impl DataPlaneStores {
             audit: Some(audit),
             eval: None,
             trace_persist: None,
+            indexing_event_store: None,
         })
     }
 
@@ -146,6 +158,7 @@ impl DataPlaneStores {
     ) -> Arc<Self> {
         Self::full(
             workspace_store, job_store, job_runner, data_dir, event_bus, None, None, None, None,
+            None,
         )
     }
 
@@ -163,6 +176,7 @@ impl DataPlaneStores {
         audit: Option<Arc<Mutex<crate::memoryops::audit::AuditSink>>>,
         eval: Option<Arc<crate::eval::SqliteEvalStore>>,
         trace_persist: Option<Arc<search_persist::SqliteTracePersist>>,
+        indexing_event_store: Option<Arc<indexing_events::SqliteIndexingEventStore>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             workspace_store,
@@ -174,6 +188,7 @@ impl DataPlaneStores {
             audit,
             eval,
             trace_persist,
+            indexing_event_store,
         })
     }
 
@@ -196,6 +211,7 @@ impl DataPlaneStores {
             audit: None,
             eval: None,
             trace_persist: None,
+            indexing_event_store: None,
         })
     }
 }

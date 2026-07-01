@@ -758,7 +758,7 @@ pub async fn serve_full(
             );
             let indexer = IndexSessionBackend::with_event_bus_and_indexing_store(
                 event_bus.clone(),
-                indexing_event_store,
+                indexing_event_store.clone(),
             );
             let job_store_dyn: Arc<dyn JobStore> = job_store.clone();
             let runner = Arc::new(JobRunner::new(job_store_dyn, indexer));
@@ -795,6 +795,7 @@ pub async fn serve_full(
                 Some(audit_sink),
                 Some(eval_store),
                 Some(trace_persist),
+                Some(indexing_event_store),
             );
 
             let mut builder = tonic::transport::Server::builder();

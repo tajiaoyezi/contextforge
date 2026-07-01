@@ -392,6 +392,7 @@ mod tests {
             audit: Some(audit),
             eval: None,
             trace_persist: None,
+            indexing_event_store: None,
         });
         (MemoryServer::new(stores), mem, event_bus)
     }
