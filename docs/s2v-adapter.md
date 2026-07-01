@@ -278,6 +278,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 
 > 该索引由 `/s2v-add phase <name>` 自动追加；手动修改时保持一致。
 
+| 43 | `governance-debt-cleanup-4` | `docs/specs/phases/phase-43-governance-debt-cleanup-4.md` | Draft | 2 | plan/feat-task-43.0-phase43-plan（v0.36.0 规划：第四轮治理债清扫，单聚焦 indexing-replay-e2e 拼接缺口——承 Phase 33 task-33.3（ADR-038 D3）血脉的"最后一公里"：mapper `indexing_rows_to_pb_events`（events.rs:438）已写好 + test_33_3_2 守护但**从未在 live subscribe 路径调用**（4 拼接缺口：list 缺 since_ts / DataPlaneStores 无 indexing_event_store 字段 / serve_full full() 未传 store / subscribe replay 只 splice audit 漏 indexing）— task-43.1 indexing-replay-splice（list_since 镜像 audit since_ts + DataPlaneStores 字段 + serve_full clone 接线 + subscribe splice audit 后 live 前 + TEST-43.1.1/.2）+ task-43.3 closeout（smoke v33[52/52] + ADR-048 ratify + ADR-038 add-only Phase-43 Amendment）。🟢 纯本地单测 + 0 dep/0 migration（复用 0019）/0 proto + 默认 byte-equiv（since_ts<=0/store=None）；live daemon restart-then-replay e2e 🟡 honest-defer `[SPEC-DEFER:phase-future.indexing-replay-daemon-e2e]`；memory-actor-all-rpc（Deprecate/SoftDelete 7 层+新 migration / HardDelete 须 audit 重设计=非小债）据实延后留独立 phase（ADR-013 不强行扩面）。ADR-048 Proposed；ADR-038 add-only Amendment；ADR-014 第三十四次激活；实现 + 发版经用户授权 ADR-012）|
+
 ## Task 总索引
 
 > 全部 task spec 应通过 `/s2v-add task <name>` 创建；agent 进 worktree 后**禁止自创 task spec**（违反 s2v R5 单一事实源）。
@@ -435,6 +437,8 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 42.1 | chunk-source-type-derivation-and-filter：`core/src/retriever/mod.rs` add `classify_source_type(file_path)->&'static str`（扩展名确定性桶 code/doc/config/other，镜像 `indexer::lang_hint_from_path`）+ 三构造点（search() BM25 / get_chunk / assemble_vector_result）source_type 由 `DEFAULT_SOURCE_TYPE=""` 改真实派生 + search() BM25 source_type post-filter（空 filter 字节等价）+ agent_scope 窄化续 documented no-op；0 schema migration（chunks/files/provenance §5.3 FROZEN，派生==存储值） | docs/specs/tasks/task-42.1-chunk-source-type-derivation-and-filter.md | Done | Phase42 #1（#267 e290649；dep task-32.3 filter 契约 + `lang_hint_from_path` 派生范式 + ADR-047 D1；TEST-42.1.1/.2 PASS）| - |
 | 42.2 | console-api-source-type-forward：`console_data_plane.proto` SearchRequest add-only `source_type=9`（既有 1-8 字段号冻结）+ `data_plane/search.rs` post-filter（覆盖 BM25/semantic/hybrid 一致）+ Go `contractv1.SearchRequest.SourceType` + `handleSearch` `?source_type=` query/body 并集 forward（镜像 ?semantic/?hybrid）+ grpcclient 映射；console 响应 `source_file_type` populate 后显真实值 | docs/specs/tasks/task-42.2-console-api-source-type-forward.md | Done | Phase42 #2（#268 5f88604；dep 42.1 派生 + ADR-015 proto 契约 + ?semantic/?hybrid 转发范式 + ADR-047 D2；TEST-42.2.1 wire-tag 0x4A/.2 PASS）| - |
 | 42.3 | closeout-v0.35.0：smoke v32[51/51] REAL source_type 真实过滤端到端 + ADR-047 据 D1-D4 ratify + ADR-037 add-only Phase-42 Amendment（source_type no-op superseded / agent_scope no-op reaffirmed，不溯改 D5）+ roadmap §3.24/§4 + adapter（pre-tag 对抗审查校正 smoke code/doc 方向 #270 review-fix） | docs/specs/tasks/task-42.3-closeout-v0.35.0.md | Done | Phase42 #3（#269 + #270 0fd4a75；dep 42.1+42.2；收口，真实 v0.35.0 tag/release 经用户授权 push）| - |
+| 43.1 | indexing-replay-splice：`indexing_events.rs` add `list_since(limit, since_ts)`（since_ts 时序过滤镜像 replay_events_from_audit）+ `DataPlaneStores` add `indexing_event_store: Option<Arc<...>>` 字段 + `full()` 加第 10 参数（既有 constructor 补 None byte-equiv）+ `server.rs` serve_full 传入 `Some(indexing_event_store.clone())`（store 已在 :756 构造）+ `events.rs` subscribe replay 段 splice indexing replay（since_ts>0 时 list_since + indexing_rows_to_pb_events，audit 后、live 前；store None/lock 失败 unwrap_or_default 空）；0 dep/0 migration（复用 0019）/0 proto | docs/specs/tasks/task-43.1-indexing-replay-splice.md | Ready | Phase43 #1（dep task-33.3 mapper+store + DataPlaneStores + serve_full :756 store 局部构造 + subscribe :241 audit replay 范式；ADR-048 D1/D2/D3；TEST-43.1.1/.2 待实施）| - |
+| 43.3 | closeout-v0.36.0：smoke v32→v33[52/52] indexing replay splice 可达断言（不可达诚实归因 unit TEST-43.1.2）+ TestTask433 no-regression（[37/37]..[51/51] 不溯改）+ release docs + ADR-048 据 D1-D4 ratify（D4 live daemon e2e 🟡 honest-defer）+ ADR-038 add-only Phase-43 Amendment（indexing-replay-e2e splice 维度兑现，不溯改 D5）+ roadmap §3.25/§4 + adapter | docs/specs/tasks/task-43.3-closeout-v0.36.0.md | Ready | Phase43 #2（dep 43.1；收口，真实 v0.36.0 tag/release 经用户授权 push）| - |
 
 ## ADR 索引
 
@@ -490,6 +494,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 045 | governance-debt-cleanup-3 | Proposed | docs/decisions/adr-045-governance-debt-cleanup-3.md |
 | 046 | tokenizer-default-on | Accepted | docs/decisions/adr-046-tokenizer-default-on.md |
 | 047 | chunk-source-type-filter | Accepted | docs/decisions/adr-047-chunk-source-type-filter.md |
+| 048 | indexing-replay-splice | Proposed | docs/decisions/adr-048-indexing-replay-splice.md |
 
 ## BDD Feature 索引
 
@@ -545,6 +550,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 40.1 / 40.2 / 40.3 | test/features/phase-40-governance-debt-cleanup-3.feature |
 | 41.1 / 41.2 / 41.3 | test/features/phase-41-tokenizer-default-on.feature |
 | 42.1 / 42.2 / 42.3 | test/features/phase-42-chunk-source-type-filter.feature |
+| 43.1 / 43.3 | test/features/phase-43-governance-debt-cleanup-4.feature |
 
 ---
 
