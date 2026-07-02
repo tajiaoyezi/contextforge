@@ -55,8 +55,12 @@ func NewRESTHandler(s RESTSearcher, token, dataDir string) http.Handler {
 	mux.HandleFunc("GET /v1/collections", func(w http.ResponseWriter, r *http.Request) {
 		handleCollections(dataDir, w, r)
 	})
-	mux.HandleFunc("POST /v1/import", handleImport)
-	mux.HandleFunc("POST /v1/eval/run", handleEval)
+	// task-45.2 (ADR-050 D2, v1.0 API freeze): the v0.1 §2A-decision-B 501 stubs for
+	// `POST /v1/import` + `POST /v1/eval/run` are REMOVED before the v1.0 API freeze —
+	// freezing a permanent-501 endpoint is unacceptable (promising an interface that
+	// will never be implemented). console-api already covers both: `/v1/index-jobs`
+	// (import) + `/v1/eval-runs` (eval). daemon REST now serves only the 3 real
+	// endpoints: search / chunks / collections.
 	return authMiddleware(mux, token, dataDir)
 }
 
@@ -187,8 +191,14 @@ func handleChunk(s RESTSearcher, w http.ResponseWriter, r *http.Request) {
 
 // handleCollections — GET /v1/collections. Lists every `<dataDir>/collections/<id>/`
 // subdirectory; one collection per subdirectory (matches Rust indexer layout).
-// `chunk_count` is left at 0 in v0.1 — a real SQLite COUNT(*) would require
-// opening every collection's DB; deferred to a future task / endpoint.
+//
+// task-45.2 (ADR-050 D2, v1.0 API freeze): `chunk_count` stays at 0 as a documented
+// v1.0 known limitation — reading the real count needs a Go-side SQLite reader
+// (the Go daemon has no SQLite dependency; the Rust core owns metadata.sqlite).
+// Adding a pure-Go SQLite lib (modernc.org/sqlite) for this one field is not worth
+// the build weight. For real chunk counts, use console-api `GET /v1/stats/chunks`
+// (which queries the Rust core over gRPC). The `0` value is a stable v1.0 contract
+// (not a placeholder to be silently filled later).
 func handleCollections(dataDir string, w http.ResponseWriter, _ *http.Request) {
 	collDir := filepath.Join(dataDir, "collections")
 	entries, err := os.ReadDir(collDir)
@@ -216,27 +226,11 @@ func handleCollections(dataDir string, w http.ResponseWriter, _ *http.Request) {
 		}
 		out = append(out, collInfo{
 			ID:            e.Name(),
-			ChunkCount:    0, // v0.1 placeholder — real COUNT(*) deferred
+			ChunkCount:    0, // task-45.2: v1.0 known limitation — daemon REST has no SQLite reader; use console-api /v1/stats/chunks for real counts
 			LastIndexedAt: lastIndexedAt,
 		})
 	}
 	writeJSON(w, 200, map[string]any{"collections": out})
-}
-
-// handleImport — POST /v1/import: v0.1 stub 501 (§2A 决策 B).
-func handleImport(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, 501, map[string]any{
-		"error": "deferred to phase 8",
-		"note":  "see task-8.x backlog (importer pipeline)",
-	})
-}
-
-// handleEval — POST /v1/eval/run: v0.1 stub 501 (§2A 决策 B).
-func handleEval(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, 501, map[string]any{
-		"error": "deferred to phase 8 (eval-harness)",
-		"note":  "see task-8.1",
-	})
 }
 
 // GRPCStatusToHTTP maps a gRPC error to an HTTP status code following the
