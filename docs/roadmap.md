@@ -493,6 +493,8 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-050 v1.0-definition**（Proposed；D1 能力已满足 / D2 API/CLI 冻结 Phase 45 / D3 文档 Phase 46 / D4 发布 Phase 46-47；不含 multi-user/认证/自动更新/arm64 推 v2.0）；ADR-007 add-only Amendment（v1.0 分发定义收窄为务实收口）；ADR-017（悬空 v1.0 gate 正式承接）；ADR-015（proto FROZEN）/ ADR-004/008/013 守线。ADR-014 第三十六次激活。Phase 45 实现 + 发版经用户授权 ADR-012。
 
+**v0.38.0 推进记录（已落地 2026-07-01，add-only）**：§3.27 全 task 合入 master，ADR-050 部分 ratify D1/D2：task-45.1（#283）ADR-050 立 v1.0 锚点 + roadmap §v1.0；task-45.2（#284，`ba154d1`）daemon REST 移除 2 个 501 未实装端点 [BREAKING] + chunk_count honest-defer；task-45.3（#285，`005fe85`）CLI --version + 顶层 --help + example.toml 补全。🟢 纯本地 + 0 dep/0 migration + daemon REST 移除是 v1.0 前 breaking。ADR-050 D1（能力已满足）+ D2（API/CLI 冻结 Phase 45 交付）部分 ratify；D3 文档 Phase 46 / D4 GitHub Release Phase 46-47 / v1.0.0 完整发版 Phase 47。真实 v0.38.0 tag/run/digest/tlog 经用户授权 push（ADR-012），post-tag-push 回填（ADR-013 不预填）。
+
 ---
 
 ## §v1.0 锚点（ADR-050）

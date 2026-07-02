@@ -1,5 +1,18 @@
 # ContextForge Release Notes
 
+## v0.38.0 (2026-07-01) — v1.0-api-cli-freeze (v1.0 收口冲刺第一步：ADR-050 立 v1.0 锚点 = 功能成熟度收口 D1 + API/CLI 冻结 D2 + 文档对齐 D3 Phase 46 + GitHub Release D4 Phase 46-47；不含 multi-user/认证/自动更新/arm64 推 v2.0。交付 D2：daemon REST 移除 2 个 501 未实装端点 [BREAKING] + chunk_count honest-defer + CLI --version + 顶层 --help + example.toml 补全 4 检索 section；0 dep/0 migration + ADR-050 部分 ratify D1/D2)
+
+| task | PR | delivery |
+|---|---|---|
+| 45.1 | #283 | v1.0-definition：ADR-050 立 v1.0 锚点（4 维度 + 不含清单推 v2.0 + 承 ADR-017 悬空 v1.0 gate）+ roadmap §v1.0 锚点段 + §3.27 |
+| 45.2 | #284 | daemon-rest-api-freeze：移除 POST /v1/import + POST /v1/eval/run 501 未实装端点（console-api 已覆盖）[BREAKING] + chunk_count honest-defer（Go daemon 无 SQLite 库）+ rest_test 更新 |
+| 45.3 | #285 | cli-version-help：CLI version 子命令 + 顶层 --help（修复 -h exit 2）+ example.toml 补全 [embedding]/[vector]/[reranker]/[retrieval] 4 section |
+| 45.4 (this) | v0.38.0 closeout：smoke v34→v35[54/54] + TestTask454 + release docs + ADR-050 部分 ratify（D1/D2）+ ADR-007 add-only Amendment（v1.0 分发定义收窄）+ roadmap/adapter |
+
+**⚠️ BREAKING CHANGE (v1.0 API freeze)**：daemon REST（`contextforge serve` 子命令的简化 API）移除了 2 个 v0.1 §2A 决策 B 有意留下的 501 未实装端点：`POST /v1/import` + `POST /v1/eval/run`。这是 v1.0 前 major 版本边界允许的清理——冻结永久 501 端点不可接受（承诺永不实装的接口）。**替代**：import 用 `POST /v1/index-jobs`（console-api，Phase 10/11）或 `contextforge import`/`index` CLI 子命令；eval 用 `POST /v1/eval-runs`（console-api，Phase 14）或 `contextforge eval run` CLI 子命令。daemon REST 现仅服务 3 个真实端点：`POST /v1/search` / `GET /v1/chunks/{id}` / `GET /v1/collections`。
+
+**Upgrade / Rollback**：v0.38.0 是 v1.0 收口冲刺第一步（ADR-050 D2 API/CLI 冻结）。`contextforge version` 现打印版本（v1.0 产品硬伤修复）；`contextforge --help`/`-h` 现打印子命令清单 + 用法（修复 task-1.4 起 -h exit 2 的 hostile 行为）；example.toml 补全 4 个检索 section（用户可配置 embedding/vector/reranker/retrieval 全栈）；`GET /v1/collections` 的 `chunk_count` 保持 0 作为 **v1.0 known limitation**（Go daemon 无 SQLite 库；真实计数用 console-api `GET /v1/stats/chunks`）。**0 新代码依赖** / **0 network** / **0 schema migration**。ADR-050 部分 ratify（D1 能力已满足 / D2 API/CLI 冻结 Phase 45 交付；D3 文档对齐 Phase 46 / D4 GitHub Release Phase 46-47 / v1.0.0 完整发版 Phase 47）。linux/amd64（承 v0.21–v0.37；arm64 仍 deferred）。Rollback：`git tag -d v0.38.0` + 删 Release / ghcr tag；回退 v0.37.0 后 daemon REST 恢复 501 端点、CLI 无 version/--help、example.toml 缺检索 section。tag SHA `<backfill>` / release run id `<backfill>` / ghcr digest `<backfill>` / cosign tlog `<backfill>`（post-tag-push 回填，ADR-012/013）。
+
 ## v0.37.0 (2026-07-01) — memory-unpin-actor-propagation (闭环 pin/unpin actor 透传不对称 + audit/event source 归因：Phase 40 task-40.1 给 pin 加了 actor 透传，unpin 漏了；grounding 发现 store pinned=false 丢弃 actor → 单纯透传是空透传；真实落点是 emit_audit_and_event 加 actor 参数让 audit/event source 归因真实调用方（pin 顺带闭环）；proto UnpinMemoryRequest add-only actor=2 + Go X-Actor 透传链；默认 byte-equiv（空 actor 回落）+ 0 新 dep / 0 network / 0 migration / proto add-only + ADR-049 ratified)
 
 | task | PR | delivery |

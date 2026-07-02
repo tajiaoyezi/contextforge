@@ -649,6 +649,40 @@ func TestTask443_SmokeV34UnpinActorPropagationStep(t *testing.T) {
 	}
 }
 
+// TEST-45.4.1a / AC1: smoke v35 adds step 54 — task-45.4 closeout (v1.0-api-cli-freeze).
+// v1.0 收口冲刺第一步：ADR-050 立 v1.0 锚点 + daemon REST 移除 501 + CLI --version/--help +
+// example.toml 补全。0 dep / 0 migration / daemon REST 移除是 v1.0 前 breaking。
+func TestTask454_SmokeV35V1APICLIFreezeStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v35 (task-45.4)") {
+		t.Fatalf("console_smoke.sh missing v35 (task-45.4) header block")
+	}
+	for _, marker := range []string{"[54/54]", "v1.0-api-cli-freeze", "ADR-050", "TEST-45.2.1", "TEST-45.3."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v35 step 54 must document v1.0-api-cli-freeze status (missing %q)", marker)
+		}
+	}
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "[50/50]", "[51/51]", "[52/52]", "[53/53]", "memory-unpin-actor-propagation"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v35 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid
