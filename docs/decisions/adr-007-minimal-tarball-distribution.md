@@ -52,3 +52,11 @@ Phase 28（release-ci-hardening，v0.21.0）据 `docs/decisions/adr-033-release-
 - **CI 质量门**：发布配套加 CI 强 lint（clippy + gofmt + go vet 卡红，task-28.3）。
 
 详见 `docs/decisions/adr-033-release-ci-hardening.md §Ratification`。
+
+## Amendment (Phase 45 / v0.38.0) — v1.0 分发定义收窄为务实收口 (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body，ADR-014 D5）。承本 ADR §Constraints 把 v1.0 列为"多平台 release + 签名校验 + 自动更新 + 企业部署"分发目标。
+
+Phase 45 / v0.38.0（ADR-050）正式定义 v1.0 并**收窄**本 ADR 的 v1.0 分发维度：v1.0.0 = 功能成熟度收口（D1）+ API/CLI 冻结（D2）+ 文档对齐（D3）+ GitHub Release 流程（D4）。**自动更新 + arm64 native 多平台构建推 v2.0**（ADR-033 实测 QEMU 不可行 + 自动更新从零工程，ADR-013 honest-defer）。本 ADR §Constraints 的"v1.0 多平台 + 签名 + 自动更新 + 企业部署"由 ADR-050 收窄为"v1.0 = 现有 GHCR 镜像签名（已就绪）+ GitHub Release tarball（Phase 46 加）+ 企业部署文档（production.md 已在，Phase 46 刷新版本）"。multi-user/认证身份推 v2.0（PRD §Out of Scope + ADR-016/018 反复"留 v1.0"，工程量大）。
+
+不溯改本 ADR D-body（ADR-014 D5）。详见 ADR-050 §Ratification + `docs/releases/v0.38.0-evidence.md`。

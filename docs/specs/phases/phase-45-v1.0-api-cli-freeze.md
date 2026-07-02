@@ -1,6 +1,6 @@
 # Phase 45 · v1.0-api-cli-freeze
 
-**Status**: Draft
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v1.0 收口冲刺的第一步**（承 ADR-050 v1.0 定义）：立 v1.0 锚点（ADR-050）+ API/CLI 冻结准备（D2 维度）。**项目从未立过 v1.0 锚点**（PRD/roadmap/README 四处查证一致，ADR-013 grounding）——PRD 的 P0 是 v0.1 的（早已满足且远超，recall@5/@10=1.0 超 PRD 北极星 75%/85%），PRD 里 "v1.0" 只在分发维度。本 phase 立 ADR-050 正式定义 v1.0（= 功能成熟度收口 + API/CLI 冻结 + 文档对齐 + GitHub Release 流程；**不含** multi-user/自动更新/arm64 native，推 v2.0），并交付 D2 API/CLI 冻结的两个 P0 阻塞项：(1) daemon REST 移除 2 个 501 未实装 端点（`POST /v1/import` + `POST /v1/eval/run`，§2A 决策 B 有意留下，console-api 已完整覆盖）+ 实装 `chunk_count`（真实 COUNT，非 placeholder 0）；(2) CLI 加 `--version`/`version` + 顶层 `--help`（修复 `-h` 落 unknown subcommand exit 2）+ example.toml 补全 4 个检索 section。code-local 🟢 可单测，0 新 dep（ADR-008）+ 0 migration + daemon REST 移除是 v1.0 前允许的 breaking change（major version 边界）。**诚实定性（ADR-013）**：v1.0 不含 multi-user/认证身份/自动更新/arm64 native——honest-defer 推 v2.0；现有 SPEC-DEFER 项不阻塞 v1.0，列"已知限制"。默认行为 / proto（已 FROZEN）/ 既有契约不变；既有三门不退化。
 
@@ -63,11 +63,11 @@ CLI `--version`/`version` 子命令（打印版本）+ 顶层 `--help`（修复 
 
 ## 6. 阶段级验收标准 + 端到端 smoke
 
-- [ ] **AC1**（ADR-050 v1.0 定义 🟢）: ADR-050 Proposed（4 维度 + 不含清单 + v2.0 路线）+ roadmap §v1.0 锚点段 — verified by **TEST-45.1.1**（ADR-050 在场 + 4 维度 + 不含清单）
-- [ ] **AC2**（daemon REST 冻结 🟢，含 v1.0 前 breaking）: 移除 2 个 501 未实装 + 实装 chunk_count（真实 COUNT 非 0） — verified by **TEST-45.2.1**（501 端点移除 + rest_test）+ **TEST-45.2.2**（chunk_count 真实值）
-- [ ] **AC3**（CLI 冻结 🟢）: `--version`/`version` + 顶层 `--help`（不 exit 2）+ example.toml 4 section — verified by **TEST-45.3.1**（version 输出）+ **TEST-45.3.2**（--help 不 exit 2）+ **TEST-45.3.3**（example.toml 4 section 在场）
-- [ ] **AC4**（v0.38.0 closeout + ADR-050 部分 ratify）: smoke v35[54/54] + release docs + ADR-050 部分 ratify（D1/D2）+ roadmap/adapter — verified by **TEST-45.4.1**
-- [ ] **AC5**（ADR-014 cross-validation gate）: D1-D5（第三十六次激活）— verified by task-45.4 PR body + LAST TEST
+- [x] **AC1**（ADR-050 v1.0 定义 🟢）: ADR-050 Proposed（4 维度 + 不含清单 + v2.0 路线）+ roadmap §v1.0 锚点段 — verified by **TEST-45.1.1**（ADR-050 在场 + 4 维度 + 不含清单）
+- [x] **AC2**（daemon REST 冻结 🟢，含 v1.0 前 breaking）: 移除 2 个 501 未实装 + 实装 chunk_count（真实 COUNT 非 0） — verified by **TEST-45.2.1**（501 端点移除 + rest_test）+ **TEST-45.2.2**（chunk_count 真实值）
+- [x] **AC3**（CLI 冻结 🟢）: `--version`/`version` + 顶层 `--help`（不 exit 2）+ example.toml 4 section — verified by **TEST-45.3.1**（version 输出）+ **TEST-45.3.2**（--help 不 exit 2）+ **TEST-45.3.3**（example.toml 4 section 在场）
+- [x] **AC4**（v0.38.0 closeout + ADR-050 部分 ratify）: smoke v35[54/54] + release docs + ADR-050 部分 ratify（D1/D2）+ roadmap/adapter — verified by **TEST-45.4.1**
+- [x] **AC5**（ADR-014 cross-validation gate）: D1-D5（第三十六次激活）— verified by task-45.4 PR body + LAST TEST
 
 ## 7. 阶段级风险
 

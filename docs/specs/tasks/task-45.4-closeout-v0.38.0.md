@@ -1,6 +1,6 @@
 # Task `45.4`: `closeout-v0.38.0 — smoke v34→v35[54/54]（v1.0 API/CLI 冻结：daemon REST 501 移除 + chunk_count 实装 + CLI --version/--help + example.toml 补全；breaking change 显式记）+ TestTask454 no-regression（[37/37]..[53/53] 不溯改）+ v0.38.0 release docs（含 breaking change 记录）+ ADR-050 部分 ratify（D1/D2）+ ADR-007 add-only Amendment（v1.0 分发定义收窄）+ roadmap/adapter`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 45 (v1.0-api-cli-freeze)
@@ -15,9 +15,9 @@ task-45.1/45.2/45.3 合入后收口：smoke v35[54/54] + release docs（含 daem
 (3) ADR-050 部分 ratify（D1 能力已满足 / D2 API/CLI 冻结 Phase 45 交付；D3/D4 在 Phase 46/47）+ ADR-007 add-only Amendment（v1.0 分发定义收窄为务实收口）+ roadmap §v1.0 锚点段推进 + adapter 状态翻新。
 
 ## 6. AC
-- [ ] **AC1**（smoke v35[54/54] + no-regression）— verified by **TEST-45.4.1a/b**
-- [ ] **AC2**（release docs + ADR-050 部分 ratify + ADR-007 Amendment + roadmap/adapter）— verified by **TEST-45.4.1c**
-- [ ] **AC3**（ADR-014 D2 lint）— verified by **TEST-45.4.2**（CI spec-lint）
+- [x] **AC1**（smoke v35[54/54] + no-regression）— verified by **TEST-45.4.1a/b**
+- [x] **AC2**（release docs + ADR-050 部分 ratify + ADR-007 Amendment + roadmap/adapter）— verified by **TEST-45.4.1c**
+- [x] **AC3**（ADR-014 D2 lint）— verified by **TEST-45.4.2**（CI spec-lint）
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
@@ -35,4 +35,4 @@ bash scripts/spec_drift_lint.sh --touched origin/master
 ```
 
 ## 10. Completion Notes
-**Status**: Ready（待实施回填）
+**Status*: Done

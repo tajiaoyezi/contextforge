@@ -1371,6 +1371,21 @@ else
   echo "    SKIP ($MODE mode — unpin X-Actor propagation validated via Rust/Go unit tests TEST-44.1.1/.2/.3/.4; needs the real daemon)"
 fi
 
+echo "  [54/54] task-45.4 v1.0-api-cli-freeze: v1.0 收口冲刺第一步 — ADR-050 立 v1.0 锚点（= 功能成熟度收口 D1 + API/CLI 冻结 D2 + 文档对齐 D3 Phase 46 + GitHub Release D4 Phase 46-47；不含 multi-user/认证/自动更新/arm64 推 v2.0）+ daemon REST 移除 2 个 501 未实装端点（POST /v1/import + POST /v1/eval/run，console-api 已覆盖，v1.0 前 breaking）+ CLI version 子命令 + 顶层 --help（修复 -h exit 2）+ example.toml 补全 4 检索 section — ADR-050 D1/D2（Phase 45）"
+# v35 (task-45.4): Phase 45 (v1.0-api-cli-freeze) — v1.0 收口冲刺第一步。项目从未立过 v1.0 锚点（PRD P0
+# 是 v0.1 的早已满足、PRD v1.0 只在分发维度、roadmap 零 v1.0、README 无成熟度标签、ADR-017 悬空 v1.0
+# gate）—— ADR-050 正式定义 v1.0.0 = 功能成熟度收口（D1，已满足 recall@5/@10=1.0 超北极星）+ API/CLI
+# 冻结（D2，Phase 45）+ 文档对齐（D3，Phase 46）+ GitHub Release 流程（D4，Phase 46-47）。不含
+# multi-user/认证身份/自动更新/arm64 native（推 v2.0，ADR-013 honest-defer）。本 phase 交付 D2：
+# task-45.2 daemon REST 移除 POST /v1/import + POST /v1/eval/run 501 未实装端点（§2A 决策 B 有意留下，
+# console-api /v1/index-jobs + /v1/eval-runs 已完整覆盖；v1.0 前 major 边界 breaking）+ chunk_count
+# honest-defer（Go daemon 无 SQLite 库，引重库不值，指向 console-api /v1/stats/chunks）+ task-45.3 CLI
+# version 子命令 + 顶层 --help（修复 -h 落 unknown subcommand exit 2）+ example.toml 补全
+# [embedding]/[vector]/[reranker]/[retrieval] 4 检索 section。Verified by TEST-45.2.1
+# (Task452_RemovedEndpointsAre404) + TEST-45.3.1/.2/.3 (version/help/example)。0 dep / 0 migration。
+# daemon REST 移除是 v1.0 前 breaking change（release notes 显式记）。
+echo "    → v1.0 API/CLI freeze validated via Go unit tests TEST-45.2.1 + TEST-45.3.1/.2/.3; daemon REST now 3 endpoints (search/chunks/collections); CLI version + --help wired"
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"

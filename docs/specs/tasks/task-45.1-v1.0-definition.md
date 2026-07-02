@@ -1,6 +1,6 @@
 # Task `45.1`: `v1.0-definition — ADR-050 立 v1.0 锚点（4 维度 D1-D4 + 不含清单推 v2.0 + v2.0 路线；承 ADR-017 悬空 v1.0 gate）+ roadmap §v1.0 锚点段 + §3.27 排期`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 45 (v1.0-api-cli-freeze)
@@ -21,7 +21,7 @@
 - 新增 `test/features/phase-45-v1.0-api-cli-freeze.feature`
 
 ## 6. AC
-- [ ] **AC1**（ADR-050 v1.0 定义）: ADR-050 Proposed 在场 + 4 维度（D1-D4）+ 不含清单 + v2.0 路线 + roadmap §v1.0 锚点段 — verified by **TEST-45.1.1**（grep 守护）
+- [x] **AC1**（ADR-050 v1.0 定义）: ADR-050 Proposed 在场 + 4 维度（D1-D4）+ 不含清单 + v2.0 路线 + roadmap §v1.0 锚点段 — verified by **TEST-45.1.1**（grep 守护）
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
@@ -35,4 +35,4 @@ grep -c "D1.*能力\|D2.*API\|D3.*文档\|D4.*发布" docs/decisions/adr-050-v1.
 ```
 
 ## 10. Completion Notes
-**Status**: Ready（待实施回填）
+**Status*: Done
