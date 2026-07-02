@@ -1,14 +1,43 @@
-# ContextForge v0.1 example config.
+# ContextForge example config (v0.38.0). task-45.3 (ADR-050 D2) — all sections documented.
+# Copy to config.toml and edit. Every section is OPTIONAL: an absent section ⇒ the
+# zero value ⇒ the Rust core uses its built-in default (ADR-004 local-first baseline:
+# 0-network / 0-model-dep). API keys are NEVER in this file — supply them via env vars.
 schema_version = "0.1"
 data_dir = "~/.contextforge"
 allow_denylist_override = false
 denylist = [".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa", "id_ed25519", ".ssh/", ".git/objects/", "node_modules/", "target/", "dist/", "build/", ".cache/", "vendor/"]
 
+# [remote] — remote embedding provider (task-37.2 / ADR-042). Off by default; opt-in.
+# The API key is env-only: CONTEXTFORGE_REMOTE_API_KEY (never written here).
 [remote]
 enabled = false
-provider = ""
-endpoint = ""
+provider = ""        # "" | "openai" | "cohere" | "siliconflow" | other OpenAI-compatible
+endpoint = ""        # e.g. "https://api.siliconflow.cn/v1"
+# model = ""         # remote embedding model name; "" ⇒ core default
 
+# [embedding] — embedding provider selection (task-22.1 / ADR-027). Default deterministic (0-dep).
+[embedding]
+provider = ""        # "" | "deterministic" (default, 0-dep) | "fastembed" (feature-gated) | "remote" (feature-gated, needs [remote])
+dim = 0              # 0 ⇒ provider default (384 for fastembed)
+
+# [vector] — vector backend selection (task-34.2 / ADR-039). Default BruteForce (dim-agnostic, 0-dep).
+[vector]
+backend = ""         # "" | "brute" (default, 0-dep) | "qdrant" | "lancedb" | "sqlite-vec" (feature-gated)
+dim = 0              # 0 ⇒ no dim constraint
+
+# [reranker] — reranker provider selection (task-38.2 / ADR-043). Off by default; opt-in.
+# The API key is env-only: CONTEXTFORGE_RERANKER_API_KEY (never written here).
+[reranker]
+enabled = false
+provider = ""        # "" | "identity" (no-op default) | "cross-encoder" (feature-gated) | "remote" (feature-gated)
+endpoint = ""        # remote rerank endpoint, e.g. "https://api.siliconflow.cn/v1/rerank"
+# model = ""         # remote rerank model name
+
+# [retrieval] — retrieval analyzer selection (task-41.2 / ADR-046). Default code_cjk (production flip).
+[retrieval]
+tokenizer = ""       # "" | "code_cjk" (production default for new collections, ADR-046) | "default" (legacy TEXT opt-out) | "cjk_segmenter" (jieba, feature-gated)
+
+# [[collections]] — one or more collection stanzas (task-1.2). The default collection covers "./".
 [[collections]]
 id = "default"
 allowlist = ["./"]

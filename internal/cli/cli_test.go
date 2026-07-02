@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -65,8 +66,9 @@ func TestTask14_AC1_InitGeneratesConfigIdempotent(t *testing.T) {
 // TEST-1.4.4
 // SCEN-1.4.4 / AC4: 9 子命令注册齐全；未实现子命令返回非 0 + stderr "not implemented"，绝不 panic。
 // task-10.6 (Phase 10) 新增 "console-api-serve" 子命令 → 列表从 8 扩到 9。
+// task-45.3 (Phase 45 / ADR-050 D2) 新增 "version" 子命令 → 列表从 9 扩到 10。
 func TestTask14_AC4_SubcommandsRegisteredUnimplementedNoPanic(t *testing.T) {
-	want := []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export", "console-api-serve"}
+	want := []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export", "console-api-serve", "version"}
 	got := SubcommandNames()
 	if len(got) != len(want) {
 		t.Fatalf("SubcommandNames()=%v (len %d), want %v (len %d)", got, len(got), want, len(want))
@@ -111,4 +113,60 @@ func mustNotPanic(t *testing.T, f func() int) (code int) {
 		}
 	}()
 	return f()
+}
+
+// TEST-45.3.1 (task-45.3 / ADR-050 D2): `contextforge version` prints the version.
+func TestTask453_VersionPrintsVersion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithIO([]string{"version"}, nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("version: exit=%d want 0 (stderr=%q)", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "contextforge ") {
+		t.Fatalf("version output missing 'contextforge ' prefix: %q", out)
+	}
+	if !strings.Contains(out, Version) {
+		t.Fatalf("version output missing Version=%q: %q", Version, out)
+	}
+}
+
+// TEST-45.3.2 (task-45.3 / ADR-050 D2): top-level `--help`/`-h`/`help` does NOT
+// exit 2 (previously `-h` fell through to "unknown subcommand"). It prints the
+// subcommand list + usage and exits 0.
+func TestTask453_TopLevelHelpDoesNotExit2(t *testing.T) {
+	for _, arg := range []string{"--help", "-h", "help"} {
+		var stdout, stderr bytes.Buffer
+		code := ExecuteWithIO([]string{arg}, nil, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("%s: exit=%d want 0 (stderr=%q)", arg, code, stderr.String())
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "Subcommands:") {
+			t.Fatalf("%s: stdout missing 'Subcommands:' usage: %q", arg, out)
+		}
+		// sanity: the subcommand list includes the canonical subcommands.
+		for _, want := range []string{"init", "search", "version"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("%s: stdout missing subcommand %q: %q", arg, want, out)
+			}
+		}
+	}
+}
+
+// TEST-45.3.3 (task-45.3 / ADR-050 D2): contextforge.example.toml documents all 4
+// retrieval sections introduced by task-22.1/34.2/38.2/41.2 (embedding/vector/
+// reranker/retrieval) so users can configure the full retrieval stack from the example.
+func TestTask453_ExampleTomlCoversRetrievalSections(t *testing.T) {
+	path := filepath.Join("..", "..", "contextforge.example.toml")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	s := string(body)
+	for _, section := range []string{"[embedding]", "[vector]", "[reranker]", "[retrieval]"} {
+		if !strings.Contains(s, section) {
+			t.Fatalf("contextforge.example.toml missing %q section (task-45.3: document all retrieval sections)", section)
+		}
+	}
 }
