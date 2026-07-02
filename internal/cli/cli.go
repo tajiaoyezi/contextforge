@@ -20,7 +20,15 @@ import (
 // subcommands is the registered subcommand set in stable order (AC4). Only
 // "init" is implemented in task-1.4; the rest are Phase 2+/6/7/8 and return an
 // explicit not-implemented message (task-1.4 §3 Out-of-Scope).
-var subcommands = []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export", "console-api-serve"}
+// task-45.3 (ADR-050 D2): "version" added for v1.0 (v1.0 product must have a
+// discoverable version).
+var subcommands = []string{"init", "import", "index", "search", "serve", "mcp", "eval", "export", "console-api-serve", "version"}
+
+// Version is the contextforge CLI version string. It is stamped at release time
+// (main.go may override it, or -ldflags can inject it); the default reflects the
+// in-repo dev build. task-45.3 (ADR-050 D2) — v1.0 products must have a
+// discoverable version (`contextforge version`).
+var Version = "0.38.0-dev"
 
 // SubcommandNames returns a copy of the registered subcommand names (AC4).
 func SubcommandNames() []string {
@@ -54,6 +62,20 @@ func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		return 2
 	}
 	sub, rest := args[0], args[1:]
+
+	// task-45.3 (ADR-050 D2, v1.0 CLI freeze): top-level --help/-h/help prints
+	// usage and exits 0 (previously `-h` fell through to the default branch and
+	// returned exit 2 "unknown subcommand", which is hostile for v1.0 newcomers).
+	if sub == "-h" || sub == "--help" || sub == "help" {
+		fmt.Fprintf(stdout, "contextforge %s — local-first context indexing and retrieval.\n\n", Version)
+		fmt.Fprintf(stdout, "Usage: contextforge <subcommand> [flags]\n\n")
+		fmt.Fprintf(stdout, "Subcommands:\n")
+		for _, s := range subcommands {
+			fmt.Fprintf(stdout, "  %s\n", s)
+		}
+		fmt.Fprintf(stdout, "\nRun `contextforge <subcommand> -h` for subcommand-specific flags.\n")
+		return 0
+	}
 
 	switch sub {
 	case "init":
@@ -115,6 +137,11 @@ func ExecuteWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		// (cross-process Rust↔Go SQLite sharing is task-future per
 		// task-10.4 §10 trade-off #1).
 		return runConsoleAPIServe(rest, stdout, stderr)
+
+	case "version":
+		// task-45.3 (ADR-050 D2): print the version string. `version` has no flags.
+		fmt.Fprintf(stdout, "contextforge %s\n", Version)
+		return 0
 
 	default:
 		if known(sub) {

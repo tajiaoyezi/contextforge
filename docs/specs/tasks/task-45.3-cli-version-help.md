@@ -1,6 +1,6 @@
 # Task `45.3`: `cli-version-help — CLI 加 version 子命令（打印版本，从 cmd/contextforge/main.go 注入版本常量）+ 顶层 --help/-h 处理（修复 cli.go:119-127 -h 落 unknown subcommand exit 2）+ contextforge.example.toml 补全 4 个检索 section（[embedding]/[vector]/[reranker]/[retrieval]）+ 头部 v0.1→v0.38；TEST-45.3.*`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 45 (v1.0-api-cli-freeze)
@@ -21,16 +21,16 @@ CLI 无 `--version`/`version`（v1.0 产品无版本可查 = 硬伤）+ 顶层 `
 - 改 `internal/cli/cli_test.go`（TEST-45.3.1 version 输出 + TEST-45.3.2 --help 不 exit 2 + TEST-45.3.3 example.toml grep）
 
 ## 6. AC
-- [ ] **AC1**（version 子命令）: `contextforge version` 打印版本 — verified by **TEST-45.3.1**
-- [ ] **AC2**（顶层 --help）: `contextforge --help`/`-h` 不 exit 2，打印子命令清单 — verified by **TEST-45.3.2**
-- [ ] **AC3**（example.toml 补全）: 4 个检索 section 在场 — verified by **TEST-45.3.3**
+- [x] **AC1**（version 子命令）: `contextforge version` 打印版本 — verified by **TEST-45.3.1**（TestTask453_VersionPrintsVersion）
+- [x] **AC2**（顶层 --help）: `contextforge --help`/`-h` 不 exit 2，打印子命令清单 — verified by **TEST-45.3.2**（TestTask453_TopLevelHelpDoesNotExit2）
+- [x] **AC3**（example.toml 补全）: 4 个检索 section 在场 — verified by **TEST-45.3.3**（TestTask453_ExampleTomlCoversRetrievalSections）
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-45.3.1 | `contextforge version` 打印版本（含 v0.38 或 ldflags 值） | cli_test.go | Not Started |
-| TEST-45.3.2 | `contextforge --help`/`-h` 不 exit 2 + 打印子命令清单 | cli_test.go | Not Started |
-| TEST-45.3.3 | example.toml 含 [embedding]/[vector]/[reranker]/[retrieval] 4 section | cli_test.go grep | Not Started |
+| TEST-45.3.1 | `contextforge version` 打印版本 | cli_test.go | Done |
+| TEST-45.3.2 | `contextforge --help`/`-h` 不 exit 2 + 打印子命令清单 | cli_test.go | Done |
+| TEST-45.3.3 | example.toml 含 [embedding]/[vector]/[reranker]/[retrieval] 4 section | cli_test.go grep | Done |
 
 ## 9. Verification
 ```bash
@@ -39,4 +39,18 @@ go build ./... && go vet ./...
 ```
 
 ## 10. Completion Notes
-**Status**: Ready（待实施回填）
+
+**Status**: Done
+
+**完成日期**：2026-07-01
+
+**改动文件**：
+- `internal/cli/cli.go`（add `Version` 变量 + subcommands 加 "version" + ExecuteWithIO 入口 -h/--help/help 处理 + switch `case "version":`）
+- `internal/cli/cli_test.go`（TEST-45.3.1/.2/.3 + TestTask14_AC4 want 清单更新加 "version"）
+- `contextforge.example.toml`（补全 `[embedding]`/`[vector]`/`[reranker]`/`[retrieval]` 4 section + 头部 v0.1→v0.38.0 + 各字段注释）
+
+**§9 Verification**：go test ./internal/cli/ 全绿（含 TestTask453_* + TestTask14_AC4 更新）+ go build + vet + gofmt clean。
+
+**grounding 校正**：TestTask14_AC4 want 清单需同步加 "version"（subcommands 从 9→10，task-45.3 有意新子命令）——当前测试码随契约演进合法更新（ADR-014 D5 约束闭合 phase spec，非当前测试码）。
+
+**下游影响**：task-45.4 closeout（v1.0 CLI 冻结维度 ratify）。
