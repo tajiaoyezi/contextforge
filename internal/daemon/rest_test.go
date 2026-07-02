@@ -143,7 +143,7 @@ func TestTask62_AC1_RESTSearchContract(t *testing.T) {
 	}
 }
 
-// TEST-6.2.2 / SCEN-6.2.2 / AC2 — chunks/collections 真返 + import/eval stub 501 + 错误码映射.
+// TEST-6.2.2 / SCEN-6.2.2 / AC2 — chunks/collections 真返 + 错误码映射. task-45.2 移除了
 func TestTask62_AC2_OtherEndpoints(t *testing.T) {
 	const token = "test-token-xyz"
 
@@ -230,45 +230,33 @@ func TestTask62_AC2_OtherEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("ImportStub501", func(t *testing.T) {
-		s := &fakeSearcher{}
-		handler := daemon.NewRESTHandler(s, token, t.TempDir())
-		server := httptest.NewServer(handler)
-		defer server.Close()
-		req, _ := http.NewRequest("POST", server.URL+"/v1/import", bytes.NewBufferString(`{}`))
-		req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("http: %v", err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != 501 {
-			t.Fatalf("AC2 import: status=%d want 501", resp.StatusCode)
-		}
-		bodyBytes, _ := readAll(resp.Body)
-		if !strings.Contains(string(bodyBytes), "deferred to phase 8") {
-			t.Fatalf("AC2 import: body missing deferred note: %s", bodyBytes)
-		}
-	})
+	// task-45.2 (ADR-050 D2): ImportStub501 + EvalStub501 subtests removed — the
+	// `POST /v1/import` + `POST /v1/eval/run` 501 endpoints are removed before the
+	// v1.0 API freeze (console-api covers both). daemon REST now serves only 3 real
+	// endpoints (search/chunks/collections), so these 501 subtests no longer apply.
 
-	t.Run("EvalStub501", func(t *testing.T) {
+	t.Run("Task452_RemovedEndpointsAre404", func(t *testing.T) {
+		// task-45.2 / ADR-050 D2: the removed import/eval endpoints must NOT return
+		// 501 (they're gone, not deferred) — Go's net/http ServeMux returns 404 for
+		// unregistered routes.
 		s := &fakeSearcher{}
 		handler := daemon.NewRESTHandler(s, token, t.TempDir())
 		server := httptest.NewServer(handler)
 		defer server.Close()
-		req, _ := http.NewRequest("POST", server.URL+"/v1/eval/run", bytes.NewBufferString(`{}`))
-		req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("http: %v", err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != 501 {
-			t.Fatalf("AC2 eval: status=%d want 501", resp.StatusCode)
-		}
-		bodyBytes, _ := readAll(resp.Body)
-		if !strings.Contains(string(bodyBytes), "deferred to phase 8") {
-			t.Fatalf("AC2 eval: body missing deferred note: %s", bodyBytes)
+		for _, path := range []string{"/v1/import", "/v1/eval/run"} {
+			req, _ := http.NewRequest("POST", server.URL+path, bytes.NewBufferString(`{}`))
+			req.Header.Set("Authorization", "Bearer "+token)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("http %s: %v", path, err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode == 501 {
+				t.Fatalf("task-45.2: %s still returns 501 (endpoint not removed)", path)
+			}
+			if resp.StatusCode != 404 {
+				t.Fatalf("task-45.2: %s status=%d want 404 (removed endpoint)", path, resp.StatusCode)
+			}
 		}
 	})
 
