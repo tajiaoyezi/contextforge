@@ -388,7 +388,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 - `[SPEC-DEFER:phase-future.console-api-rerank-forward]`（task-21.2 / task-21.3 / README:350 记录——本 phase 据 ADR-043 D3（reranker env 驱动）**重界定**为 rerank provenance 可见性 fulfilled + `?rerank` per-request superseded，ADR-043 add-only Phase-39 Amendment 标记、不溯改 D-body）。
 
 **候选 task 拆分**：
-- **task-39.1** console-dataplane-hybrid-proto-and-dispatch：`proto/contextforge/console_data_plane/v1/console_data_plane.proto` add-only `SearchRequest.hybrid=8`（镜像 `v1/search.proto:28`）+ `SearchResultItem.hybrid_score=17`（镜像 `v1 RetrievalResult.hybrid_score=15`，既有字段号 1-7 / 1-16 冻结，ADR-015 D1）+ `buf generate` 重生 Go/Rust stub + `core/src/data_plane/search.rs` `query()` 加 hybrid dispatch 分支（`if req.hybrid {..} else if req.semantic {..} else {BM25}`，hybrid 分支镜像 `server.rs` hybrid 路径 + 数据面 semantic 分支结构：`search_hybrid` + `retrieval_method="hybrid"` + 复用 `reranker_from_env` opt-in）+ 结果映射 `hybrid_score` 填充（镜像 `vector_score` 条件）；默认 `hybrid=false` 字节等价；0 新 dep / 0 migration。🟢。
+- **task-39.1** console-dataplane-hybrid-proto-and-dispatch：`proto/contextforge/console_data_plane/v1/console_data_plane.proto` add-only `SearchRequest.hybrid=8`（镜像 `v1/search.proto:28`）+ `SearchResultItem.hybrid_score=17`（镜像 `v1 RetrievalResult.hybrid_score=15`，既有字段号 1-7 / 1-16 冻结，ADR-015 D1）+ `buf generate` 重生 Go/Rust 未实装端点 + `core/src/data_plane/search.rs` `query()` 加 hybrid dispatch 分支（`if req.hybrid {..} else if req.semantic {..} else {BM25}`，hybrid 分支镜像 `server.rs` hybrid 路径 + 数据面 semantic 分支结构：`search_hybrid` + `retrieval_method="hybrid"` + 复用 `reranker_from_env` opt-in）+ 结果映射 `hybrid_score` 填充（镜像 `vector_score` 条件）；默认 `hybrid=false` 字节等价；0 新 dep / 0 migration。🟢。
 - **task-39.2** console-api-hybrid-forward-and-rerank-visibility：`internal/contractv1/contractv1.go` add-only `SearchRequest.Hybrid bool`（镜像 `Semantic`）+ `SearchResult.HybridScore float32`（镜像 `VectorScore`）+ `internal/consoleapi/handlers.go` `handleSearch` `?hybrid` OR-merge（镜像 `?semantic`）+ `internal/consoleapi/grpcclient/grpcclient.go` `Search` 转发 `Hybrid` + `protoToSearchResult` 映射 `HybridScore`；对外 `POST /v1/search`（body `{"hybrid":true}` 或 `?hybrid=true`）贯通 hybrid；rerank `reason` provenance 在对外 REST 可见（reranker 保持 env 驱动、不做 per-request，`?rerank` 据 ADR-044 D3 superseded）；默认 hybrid=false 字节等价；0 新 dep / 0 proto 再改。🟢。
 - **task-39.3** v0.32.0 closeout：smoke v28→v29[48/48]（staging 顺位 offset，端到端断言 `?hybrid=true` → `retrieval_method="hybrid"` / `hybrid_score` + `CONTEXTFORGE_RERANKER_PROVIDER=identity` → rerank `reason` 对外 REST 可见，TestTask393 镜像 TestTask383，无 [37/37]..[47/47] 回归）+ release docs（hybrid 贯通 + rerank provenance 可见证据 + README:350 措辞替换，tag/run/digest `<backfill>` marker）+ ADR-044 据 D1-D4 ratify + ADR-025 add-only Phase-39 Amendment（标 console-api-hybrid-forward fulfilled）+ ADR-043 add-only Phase-39 Amendment（标 console-api-rerank-forward 重界定 fulfilled + `?rerank` per-request superseded）+ roadmap §3.21/§4 + adapter + defer marker 更新。🟢。
 
@@ -468,7 +468,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 **来源 marker**：`[SPEC-DEFER:phase-future.memory-actor-all-rpc]`（roadmap 行 556 Phase 40 closeout 新增 backlog "其它 memory RPC 的 actor 透传"——本 phase 兑现 Unpin 子项 + emit_audit_and_event 共用基础，Deprecate/SoftDelete/HardDelete 续延后）。
 
 **候选 task 拆分**：
-- **task-44.1** unpin-actor-propagation：proto `UnpinMemoryRequest` add-only `actor=2`（既有 memory_id=1 冻结，ADR-015）+ buf generate + Rust unpin handler 透传 actor（镜像 pin :231-235）+ `emit_audit_and_event` 加 `actor: &str` 参数（audit source / build_memory_event source 用 actor）+ pin handler 顺带传 actor 闭环 + deprecate/softdelete/harddelete 传固定值 byte-equiv + Go 4 处透传（types/grpcclient/handlers X-Actor/memstore）+ degraded stub + TEST-44.1.1（unpin actor 进 audit source）/.2（pin 顺带闭环）/.3（空 actor byte-equiv）/.4（Go X-Actor）。🟢。0 dep/0 migration/proto add-only。
+- **task-44.1** unpin-actor-propagation：proto `UnpinMemoryRequest` add-only `actor=2`（既有 memory_id=1 冻结，ADR-015）+ buf generate + Rust unpin handler 透传 actor（镜像 pin :231-235）+ `emit_audit_and_event` 加 `actor: &str` 参数（audit source / build_memory_event source 用 actor）+ pin handler 顺带传 actor 闭环 + deprecate/softdelete/harddelete 传固定值 byte-equiv + Go 4 处透传（types/grpcclient/handlers X-Actor/memstore）+ degraded 未实装端点 + TEST-44.1.1（unpin actor 进 audit source）/.2（pin 顺带闭环）/.3（空 actor byte-equiv）/.4（Go X-Actor）。🟢。0 dep/0 migration/proto add-only。
 - **task-44.3** closeout：smoke v33→v34[53/53]（unpin X-Actor 端到端 / 不可达诚实归因 unit）+ TestTask443 + release docs + ADR-049 ratify + ADR-032/045 add-only Phase-44 Amendment + roadmap/adapter。🟢。
 
 **ADR**：**ADR-049 memory-unpin-actor-propagation**（Proposed，D1 proto add-only + Rust unpin 透传 / D2 emit_audit_and_event actor 参数 pin/unpin 闭环 / D3 Go 透传链 / D4 默认 byte-equiv + 认证身份 + 其余 3 RPC honest-defer）；ADR-032+045 add-only Phase-44 Amendment（unpin actor 透传维度兑现，不溯改 D-body D5）；ADR-021（emit_audit_and_event 镜像源）/ ADR-022 D2（lenient body 保持）/ ADR-015（proto add-only）/ ADR-004（空 actor byte-equiv）/ ADR-008（0 新依赖）守线。ADR-014 第三十五次激活。Phase 44 实现 + 发版经用户全权授权 ADR-012（规划稿 Draft/Proposed → 实现 + 发版一条龙）。
@@ -478,6 +478,35 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 - **task-44.3** closeout → ✅：smoke v33→v34 `[53/53]`（unpin X-Actor 端到端 / 不可达诚实归因 unit TEST-44.1.1/.2）+ `TestTask443`（no-regression [37/37]..[52/52]）+ v0.37.0 release docs（evidence/artifacts/README/RELEASE_NOTES）+ ADR-049 per-D ratify（D1-D3 unit 🟢 / D4 默认 byte-equiv 🟢 + 认证身份/其余 3 RPC 🔴 honest-defer）+ ADR-032/045 add-only Phase-44 Amendment（unpin actor 透传 + audit/event source 归因维度兑现，不溯改 D-body D5）+ ADR-021/022/015/004/008/013/014 守线引用 + roadmap/adapter。
 
 **关键诚实定性（ADR-013）**：本 phase 交付**调用方透传**（audit/event source 归因真实调用方），🟢 纯本地单测守护（lib 229→232）；认证身份（X-Actor → 已认证 auth subject）须 console-api 鉴权层 → 🔴 honest-defer `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`；deprecate/softdelete/harddelete actor 透传须 7 层+新 migration / audit 重设计 → 🔴 honest-defer `[SPEC-DEFER:phase-future.memory-actor-all-rpc]`（本 phase 仅做 emit_audit_and_event actor 参数共用基础，这 3 RPC 未来顺带受益）。**0 新 dep + 0 network + 0 schema migration + proto add-only（actor=2）+ 默认 byte-equiv**；core lib 232 全绿 + go test（含 TestTask441 + TestTask443）+ clippy + go vet clean + CI spec-lint 全绿。真实 v0.37.0 tag/run/digest/tlog 经用户全权授权 push（ADR-012），post-tag-push 回填（ADR-013 不预填）。
+
+### 3.27 v0.38.0 / Phase 45 — v1.0-api-cli-freeze（v1.0 收口冲刺第一步，post-v0.37.0 add-only 排期）
+
+**目标**：v1.0 收口冲刺第一步——立 v1.0 锚点（ADR-050）+ 交付 D2 API/CLI 冻结的两个 P0 阻塞项。**项目从未立过 v1.0 锚点**（PRD P0 是 v0.1 的早已满足且远超 recall@5/@10=1.0、PRD v1.0 只在分发维度、roadmap 零 v1.0、README 无成熟度标签、ADR-017 悬空 v1.0 gate）。ADR-050 正式定义：**v1.0.0 = 功能成熟度收口（D1）+ API/CLI 冻结（D2）+ 文档对齐（D3，Phase 46）+ GitHub Release 流程（D4，Phase 46-47）**；**不含** multi-user/认证身份/自动更新/arm64 native（推 v2.0）。本 phase 交付 D2：(1) daemon REST 移除 2 个 501 未实装（`POST /v1/import` + `POST /v1/eval/run`，§2A 决策 B，console-api 已覆盖）+ 实装 chunk_count；(2) CLI `--version`/`version` + 顶层 `--help`（修复 -h exit 2）+ example.toml 补全 4 检索 section。
+
+**来源**：ADR-050（v1.0 定义，本 phase 立）/ ADR-017（悬空 v1.0 gate 正式承接）/ ADR-007（v1.0 分发定义收窄 add-only Amendment @ task-45.4）。
+
+**候选 task 拆分**：
+- **task-45.1** v1.0-definition：ADR-050 Proposed（4 维度 + 不含清单 + v2.0 路线）+ roadmap §v1.0 锚点段。🟢。
+- **task-45.2** daemon-rest-api-freeze：移除 2 个 501 未实装 + 实装 chunk_count（真实 COUNT 非 placeholder 0）+ rest_test 更新。🟢（含 v1.0 前 breaking）。
+- **task-45.3** cli-version-help：CLI version 子命令 + 顶层 --help + example.toml 补全 4 section。🟢。
+- **task-45.4** closeout：smoke v34→v35[54/54] + release docs（含 breaking 记录）+ ADR-050 部分 ratify（D1/D2）+ ADR-007 Amendment + roadmap/adapter。🟢。
+
+**ADR**：**ADR-050 v1.0-definition**（Proposed；D1 能力已满足 / D2 API/CLI 冻结 Phase 45 / D3 文档 Phase 46 / D4 发布 Phase 46-47；不含 multi-user/认证/自动更新/arm64 推 v2.0）；ADR-007 add-only Amendment（v1.0 分发定义收窄为务实收口）；ADR-017（悬空 v1.0 gate 正式承接）；ADR-015（proto FROZEN）/ ADR-004/008/013 守线。ADR-014 第三十六次激活。Phase 45 实现 + 发版经用户授权 ADR-012。
+
+---
+
+## §v1.0 锚点（ADR-050）
+
+> 项目从未立过 v1.0 锚点（PRD/roadmap/README 四处查证一致，ADR-013 grounding）。ADR-050（Phase 45 立）正式定义 v1.0.0 = **功能成熟度收口 + API/CLI 冻结 + 文档对齐 + GitHub Release 流程**，分 4 维度：
+>
+> - **D1 能力锚点**（已满足）：v0.1 P0 全部满足且远超（Phase 1-8 早已闭环；recall@5/@10=1.0 超 PRD 北极星 75%/85%）；语义/hybrid/reranker/向量/console 全交付。v1.0 不新增核心能力（收口里程碑）。
+> - **D2 API/CLI 冻结锚点**（Phase 45）：proto 已 FROZEN（ADR-015）；daemon REST 移除 501 未实装 + 实装 chunk_count；CLI --version + 顶层 --help + example.toml。
+> - **D3 文档锚点**（Phase 46）：README 重构 + 刷新版本 pin + Features 汇总 + ADR 索引 + CHANGELOG。
+> - **D4 发布锚点**（Phase 46-47）：release.yml 加 GitHub Release 对象 + v1.0.0 正式 tag。
+>
+> **不含**（honest-defer 推 v2.0，ADR-013）：multi-user/认证身份/权限/审计合规（PRD §Out of Scope + ADR-016/018 反复"留 v1.0"，工程量大推 v2.0）/ 自动更新（PRD §Constraints v1.0 目标，从零工程）/ arm64 native runner（ADR-033 QEMU 不可行）/ 大语料向量质量基准等能力 SPEC-DEFER（不阻塞 v1.0，列已知限制）。
+>
+> **收口路径**：Phase 45（D1/D2）→ Phase 46（D3/D4）→ Phase 47（v1.0.0 正式发版 + ADR-050 完整 ratify）。承 ADR-017 悬空的 "v1.0 release gate" 提法，正式承接为可执行锚点。
 
 ---
 
