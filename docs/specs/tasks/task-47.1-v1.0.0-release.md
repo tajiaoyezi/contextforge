@@ -71,7 +71,7 @@ go test ./internal/cli/ -run TestTask471
    - docs/s2v-adapter.md（Phase 47 Done + ADR-050 Accepted + task 行）
    - scripts/console_smoke.sh（v36→v37[56/56]）
    - internal/cli/smoke_syntax_test.go（TestTask471：maturity label + ADR-050 Accepted + known limitations + no-regression）
-3. **commit 列表**：- `<backfill: hash>` feat(v1.0.0): task-47.1 v1.0.0-release — ADR-050 完整 ratify Accepted + maturity label flip + known limitations + smoke v37[56/56]
+3. **commit 列表**：- `c6e626c` feat(v1.0.0): task-47.1 v1.0.0-release — ADR-050 完整 ratify Accepted + maturity label flip + known limitations + smoke v37[56/56]
 4. **§9 Verification 结果**：
    - lint: N/A（纯文档 + smoke，gofmt 不涉；CI lint 全绿）
    - typecheck: N/A

@@ -67,7 +67,7 @@ N/A（v1.0.0 是 maturity 声明 + 文档；无运行时行为变更）。如需
 
 - **Contract**：0 proto change / 0 schema change / 0 API change。
 - **ADR**：ADR-050 完整 ratify Accepted；ADR-014 第三十八次激活。
-- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `<backfill: tag-commit>` / tag object `<backfill: tag-object>` / release run `<backfill: run-id>` / ghcr digest `<backfill: ghcr-digest>` / cosign tlog `<backfill: tlog-sign> / <backfill: tlog-attest>` / GitHub Release URL `<backfill: release-url>`。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `63aca02` / tag object `7013948` / release run `28665949441` (success) / ghcr digest `sha256:64e7919ca0926ecc9b8de757cee846e19819353b50287a8714072b632a12d273` / cosign tlog `2061682380` (sign) · `2061682925` (attest) / GitHub Release URL `https://github.com/tajiaoyezi/contextforge/releases/tag/v1.0.0`（D4 第二次实践成功）。
 
 ---
 
