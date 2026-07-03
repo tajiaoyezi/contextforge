@@ -8,6 +8,18 @@ All notable changes to ContextForge are documented in this file. The format is b
 
 _No unreleased changes yet._
 
+## [v1.0.1] — 2026-07-03 — v1.0.1-patch (v1.0 收口审查残留修复)
+
+Patch release fixing residual issues found in the v1.0.0 post-ship audit.
+
+### Fixed
+- **P0 CLI version string** (D2 API/CLI freeze defect): `contextforge version` in the v1.0.0 image reported a stale dev string instead of the release tag. Fixed by bumping the `cli.go` default + injecting the tag at image build time via Dockerfile `ARG VERSION` + `-ldflags -X cli.Version` + release.yml `build-args`.
+
+### Changed
+- `docs/decisions/README.md` ADR-050 status: `Proposed (partial D1/D2)` → `Accepted (full D1/D2/D3/D4)` (Phase 47 missed the visitor index).
+- README "Latest" section description: stale "第二步" wording → "v1.0 收口终点".
+- `contextforge.example.toml` header version: `v0.38.0` → `v1.0.1`.
+
 ## [v1.0.0] — 2026-07-03 — v1.0.0-release (v1.0 maturity milestone)
 
 **v1.0.0 正式发版** — v1.0 收口终点。This is a **maturity milestone**, not a feature release: ADR-050 (v1.0-definition) is fully ratified (Proposed→Accepted) with all 4 dimensions (D1 capability / D2 API-CLI freeze / D3 docs alignment / D4 GitHub Release flow) verified via real CI across Phase 45/46/47.

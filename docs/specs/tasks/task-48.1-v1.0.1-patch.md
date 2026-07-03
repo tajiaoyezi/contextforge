@@ -1,6 +1,6 @@
 # Task `48.1`: `v1.0.1-patch — P0 CLI version ldflags 注入 + P1-P3 文档残留清理 + v1.0.1 closeout`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 48 (v1.0.1-patch)
@@ -28,17 +28,17 @@ v1.0.0 ship 后全面审查发现 4 个残留：(P0) CLI version 字符串过时
 - 新增 `test/features/phase-48-v1.0.1-patch.feature`
 
 ## 6. AC
-- [ ] **AC1**（P0 CLI version ldflags）: cli.go Version `"1.0.1-dev"` + Dockerfile ARG VERSION + ldflags `-X .../cli.Version` + release.yml build-args VERSION — verified by **TEST-48.1.1**
-- [ ] **AC2**（P1-P3 文档残留）: docs/decisions/README.md ADR-050 Accepted + README Latest 段 v1.0 + example.toml header v1.0.1 — verified by **TEST-48.1.2**
-- [ ] **AC3**（v1.0.1 closeout）: smoke v38[57/57] + release docs + roadmap/adapter — verified by **TEST-48.1.3**
-- [ ] **AC4**（ADR-014 cross-validation gate）: D1-D5（第三十九次激活） — verified by PR body + LAST TEST
+- [x] **AC1**（P0 CLI version ldflags）: cli.go Version `"1.0.1-dev"` + Dockerfile ARG VERSION + ldflags `-X .../cli.Version` + release.yml build-args VERSION — verified by **TEST-48.1.1**
+- [x] **AC2**（P1-P3 文档残留）: docs/decisions/README.md ADR-050 Accepted + README Latest 段 v1.0 + example.toml header v1.0.1 — verified by **TEST-48.1.2**
+- [x] **AC3**（v1.0.1 closeout）: smoke v38[57/57] + release docs + roadmap/adapter — verified by **TEST-48.1.3**
+- [x] **AC4**（ADR-014 cross-validation gate）: D1-D5（第三十九次激活） — verified by PR body + LAST TEST
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-48.1.1 | cli.go Version 1.0.1-dev + Dockerfile ldflags + release.yml build-args | grep | Not Started |
-| TEST-48.1.2 | docs/decisions/README.md ADR-050 Accepted + README Latest v1.0 + example.toml v1.0.1 | grep | Not Started |
-| TEST-48.1.3 | smoke v38[57/57] + TestTask481 PASS + release docs | smoke + grep | Not Started |
+| TEST-48.1.1 | cli.go Version 1.0.1-dev + Dockerfile ldflags + release.yml build-args | grep | Done |
+| TEST-48.1.2 | docs/decisions/README.md ADR-050 Accepted + README Latest v1.0 + example.toml v1.0.1 | grep | Done |
+| TEST-48.1.3 | smoke v38[57/57] + TestTask481 PASS + release docs | smoke + grep | Done |
 
 ## 9. Verification
 ```bash
@@ -62,4 +62,11 @@ go vet ./internal/cli/ && gofmt -l internal/cli/
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
+
+1. **完成日期**：2026-07-03
+2. **改动文件**：cli.go（Version 默认值）+ Dockerfile（ARG VERSION + ldflags）+ release.yml（build-args）+ docs/decisions/README.md（ADR-050 Accepted）+ README.md（Latest 段）+ contextforge.example.toml（header）+ smoke_syntax_test.go（TestTask481 + TestTask471 精确化）+ console_smoke.sh（v38）+ release docs + roadmap/adapter
+3. **commit 列表**：- `ee6c058` feat(v1.0.1): task-48.1 v1.0.1-patch
+4. **§9 Verification 结果**：lint ✅（gofmt clean）/ typecheck N/A / unit-test ✅（go test ./... 全过含 TestTask481 + TestTask471）/ docs grep ✅（cli.go 1.0.1-dev + Dockerfile ldflags + release.yml build-args + ADR-050 Accepted + README 无"第二步"）
+5. **剩余风险**：Dockerfile ldflags 注入首次实践（v1.0.1 tag push 实测；若 build 失败 cli.go 默认值兜底）
+6. **下游影响**：无（patch 修复，v2.0 路线独立）

@@ -1,5 +1,36 @@
 # ContextForge Release Notes
 
+## v1.0.1 (2026-07-03) — v1.0.1-patch (v1.0 收口审查残留修复：P0 CLI version 字符串 ldflags 注入 + P1-P3 文档过时。P0 是 D2 API/CLI 冻结缺陷修复——cli.go Version 默认值停在 Phase 45 dev 串 + Dockerfile 无 ldflags → v1.0.0 镜像 contextforge version 报旧 dev 串；v1.0.1 修复 cli.go 默认值 + Dockerfile ARG/ldflags + release.yml build-args。P1 docs/decisions/README.md ADR-050 漏 Accepted + P2 README Latest 段描述 + P3 example.toml header。0 dep/0 migration/0 proto + ADR-014 第三十九次激活)
+
+### What shipped (Phase 48, task 48.1)
+
+**P0 CLI version 字符串修复**（D2 API/CLI 冻结缺陷）：
+- `internal/cli/cli.go` Version 默认值停在 Phase 45 的 dev 串 → `1.0.1-dev`（本地 build 兜底）。
+- `Dockerfile` go-build stage 加 `ARG VERSION` + `-ldflags "-X github.com/tajiaoyezi/contextforge/internal/cli.Version=${VERSION}"`（build-time 注入 release tag）。
+- `release.yml` docker/build-push-action 加 `build-args: VERSION=${{ steps.ref.outputs.tag }}`。
+- → v1.0.1 镜像 `contextforge version` 报 `v1.0.1`（非旧 dev 串）。
+
+**P1-P3 文档残留清理**：
+- P1：`docs/decisions/README.md` ADR-050 行 `Proposed (partial D1/D2 ratified)` → `Accepted (full D1/D2/D3/D4)`（Phase 47 漏更新访客索引）。
+- P2：README Latest 段描述"v1.0 收口冲刺第二步"→"v1.0 收口终点"（task-47.1 perl 替换版本号没改描述）。
+- P3：`contextforge.example.toml` header `v0.38.0` → `v1.0.1`。
+
+### Upgrade path
+
+patch release，无 breaking change。直接拉 v1.0.1 镜像——`contextforge version` 现报正确版本（v1.0.0 报旧 dev 串是已知缺陷，v1.0.1 修复）。
+
+### Rollback path
+
+N/A（patch 修复；CLI version 输出从错误变正确，无运行时行为变更）。
+
+### Contract / ADR / 凭据
+
+- **Contract**：0 proto change / 0 schema change / 0 API change。
+- **ADR**：ADR-050 Accepted（不动 D-Body）；ADR-014 第三十九次激活。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `<backfill: tag-commit>` / tag object `<backfill: tag-object>` / release run `<backfill: run-id>` / ghcr digest `<backfill: ghcr-digest>` / cosign tlog `<backfill: tlog-sign> / <backfill: tlog-attest>` / GitHub Release URL `<backfill: release-url>` / 镜像 version 实测 `<backfill: reported-version>`。
+
+---
+
 ## v1.0.0 (2026-07-03) — v1.0.0-release (v1.0 收口冲刺终点：ADR-050 完整 ratify Proposed→Accepted + README maturity label flip Pre-1.0→v1.0.0 + active SPEC-DEFER known-limitations catalog。v1.0.0 是成熟度里程碑声明——recall@5/@10=1.0 超 PRD 北极星 + API/CLI 冻结 + 文档对齐 + GitHub Release 流程全交付验证。0 代码逻辑/0 dep/0 migration + ADR-050 Accepted)
 
 ### What shipped (Phase 47, task 47.1)
