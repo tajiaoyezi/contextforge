@@ -1,5 +1,76 @@
 # ContextForge Release Notes
 
+## v1.0.0 (2026-07-03) — v1.0.0-release (v1.0 收口冲刺终点：ADR-050 完整 ratify Proposed→Accepted + README maturity label flip Pre-1.0→v1.0.0 + active SPEC-DEFER known-limitations catalog。v1.0.0 是成熟度里程碑声明——recall@5/@10=1.0 超 PRD 北极星 + API/CLI 冻结 + 文档对齐 + GitHub Release 流程全交付验证。0 代码逻辑/0 dep/0 migration + ADR-050 Accepted)
+
+### What shipped (Phase 47, task 47.1)
+
+**v1.0.0 正式发版**——v1.0 收口冲刺终点。本 release 不新增功能，是**成熟度声明**：
+
+- **ADR-050 完整 ratify**（Proposed → **Accepted**）：D1 能力锚点（recall@5/@10=1.0 超 PRD 北极星 75%/85%）+ D2 API/CLI 冻结（proto FROZEN + daemon REST 清 501 + CLI version/--help，Phase 45）+ D3 文档对齐（README/CHANGELOG/ADR 索引，Phase 46）+ D4 GitHub Release 流程（自动创建 Release 对象，Phase 46 首次实践成功）全维度真实交付验证。
+- **README maturity label flip**：Pre-1.0 收口中 → **v1.0.0**（诚实里程碑——D1-D4 全 CI 验证，非虚标，ADR-013）。
+- **Known limitations catalog**：active SPEC-DEFER 按 6 category 归类列 v1.0 已知限制（见下方 Known limitations 段）。
+
+### ADR-050 ratified (完整 Accepted)
+
+- **ADR-050 v1.0-definition**：Proposed → **Accepted**（D1-D4 全真实交付验证，Phase 47 closeout）。
+- ADR-007（v1.0 分发定义，v1.0.0 正式发版）/ ADR-013（known limitations honest-defer）/ ADR-014（第三十八次激活 D1-D5）/ ADR-004/008/015 守线。
+
+### Known limitations (v1.0 已知限制，ADR-013 honest-defer)
+
+下列是 v1.0 **不含**的能力，诚实列为已知限制（不伪造完成），推 v2.0 或后续版本。完整 marker 清单见 `docs/roadmap.md` §4 backlog。
+
+**1. 多用户 / 认证身份 / 权限 / 审计合规**（推 v2.0，PRD §Out of Scope + ADR-016/018）
+- `memory-actor-authenticated-identity`（X-Actor → 已验证 auth subject，须 console-api 鉴权层）
+- `memory-actor-all-rpc`（deprecate/softdelete/harddelete actor 透传，须 7-layer + audit 重设计）
+- multi-user workspace isolation / per-user 权限 / 审计合规
+
+**2. 自动更新 / 分发**（推 v2.0，PRD §Constraints + ADR-033）
+- `release-auto-create` / `release-please-automation`（自动版本 bump + changelog 生成）
+- `release-dry-run` / `release-tag-validation`
+- `signing-key-management` / `reproducible-build-slsa`
+
+**3. 平台 / 架构**（推 v2.0，ADR-033）
+- `multi-arch-native-runner`（arm64 native runner，QEMU 不可行）
+- `multi-arch-image` / `distroless-runtime` / `image-slim-distroless`
+- `ci-multi-os` / `ci-docker-smoke` / `ci-cargo-split`
+
+**4. 检索质量 / 向量基准**（不阻塞 v1.0，列已知限制）
+- `embedding-large-corpus-recall` / `reranker-large-corpus-quality`（大语料语义/rerank 基准，现 small author-curated golden）
+- `vector-large-corpus-perf` / `lancedb-large-corpus-perf` / `large-corpus-perf-bench`（百万级性能基准）
+- `sqlite-vec-inprocess-matrix`（须 MSVC feature build + 语料）
+- `cjk-semantic-recall` / `cross-lingual-golden` / `large-cjk-corpus-eval`（CJK 跨语言大语料）
+- `semantic-param-tuning` / `recall-floor-tuning-matrix`
+
+**5. 内存 / 可观测性 / 事件**（不阻塞 v1.0，列已知限制）
+- `memory-hard-delete-cascade`（仅当未来加 FK）/ `memory-tags` / `memory-semantic-search` / `memory-schema-extensions`
+- `observability-metrics-facility`（结构化 metrics，现 stderr surfacing）
+- `indexing-replay-daemon-e2e`（live daemon restart-then-replay e2e）/ `tracestore-multi-workspace-strict-e2e`
+- `events-cursor-pagination` / `events-broadcast-fairness` / `grpc-events-backpressure`
+
+**6. 接口 / 配置 / CI 工具链**（不阻塞 v1.0，列已知限制）
+- `chunk-agent-scope-filter`（memory 层概念，chunks 无 agent 维度）
+- `chunk-importer-source-type-tagging`（importer 显式打标超 file_path 派生）
+- `vector-config-file` / `vector-dim-feature-enforce`（须 feature build）
+- `rust-native-eval-runner`（现 Go runner）/ `rust-core-toml-reader`
+- `golangci-lint` / `lint-backlog-cleanup` / `rustfmt-gate`
+- `compose-tls-auto-cert` / `compose-secrets-vault` / `compose-prometheus`
+
+### Upgrade path
+
+v1.0.0 是从 v0.x 的成熟度里程碑——无 breaking change（承 v0.38.0 daemon REST 移除 501 已在 v0.38.0 release notes 记）。直接拉 v1.0.0 镜像或源码即可。从 v0.38.0+ 升级无风险。
+
+### Rollback path
+
+N/A（v1.0.0 是 maturity 声明 + 文档；无运行时行为变更）。如需回退 maturity label，改 README Status 行回 Pre-1.0。
+
+### Contract / ADR / 凭据
+
+- **Contract**：0 proto change / 0 schema change / 0 API change。
+- **ADR**：ADR-050 完整 ratify Accepted；ADR-014 第三十八次激活。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `<backfill: tag-commit>` / tag object `<backfill: tag-object>` / release run `<backfill: run-id>` / ghcr digest `<backfill: ghcr-digest>` / cosign tlog `<backfill: tlog-sign> / <backfill: tlog-attest>` / GitHub Release URL `<backfill: release-url>`。
+
+---
+
 ## v0.39.0 (2026-07-03) — v1.0-docs-and-release-flow (v1.0 收口冲刺第二步：ADR-050 D3 文档对齐 + D4 GitHub Release 流程。交付 D3：README 重构 776→153 行删 38 changelog 段 + Features 汇总 + maturity label Pre-1.0 不虚标 + pin v0.38.0 + CHANGELOG.md Keep a Changelog + docs/decisions/README.md 49 ADR 分类导航；D4：release.yml 加 softprops/action-gh-release@v2 自动创建 GitHub Release 对象（首次实践 v0.39.0 tag push 触发成功）+ RELEASE_NOTES.md body 提取 + cosign/SBOM provenance footer；0 代码逻辑/0 dep/0 migration + ADR-050 D3/D4 ratify)
 
 ### What shipped (Phase 46, tasks 46.1–46.3)

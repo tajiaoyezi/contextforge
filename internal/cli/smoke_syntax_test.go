@@ -744,6 +744,79 @@ func TestTask463_SmokeV36V10DocsAndReleaseFlowStep(t *testing.T) {
 	}
 }
 
+// TEST-47.1.4 / AC4: smoke v37 adds step 56 — task-47.1 closeout (v1.0.0-release). v1.0 maturity
+// milestone: ADR-050 full ratify Accepted + README maturity label flip Pre-1.0→v1.0.0 + known
+// limitations catalog. Asserts the v37 step 56 marker + Phase 47 status, ADR-050 Accepted, README
+// maturity label v1.0.0, and no regression of the prior denominators (ADR-014 D5).
+func TestTask471_SmokeV37V100ReleaseStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v37 (task-47.1)") {
+		t.Fatalf("console_smoke.sh missing v37 (task-47.1) header block")
+	}
+	for _, marker := range []string{"[56/56]", "v1.0.0-release", "ADR-050", "TEST-47.1.1", "TEST-47.1.2", "TEST-47.1.3"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v37 step 56 must document v1.0.0-release status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v36 blocks intact; denominators untouched per ADR-014 D5 —
+	// only the newest step carries the running total [56/56], matching the v14-v36 precedent).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "[50/50]", "[51/51]", "[52/52]", "[53/53]", "[54/54]", "[55/55]", "v1.0-docs-and-release-flow"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v37 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+
+	// TEST-47.1.1: README maturity label flipped to v1.0.0 (no Pre-1.0).
+	readme := filepath.Join("..", "..", "README.md")
+	rmRaw, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatalf("read %s: %v", readme, err)
+	}
+	rmBody := string(rmRaw)
+	if strings.Contains(rmBody, "Pre-1.0") {
+		t.Fatalf("README still contains 'Pre-1.0' maturity label (should be v1.0.0 after Phase 47)")
+	}
+	if !strings.Contains(rmBody, "v1.0.0") {
+		t.Fatalf("README missing v1.0.0 maturity label")
+	}
+
+	// TEST-47.1.2: ADR-050 Status Accepted (full ratify).
+	adr050 := filepath.Join("..", "..", "docs", "decisions", "adr-050-v1.0-definition.md")
+	adrRaw, err := os.ReadFile(adr050)
+	if err != nil {
+		t.Fatalf("read %s: %v", adr050, err)
+	}
+	adrBody := string(adrRaw)
+	if !strings.Contains(adrBody, "**Status**: Accepted") {
+		t.Fatalf("ADR-050 Status must be Accepted (full ratify Phase 47)")
+	}
+
+	// TEST-47.1.3: RELEASE_NOTES v1.0.0 known limitations 6 category present.
+	rn := filepath.Join("..", "..", "RELEASE_NOTES.md")
+	rnRaw, err := os.ReadFile(rn)
+	if err != nil {
+		t.Fatalf("read %s: %v", rn, err)
+	}
+	rnBody := string(rnRaw)
+	if !strings.Contains(rnBody, "Known limitations") {
+		t.Fatalf("RELEASE_NOTES.md missing v1.0.0 Known limitations section")
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid

@@ -1,6 +1,6 @@
 # Phase 47 · v1.0.0-release
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v1.0 收口冲刺的终点**（承 ADR-050 v1.0 定义完整 ratify）。Phase 45 交付 D1/D2（能力 + API/CLI 冻结）；Phase 46 交付 D3/D4（文档对齐 + GitHub Release 流程，首次实践成功）。本 phase 完成 v1.0.0 正式发版：(1) **README maturity label flip**（Pre-1.0 → **v1.0.0**）；(2) **ADR-050 完整 ratify**（Proposed → Accepted，D1-D4 全真实交付验证）；(3) **v1.0.0 Release notes 列已知限制**（所有 active SPEC-DEFER 按 category 归类为 v1.0 known limitations，ADR-013 honest-defer）；(4) **v1.0.0 tag**（major version bump，用 Phase 46 的 release.yml Release 对象）。
 >
@@ -50,11 +50,11 @@ v1.0 收口终点——把 ADR-050 完整 ratify（Proposed→Accepted）+ matur
 
 ## 6. 阶段级验收标准 + 端到端 smoke
 
-- [ ] **AC1**（README maturity label flip 🟢 纯文档）: README Pre-1.0 → **v1.0.0** + pin v0.39.0→v1.0.0 — verified by **TEST-47.1.1**（maturity label v1.0.0 + 无 Pre-1.0 + pin v1.0.0）
-- [ ] **AC2**（ADR-050 完整 ratify 🟢 纯文档）: ADR-050 Proposed → **Accepted**（D1-D4 全真实交付验证） — verified by **TEST-47.1.2**（Status Accepted + D1-D4 全 ✅）
-- [ ] **AC3**（v1.0.0 known-limitations catalog 🟢 纯文档）: RELEASE_NOTES.md v1.0.0 段 + CHANGELOG [v1.0.0] 列 active SPEC-DEFER 按 category（Retrieval/Memory/Observability/Release-CI/Interfaces/Platform） — verified by **TEST-47.1.3**（known limitations 段在场 + 6 category）
-- [ ] **AC4**（v1.0.0 closeout）: smoke v37[56/56] + release docs + ADR-050 完整 ratify + roadmap/adapter — verified by **TEST-47.1.4**
-- [ ] **AC5**（ADR-014 cross-validation gate）: D1-D5（第三十八次激活）— verified by task-47.1 PR body + LAST TEST
+  - [x] **AC1**（README maturity label flip 🟢 纯文档）: README Pre-1.0 → **v1.0.0** + pin v0.39.0→v1.0.0 — verified by **TEST-47.1.1**（maturity label v1.0.0 + 无 Pre-1.0 + pin v1.0.0）
+  - [x] **AC2**（ADR-050 完整 ratify 🟢 纯文档）: ADR-050 Proposed → **Accepted**（D1-D4 全真实交付验证） — verified by **TEST-47.1.2**（Status Accepted + D1-D4 全 ✅）
+  - [x] **AC3**（v1.0.0 known-limitations catalog 🟢 纯文档）: RELEASE_NOTES.md v1.0.0 段 + CHANGELOG [v1.0.0] 列 active SPEC-DEFER 按 category（Retrieval/Memory/Observability/Release-CI/Interfaces/Platform） — verified by **TEST-47.1.3**（known limitations 段在场 + 6 category）
+  - [x] **AC4**（v1.0.0 closeout）: smoke v37[56/56] + release docs + ADR-050 完整 ratify + roadmap/adapter — verified by **TEST-47.1.4**
+  - [x] **AC5**（ADR-014 cross-validation gate）: D1-D5（第三十八次激活）— verified by task-47.1 PR body + LAST TEST
 
 ## 7. 阶段级风险
 
