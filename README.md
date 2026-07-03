@@ -1,6 +1,6 @@
 # ContextForge
 
-**Status:** Pre-1.0，v1.0 收口中（current `v0.38.0`）— 功能成熟度已满足 v1.0 锚点（recall@5/@10=1.0 超 PRD 北极星 75%/85%），API/CLI 已冻结（Phase 45）；文档对齐（Phase 46）与 v1.0.0 正式发版（Phase 47）进行中。不含 multi-user/认证/自动更新/arm64 native（推 v2.0）。详 [ADR-050](docs/decisions/adr-050-v1.0-definition.md)。
+**Status:** Pre-1.0，v1.0 收口中（current `v0.39.0`）— 功能成熟度已满足 v1.0 锚点（recall@5/@10=1.0 超 PRD 北极星 75%/85%），API/CLI 已冻结（Phase 45）；文档对齐（Phase 46 D3）与 GitHub Release 流程（Phase 46 D4）已交付，v1.0.0 正式发版（Phase 47）进行中。不含 multi-user/认证/自动更新/arm64 native（推 v2.0）。详 [ADR-050](docs/decisions/adr-050-v1.0-definition.md)。
 
 ContextForge is a local-first context indexing and retrieval tool for agent memory, rules, source files, logs, and project notes.
 
@@ -45,25 +45,25 @@ ContextForge indexes your project's knowledge sources and retrieves them with a 
 
 ## Latest
 
-The current release is **`v0.38.0`** (v1.0 收口冲刺第一步 — API/CLI 冻结). For the full per-version changelog see [RELEASE_NOTES.md](RELEASE_NOTES.md) (detailed) or [CHANGELOG.md](CHANGELOG.md) (condensed). All 38 historical version summaries (v0.3.0→v0.38.0) live in RELEASE_NOTES.md.
+The current release is **`v0.39.0`** (v1.0 收口冲刺第二步 — D3 文档对齐 + D4 GitHub Release 流程). For the full per-version changelog see [RELEASE_NOTES.md](RELEASE_NOTES.md) (detailed) or [CHANGELOG.md](CHANGELOG.md) (condensed). All historical version summaries (v0.3.0→v0.39.0) live in RELEASE_NOTES.md.
 
 ## Run the released image
 
 Prebuilt, signed images are published to GHCR on every `v*` tag — no build
-required. The current stable tag is **`v0.38.0`** (`linux/amd64`). The image
+required. The current stable tag is **`v0.39.0`** (`linux/amd64`). The image
 bundles both binaries (`contextforge-core` Rust data-plane + `contextforge` Go
 control-plane); its default command is `console-api-serve` on port `48181`.
 
 ```bash
 # Production: two-process stack (Rust core + Go console-api), data persisted.
-# Defaults to v0.38.0 — override with CONTEXTFORGE_VERSION. See docs/deploy/production.md.
+# Defaults to v0.39.0 — override with CONTEXTFORGE_VERSION. See docs/deploy/production.md.
 docker compose -f deploy/docker-compose.production.yml up -d
 curl -fsS http://localhost:48181/v1/health | jq .   # -> {"status":"healthy",...}
 
 # Dev / PoC: single container, in-memory fallback — serves immediately, NOT persistent.
 docker run --rm -p 48181:48181 \
   -e CONSOLE_API_FALLBACK_INMEM=1 \
-  ghcr.io/tajiaoyezi/contextforge-daemon:v0.38.0
+  ghcr.io/tajiaoyezi/contextforge-daemon:v0.39.0
 ```
 
 Without `CONSOLE_API_FALLBACK_INMEM=1` (and no reachable `contextforge-core`),
@@ -73,7 +73,7 @@ start the core daemon or use the production compose stack.
 Each release image is cosign keyless-signed and ships an SPDX SBOM + SLSA
 provenance attestation; verify the exact digest before deploying (command + the
 per-release digest live in [`docs/deploy/production.md`](docs/deploy/production.md)
-§2 and `docs/releases/v0.38.0-evidence.md`).
+§2 and `docs/releases/v0.39.0-evidence.md`).
 
 ## Quick Start
 

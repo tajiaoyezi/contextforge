@@ -51,7 +51,7 @@ grep -q "contextforge init" README.md && grep -q "contextforge search" README.md
 
 1. **完成日期**：2026-07-03
 2. **改动文件**：- README.md（重构主体：776→153 行）
-3. **commit 列表**：- `<backfill: hash>` docs(v1.0-docs): task-46.1 README 重构（删 38 changelog + Features + maturity label + pin v0.38.0）
+3. **commit 列表**：- `06d2a19` docs(v1.0-docs): task-46.1 README 重构 + task-46.2 CHANGELOG + ADR 索引（D3 文档对齐）
 4. **§9 Verification 结果**：
    - lint: N/A（纯 markdown，无 gofmt/clippy）
    - typecheck: N/A

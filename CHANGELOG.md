@@ -6,8 +6,26 @@ All notable changes to ContextForge are documented in this file. The format is b
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+## [v0.39.0] — 2026-07-03 — v1.0-docs-and-release-flow
+
+v1.0 收口冲刺第二步: ADR-050 D3 文档对齐 + D4 GitHub Release 流程. D4 首次实践 — v0.39.0 tag push 触发 GitHub Release 对象自动创建成功.
+
 ### Added
-- Phase 46 / v0.39.0 (in progress): README restructure (Features summary + maturity label), CHANGELOG.md (this file), docs/decisions/README.md (ADR visitor index), release.yml GitHub Release object auto-creation.
+- README restructure: Features summary + maturity label ("Pre-1.0, v1.0 收口中", honest not over-claiming) + Releases section; 776→153 lines.
+- CHANGELOG.md (this file, Keep a Changelog 1.1.0 format).
+- docs/decisions/README.md: 49 ADR visitor index grouped by 5 categories (Architecture / Storage & Retrieval / Interfaces / Release & Distribution / Governance & Process).
+- release.yml: `softprops/action-gh-release@v2` step — auto-creates GitHub Release object on `v*` tag push, body extracted from RELEASE_NOTES.md + cosign/SBOM provenance footer (D4).
+- GitHub Release object: first auto-created for v0.39.0 (D4 first practice, success).
+
+### Changed
+- README version pin refreshed v0.28.0 → v0.38.0.
+- README "does not publish a GitHub Release object" stale declaration removed (D4 landed).
+- release.yml `contents: read` → `contents: write` (Release object creation permission).
+
+### Removed
+- README: 38 `## What's new` changelog sections (v0.3.0→v0.38.0, already in RELEASE_NOTES.md) + `## v0.2 limitations` stale section.
 
 ## [v0.38.0] — 2026-07-01 — v1.0-api-cli-freeze
 
