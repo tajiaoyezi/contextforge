@@ -555,7 +555,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：ADR-050（v1.0.0 已 Accepted，本 patch 不动 D-body）/ ADR-014 第三十九次激活。Phase 48 实现经 ADR-012 自治；v1.0.1 tag/release 待用户授权。
 
-**v1.0.1 排期状态（规划中 2026-07-03，add-only）**：v1.0 收口审查残留 patch。🟢 代码 + CI + 文档 / 0 dep / 0 migration / 0 proto / 0 schema。P0 CLI version ldflags + P1-P3 文档 + v1.0.1 tag。默认行为/既有契约/三门不退化（仅 version 输出从错误变正确）。
+**v1.0.1 推进记录（已落地 2026-07-03，add-only）**：§3.30 全 task 合入 master：task-48.1（#295，`ee6c058`）P0 cli.go Version 默认值 1.0.1-dev + Dockerfile ARG VERSION + ldflags `-X cli.Version` + release.yml build-args VERSION；P1 docs/decisions/README.md ADR-050 Accepted；P2 README Latest 段 v1.0 收口终点；P3 example.toml header v1.0.1；smoke v37→v38[57/57] + TestTask481。🟢 代码 + CI + 文档 / 0 dep / 0 migration / 0 proto / 0 schema。默认行为/既有契约/三门不退化（仅 CLI version 输出从错误变正确）。真实 v1.0.1 tag/run/digest/tlog/release-url 经用户授权 push（ADR-012），post-tag-push 回填（ADR-013 不预填）。
 
 ---
 
