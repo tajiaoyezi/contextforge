@@ -1,5 +1,39 @@
 # ContextForge Release Notes
 
+## v0.39.0 (2026-07-03) — v1.0-docs-and-release-flow (v1.0 收口冲刺第二步：ADR-050 D3 文档对齐 + D4 GitHub Release 流程。交付 D3：README 重构 776→153 行删 38 changelog 段 + Features 汇总 + maturity label Pre-1.0 不虚标 + pin v0.38.0 + CHANGELOG.md Keep a Changelog + docs/decisions/README.md 49 ADR 分类导航；D4：release.yml 加 softprops/action-gh-release@v2 自动创建 GitHub Release 对象（首次实践 v0.39.0 tag push 触发成功）+ RELEASE_NOTES.md body 提取 + cosign/SBOM provenance footer；0 代码逻辑/0 dep/0 migration + ADR-050 D3/D4 ratify)
+
+### What shipped (Phase 46, tasks 46.1–46.3)
+
+**D3 文档对齐**：
+- **task-46.1 README 重构**（PR #289）：README 776→153 行。删 38 个 `## What's new` changelog 段（v0.3.0→v0.38.0，已在 RELEASE_NOTES.md）+ 删 `## v0.2 limitations` 过时段（含 "does not publish a GitHub Release object" 过时声明）+ 新增 **Features 汇总段**（indexing/storage/retrieval 3 模式/memory/interfaces/supply-chain）+ 加 **maturity label**（"Pre-1.0，v1.0 收口中"，诚实不虚标 v1.0，ADR-013）+ 刷新版本 pin（v0.28.0→v0.38.0）+ 新增 Releases 段（指向 GitHub Releases + GHCR + CHANGELOG）+ Quick Start 核心命令序列保留。
+- **task-46.2 CHANGELOG + ADR 索引**（PR #289）：建 `CHANGELOG.md`（Keep a Changelog 1.1.0，v0.1.0→v0.38.0 + Unreleased，版本倒序，每版本 Added/Changed/Removed）+ 建 `docs/decisions/README.md`（49 ADR 按 5 category 分组导航：Architecture / Storage & Retrieval / Interfaces / Release & Distribution / Governance & Process + 一句话摘要 + status 标注）。
+
+**D4 GitHub Release 流程**：
+- **task-46.3 release.yml Release 对象**（PR #290）：release.yml 加 `softprops/action-gh-release@v2` step（tag push 触发 GitHub Release 对象自动创建，在 cosign sign + SBOM attest 之后）+ body 从 RELEASE_NOTES.md 对应版本段提取（awk 抽 `## vX.Y.Z` heading 下内容，fallback CHANGELOG.md）+ 追加 GHCR image + cosign verify + SBOM provenance footer + `contents: read` → `contents: write`（Release 创建需要）+ `prerelease: ${{ contains(tag, '-') }}`（tag 含 `-` → prerelease）。README 同步删 "does not publish a GitHub Release object" 过时声明。
+- **D4 首次实践成功**：v0.39.0 tag push 触发 release.yml（run 28664115285，success），GitHub Release 对象自动创建（`https://github.com/tajiaoyezi/contextforge/releases/tag/v0.39.0`，isPrerelease=false 正确）。
+
+### ADR-050 ratified (D3/D4 部分 ratify 扩展，完整 ratify 待 Phase 47 v1.0.0)
+
+- **ADR-050 v1.0-definition**：Proposed → **D3/D4 ratify**（Phase 46；D1/D2 Phase 45 已 ratify → 全 4 维度分维度 ratify；完整 Proposed→Accepted 待 Phase 47 v1.0.0）。
+- **ADR-007 minimal-tarball-distribution**：add-only Phase-46 Amendment（分发定义补 GitHub Release 对象，D4 落地）。
+- ADR-013（README maturity label 不虚标 v1.0；D4 缺口真实可验证）/ ADR-014（第三十七次激活 D1-D5）/ ADR-004/008（守 0 dep baseline）守线。
+
+### Upgrade path
+
+纯文档 + 1 CI step，无代码逻辑改动 / 无 breaking change。直接拉 v0.39.0 镜像或源码即可。GitHub Release 对象从此版本起自动创建（D4）。
+
+### Rollback path
+
+N/A（纯文档 + CI；无运行时行为变更）。如需回退 Release 对象自动化，移除 release.yml 的 `softprops/action-gh-release` step。
+
+### Contract / ADR / 凭据
+
+- **Contract**：0 proto change / 0 schema change / 0 API change。
+- **ADR**：ADR-050 D3/D4 ratify + ADR-007 Phase-46 Amendment；ADR-014 第三十七次激活。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `9b1f95b` / tag object `c63e0e0` / release run `28664115285` / ghcr digest `sha256:9b348ea16896503f10e88f3ac470012683fd3b00ac6d8e7ade8e8d22019c730c` / cosign tlog `2061339936` (sign) · `2061342507` (attest) / GitHub Release URL `https://github.com/tajiaoyezi/contextforge/releases/tag/v0.39.0`（D4 首次实践）。
+
+---
+
 ## v0.38.0 (2026-07-01) — v1.0-api-cli-freeze (v1.0 收口冲刺第一步：ADR-050 立 v1.0 锚点 = 功能成熟度收口 D1 + API/CLI 冻结 D2 + 文档对齐 D3 Phase 46 + GitHub Release D4 Phase 46-47；不含 multi-user/认证/自动更新/arm64 推 v2.0。交付 D2：daemon REST 移除 2 个 501 未实装端点 [BREAKING] + chunk_count honest-defer + CLI --version + 顶层 --help + example.toml 补全 4 检索 section；0 dep/0 migration + ADR-050 部分 ratify D1/D2)
 
 | task | PR | delivery |

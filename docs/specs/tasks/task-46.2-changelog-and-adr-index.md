@@ -56,7 +56,7 @@ grep -q "Architecture" docs/decisions/README.md && grep -q "Governance" docs/dec
 2. **改动文件**：
    - CHANGELOG.md（新增，Keep a Changelog 1.1.0 格式，v0.1.0→v0.38.0 + Unreleased）
    - docs/decisions/README.md（新增，49 ADR 按 5 category 分组导航 + 一句话摘要）
-3. **commit 列表**：- `<backfill: hash>` docs(v1.0-docs): task-46.2 CHANGELOG.md + docs/decisions/README.md ADR 访客索引
+3. **commit 列表**：- `06d2a19` docs(v1.0-docs): task-46.1 README 重构 + task-46.2 CHANGELOG + ADR 索引（D3 文档对齐）
 4. **§9 Verification 结果**：
    - lint: N/A（纯 markdown）
    - typecheck: N/A

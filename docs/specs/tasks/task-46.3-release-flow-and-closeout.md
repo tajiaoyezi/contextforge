@@ -73,11 +73,12 @@ grep -q "D4.*Accepted\|D4.*ratif" docs/decisions/adr-050-v1.0-definition.md
    - docs/decisions/adr-007-minimal-tarball-distribution.md（add-only Phase-46 Amendment）
    - docs/releases/v0.39.0-evidence.md + v0.39.0-artifacts.md（新增）
    - docs/roadmap.md + docs/s2v-adapter.md（推进记录 + Status）
-3. **commit 列表**：- `<backfill: hash>` feat(closeout): task-46.3 v0.39.0 closeout — smoke v36[55/55] + release.yml GitHub Release + ADR-050 D3/D4 ratify
+3. **commit 列表**：- `c140ee1` feat(closeout): task-46.3 v0.39.0 closeout — smoke v36[55/55] + release.yml GitHub Release + ADR-050 D3/D4 ratify
 4. **§9 Verification 结果**：
    - lint: N/A（release.yml + smoke + docs，gofmt 不涉；CI lint 全绿）
    - typecheck: N/A
    - unit-test: go test ./internal/cli/ 全过（TestTask463 + TestTask454 no-regression PASS）
    - docs grep: ✅ release.yml softprops/action-gh-release@v2 + contents:write + body_path / README 无 "does not publish a GitHub Release object" / smoke v36[55/55] + bash -n PASS
-5. **剩余风险 / 未做项**：D4 首次实践（v0.39.0 tag push 触发 GitHub Release 对象创建）需 tag push 后实测确认；若 action 版本/权限问题 → v0.39.1 修或 honest-defer Release 对象到 v1.0.0
+   - D4 首次实践实测：v0.39.0 tag push → release.yml run `28664115285` success → GitHub Release 对象自动创建 `https://github.com/tajiaoyezi/contextforge/releases/tag/v0.39.0`（isPrerelease=false 正确判断）
+5. **剩余风险 / 未做项**：无（D4 首次实践已实测成功——Release 对象自动创建 + signed-image footer 正确；body 提取为空因 v0.39.0 RELEASE_NOTES 段在 post-tag-push backfill PR 中加，符合 S2V 工作流）
 6. **下游 task 影响**：Phase 47 v1.0.0（maturity label flip Pre-1.0→v1.0.0 + v1.0.0 tag + 用本 phase 的 release.yml Release 对象 + ADR-050 完整 ratify）
