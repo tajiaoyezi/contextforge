@@ -525,7 +525,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-050 v1.0-definition**（D3/D4 ratify；完整 ratify 待 Phase 47 v1.0.0）；ADR-007 add-only Amendment（分发定义补 GitHub Release 对象）；ADR-013（maturity label Pre-1.0 不虚标；D4 缺口真实可验证）；ADR-014 第三十七次激活。Phase 46 实现经 ADR-012 自治；发版 tag/release 待用户授权。
 
-**v0.39.0 排期状态（规划中 2026-07-03，add-only）**：D3 文档对齐（README 重构 + CHANGELOG.md + ADR 索引）+ D4 GitHub Release 流程（release.yml Release 对象自动创建）。🟢 纯文档 + 1 CI step + 0 代码逻辑改动 / 0 dep / 0 migration / 0 proto / 0 schema。默认行为 / 既有契约 / 三门不退化。v1.0 正式发版（maturity label flip + v1.0.0 tag + SPEC-DEFER 列已知限制 + ADR-050 完整 ratify）→ Phase 47。
+**v0.39.0 推进记录（已落地 2026-07-03，add-only）**：§3.28 全 task 合入 master，ADR-050 部分 ratify 扩展至 D3/D4：task-46.1+46.2（#289）README 重构（776→153 行，删 38 changelog 段已在 RELEASE_NOTES.md + 删 v0.2 limitations 过时段 + Features 汇总段 + maturity label Pre-1.0 不虚标 v1.0 + pin v0.28.0→v0.38.0）+ CHANGELOG.md（Keep a Changelog 1.1.0）+ docs/decisions/README.md（49 ADR 5-category 分类导航）；task-46.3 release.yml 加 softprops/action-gh-release@v2 step（GitHub Release 对象自动创建，tag push 触发 + RELEASE_NOTES.md body 提取 + cosign/SBOM provenance footer + contents:write）+ smoke v35→v36[55/55] + TestTask463 + release docs + ADR-050 D3/D4 ratify + ADR-007 Amendment。🟢 纯文档 + 1 CI step + 0 代码逻辑 / 0 dep / 0 migration / 0 proto / 0 schema。ADR-050 D1/D2/D3/D4 全部分维度 ratify（完整 Proposed→Accepted 待 Phase 47 v1.0.0）；README maturity label 诚实 Pre-1.0（v1.0.0 flip Phase 47）。D4 首次实践（v0.39.0 tag push 触发 Release 对象）待 tag push 实测。真实 v0.39.0 tag/run/digest/tlog/release-url 经用户授权 push（ADR-012），post-tag-push 回填（ADR-013 不预填）。v1.0 正式发版（maturity label flip + v1.0.0 tag + SPEC-DEFER 列已知限制 + ADR-050 完整 ratify）→ Phase 47。
 
 ---
 

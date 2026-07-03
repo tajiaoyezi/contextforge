@@ -1,6 +1,6 @@
 # Phase 46 · v1.0-docs-and-release-flow
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v1.0 收口冲刺的第二步**（承 ADR-050 v1.0 定义 D3 + D4 维度）。Phase 45 已交付 D1（能力，已满足）+ D2（API/CLI 冻结）；本 phase 交付 **D3 文档对齐** + **D4 GitHub Release 流程**，为 Phase 47 / v1.0.0 正式发版铺平最后两维。
 >
@@ -65,11 +65,11 @@ README 从 "38 段 changelog 污染 + 过时 v0.2 limitations + 写死 v0.28.0" 
 
 ## 6. 阶段级验收标准 + 端到端 smoke
 
-- [ ] **AC1**（D3 README 重构 🟢 纯文档）: README 删 38 个 `What's new` 段 + 删 `v0.2 limitations` + 新增 Features 汇总段 + maturity label（Pre-1.0 收口中）+ 刷新版本 pin（写死 v0.28.0→current） — verified by **TEST-46.1.1**（Features 段在场 + maturity label + pin = current + 无 38 changelog 段）
-- [ ] **AC2**（D3 CHANGELOG + ADR 索引 🟢 纯文档）: `CHANGELOG.md`（Keep a Changelog 格式）+ `docs/decisions/README.md`（50 ADR 分类导航 + 一句话摘要） — verified by **TEST-46.2.1**（CHANGELOG 在场 + Keep a Changelog 头）+ **TEST-46.2.2**（ADR 索引 50 条 + category 分组）
-- [ ] **AC3**（D4 GitHub Release 流程 🟢 CI + 文档）: release.yml 加 `softprops/action-gh-release@v2` step（tag push 触发）+ README 删 "does not publish a GitHub Release object" 过时声明 — verified by **TEST-46.3.1**（release.yml Release step 在场）+ **TEST-46.3.2**（README 无过时声明）
-- [ ] **AC4**（v0.39.0 closeout + ADR-050 D3/D4 ratify）: smoke v36[55/55] + release docs + ADR-050 D3/D4 ratify + roadmap/adapter — verified by **TEST-46.3.3**
-- [ ] **AC5**（ADR-014 cross-validation gate）: D1-D5（第三十七次激活）— verified by task-46.3 PR body + LAST TEST
+  - [x] **AC1**（D3 README 重构 🟢 纯文档）: README 删 38 个 `What's new` 段 + 删 `v0.2 limitations` + 新增 Features 汇总段 + maturity label（Pre-1.0 收口中）+ 刷新版本 pin（写死 v0.28.0→current） — verified by **TEST-46.1.1**（Features 段在场 + maturity label + pin = current + 无 38 changelog 段）
+  - [x] **AC2**（D3 CHANGELOG + ADR 索引 🟢 纯文档）: `CHANGELOG.md`（Keep a Changelog 格式）+ `docs/decisions/README.md`（50 ADR 分类导航 + 一句话摘要） — verified by **TEST-46.2.1**（CHANGELOG 在场 + Keep a Changelog 头）+ **TEST-46.2.2**（ADR 索引 50 条 + category 分组）
+  - [x] **AC3**（D4 GitHub Release 流程 🟢 CI + 文档）: release.yml 加 `softprops/action-gh-release@v2` step（tag push 触发）+ README 删 "does not publish a GitHub Release object" 过时声明 — verified by **TEST-46.3.1**（release.yml Release step 在场）+ **TEST-46.3.2**（README 无过时声明）
+  - [x] **AC4**（v0.39.0 closeout + ADR-050 D3/D4 ratify）: smoke v36[55/55] + release docs + ADR-050 D3/D4 ratify + roadmap/adapter — verified by **TEST-46.3.3**
+  - [x] **AC5**（ADR-014 cross-validation gate）: D1-D5（第三十七次激活）— verified by task-46.3 PR body + LAST TEST
 
 ## 7. 阶段级风险
 

@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write      # create GitHub Release object (task-46.3) + push image artifacts
   packages: write       # push image + cosign signature/attestation OCI artifacts to GHCR
   id-token: write       # Sigstore OIDC token for keyless cosign signing (task-28.2)
 
@@ -99,3 +99,46 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Pull command:" >> $GITHUB_STEP_SUMMARY
           echo '  `docker pull ghcr.io/${{ github.repository_owner }}/contextforge-daemon:${{ steps.ref.outputs.tag }}`' >> $GITHUB_STEP_SUMMARY
+
+      # --- GitHub Release object (task-46.3 / ADR-050 D4): auto-create a Release on every
+      # v* tag push, with body extracted from RELEASE_NOTES.md (the version's section) +
+      # signed-image / SBOM / provenance references. Uses softprops/action-gh-release@v2.
+      - name: Extract release notes body
+        id: notes
+        env:
+          TAG: ${{ steps.ref.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Extract the "## <tag>" section from RELEASE_NOTES.md (from the matching heading
+          # to the next "## v" heading or EOF). Falls back to CHANGELOG.md if not found.
+          BODY=""
+          if [ -f RELEASE_NOTES.md ]; then
+            BODY=$(awk -v tag="## ${TAG}" '
+              $0 ~ "^"tag"($| )" { in_sec=1; next }
+              in_sec && /^## v[0-9]/ { in_sec=0 }
+              in_sec { print }
+            ' RELEASE_NOTES.md)
+          fi
+          if [ -z "$BODY" ] && [ -f CHANGELOG.md ]; then
+            BODY=$(awk -v tag="\\[${TAG}\\]" '
+              $0 ~ "^## "tag"($| )" { in_sec=1; next }
+              in_sec && /^## \[v[0-9]/ { in_sec=0 }
+              in_sec { print }
+            ' CHANGELOG.md)
+          fi
+          # Append supply-chain footer (real digest filled at run time).
+          DIGEST="${{ steps.build.outputs.digest }}"
+          FOOTER=$(printf '\n\n---\n\n**Signed image:** `%s@%s`\n\nVerify: `cosign verify --yes %s@%s`\n\nSPDX SBOM + SLSA provenance attached as OCI artifacts (cosign attest). See `docs/deploy/production.md` §2.\n' "$IMAGE_NAME" "$DIGEST" "$IMAGE_NAME" "$DIGEST")
+          printf '%s\n%s\n' "$BODY" "$FOOTER" > /tmp/release_body.md
+          echo "wrote $(wc -l < /tmp/release_body.md) lines to release body"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ref.outputs.tag }}
+          name: ${{ steps.ref.outputs.tag }}
+          body_path: /tmp/release_body.md
+          draft: false
+          prerelease: ${{ contains(steps.ref.outputs.tag, '-') }}
+          generate_release_notes: false
+

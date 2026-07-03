@@ -1386,6 +1386,19 @@ echo "  [54/54] task-45.4 v1.0-api-cli-freeze: v1.0 收口冲刺第一步 — AD
 # daemon REST 移除是 v1.0 前 breaking change（release notes 显式记）。
 echo "    → v1.0 API/CLI freeze validated via Go unit tests TEST-45.2.1 + TEST-45.3.1/.2/.3; daemon REST now 3 endpoints (search/chunks/collections); CLI version + --help wired"
 
+echo "  [55/55] task-46.3 v1.0-docs-and-release-flow: v1.0 收口冲刺第二步 — D3 文档对齐（README 重构：删 38 changelog 段 + Features 汇总 + maturity label Pre-1.0 不虚标 + pin v0.38.0；CHANGELOG.md Keep a Changelog；docs/decisions/README.md 49 ADR 分类导航）+ D4 GitHub Release 流程（release.yml 加 softprops/action-gh-release@v2 自动创建 Release 对象）— ADR-050 D3/D4（Phase 46）"
+# v36 (task-46.3): Phase 46 (v1.0-docs-and-release-flow) — v1.0 收口冲刺第二步。交付 ADR-050 剩余两维：
+# D3 文档对齐（task-46.1 README 重构：776→153 行，删 38 What's new changelog 段已在 RELEASE_NOTES.md
+# + 删 v0.2 limitations 过时段含 does-not-publish-GitHub-Release + 新增 Features 汇总段 + maturity label
+# Pre-1.0 收口中诚实不虚标 v1.0 + 刷新 pin v0.28.0→v0.38.0 + Releases 段；task-46.2 CHANGELOG.md
+# Keep a Changelog 1.1.0 格式 + docs/decisions/README.md 49 ADR 按 5 category 分组导航）+ D4 GitHub Release
+# 流程（task-46.3 release.yml 加 softprops/action-gh-release@v2 step tag push 触发 + RELEASE_NOTES.md
+# body 提取 + cosign/SBOM provenance footer + contents:write permission）。Verified by TEST-46.1.1
+# (README Features/maturity/0 changelog/pin) + TEST-46.2.1/.2 (CHANGELOG + ADR index) + TEST-46.3.1/.2
+# (release.yml Release step + README no stale GitHub Release 声明). 0 代码逻辑 / 0 dep / 0 migration / 0 proto.
+# ADR-050 D3/D4 ratify（完整 ratify 待 Phase 47 v1.0.0）。默认行为/既有契约/三门不退化。
+echo "    → D3 docs (README Features + maturity label + CHANGELOG + ADR index) + D4 release flow (release.yml GitHub Release step) validated via docs grep TEST-46.1.1/.2.1/.2.2/.3.1/.3.2; v0.39.0 tag push will first-practice the Release object"
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"
