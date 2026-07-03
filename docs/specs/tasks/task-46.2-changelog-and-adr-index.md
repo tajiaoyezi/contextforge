@@ -1,6 +1,6 @@
-# Task `46.2`: `changelog-and-adr-index — 建 CHANGELOG.md（Keep a Changelog）+ docs/decisions/README.md（50 ADR 访客分类导航）`
+# Task `46.2`: `changelog-and-adr-index — 建 CHANGELOG.md（Keep a Changelog）+ docs/decisions/README.md（49 ADR 访客分类导航）`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 46 (v1.0-docs-and-release-flow)
@@ -26,14 +26,14 @@ v1.0 需对外标准 changelog（CHANGELOG.md），但项目当前只有 `RELEAS
   - status 标注：Accepted / Proposed（与 adapter ADR 索引表一致）
 
 ## 6. AC
-- [ ] **AC1**（CHANGELOG.md）: `CHANGELOG.md` 在场 + Keep a Changelog 1.1.0 头 + 版本倒序 + 至少覆盖 v0.30.0→v0.38.0（近期版本完整，早期版本可粗粒度） — verified by **TEST-46.2.1**
-- [ ] **AC2**（ADR 索引）: `docs/decisions/README.md` 在场 + 50 ADR 全列 + category 分组 + status 标注 — verified by **TEST-46.2.2**（grep 计数 = 50）
+- [x] **AC1**（CHANGELOG.md）: `CHANGELOG.md` 在场 + Keep a Changelog 1.1.0 头 + 版本倒序 + 至少覆盖 v0.30.0→v0.38.0（近期版本完整，早期版本可粗粒度） — verified by **TEST-46.2.1**
+- [x] **AC2**（ADR 索引）: `docs/decisions/README.md` 在场 + 49 ADR 全列（adr-019 跳号）+ category 分组 + status 标注 — verified by **TEST-46.2.2**（grep 计数 = 49 table entries + 1 prose mention of 019）
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-46.2.1 | CHANGELOG.md 在场 + Keep a Changelog 头 + 版本倒序 + 近期版本覆盖 | docs grep | Not Started |
-| TEST-46.2.2 | docs/decisions/README.md 在场 + 50 ADR 全列 + category 分组 | docs grep + 计数 | Not Started |
+| TEST-46.2.1 | CHANGELOG.md 在场 + Keep a Changelog 头 + 版本倒序 + 近期版本覆盖 | docs grep | Done |
+| TEST-46.2.2 | docs/decisions/README.md 在场 + 49 ADR 全列 + category 分组 | docs grep + 计数 | Done |
 
 ## 9. Verification
 ```bash
@@ -50,4 +50,17 @@ grep -q "Architecture" docs/decisions/README.md && grep -q "Governance" docs/dec
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
+
+1. **完成日期**：2026-07-03
+2. **改动文件**：
+   - CHANGELOG.md（新增，Keep a Changelog 1.1.0 格式，v0.1.0→v0.38.0 + Unreleased）
+   - docs/decisions/README.md（新增，49 ADR 按 5 category 分组导航 + 一句话摘要）
+3. **commit 列表**：- `<backfill: hash>` docs(v1.0-docs): task-46.2 CHANGELOG.md + docs/decisions/README.md ADR 访客索引
+4. **§9 Verification 结果**：
+   - lint: N/A（纯 markdown）
+   - typecheck: N/A
+   - unit-test: N/A（纯文档 task）
+   - docs grep: ✅ CHANGELOG Keep a Changelog banner + 版本倒序（v0.38 before v0.30）+ v0.30-v0.38 全覆盖；docs/decisions/README.md 49 table entries（adr-019 跳号在 prose 注明）+ 5 category 分组（Architecture / Storage & Retrieval / Interfaces / Release & Distribution / Governance & Process）
+5. **剩余风险 / 未做项**：无（CHANGELOG 提炼自 RELEASE_NOTES.md + git tag 历史，早期版本 v0.5-v0.9 粗粒度一行，近期版本 v0.28+ 详 Added/Changed/Removed；ADR 摘要一句精准，详档指向各 ADR 文件）
+6. **下游 task 影响**：task-46.3（CHANGELOG 首版就绪供 GitHub Release body 引用 + README Releases 段已指向 CHANGELOG.md）

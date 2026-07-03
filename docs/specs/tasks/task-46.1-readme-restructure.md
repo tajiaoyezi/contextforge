@@ -1,6 +1,6 @@
 # Task `46.1`: `readme-restructure — README 从 "38 段 changelog 污染" 重构为 "Features 汇总 + maturity label + current pin" 访客友好结构（ADR-050 D3）`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 46 (v1.0-docs-and-release-flow)
@@ -23,12 +23,12 @@ README 重构为访客友好结构：(1) 删 38 个 `What's new` 段（已在 RE
   - 刷新：所有写死版本号 `v0.28.0`→`v0.38.0`
 
 ## 6. AC
-- [ ] **AC1**（README 重构）: README 删 38 changelog 段 + 删 v0.2 limitations + 新增 Features 汇总段 + maturity label（Pre-1.0 收口中）+ 刷新版本 pin（v0.28.0→v0.38.0）+ Quick Start 保留可用 — verified by **TEST-46.1.1**（grep 守护：Features 段在场 / maturity label 在场 / 无 `## What's new in v0.3`..v0.37 段 / pin = v0.38.0 / Quick Start 保留）
+- [x] **AC1**（README 重构）: README 删 38 changelog 段 + 删 v0.2 limitations + 新增 Features 汇总段 + maturity label（Pre-1.0 收口中）+ 刷新版本 pin（v0.28.0→v0.38.0）+ Quick Start 保留可用 — verified by **TEST-46.1.1**（grep 守护：Features 段在场 / maturity label 在场 / 无 `## What's new in v0.3`..v0.37 段 / pin = v0.38.0 / Quick Start 保留）
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-46.1.1 | README Features 段 + maturity label + 无 38 changelog 段 + pin = v0.38.0 + Quick Start 保留 | docs grep + 行数核 | Not Started |
+| TEST-46.1.1 | README Features 段 + maturity label + 无 38 changelog 段 + pin = v0.38.0 + Quick Start 保留 | docs grep + 行数核 | Done |
 
 ## 9. Verification
 ```bash
@@ -47,4 +47,15 @@ grep -q "contextforge init" README.md && grep -q "contextforge search" README.md
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
+
+1. **完成日期**：2026-07-03
+2. **改动文件**：- README.md（重构主体：776→153 行）
+3. **commit 列表**：- `<backfill: hash>` docs(v1.0-docs): task-46.1 README 重构（删 38 changelog + Features + maturity label + pin v0.38.0）
+4. **§9 Verification 结果**：
+   - lint: N/A（纯 markdown，无 gofmt/clippy）
+   - typecheck: N/A
+   - unit-test: N/A（纯文档 task，无代码）
+   - docs grep: ✅ Features 段在场 / maturity label Pre-1.0 在场 / 0 个 What's new 段（38→0）/ 无 v0.2 limitations / 无 v0.28.0 pin（→v0.38.0）/ Quick Start init+search 保留 / 无 "does not publish a GitHub Release" 过时声明
+5. **剩余风险 / 未做项**：无（纯文档重构；maturity label 诚实标 Pre-1.0，v1.0.0 flip 在 Phase 47）
+6. **下游 task 影响**：task-46.3（README Releases 段已建指向 GitHub Releases，待 release.yml Release 对象落地后链接成立）
