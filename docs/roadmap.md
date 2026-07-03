@@ -529,6 +529,21 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 ---
 
+### 3.29 v1.0.0 / Phase 47 — v1.0.0-release（v1.0 收口冲刺终点，post-v0.39.0 add-only 排期）
+
+**目标**：v1.0 收口冲刺终点——完成 v1.0.0 正式发版：ADR-050 完整 ratify（Proposed→Accepted，D1-D4 全真实交付验证）+ README maturity label flip（Pre-1.0→**v1.0.0**）+ v1.0.0 Release notes 列已知限制（active SPEC-DEFER 按 category 归类，ADR-013 honest-defer）+ v1.0.0 tag（major version 里程碑，用 Phase 46 的 release.yml Release 对象）。**Grounding（ADR-013）**：v1.0.0 是成熟度声明不是功能声明——recall@5/@10=1.0 超 PRD 北极星 + API/CLI 冻结 + 文档对齐 + GitHub Release 流程全交付（D1-D4 Phase 45/46 验证）。**不含**（推 v2.0）：multi-user/认证身份/自动更新/arm64 native + large-corpus benchmarks 等能力 SPEC-DEFER（列已知限制）。本 phase 全程 **0 代码逻辑改动 / 0 新 dep / 0 migration / 0 proto / 0 schema**（纯文档 + tag）。
+
+**来源**：ADR-050（完整 ratify Proposed→Accepted）/ ADR-007（v1.0 分发定义，v1.0.0 正式发版）/ ADR-013（known limitations honest-defer）/ ADR-014（第三十八次激活）。
+
+**候选 task 拆分**：
+- **task-47.1** v1.0.0-release：单聚焦 closeout——README maturity label flip Pre-1.0→v1.0.0 + pin v0.39.0→v1.0.0 + ADR-050 完整 ratify（Proposed→Accepted，D1-D4 全 ✅）+ v1.0.0 Release notes known-limitations catalog（6 category）+ smoke v36→v37[56/56] + release docs + roadmap/adapter。🟢 纯文档 + tag。
+
+**ADR**：**ADR-050 v1.0-definition**（**完整 ratify Accepted**，D1-D4 全真实交付验证）；ADR-007（v1.0 分发定义，v1.0.0 正式发版）；ADR-013（known limitations honest-defer，不伪造完成）；ADR-014 第三十八次激活。Phase 47 实现经 ADR-012 自治；v1.0.0 tag/release 待用户授权。
+
+**v1.0.0 排期状态（规划中 2026-07-03，add-only）**：v1.0 收口终点。🟢 纯文档 + tag + 0 代码逻辑 / 0 dep / 0 migration / 0 proto / 0 schema。maturity label flip + ADR-050 Accepted + known limitations 6 category + v1.0.0 tag。v2.0 路线（multi-user/认证/自动更新/arm64 native + large-corpus benchmarks + 其余 SPEC-DEFER backlog）留后续。
+
+---
+
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
