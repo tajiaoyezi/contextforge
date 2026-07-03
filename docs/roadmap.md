@@ -540,7 +540,7 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 **ADR**：**ADR-050 v1.0-definition**（**完整 ratify Accepted**，D1-D4 全真实交付验证）；ADR-007（v1.0 分发定义，v1.0.0 正式发版）；ADR-013（known limitations honest-defer，不伪造完成）；ADR-014 第三十八次激活。Phase 47 实现经 ADR-012 自治；v1.0.0 tag/release 待用户授权。
 
-**v1.0.0 排期状态（规划中 2026-07-03，add-only）**：v1.0 收口终点。🟢 纯文档 + tag + 0 代码逻辑 / 0 dep / 0 migration / 0 proto / 0 schema。maturity label flip + ADR-050 Accepted + known limitations 6 category + v1.0.0 tag。v2.0 路线（multi-user/认证/自动更新/arm64 native + large-corpus benchmarks + 其余 SPEC-DEFER backlog）留后续。
+**v1.0.0 推进记录（已落地 2026-07-03，add-only）**：§3.29 全 task 合入 master，ADR-050 完整 ratify Accepted：task-47.1（#293）README maturity label flip Pre-1.0→v1.0.0 + pin v0.39.0→v1.0.0 + ADR-050 完整 ratify Proposed→Accepted（D1-D4 全真实交付验证）+ v1.0.0 Release notes known-limitations catalog（active SPEC-DEFER 按 6 category 归类：Multi-user/auth / Auto-update / Platform / Retrieval quality / Memory-observability / Interfaces-config-CI，ADR-013 honest-defer）+ smoke v36→v37[56/56] + TestTask471 + release docs + roadmap/adapter。🟢 纯文档 + tag + 0 代码逻辑 / 0 dep / 0 migration / 0 proto / 0 schema。**ADR-050 完整 ratify Accepted**（D1-D4 全 ✅）；README maturity label v1.0.0（诚实里程碑——D1-D4 全 CI 验证非虚标，ADR-013）。真实 v1.0.0 tag/run/digest/tlog/release-url 经用户授权 push（ADR-012），post-tag-push 回填（ADR-013 不预填）。v2.0 路线（multi-user/认证/自动更新/arm64 native + large-corpus benchmarks + 其余 SPEC-DEFER backlog）留后续。
 
 ---
 

@@ -1399,6 +1399,19 @@ echo "  [55/55] task-46.3 v1.0-docs-and-release-flow: v1.0 收口冲刺第二步
 # ADR-050 D3/D4 ratify（完整 ratify 待 Phase 47 v1.0.0）。默认行为/既有契约/三门不退化。
 echo "    → D3 docs (README Features + maturity label + CHANGELOG + ADR index) + D4 release flow (release.yml GitHub Release step) validated via docs grep TEST-46.1.1/.2.1/.2.2/.3.1/.3.2; v0.39.0 tag push will first-practice the Release object"
 
+echo "  [56/56] task-47.1 v1.0.0-release: v1.0 收口终点 — ADR-050 完整 ratify Proposed→Accepted（D1-D4 全真实交付验证）+ README maturity label flip Pre-1.0→v1.0.0 + pin v0.39.0→v1.0.0 + active SPEC-DEFER known-limitations catalog（6 category，ADR-013 honest-defer）+ v1.0.0 tag（major version 里程碑）— ADR-050 Accepted（Phase 47）"
+# v37 (task-47.1): Phase 47 (v1.0.0-release) — v1.0 收口冲刺终点。v1.0.0 是成熟度里程碑声明非功能发布：
+# ADR-050 完整 ratify Proposed→Accepted（D1 能力 recall@5/@10=1.0 超北极星 + D2 API/CLI 冻结 Phase 45 +
+# D3 文档对齐 Phase 46 + D4 GitHub Release 流程 Phase 46 首次实践成功，全维度真实交付验证）+ README
+# maturity label flip Pre-1.0→v1.0.0（诚实里程碑——D1-D4 全 CI 验证非虚标，ADR-013）+ pin v0.39.0→v1.0.0 +
+# active SPEC-DEFER 按 6 category 归类列 v1.0 known limitations（Multi-user/auth / Auto-update / Platform /
+# Retrieval quality / Memory-observability / Interfaces-config-CI，不伪造完成，ADR-013 honest-defer）+ v1.0.0
+# tag（major version 里程碑，用 Phase 46 release.yml Release 对象第二次实践）。Verified by TEST-47.1.1
+# (maturity label v1.0.0 无 Pre-1.0 + pin v1.0.0) + TEST-47.1.2 (ADR-050 Accepted) + TEST-47.1.3
+# (known limitations 6 category) + TEST-47.1.4 (smoke v37[56/56] + ADR-050 Accepted). 0 代码逻辑 / 0 dep /
+# 0 migration / 0 proto / 0 schema. ADR-050 完整 ratify Accepted；ADR-014 第三十八次激活。默认行为/既有契约/三门不退化。
+echo "    → v1.0.0 maturity milestone validated via docs grep TEST-47.1.1/.2/.3 (maturity label v1.0.0 + ADR-050 Accepted + known limitations 6 category); v1.0.0 tag push will second-practice the Release object"
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"

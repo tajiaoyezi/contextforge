@@ -8,6 +8,29 @@ All notable changes to ContextForge are documented in this file. The format is b
 
 _No unreleased changes yet._
 
+## [v1.0.0] — 2026-07-03 — v1.0.0-release (v1.0 maturity milestone)
+
+**v1.0.0 正式发版** — v1.0 收口终点。This is a **maturity milestone**, not a feature release: ADR-050 (v1.0-definition) is fully ratified (Proposed→Accepted) with all 4 dimensions (D1 capability / D2 API-CLI freeze / D3 docs alignment / D4 GitHub Release flow) verified via real CI across Phase 45/46/47.
+
+### Changed
+- README maturity label: Pre-1.0 → **v1.0.0** (honest milestone — D1-D4 all CI-verified, not over-claimed, ADR-013).
+- ADR-050 v1.0-definition: Proposed → **Accepted** (D1-D4 all real-delivery-verified).
+- README version pin: v0.39.0 → v1.0.0.
+
+### Known limitations (v1.0 scope exclusions, ADR-013 honest-defer — pushed to v2.0 or later)
+
+The following are **not** in v1.0 scope, honestly listed as known limitations (not faked as done). Full marker list in `docs/roadmap.md` §4 backlog.
+
+- **Multi-user / auth / permissions / audit compliance** → v2.0 (PRD §Out of Scope + ADR-016/018): authenticated actor identity, multi-user workspace isolation, per-user permissions.
+- **Auto-update / distribution automation** → v2.0 (PRD §Constraints + ADR-033): release-please automation, dry-run, tag validation, signing-key-management, reproducible-build-slsa.
+- **Platform / architecture** → v2.0 (ADR-033): arm64 native runner (QEMU infeasible), multi-arch image, distroless runtime, multi-OS CI.
+- **Retrieval quality / vector benchmarks**: large-corpus embedding/reranker recall (current: small author-curated golden), million-scale perf benchmarks, sqlite-vec matrix, CJK cross-lingual large corpus, semantic param tuning.
+- **Memory / observability / events**: memory hard-delete cascade, memory tags/semantic-search, observability metrics facility, indexing-replay daemon e2e, events cursor pagination / broadcast fairness / gRPC backpressure.
+- **Interfaces / config / CI tooling**: chunk agent_scope filter (memory-layer concept), vector config file, rust-native eval runner, golangci-lint, compose TLS/secrets/prometheus.
+
+### Upgrade path
+No breaking change from v0.38.0+ (daemon REST 501 removal was in v0.38.0). Pull v1.0.0 image or source directly.
+
 ## [v0.39.0] — 2026-07-03 — v1.0-docs-and-release-flow
 
 v1.0 收口冲刺第二步: ADR-050 D3 文档对齐 + D4 GitHub Release 流程. D4 首次实践 — v0.39.0 tag push 触发 GitHub Release 对象自动创建成功.
