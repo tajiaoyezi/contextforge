@@ -1,4 +1,4 @@
-# ContextForge example config (v0.38.0). task-45.3 (ADR-050 D2) — all sections documented.
+# ContextForge example config (v1.0.1). task-45.3 (ADR-050 D2) — all sections documented.
 # Copy to config.toml and edit. Every section is OPTIONAL: an absent section ⇒ the
 # zero value ⇒ the Rust core uses its built-in default (ADR-004 local-first baseline:
 # 0-network / 0-model-dep). API keys are NEVER in this file — supply them via env vars.

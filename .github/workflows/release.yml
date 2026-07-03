@@ -57,6 +57,10 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: mode=max          # SLSA build provenance attached to the image index
+          # task-48.1 (v1.0.1-patch): inject the release tag into cli.Version so the
+          # image's `contextforge version` reports the real tag, not the dev default.
+          build-args: |
+            VERSION=${{ steps.ref.outputs.tag }}
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.ref.outputs.tag }}
             ${{ env.IMAGE_NAME }}:latest

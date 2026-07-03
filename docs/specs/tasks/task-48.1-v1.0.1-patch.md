@@ -7,7 +7,7 @@
 **Dependencies**: v1.0.0（已 ship）/ v1.0 收口审查残留清单 / ADR-050（Accepted，不动）/ ADR-014（第三十九次激活）
 
 ## 1. Background
-v1.0.0 ship 后全面审查发现 4 个残留：(P0) CLI `version` 字符串 `internal/cli/cli.go:31 var Version = "0.38.0-dev"` 过时 + Dockerfile/release.yml 无 ldflags 注入 → v1.0.0 镜像 `contextforge version` 报 `0.38.0-dev`（D2 API/CLI 冻结缺陷）；(P1) docs/decisions/README.md ADR-050 漏更新（仍 Proposed）；(P2) README Latest 段描述残留 v0.39.0"第二步"；(P3) example.toml header v0.38.0。
+v1.0.0 ship 后全面审查发现 4 个残留：(P0) CLI version 字符串过时——`internal/cli/cli.go` Version 默认值停在 Phase 45 的 dev 串 + Dockerfile/release.yml 无 ldflags 注入 → v1.0.0 镜像 `contextforge version` 报旧 dev 串（D2 API/CLI 冻结缺陷）；(P1) docs/decisions/README.md ADR-050 漏更新（仍 Proposed）；(P2) README Latest 段描述措辞过时；(P3) example.toml header 版本过时。
 
 ## 2. Goal
 (1) P0：cli.go Version 默认值 `"1.0.1-dev"` + Dockerfile ARG VERSION + ldflags 注入 + release.yml build-args VERSION 传 tag。

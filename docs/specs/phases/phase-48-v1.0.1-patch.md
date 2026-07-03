@@ -2,7 +2,7 @@
 
 **Status**: Ready
 
-> Phase Spec（s2v full-standard §8.2）。本 phase 是 **v1.0 收口后审查发现的 4 个残留的 patch 修复**。v1.0.0 ship 后做了一次全面审查（grounding 全维度），发现 1 个 P0 代码缺陷 + 3 个 P1-P3 文档过时：(P0) **CLI `version` 字符串过时**——`internal/cli/cli.go:31` `var Version = "0.38.0-dev"` 且 Dockerfile/release.yml 都无 ldflags 注入，导致 v1.0.0 镜像里 `contextforge version` 打印 `0.38.0-dev` 而非 `1.0.0`（D2 API/CLI 冻结的直接缺陷）；(P1) docs/decisions/README.md ADR-050 状态漏更新（仍 Proposed，应 Accepted）；(P2) README Latest 段描述残留 v0.39.0"第二步"措辞；(P3) contextforge.example.toml header 版本 v0.38.0 过时。
+> Phase Spec（s2v full-standard §8.2）。本 phase 是 **v1.0 收口后审查发现的 4 个残留修复**（patch release）。v1.0.0 ship 后做了一次全面审查（grounding 全维度），发现 1 个 P0 代码缺陷 + 3 个 P1-P3 文档过时：(P0) **CLI version 字符串过时**——`internal/cli/cli.go` Version 默认值停在 Phase 45 的 dev 串，且 Dockerfile/release.yml 都无 ldflags 注入，导致 v1.0.0 镜像里 `contextforge version` 报旧 dev 串而非 release tag（D2 API/CLI 冻结的直接缺陷）；(P1) docs/decisions/README.md ADR-050 状态漏更新（仍 Proposed，应 Accepted）；(P2) README Latest 段描述措辞过时；(P3) contextforge.example.toml header 版本过时。
 >
 > **修复性质**：P0 是真实代码 + CI 改动（CLI version 字符串默认值 + Dockerfile ARG/ldflags 注入）；P1-P3 是纯文档。**0 新 dep / 0 migration / 0 proto / 0 schema change**。默认行为 / 既有契约 / 三门不退化（仅 CLI version 输出从错误变正确）。
 
