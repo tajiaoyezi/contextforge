@@ -683,6 +683,67 @@ func TestTask454_SmokeV35V1APICLIFreezeStep(t *testing.T) {
 	}
 }
 
+// TEST-46.3.3 / AC3: smoke v36 adds step 55 — task-46.3 closeout (v1.0-docs-and-release-flow). D3 docs
+// alignment (README restructure + CHANGELOG + ADR index) + D4 GitHub Release flow (release.yml
+// softprops/action-gh-release). Asserts the v36 step 55 marker + Phase 46 status, and no regression
+// of the prior denominators (ADR-014 D5 — only the newest step carries the running total).
+func TestTask463_SmokeV36V10DocsAndReleaseFlowStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v36 (task-46.3)") {
+		t.Fatalf("console_smoke.sh missing v36 (task-46.3) header block")
+	}
+	for _, marker := range []string{"[55/55]", "v1.0-docs-and-release-flow", "ADR-050", "TEST-46.1.1", "TEST-46.2.", "TEST-46.3."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v36 step 55 must document v1.0-docs-and-release-flow status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v35 blocks intact; denominators untouched per ADR-014 D5 —
+	// only the newest step carries the running total [55/55], matching the v14-v35 precedent).
+	for _, marker := range []string{"[37/37]", "[38/38]", "[39/39]", "[40/40]", "[41/41]", "[42/42]", "[43/43]", "[44/44]", "[45/45]", "[46/46]", "[47/47]", "[48/48]", "[49/49]", "[50/50]", "[51/51]", "[52/52]", "[53/53]", "[54/54]", "v1.0-api-cli-freeze"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v36 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+
+	// TEST-46.3.1: release.yml GitHub Release step present + contents: write permission.
+	releaseYml := filepath.Join("..", "..", ".github", "workflows", "release.yml")
+	ryRaw, err := os.ReadFile(releaseYml)
+	if err != nil {
+		t.Fatalf("read %s: %v", releaseYml, err)
+	}
+	ryBody := string(ryRaw)
+	for _, marker := range []string{"softprops/action-gh-release@v2", "contents: write", "body_path"} {
+		if !strings.Contains(ryBody, marker) {
+			t.Fatalf("release.yml missing D4 GitHub Release marker %q", marker)
+		}
+	}
+
+	// TEST-46.3.2: README no stale "does not publish a GitHub Release" declaration.
+	readme := filepath.Join("..", "..", "README.md")
+	rmRaw, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatalf("read %s: %v", readme, err)
+	}
+	rmBody := string(rmRaw)
+	if strings.Contains(rmBody, "does not publish a GitHub Release object") {
+		t.Fatalf("README still contains stale 'does not publish a GitHub Release object' declaration (D4 landed)")
+	}
+}
+
 // TEST-37.3.2 / AC2: smoke v27 adds step 46 — task-37.3 closeout (embedding-provider-remote-live). Real
 // remote embedding (Qwen3-Embedding-8B via an OpenAI-compatible endpoint) semantic recall@k vs the
 // deterministic baseline is measured by a local authenticated run (CI honest-defers — remote is a paid

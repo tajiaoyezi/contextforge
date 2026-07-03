@@ -60,3 +60,13 @@ Phase 28（release-ci-hardening，v0.21.0）据 `docs/decisions/adr-033-release-
 Phase 45 / v0.38.0（ADR-050）正式定义 v1.0 并**收窄**本 ADR 的 v1.0 分发维度：v1.0.0 = 功能成熟度收口（D1）+ API/CLI 冻结（D2）+ 文档对齐（D3）+ GitHub Release 流程（D4）。**自动更新 + arm64 native 多平台构建推 v2.0**（ADR-033 实测 QEMU 不可行 + 自动更新从零工程，ADR-013 honest-defer）。本 ADR §Constraints 的"v1.0 多平台 + 签名 + 自动更新 + 企业部署"由 ADR-050 收窄为"v1.0 = 现有 GHCR 镜像签名（已就绪）+ GitHub Release tarball（Phase 46 加）+ 企业部署文档（production.md 已在，Phase 46 刷新版本）"。multi-user/认证身份推 v2.0（PRD §Out of Scope + ADR-016/018 反复"留 v1.0"，工程量大）。
 
 不溯改本 ADR D-body（ADR-014 D5）。详见 ADR-050 §Ratification + `docs/releases/v0.38.0-evidence.md`。
+
+## Amendment (Phase 46 / v0.39.0) — D4 GitHub Release 对象落地 (add-only)
+
+> add-only Amendment（不溯改本 ADR D-body，ADR-014 D5）。承 Phase 45 Amendment "GitHub Release tarball（Phase 46 加）"承诺。
+
+Phase 46 / v0.39.0（ADR-050 D4）落地 GitHub Release 流程：`release.yml` 加 `softprops/action-gh-release@v2` step（tag push 触发 GitHub Release 对象自动创建 + body 从 RELEASE_NOTES.md 对应版本段提取 + cosign/SBOM provenance footer + `contents: write` permission）。README 同步删 "does not publish a GitHub Release object or source tarball" 过时声明。v0.39.0 tag push **首次实践** Release 对象创建。
+
+**分发定义扩展**：v0.1 的「最小 tarball + 单架构镜像」基线不变；在其上加 GitHub Release 对象（D4，Phase 46）。此前 Phase 28 Amendment 加的 cosign/SBOM/provenance 不变。**仍不含**：自动更新 / arm64 native 多平台（推 v2.0，承 Phase 45 Amendment honest-defer）。
+
+不溯改本 ADR D-body（ADR-014 D5）。详见 ADR-050 §Ratification + `docs/releases/v0.39.0-evidence.md`。

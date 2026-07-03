@@ -1,6 +1,6 @@
 # Task `46.3`: `release-flow-and-closeout — release.yml 加 GitHub Release 对象自动创建 + smoke v36[55/55] + v0.39.0 closeout + ADR-050 D3/D4 ratify`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 46 (v1.0-docs-and-release-flow)
@@ -33,17 +33,17 @@ release.yml（101 行）当前只推 image 到 GHCR + cosign keyless sign + SBOM
 - 新增 `docs/releases/v0.39.0-evidence.md` + `v0.39.0-artifacts.md`
 
 ## 6. AC
-- [ ] **AC1**（D4 release.yml Release step）: release.yml 加 `softprops/action-gh-release@v2` step + `contents: write` permission — verified by **TEST-46.3.1**
-- [ ] **AC2**（README Release 声明一致）: README 无 "does not publish a GitHub Release object" 过时声明 + Releases 段指向 GitHub Releases — verified by **TEST-46.3.2**
-- [ ] **AC3**（v0.39.0 closeout）: smoke v36[55/55] + TestTask463 + release docs + ADR-050 D3/D4 ratify + ADR-007 Amendment + roadmap/adapter — verified by **TEST-46.3.3**
-- [ ] **AC4**（ADR-014 cross-validation gate）: D1-D5（第三十七次激活） — verified by PR body + LAST TEST
+- [x] **AC1**（D4 release.yml Release step）: release.yml 加 `softprops/action-gh-release@v2` step + `contents: write` permission — verified by **TEST-46.3.1**
+- [x] **AC2**（README Release 声明一致）: README 无 "does not publish a GitHub Release object" 过时声明 + Releases 段指向 GitHub Releases — verified by **TEST-46.3.2**
+- [x] **AC3**（v0.39.0 closeout）: smoke v36[55/55] + release docs + ADR-050 D3/D4 ratify + roadmap/adapter — verified by **TEST-46.3.3**
+- [x] **AC4**（ADR-014 cross-validation gate）: D1-D5（第三十七次激活） — verified by PR body + LAST TEST
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-46.3.1 | release.yml softprops/action-gh-release step + contents: write 在场 | yaml grep | Not Started |
-| TEST-46.3.2 | README 无 "does not publish a GitHub Release object" + Releases 段在场 | docs grep | Not Started |
-| TEST-46.3.3 | smoke v36[55/55] + TestTask463 PASS + release docs + ADR-050 D3/D4 ratify | smoke + docs grep | Not Started |
+| TEST-46.3.1 | release.yml softprops/action-gh-release step + contents: write 在场 | yaml grep | Done |
+| TEST-46.3.2 | README 无 "does not publish a GitHub Release object" + Releases 段在场 | docs grep | Done |
+| TEST-46.3.3 | smoke v36[55/55] + TestTask463 PASS + release docs + ADR-050 D3/D4 ratify | smoke + docs grep | Done |
 
 ## 9. Verification
 ```bash
@@ -62,4 +62,22 @@ grep -q "D4.*Accepted\|D4.*ratif" docs/decisions/adr-050-v1.0-definition.md
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
+
+1. **完成日期**：2026-07-03
+2. **改动文件**：
+   - .github/workflows/release.yml（加 softprops/action-gh-release@v2 step + contents:write + RELEASE_NOTES.md body 提取 step）
+   - scripts/console_smoke.sh（v35→v36，step [54/54]→[55/55]）
+   - internal/cli/smoke_syntax_test.go（TestTask463：release.yml Release step + README 无过时声明 + no-regression [37/37]..[54/54]）
+   - docs/decisions/adr-050-v1.0-definition.md（D3/D4 ratify 扩展）
+   - docs/decisions/adr-007-minimal-tarball-distribution.md（add-only Phase-46 Amendment）
+   - docs/releases/v0.39.0-evidence.md + v0.39.0-artifacts.md（新增）
+   - docs/roadmap.md + docs/s2v-adapter.md（推进记录 + Status）
+3. **commit 列表**：- `<backfill: hash>` feat(closeout): task-46.3 v0.39.0 closeout — smoke v36[55/55] + release.yml GitHub Release + ADR-050 D3/D4 ratify
+4. **§9 Verification 结果**：
+   - lint: N/A（release.yml + smoke + docs，gofmt 不涉；CI lint 全绿）
+   - typecheck: N/A
+   - unit-test: go test ./internal/cli/ 全过（TestTask463 + TestTask454 no-regression PASS）
+   - docs grep: ✅ release.yml softprops/action-gh-release@v2 + contents:write + body_path / README 无 "does not publish a GitHub Release object" / smoke v36[55/55] + bash -n PASS
+5. **剩余风险 / 未做项**：D4 首次实践（v0.39.0 tag push 触发 GitHub Release 对象创建）需 tag push 后实测确认；若 action 版本/权限问题 → v0.39.1 修或 honest-defer Release 对象到 v1.0.0
+6. **下游 task 影响**：Phase 47 v1.0.0（maturity label flip Pre-1.0→v1.0.0 + v1.0.0 tag + 用本 phase 的 release.yml Release 对象 + ADR-050 完整 ratify）
