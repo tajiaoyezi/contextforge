@@ -40,7 +40,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/contextforge ./cmd/contextforge
+# task-48.1 (v1.0.1-patch): inject the release tag into cli.Version at build time.
+# release.yml passes VERSION=<tag> via build-args; the default matches cli.go's
+# in-repo dev string so a local `docker build` without --build-arg stays sane.
+ARG VERSION=1.0.1-dev
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags "-X github.com/tajiaoyezi/contextforge/internal/cli.Version=${VERSION}" \
+      -o /out/contextforge ./cmd/contextforge
 
 # ---- Runtime stage ----
 FROM debian:bookworm-slim

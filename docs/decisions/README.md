@@ -57,7 +57,7 @@ This directory holds ContextForge's Architecture Decision Records (ADRs) — imm
 |---|---|---|---|
 | [007](adr-007-minimal-tarball-distribution.md) | minimal-tarball-distribution | Accepted | v0.1 minimal distribution: GitHub Release tarball + source self-host + Docker Compose. (Amended by ADR-050: v1.0 narrowed to pragmatic closure; GitHub Release object added Phase 46.) |
 | [033](adr-033-release-ci-hardening.md) | release-ci-hardening | Accepted | Multi-arch manifest + anonymous-pull guard + keyless supply-chain attestation (cosign/SBOM) + strict lint. |
-| [050](adr-050-v1.0-definition.md) | v1.0-definition | Proposed (partial D1/D2 ratified) | v1.0.0 = capability maturity + API/CLI freeze + docs alignment + GitHub Release process; explicit known-limitations list. |
+| [050](adr-050-v1.0-definition.md) | v1.0-definition | Accepted (full D1/D2/D3/D4) | v1.0.0 = capability maturity + API/CLI freeze + docs alignment + GitHub Release process; explicit known-limitations list. |
 
 ## Governance & Process
 

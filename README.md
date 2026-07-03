@@ -45,7 +45,7 @@ ContextForge indexes your project's knowledge sources and retrieves them with a 
 
 ## Latest
 
-The current release is **`v1.0.0`** (v1.0 收口冲刺第二步 — D3 文档对齐 + D4 GitHub Release 流程). For the full per-version changelog see [RELEASE_NOTES.md](RELEASE_NOTES.md) (detailed) or [CHANGELOG.md](CHANGELOG.md) (condensed). All historical version summaries (v0.3.0→v1.0.0) live in RELEASE_NOTES.md.
+The current release is **`v1.0.0`** (v1.0 收口终点 — ADR-050 完整 ratify Accepted + maturity label flip Pre-1.0→v1.0.0). For the full per-version changelog see [RELEASE_NOTES.md](RELEASE_NOTES.md) (detailed) or [CHANGELOG.md](CHANGELOG.md) (condensed). All historical version summaries (v0.3.0→v1.0.0) live in RELEASE_NOTES.md.
 
 ## Run the released image
 

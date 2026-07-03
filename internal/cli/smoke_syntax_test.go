@@ -787,11 +787,24 @@ func TestTask471_SmokeV37V100ReleaseStep(t *testing.T) {
 		t.Fatalf("read %s: %v", readme, err)
 	}
 	rmBody := string(rmRaw)
-	if strings.Contains(rmBody, "Pre-1.0") {
-		t.Fatalf("README still contains 'Pre-1.0' maturity label (should be v1.0.0 after Phase 47)")
+	// The Status label (line ~3) must be v1.0.0, not Pre-1.0. We check the **Status:** line
+	// specifically, NOT any "Pre-1.0" substring (historical references like "Pre-1.0→v1.0.0"
+	// in the Latest section are legitimate and must not trip this guard).
+	statusLine := ""
+	for _, line := range strings.Split(rmBody, "\n") {
+		if strings.HasPrefix(line, "**Status:**") {
+			statusLine = line
+			break
+		}
 	}
-	if !strings.Contains(rmBody, "v1.0.0") {
-		t.Fatalf("README missing v1.0.0 maturity label")
+	if statusLine == "" {
+		t.Fatalf("README missing **Status:** maturity label line")
+	}
+	if strings.Contains(statusLine, "Pre-1.0") {
+		t.Fatalf("README **Status:** line still 'Pre-1.0' (should be v1.0.0 after Phase 47): %q", statusLine)
+	}
+	if !strings.Contains(statusLine, "v1.0.0") {
+		t.Fatalf("README **Status:** line missing v1.0.0 maturity label: %q", statusLine)
 	}
 
 	// TEST-47.1.2: ADR-050 Status Accepted (full ratify).
@@ -814,6 +827,103 @@ func TestTask471_SmokeV37V100ReleaseStep(t *testing.T) {
 	rnBody := string(rnRaw)
 	if !strings.Contains(rnBody, "Known limitations") {
 		t.Fatalf("RELEASE_NOTES.md missing v1.0.0 Known limitations section")
+	}
+}
+
+// TEST-48.1.3 / AC3: smoke v38 adds step 57 — task-48.1 closeout (v1.0.1-patch). v1.0 收口审查残留修复:
+// P0 CLI version ldflags (cli.go + Dockerfile + release.yml) + P1-P3 文档残留. Asserts the v38 step 57
+// marker + Phase 48 status, cli.go Version default bumped, Dockerfile ldflags present, release.yml
+// build-args present, ADR-050 docs/decisions index Accepted, and no regression of prior denominators.
+func TestTask481_SmokeV38V101PatchStep(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
+	raw, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatalf("read %s: %v", script, err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "v38 (task-48.1)") {
+		t.Fatalf("console_smoke.sh missing v38 (task-48.1) header block")
+	}
+	for _, marker := range []string{"[57/57]", "v1.0.1-patch", "TEST-48.1.1", "TEST-48.1.2"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v38 step 57 must document v1.0.1-patch status (missing %q)", marker)
+		}
+	}
+	// No regression of the prior steps (v13-v37 blocks intact; denominators untouched per ADR-014 D5).
+	for _, marker := range []string{"[37/37]", "[50/50]", "[55/55]", "[56/56]", "v1.0.0-release"} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("smoke v38 must not regress existing step marker %q", marker)
+		}
+	}
+
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not in PATH — skipping `bash -n` syntax check (CI Linux runs it)")
+	}
+	out, err := exec.Command(bash, "-n", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash -n %s failed: %v\n%s", script, err, out)
+	}
+
+	// TEST-48.1.1: P0 — cli.go Version default bumped + Dockerfile ldflags + release.yml build-args.
+	cliGo := filepath.Join("..", "..", "internal", "cli", "cli.go")
+	cliRaw, err := os.ReadFile(cliGo)
+	if err != nil {
+		t.Fatalf("read %s: %v", cliGo, err)
+	}
+	cliBody := string(cliRaw)
+	if strings.Contains(cliBody, `"0.38.0-dev"`) {
+		t.Fatalf("cli.go still contains stale Version default \"0.38.0-dev\" (must be bumped)")
+	}
+	if !strings.Contains(cliBody, `"1.0.1-dev"`) {
+		t.Fatalf("cli.go missing bumped Version default \"1.0.1-dev\"")
+	}
+
+	dockerfile := filepath.Join("..", "..", "Dockerfile")
+	dfRaw, err := os.ReadFile(dockerfile)
+	if err != nil {
+		t.Fatalf("read %s: %v", dockerfile, err)
+	}
+	dfBody := string(dfRaw)
+	for _, marker := range []string{"ARG VERSION", "ldflags", "cli.Version"} {
+		if !strings.Contains(dfBody, marker) {
+			t.Fatalf("Dockerfile missing P0 ldflags marker %q", marker)
+		}
+	}
+
+	releaseYml := filepath.Join("..", "..", ".github", "workflows", "release.yml")
+	ryRaw, err := os.ReadFile(releaseYml)
+	if err != nil {
+		t.Fatalf("read %s: %v", releaseYml, err)
+	}
+	ryBody := string(ryRaw)
+	for _, marker := range []string{"build-args", "VERSION="} {
+		if !strings.Contains(ryBody, marker) {
+			t.Fatalf("release.yml missing P0 build-args marker %q", marker)
+		}
+	}
+
+	// TEST-48.1.2: P1-P3 — docs/decisions/README.md ADR-050 Accepted + README Latest v1.0 + example.toml.
+	adrIdx := filepath.Join("..", "..", "docs", "decisions", "README.md")
+	idxRaw, err := os.ReadFile(adrIdx)
+	if err != nil {
+		t.Fatalf("read %s: %v", adrIdx, err)
+	}
+	idxBody := string(idxRaw)
+	// The ADR-050 line must say Accepted, not "Proposed (partial".
+	for _, line := range strings.Split(idxBody, "\n") {
+		if strings.Contains(line, "adr-050") {
+			if !strings.Contains(line, "Accepted") {
+				t.Fatalf("docs/decisions/README.md ADR-050 line must say Accepted (was 'Proposed (partial ...'):\n  %s", line)
+			}
+		}
+	}
+
+	readme := filepath.Join("..", "..", "README.md")
+	rmRaw, _ := os.ReadFile(readme)
+	rmBody := string(rmRaw)
+	if strings.Contains(rmBody, "v1.0 收口冲刺第二步") {
+		t.Fatalf("README Latest section still contains stale 'v1.0 收口冲刺第二步' description")
 	}
 }
 

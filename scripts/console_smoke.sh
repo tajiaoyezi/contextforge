@@ -1412,6 +1412,21 @@ echo "  [56/56] task-47.1 v1.0.0-release: v1.0 收口终点 — ADR-050 完整 r
 # 0 migration / 0 proto / 0 schema. ADR-050 完整 ratify Accepted；ADR-014 第三十八次激活。默认行为/既有契约/三门不退化。
 echo "    → v1.0.0 maturity milestone validated via docs grep TEST-47.1.1/.2/.3 (maturity label v1.0.0 + ADR-050 Accepted + known limitations 6 category); v1.0.0 tag push will second-practice the Release object"
 
+echo "  [57/57] task-48.1 v1.0.1-patch: v1.0 收口审查残留修复 — P0 CLI version 字符串（cli.go 默认值 1.0.1-dev + Dockerfile ARG VERSION + ldflags -X cli.Version + release.yml build-args → v1.0.1 镜像 contextforge version 报正确 tag）+ P1 docs/decisions/README.md ADR-050 Accepted + P2 README Latest 段 v1.0 描述 + P3 example.toml header v1.0.1 — ADR-014 第三十九次激活（Phase 48）"
+# v38 (task-48.1): Phase 48 (v1.0.1-patch) — v1.0.0 ship 后全面审查发现的 4 个残留 patch 修复。
+# P0 CLI version 字符串过时（internal/cli/cli.go:31 var Version = "0.38.0-dev" + Dockerfile go build 无 ldflags
+# + release.yml 无 build-args → v1.0.0 镜像 contextforge version 报 0.38.0-dev 非 1.0.0，D2 API/CLI 冻结
+# 直接缺陷）→ cli.go Version 默认值 "0.38.0-dev" → "1.0.1-dev" + Dockerfile go-build stage 加 ARG VERSION=1.0.1-dev
+# + go build -ldflags "-X github.com/tajiaoyezi/contextforge/internal/cli.Version=${VERSION}" + release.yml
+# docker/build-push-action 加 build-args VERSION=${{ steps.ref.outputs.tag }}（v1.0.1 镜像 contextforge version
+# 报 tag 版本 1.0.1）。P1 docs/decisions/README.md ADR-050 行 "Proposed (partial D1/D2 ratified)" →
+# "Accepted (full D1/D2/D3/D4)"（Phase 47 漏更新访客索引）。P2 README Latest 段描述 "v1.0 收口冲刺第二步"
+# → "v1.0 收口终点"（task-47.1 perl 替换版本号没改描述）。P3 contextforge.example.toml header "v0.38.0" →
+# "v1.0.1"。Verified by TEST-48.1.1 (cli.go Version + Dockerfile ldflags + release.yml build-args) +
+# TEST-48.1.2 (docs 残留清理) + TEST-48.1.3 (smoke v38[57/57]). 0 dep / 0 migration / 0 proto / 0 schema.
+# 默认行为/既有契约/三门不退化（仅 CLI version 输出从错误变正确）。ADR-014 第三十九次激活。
+echo "    → P0 CLI version ldflags (cli.go 1.0.1-dev + Dockerfile ARG/ldflags + release.yml build-args) + P1-P3 docs cleanup validated via grep TEST-48.1.1/.2; v1.0.1 image contextforge version will report tag (1.0.1)"
+
 echo
 if [ "$MODE" = "real" ]; then
   echo "CONSOLE_REAL_SMOKE_EXIT=0"

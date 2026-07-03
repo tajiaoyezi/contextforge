@@ -27,8 +27,10 @@ var subcommands = []string{"init", "import", "index", "search", "serve", "mcp", 
 // Version is the contextforge CLI version string. It is stamped at release time
 // (main.go may override it, or -ldflags can inject it); the default reflects the
 // in-repo dev build. task-45.3 (ADR-050 D2) — v1.0 products must have a
-// discoverable version (`contextforge version`).
-var Version = "0.38.0-dev"
+// discoverable version (`contextforge version`). task-48.1 (v1.0.1-patch) — the
+// Dockerfile now injects the release tag via -ldflags -X at image build time, and
+// this default is bumped in lockstep with each release.
+var Version = "1.0.1-dev"
 
 // SubcommandNames returns a copy of the registered subcommand names (AC4).
 func SubcommandNames() []string {
