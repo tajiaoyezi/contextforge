@@ -512,6 +512,23 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 ---
 
+### 3.28 v0.39.0 / Phase 46 — v1.0-docs-and-release-flow（v1.0 收口冲刺第二步，post-v0.38.0 add-only 排期）
+
+**目标**：v1.0 收口冲刺第二步——交付 ADR-050 剩余 D3 文档对齐 + D4 GitHub Release 流程两维，为 Phase 47 / v1.0.0 正式发版铺平。**Grounding（ADR-013）四项实测缺口**：(1) README 776 行中 **38 个 `What's new` changelog 段**（v0.3.0→v0.38.0）占 ~85%，访客看不到 Features；末尾残留 `## v0.2 limitations` 过时段（"does not publish a GitHub Release object" 正是 D4 要改的）；"Run the released image" 写死 `v0.28.0`（当前 v0.38.0）；"Where to go next" 引用 v0.1 未实装。(2) **CHANGELOG.md** 不存在（v1.0 需对外标准 changelog；RELEASE_NOTES.md 是 1734 行内部详档，不可替代）。(3) **ADR 访客索引** 缺（adapter 内部有 49 ADR 表，但 `docs/decisions/` 无面向访客的分类导航 README）。(4) **release.yml** 101 行只推 image 到 GHCR + cosign sign/attest，**无 GitHub Release 对象自动创建**。本 phase 全程 **0 代码逻辑改动 / 0 新 dep / 0 migration / 0 proto / 0 schema change**（纯文档 + 1 个 CI step）。
+
+**来源**：ADR-050（v1.0 定义，D3/D4 本 phase ratify）/ ADR-007（分发定义 Amendment，D4 GitHub Release 对象成为分发物之一）/ ADR-013（README maturity label 不虚标 v1.0；D4 缺口真实可验证）/ ADR-014（第三十七次激活）。
+
+**候选 task 拆分**：
+- **task-46.1** readme-restructure：README 删 38 changelog 段 + 删 v0.2 limitations + 新增 Features 汇总段 + maturity label（Pre-1.0 收口中）+ 刷新版本 pin（v0.28.0→v0.38.0）。🟢 纯文档。
+- **task-46.2** changelog-and-adr-index：建 CHANGELOG.md（Keep a Changelog 1.1.0 格式）+ docs/decisions/README.md（49 ADR 分类导航 + 一句话摘要）。🟢 纯文档。
+- **task-46.3** release-flow-and-closeout：release.yml 加 `softprops/action-gh-release@v2` step（tag push 触发，GitHub Release 对象自动创建）+ smoke v35→v36[55/55] + v0.39.0 release docs + ADR-050 D3/D4 ratify + ADR-007 Amendment + roadmap/adapter。🟢 CI + 文档。
+
+**ADR**：**ADR-050 v1.0-definition**（D3/D4 ratify；完整 ratify 待 Phase 47 v1.0.0）；ADR-007 add-only Amendment（分发定义补 GitHub Release 对象）；ADR-013（maturity label Pre-1.0 不虚标；D4 缺口真实可验证）；ADR-014 第三十七次激活。Phase 46 实现经 ADR-012 自治；发版 tag/release 待用户授权。
+
+**v0.39.0 排期状态（规划中 2026-07-03，add-only）**：D3 文档对齐（README 重构 + CHANGELOG.md + ADR 索引）+ D4 GitHub Release 流程（release.yml Release 对象自动创建）。🟢 纯文档 + 1 CI step + 0 代码逻辑改动 / 0 dep / 0 migration / 0 proto / 0 schema。默认行为 / 既有契约 / 三门不退化。v1.0 正式发版（maturity label flip + v1.0.0 tag + SPEC-DEFER 列已知限制 + ADR-050 完整 ratify）→ Phase 47。
+
+---
+
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
