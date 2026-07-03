@@ -544,6 +544,21 @@ post-v0.12.0 仍开放的 `[SPEC-OWNER]`：
 
 ---
 
+### 3.30 v1.0.1 / Phase 48 — v1.0.1-patch（v1.0 收口审查残留修复，post-v1.0.0 add-only 排期）
+
+**目标**：v1.0.0 ship 后全面审查发现 4 个残留的 patch 修复。(P0) **CLI version 字符串过时**——`internal/cli/cli.go:31 var Version = "0.38.0-dev"` + Dockerfile/release.yml 无 ldflags 注入 → v1.0.0 镜像 `contextforge version` 报 `0.38.0-dev`（D2 API/CLI 冻结缺陷）；(P1) docs/decisions/README.md ADR-050 漏 Accepted；(P2) README Latest 段描述残留 v0.39.0"第二步"；(P3) example.toml header v0.38.0。P0 是代码 + CI 改动（cli.go 默认值 + Dockerfile ARG/ldflags + release.yml build-args），P1-P3 纯文档。**0 新 dep / 0 migration / 0 proto / 0 schema**。默认行为 / 既有契约 / 三门不退化（仅 CLI version 输出从错误变正确）。
+
+**来源**：v1.0 收口审查残留清单（grounding 全维度）/ ADR-014（第三十九次激活）/ ADR-004/008（守 0 dep baseline）。
+
+**候选 task 拆分**：
+- **task-48.1** v1.0.1-patch：单聚焦——P0 cli.go Version 默认值 1.0.1-dev + Dockerfile ARG VERSION + ldflags `-X cli.Version` + release.yml build-args VERSION；P1 docs/decisions/README.md ADR-050 Accepted；P2 README Latest 段 v1.0 描述；P3 example.toml header v1.0.1；smoke v37→v38[57/57] + TestTask481 + release docs + roadmap/adapter。🟢 代码 + CI + 文档。
+
+**ADR**：ADR-050（v1.0.0 已 Accepted，本 patch 不动 D-body）/ ADR-014 第三十九次激活。Phase 48 实现经 ADR-012 自治；v1.0.1 tag/release 待用户授权。
+
+**v1.0.1 排期状态（规划中 2026-07-03，add-only）**：v1.0 收口审查残留 patch。🟢 代码 + CI + 文档 / 0 dep / 0 migration / 0 proto / 0 schema。P0 CLI version ldflags + P1-P3 文档 + v1.0.1 tag。默认行为/既有契约/三门不退化（仅 version 输出从错误变正确）。
+
+---
+
 ## 4. 长尾 backlog（尚未归入上述版本，留 vNext）
 
 下列 `[SPEC-DEFER]` 标记承诺度低 / 范围小 / 依赖未明，暂不排入 v0.13–v0.16，待对应版本启动时据数据决定纳入或继续延后：
