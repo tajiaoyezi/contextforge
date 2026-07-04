@@ -3,6 +3,7 @@ name = "contextforge-core"
 version = "0.1.0"
 edition = "2021"
 description = "ContextForge Rust data-plane (scan/parse/chunk/index/retrieve). task-1.1: frozen proto/canonical-record contract."
+license = "MIT OR Apache-2.0"
 
 [lib]
 name = "contextforge_core"

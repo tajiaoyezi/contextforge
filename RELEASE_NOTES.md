@@ -1,5 +1,44 @@
 # ContextForge Release Notes
 
+## v1.0.2 (2026-07-03) — v1.0.2-governance (A 类治理清理：LICENSE OSI 化 + ADR-018 状态推进 + 索引/标记漂移修正。全面 v2.0 前遗留审查发现 4 项文档/治理残留，全部修复。0 功能变更 / 0 proto / 0 dep / 0 migration。ADR-014 第四十次激活)
+
+### What shipped
+
+**A4 — LICENSE OSI 化（MIT OR Apache-2.0）**：
+- 仓库 PUBLIC 但 `LICENSE` 是 all-rights-reserved 占位（README:144 标注"待选 OSI 许可证"）→ 选 Rust 生态惯例双许可 **MIT OR Apache-2.0**（`SPDX: (MIT OR Apache-2.0)`），贡献者最大兼容 + 专利授权覆盖。
+- `LICENSE` 改为 dual-license 指引；新增 `LICENSE-MIT`（MIT 全文）+ `LICENSE-APACHE`（Apache-2.0 全文）。
+- `core/Cargo.toml` + `bench/Cargo.toml` 加 `license = "MIT OR Apache-2.0"` 字段（cargo metadata / crates.io 兼容）。
+- `README.md:144` 许可声明更新为 dual-licensed。
+- 历史 release-evidence / task-spec 中的旧措辞**不溯改**（ADR-014 D5：已批准 spec/evidence 不溯改；它们如实记录当时 LICENSE 状态）。
+
+**A1 — ADR-018 promote Proposed → Accepted**：
+- ADR-018 header 原写"将于 v0.7.2 ship 时 promote"，但项目走 v0.8 → v1.0.1 路径，v0.7.2 从未独立 ship → promote 遗漏。
+- 客观证据：Dockerfile 已删 `ENV CONSOLE_API_FALLBACK_INMEM=1`（git history 可见）；daemon binary default=false；`TestBuildDeps_DegradedWhenNoDaemon` + `TestRouter_HealthDegraded_503` 锁定；Phase 16 production compose + ADR-022 已依赖在 force。
+- 加 `## Amendment (2026-07-03 promote)` 段记录 D1-D4 ratify 证据（不溯改正文，ADR-014 D5）。
+- `docs/decisions/README.md` ADR-018 行 Proposed → Accepted。
+
+**A2 — s2v-adapter.md §ADR 索引漂移修正**：
+- ADR-024（console-api-semantic-forward）+ ADR-045（governance-debt-cleanup-3）：s2v-adapter.md 索引滞留 Proposed，实际 ADR 文件 + docs/decisions/README.md 已是 Accepted（Phase 20 / v0.33.0 closeout ratify）。同步修正。
+
+**A3 — stale SPEC-DEFER marker 清理**：
+- `core/src/retriever/vector/lance_db.rs:31` `[SPEC-DEFER:phase-future.lancedb-index-tuning]` 仍读 active，但同文件 `:339` 已声明 redeemed（task-29.3 `create_ann_index` 建真实 IVF_PQ/IVF_HNSW_SQ），ADR-030:72 + v0.22.0-evidence 确认。改写为 fulfilled 措辞，与 commit `1dee053` 清的 3 处同类一致。
+
+### Upgrade path
+
+无 breaking change。许可证从 all-rights-reserved 变为 permissive OSI（MIT OR Apache-2.0）—— 用户现在可自由 redistribute / fork / 二次开发（旧 all-rights-reserved 不允许）。代码运行行为零变更。
+
+### Rollback path
+
+N/A（治理/许可证清理；无运行时行为变更。如需回退许可证状态，revert 本 commit 即可，但无技术理由）。
+
+### Contract / ADR / 凭据
+
+- **Contract**：0 proto change / 0 schema change / 0 API change / 0 dep change。
+- **ADR**：ADR-018 Accepted（加 Amendment，不动 D-Body）；ADR-024/045 索引修正（ADR 文件早 Accepted）；ADR-014 第四十次激活（D5 不溯改正文 / 已批准 evidence 不溯改）。
+- **不溯改清单**（ADR-014 D5）：`docs/releases/v0.2.0-evidence.md` / `v0.3.0-*.md` / `task-9.6-*.md` / 历史 RELEASE_NOTES §段中旧 LICENSE 措辞原样保留，它们如实记录当时状态。
+
+---
+
 ## v1.0.1 (2026-07-03) — v1.0.1-patch (v1.0 收口审查残留修复：P0 CLI version 字符串 ldflags 注入 + P1-P3 文档过时。P0 是 D2 API/CLI 冻结缺陷修复——cli.go Version 默认值停在 Phase 45 dev 串 + Dockerfile 无 ldflags → v1.0.0 镜像 contextforge version 报旧 dev 串；v1.0.1 修复 cli.go 默认值 + Dockerfile ARG/ldflags + release.yml build-args。P1 docs/decisions/README.md ADR-050 漏 Accepted + P2 README Latest 段描述 + P3 example.toml header。0 dep/0 migration/0 proto + ADR-014 第三十九次激活)
 
 ### What shipped (Phase 48, task 48.1)
