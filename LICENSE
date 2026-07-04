@@ -1,7 +1,9 @@
-Copyright (c) 2026 ContextForge contributors.
+ContextForge is dual-licensed under either:
 
-All rights reserved.
+- Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT License (LICENSE-MIT or http://opensource.org/licenses/MIT)
 
-This repository does not grant an open-source license yet. Redistribution,
-commercial use, sublicensing, and derivative distribution require explicit
-permission from the copyright holder.
+at your option. This is the SPDX expression `MIT OR Apache-2.0`.
+
+Contributions intentionally submitted for inclusion in this project are
+dual-licensed as above without any additional terms or conditions.

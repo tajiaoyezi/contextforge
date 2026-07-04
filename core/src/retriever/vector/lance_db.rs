@@ -28,8 +28,9 @@ const TABLE: &str = "spike";
 
 // ---- task-25.2: ANN 索引调参参数（IVF_PQ / HNSW）+ compaction 触发口径，可校验配置面 ----
 
-/// ANN 索引类型 + 调参参数。真实建索引 + 性能测量 [SPEC-DEFER:phase-future.lancedb-index-tuning]；
-/// 本枚举是参数契约层（validate 不建真实索引）。
+/// ANN 索引类型 + 调参参数。真实建索引已由 task-29.3 `create_ann_index` 兑现
+/// （redeemed [SPEC-DEFER:phase-future.lancedb-index-tuning] —— 见 `:339` 及 ADR-030:72 /
+/// v0.22.0-evidence）；本枚举是参数契约层（validate 不建真实索引）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LanceAnnIndex {
     /// IVF_PQ：`num_partitions`（IVF 簇数）+ `num_sub_vectors`（PQ 子向量数，须整除 dim）。

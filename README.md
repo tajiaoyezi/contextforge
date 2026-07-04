@@ -141,7 +141,7 @@ stops at the first non-flag argument.
 ## Platform support & license
 
 - **Official target**: Linux x86_64 / WSL2; macOS should work; Windows is best-effort via Git Bash.
-- **`LICENSE`**: all-rights-reserved (occupies the slot until an OSI license is chosen).
+- **`LICENSE`**: dual-licensed under MIT OR Apache-2.0 (`SPDX: (MIT OR Apache-2.0)`). Contributions are dual-licensed without additional terms.
 - Release / quickstart smoke gates (`scripts/release_smoke.sh`, `scripts/quickstart_smoke.sh`) run as part of the CI pipeline.
 
 ## Where to go next

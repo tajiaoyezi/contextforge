@@ -3,6 +3,7 @@ name = "contextforge-bench"
 version = "0.1.0"
 edition = "2021"
 publish = false
+license = "MIT OR Apache-2.0"
 
 # task-18.2 spike harness. Depends only on contextforge-core (frozen vector trait +
 # NoopVectorBackend) + serde/serde_json (already in the workspace lock). No real backend deps —
