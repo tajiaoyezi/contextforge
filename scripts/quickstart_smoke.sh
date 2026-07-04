@@ -50,7 +50,21 @@ contextforge index --source "$ROOT/examples/quickstart/sample-project" \
 echo "[6/7] search 'configuration'"
 contextforge search --collections=demo --top-k=5 --explain "configuration"
 
-echo "[7/7] eval run"
-contextforge eval run --collection demo || true
+echo "[7/7] eval run (smoke — gate expected to fail on this tiny demo fixture)"
+# The eval golden questions target real project source (internal/config/config.go,
+# core/src/retriever/mod.rs, …), but this Quick Start only indexed the 2-file demo
+# fixture (hermes-memory + sample-project). So the recall gate will fail here — that
+# is expected, not a regression. The eval command is run only to prove the CLI path
+# wires end-to-end (query → retrieve → score → report). To measure real recall,
+# index the project's own source then run: contextforge eval run --collection <that>
+# (BM25-only by default; add --semantic / --hybrid for the vector paths whose recall
+# the PRD north-star 75/85% gate measures).
+eval_summary="$(contextforge eval run --collection demo 2>&1 || true)"
+if echo "$eval_summary" | grep -qE "top5_strong_rate|gate="; then
+  echo "    → eval CLI wired end-to-end ✅ (recall gate intentionally skipped on the 2-file demo fixture)"
+else
+  echo "    → eval CLI ran but produced no summary — check output:" >&2
+  echo "$eval_summary" >&2
+fi
 
 echo "QUICKSTART_SMOKE_EXIT=0"
