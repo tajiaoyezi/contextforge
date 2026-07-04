@@ -68,5 +68,5 @@ go vet ./internal/cli/ && gofmt -l internal/cli/
 2. **改动文件**：cli.go（Version 默认值）+ Dockerfile（ARG VERSION + ldflags）+ release.yml（build-args）+ docs/decisions/README.md（ADR-050 Accepted）+ README.md（Latest 段）+ contextforge.example.toml（header）+ smoke_syntax_test.go（TestTask481 + TestTask471 精确化）+ console_smoke.sh（v38）+ release docs + roadmap/adapter
 3. **commit 列表**：- `ee6c058` feat(v1.0.1): task-48.1 v1.0.1-patch
 4. **§9 Verification 结果**：lint ✅（gofmt clean）/ typecheck N/A / unit-test ✅（go test ./... 全过含 TestTask481 + TestTask471）/ docs grep ✅（cli.go 1.0.1-dev + Dockerfile ldflags + release.yml build-args + ADR-050 Accepted + README 无"第二步"）
-5. **剩余风险**：Dockerfile ldflags 注入首次实践（v1.0.1 tag push 实测；若 build 失败 cli.go 默认值兜底）
+5. **剩余风险**：无（Dockerfile ldflags 注入首次实践成功——build log 确认 `-ldflags "-X .../cli.Version=v1.0.1"`，run 28691648309 success）
 6. **下游影响**：无（patch 修复，v2.0 路线独立）
