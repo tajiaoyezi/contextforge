@@ -177,9 +177,11 @@ func evalSearchPass(questions []evalpkg.Question, opts *evalRunOpts, mode passMo
 // rerankIdentity re-orders the fetched top-k by the deterministic IdentityReranker contract (ADR-026
 // D2: relevance score desc, chunk_id asc stable tie-break, no candidate dropped — see
 // core/src/rerank/identity.rs). The daemon Query RPC does not expose the reranker seam (console-api
-// rerank forward is [SPEC-DEFER:phase-future.console-api-rerank-forward]), so the eval layer applies
-// the deterministic default here to populate the reranked-recall column. Real cross-encoder uplift
-// comes from the Rust dogfood eval (docs/spikes/phase-21-hybrid-recall.md), never faked here (ADR-013).
+// rerank forward is server-side env-driven per ADR-043 D3, with provenance visibility fulfilled in
+// Phase 39 / ADR-044 — the per-request ?rerank control was superseded, not deferred-open), so the
+// eval layer applies the deterministic default here to populate the reranked-recall column. Real
+// cross-encoder uplift comes from the Rust dogfood eval (docs/spikes/phase-21-hybrid-recall.md),
+// never faked here (ADR-013).
 func rerankIdentity(in []*contextforgev1.RetrievalResult) []*contextforgev1.RetrievalResult {
 	out := make([]*contextforgev1.RetrievalResult, len(in))
 	copy(out, in)
