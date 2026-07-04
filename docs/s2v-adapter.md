@@ -487,7 +487,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 021 | memory-event-bus-bridge | Accepted | docs/decisions/adr-021-memory-event-bus-bridge.md |
 | 022 | memory-is-pinned-field-amendment | Accepted | docs/decisions/adr-022-memory-is-pinned-field-amendment.md |
 | 023 | vector-backend-default | Accepted | docs/decisions/adr-023-vector-backend-default.md |
-| 024 | console-api-semantic-forward | Proposed | docs/decisions/adr-024-console-api-semantic-forward.md |
+| 024 | console-api-semantic-forward | Accepted | docs/decisions/adr-024-console-api-semantic-forward.md |
 | 025 | hybrid-scoring-fusion | Accepted | docs/decisions/adr-025-hybrid-scoring-fusion.md |
 | 026 | reranker-provider | Accepted | docs/decisions/adr-026-reranker-provider.md |
 | 027 | embedding-provider-abstraction | Accepted | docs/decisions/adr-027-embedding-provider-abstraction.md |
@@ -508,7 +508,7 @@ Rust: #[test] fn test_x_y_z() { /* TEST-X.Y.Z / SCEN-X.Y.Z / AC<N> */ ... }
 | 042 | embedding-provider-remote-live | Accepted | docs/decisions/adr-042-embedding-provider-remote-live.md |
 | 043 | embedding-remote-reranker-live | Accepted | docs/decisions/adr-043-embedding-remote-reranker-live.md |
 | 044 | console-api-retrieval-signal-forward | Accepted | docs/decisions/adr-044-console-api-retrieval-signal-forward.md |
-| 045 | governance-debt-cleanup-3 | Proposed | docs/decisions/adr-045-governance-debt-cleanup-3.md |
+| 045 | governance-debt-cleanup-3 | Accepted | docs/decisions/adr-045-governance-debt-cleanup-3.md |
 | 046 | tokenizer-default-on | Accepted | docs/decisions/adr-046-tokenizer-default-on.md |
 | 047 | chunk-source-type-filter | Accepted | docs/decisions/adr-047-chunk-source-type-filter.md |
 | 048 | indexing-replay-splice | Accepted | docs/decisions/adr-048-indexing-replay-splice.md |
