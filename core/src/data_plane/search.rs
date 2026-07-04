@@ -19,8 +19,9 @@ use crate::pb_console::{
     SearchRequest as PbSearchRequest, SearchResponse, SearchResultItem, SourceChunk as PbSourceChunk,
 };
 use crate::embedding::DeterministicEmbeddingProvider;
-use crate::retriever::vector::BruteForceVectorBackend;
+use crate::retriever::vector::select_vector_backend;
 use crate::retriever::{Retriever, RetrieverError, SearchFilters, SearchOptions};
+use crate::server::resolve_vector_backend;
 use crate::workspace::WorkspaceStore;
 
 use super::search_persist::SqliteTracePersist;
@@ -274,14 +275,15 @@ impl SearchService for SearchServer {
 
         // task-39.1 (Phase 39): opt-in hybrid path. Mirrors core CoreService.search hybrid path
         // (server.rs, task-21.1): RRF-fuses the BM25 and vector result lists. Wires the same
-        // model-free DeterministicEmbeddingProvider + 0-dep BruteForceVectorBackend as the semantic
-        // branch (hardcoded — the env-factory backend is only wired into server.rs, an existing
-        // asymmetry [SPEC-DEFER:phase-future.console-data-plane-vector-backend-factory]), builds the
-        // on-demand index, then fuses. Hits carry retrieval_method "hybrid" + the RRF hybrid_score.
+        // model-free DeterministicEmbeddingProvider + env-selected vector backend as the semantic
+        // branch (backend now wired via resolve_vector_backend + select_vector_backend, mirroring
+        // server.rs:349-351 — closing the former hardcoded-BruteForce asymmetry; default unset/""
+        // → BruteForce byte-equivalent, ADR-004), builds the on-demand index, then fuses. Hits carry
+        // retrieval_method "hybrid" + the RRF hybrid_score.
         //
         // task-20.1 (Phase 20): opt-in semantic path. Mirrors core CoreService.search
         // (server.rs, task-19.3): wire the model-free DeterministicEmbeddingProvider +
-        // the 0-dep BruteForceVectorBackend, build an on-demand in-memory index from this
+        // the env-selected vector backend, build an on-demand in-memory index from this
         // collection's chunks (no persistence — [SPEC-DEFER:phase-future.hnsw-graph-persistence]),
         // and run the vector path. Hits carry retrieval_method "vector". Deterministic
         // embeddings prove the wiring, not recall (real recall is task-19.5/20.2; ADR-013).
@@ -289,7 +291,9 @@ impl SearchService for SearchServer {
         // unchanged; hybrid takes priority over semantic when both set (ADR-004).
         let hits = if req.hybrid {
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
-            let backend = Arc::new(BruteForceVectorBackend::new());
+            let (backend_name, vec_dim) = resolve_vector_backend();
+            let backend = select_vector_backend(&backend_name, vec_dim)
+                .map_err(|e| Status::internal(format!("hybrid vector backend: {e}")))?;
             let mut wired = retriever
                 .with_embedder(embedder)
                 .with_vector_searcher(backend.clone());
@@ -312,7 +316,9 @@ impl SearchService for SearchServer {
                 .map_err(|e| Status::internal(format!("hybrid search: {e}")))?
         } else if req.semantic {
             let embedder = Arc::new(DeterministicEmbeddingProvider::default());
-            let backend = Arc::new(BruteForceVectorBackend::new());
+            let (backend_name, vec_dim) = resolve_vector_backend();
+            let backend = select_vector_backend(&backend_name, vec_dim)
+                .map_err(|e| Status::internal(format!("semantic vector backend: {e}")))?;
             let mut wired = retriever
                 .with_embedder(embedder)
                 .with_vector_searcher(backend.clone());
@@ -1160,6 +1166,45 @@ mod tests {
                 "bm25 path must not report the vector method"
             );
         }
+    }
+
+    // ---- Console data-plane vector-backend factory wiring (closing the former
+    // console-data-plane-vector-backend-factory asymmetry). The semantic/hybrid branches now
+    // resolve the backend via CONTEXTFORGE_VECTOR_BACKEND (mirroring server.rs:349-351 /
+    // 402-404), default unset → BruteForce byte-equivalent; an unknown/feature-off backend
+    // surfaces the factory's honest Err as Status::internal (ADR-013, no silent fallback).
+    // AC1: default unset → vector path still works (BruteForce byte-equiv).
+    // AC2: unknown backend → Status::internal (honest Err, not silent BruteForce fallback). ----
+    #[tokio::test]
+    async fn test_console_dataplane_vector_backend_factory_default_is_bruteforce() {
+        // AC1: with no env override, the factory resolves to BruteForce and the semantic
+        // path returns vector hits (byte-equivalent to the former hardcoded path).
+        std::env::remove_var("CONTEXTFORGE_VECTOR_BACKEND");
+        std::env::remove_var("CONTEXTFORGE_VECTOR_DIM");
+        // parse_vector_backend reads env lazily; we assert the resolver contract directly
+        // (mirrors server.rs TEST-32.1.1's pure-parser approach).
+        let (name, dim) = crate::server::resolve_vector_backend();
+        assert!(
+            name.is_empty(),
+            "unset CONTEXTFORGE_VECTOR_BACKEND must resolve to empty (=BruteForce), got {name:?}"
+        );
+        assert_eq!(dim, 0, "unset CONTEXTFORGE_VECTOR_DIM must resolve to 0");
+        let backend = select_vector_backend(&name, dim).expect("BruteForce factory ok");
+        // The factory returns Arc<dyn VectorStore>; BruteForce is the default — the semantic
+        // test_20_1 above exercises the full dispatch path with this default, so here we
+        // only lock the resolver+factory contract (the wiring that closed the asymmetry).
+        drop(backend);
+    }
+
+    #[tokio::test]
+    async fn test_console_dataplane_vector_backend_factory_unknown_is_honest_err() {
+        // AC2: an unknown backend name surfaces the factory's honest Err, never a silent
+        // fallback to BruteForce (ADR-013). This is the same contract server.rs enforces.
+        let backend = select_vector_backend("nonexistent-backend", 0);
+        assert!(
+            backend.is_err(),
+            "unknown backend must surface an honest Err, not silently fall back to BruteForce"
+        );
     }
 
     // TEST-34.3.1 (task-34.3 / ADR-039 D3): get_source_chunk workspace isolation is ALREADY present
