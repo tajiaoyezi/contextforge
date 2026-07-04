@@ -528,7 +528,8 @@ impl Retriever {
         // task-18.1 / task-19.2: probe the vector path. With both an embedder and a backend wired,
         // use the real query embedding; otherwise keep the task-18.1 None-safe zero-vector probe.
         // Results are NOT merged into the BM25 set — `retrieval_method` stays "bm25" here; semantic
-        // results go via `search_semantic`, and hybrid fusion is [SPEC-DEFER:phase-future.hybrid-scoring].
+        // results go via `search_semantic`, and hybrid fusion (BM25+vector RRF) is fulfilled by the
+        // separate `search_hybrid` method (task-21.1 / ADR-025, Phase 21), not this BM25 path.
         if let (Some(embedder), Some(searcher)) = (&self.embedder, &self.vector_searcher) {
             if let Ok(vecs) = embedder.embed(std::slice::from_ref(&opts.query)) {
                 if let Some(qv) = vecs.into_iter().next() {
@@ -738,8 +739,8 @@ impl Retriever {
     /// task-19.2: semantic search — embed `query`, run the wired vector backend, and assemble
     /// 12-field `SearchResult`s (`retrieval_method = "vector"`). Returns `Ok(vec![])` when the
     /// semantic path is unavailable (no embedder / no backend / empty query) so callers fall back to
-    /// BM25. Independent of the BM25 `search()` path — hybrid fusion is deferred
-    /// (`[SPEC-DEFER:phase-future.hybrid-scoring]`).
+    /// BM25. Independent of the BM25 `search()` path — hybrid fusion (BM25+vector RRF) lives in the
+    /// separate `search_hybrid` method (task-21.1 / ADR-025, Phase 21; not deferred).
     pub fn search_semantic(
         &self,
         query: &str,

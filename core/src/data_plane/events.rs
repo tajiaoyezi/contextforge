@@ -399,8 +399,8 @@ fn audit_op_str_to_event(op: &str) -> Option<(&'static str, &'static str)> {
 
 /// task-26.2 / ADR-031 D4: rebuild the `ObservabilityEvent` sequence for memory
 /// state-op events from the persistent `audit_log` (ADR-021 D1 桥接源), so a
-/// subscriber can replay events it missed before subscribing (兑现 ADR-021
-/// `[SPEC-DEFER:phase-future.events-replay-from-audit]`).
+/// subscriber can replay events it missed before subscribing (this fulfills the
+/// ADR-021 replay-from-audit goal that was once tracked as a future defer).
 ///
 /// `entries` MUST be `id ASC` (as returned by `AuditSink::list()`); the output
 /// preserves that order. `since_ts > 0` filters to entries at/after the cutoff
