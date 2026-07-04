@@ -1215,7 +1215,8 @@ func TestTask203_SmokeV10SemanticEngagementAssertion(t *testing.T) {
 // per-result retrieval_method="hybrid" + hybrid_score provenance is asserted by the Rust dispatch test
 // (core/src/server.rs test_21_1_hybrid_dispatches_fusion_path); the console-api ?hybrid REST forward is
 // now fulfilled in Phase 39 (task-39.2; smoke step 48 / TestTask393), while ?rerank stays server-side
-// env-driven [SPEC-DEFER:phase-future.console-api-rerank-forward] (per-request superseded by ADR-043 D3).
+// env-driven (per-request ?rerank was superseded by ADR-043 D3, with provenance visibility fulfilled in
+// Phase 39 / ADR-044 — not an open defer).
 func TestTask213_SmokeV11HybridRerankAssertion(t *testing.T) {
 	script := filepath.Join("..", "..", "scripts", "console_smoke.sh")
 	raw, err := os.ReadFile(script)
