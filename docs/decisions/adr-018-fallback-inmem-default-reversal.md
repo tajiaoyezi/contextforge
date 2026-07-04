@@ -1,6 +1,6 @@
 # ADR `018`: `fallback-inmem-default-reversal`
 
-**Status**: Proposed (2026-05-26；将于 v0.7.2 ship 时 promote 到 Accepted)
+**Status**: Accepted (2026-07-03 promote — D1-D4 已实际 ship 且下游依赖在用，证据见 §Amendment (2026-07-03 promote)；原 Proposed 2026-05-26)
 **Category**: 部署 / 安全 / Docker
 **Date**: 2026-05-26
 **Decided By**: tajiaoyezi objective + PR #94 reviewer subagent + ContextForge-Console 团队独立 ack
@@ -159,3 +159,20 @@ docker inspect v072-optin --format '{{.State.Health.Status}}'
 
 - Deployment manifest 的 env 段加 `CONSOLE_API_FALLBACK_INMEM=1` 即可保留 v0.7.1 行为
 - readinessProbe 当前打 `/v1/health` 200 的：v0.7.2 不显式 opt-in 会一直 not-ready
+
+## Amendment (2026-07-03 promote)
+
+**Status 推进**: Proposed → Accepted。
+
+**背景**：本 ADR header 原写「将于 v0.7.2 ship 时 promote 到 Accepted」，但项目实际走 v0.8 → v1.0.1 路径，v0.7.2 patch version 从未独立 ship，导致 promote 动作遗漏——header Status 滞留 Proposed。
+
+**ratify 证据**（D1-D4 已实际交付且在用，非纸面决策）：
+
+- **D1 (default deny)**: `Dockerfile` 中 `ENV CONSOLE_API_FALLBACK_INMEM=1` 行已被删除（git history 可见 `+ENV` → `-ENV` 转换）；`internal/cli/console_api_serve.go:46` binary default = `envBoolTrue(os.Getenv(...))` 即 unset 时返 false；不 opt-in + gRPC 不可达 → `/v1/health` 返 503。
+- **D2 (env semantics 不变)**: `CONSOLE_API_FALLBACK_INMEM` 单一 env 名保留至今，无 dual-name / 别名引入。
+- **D3 (最小 scope)**: 改动仅 Dockerfile + docs，binary/router/handlers/memstore 行为不变；`TestBuildDeps_DegradedWhenNoDaemon` + `TestRouter_HealthDegraded_503` 锁定期望路径。
+- **D4 (Console standby)**: ContextForge-Console docker-compose 已加显式 opt-in env（跨仓 coordinate 完成）。
+
+**下游依赖已生效**: Phase 16 production compose stack (`deploy/docker-compose.production.yml`) + ADR-022 (memory-is-pinned) 的部署假设均建立在 ADR-018 D1-D4 在 force 的基础上。本次 promote 是把已生效的决策补登为 Accepted，**不改变任何运行行为**。
+
+**无 breaking change**: 本次仅状态推进 + 留痕，代码 / 配置 / 部署 / 升级路径零变更。
