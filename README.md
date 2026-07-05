@@ -1,6 +1,6 @@
 # ContextForge
 
-**Status:** **v2.0.0-alpha.2** (current) — v2.0 workspace ownership（per-user workspace access control；verified user 只能访问自己 own 的 + unowned 的；SearchService.Query thin gate；ADR-052）+ 承 v2.0.0-alpha 身份验证基础 + v1.1.0 eval 硬化 + v1.0.0 API/CLI 冻结。**v2.0 进行中**：身份基础 + workspace ownership 已交付，但 RBAC / 全 RPC enforcement / OAuth-OIDC 仍延后（Phase 52-54+）。byte-equivalent 默认（trusted-network + 旧 shared token 不变）。详 [ADR-052](docs/decisions/adr-052-workspace-ownership.md)。
+**Status:** **v2.0.0-alpha.3** (current) — v2.0 RBAC（3-role 扇平 admin/member/viewer + workspace_members 多 user 共享 + admin-gate destructive/config；workspace create auto-admin；ADR-053）+ 承 v2.0.0-alpha.2 workspace ownership + v2.0.0-alpha 身份验证基础 + v1.1.0 eval 硬化 + v1.0.0 API/CLI 冻结。**v2.0 进行中**：身份基础 + workspace ownership + RBAC 已交付，但全 RPC enforcement / sharing-transfer UI / OAuth-OIDC 仍延后（Phase 52.x/53+）。byte-equivalent 默认（trusted-network → admin role）。详 [ADR-053](docs/decisions/adr-053-rbac-roles-permissions.md)。
 
 ContextForge is a local-first context indexing and retrieval tool for agent memory, rules, source files, logs, and project notes.
 

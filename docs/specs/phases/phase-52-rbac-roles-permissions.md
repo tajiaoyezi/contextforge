@@ -1,6 +1,6 @@
 # Phase 52 · rbac-roles-permissions (B1 第三步：3-role 扇平 RBAC)
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v2.0 multi-user 第三步**——完整 AuthZ 层：3-role 扇平（admin/member/viewer）+ workspace_members 多 user 共享 + admin-gate destructive/user-management。关闭 `[SPEC-DEFER:phase-future.rbac-roles-permissions]`。
 >
