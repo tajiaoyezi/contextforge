@@ -1,6 +1,6 @@
 # Task `49.3`: `cli-dispatch-strict — eval CLI dispatch + --strict flag`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 49 (eval-hardening)
@@ -34,16 +34,16 @@
 - **exit code**：gate 仍软门（runEval 永远 exit 0 when validation passes；validation fail 才 exit 1）—— 本 task 不改 gate 行为，只改 validation dispatch
 
 ## 6. AC
-- [ ] **AC1**: `contextforge eval run --dataset=golden-semantic.jsonl` 现在可跑（之前 fail ≥30）— verified by **TEST-49.3.1**
-- [ ] **AC2**: `--strict` flag 强制 ValidateDataset；golden-semantic.jsonl + `--strict` 仍 fail（行为正确）— verified by **TEST-49.3.2**
-- [ ] **AC3**: dispatch 三路径覆盖（strict-pass / soft-fallback-pass / both-fail）— verified by **TEST-49.3.3**
+- [x] **AC1**: `contextforge eval run --dataset=golden-semantic.jsonl` 现在可跑（之前 fail ≥30）— verified by **TEST-49.3.1**
+- [x] **AC2**: `--strict` flag 强制 ValidateDataset；golden-semantic.jsonl + `--strict` 仍 fail（行为正确）— verified by **TEST-49.3.2**
+- [x] **AC3**: dispatch 三路径覆盖（strict-pass / soft-fallback-pass / both-fail）— verified by **TEST-49.3.3**
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-49.3.1 | golden-semantic.jsonl 无 --strict 可跑（降级 ValidateGoldenSemantic） | go test | Not Started |
-| TEST-49.3.2 | golden-semantic.jsonl + --strict fail（强制 ValidateDataset） | go test | Not Started |
-| TEST-49.3.3 | dispatch 三路径（strict-pass / fallback-pass / both-fail） | go test | Not Started |
+| TEST-49.3.1 | golden-semantic.jsonl 无 --strict 可跑（降级 ValidateGoldenSemantic） | go test | Done |
+| TEST-49.3.2 | golden-semantic.jsonl + --strict fail（强制 ValidateDataset） | go test | Done |
+| TEST-49.3.3 | dispatch 三路径（strict-pass / fallback-pass / both-fail） | go test | Done |
 
 ## 9. Verification
 ```bash
@@ -55,11 +55,18 @@ go vet ./internal/cli/ && gofmt -l internal/cli/
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
 
-1. **完成日期**：<TBD-after-impl>
-2. **改动文件**：<TBD-after-impl>
-3. **commit 列表**：<TBD-after-impl>
-4. **§9 Verification 结果**：<TBD-after-impl>
-5. **剩余风险**：<TBD-after-impl>
+1. **完成日期**：2026-07-05
+2. **改动文件**：
+   - internal/cli/eval.go（evalRunOpts +Strict 字段 / parseEvalRunOpts +--strict flag / runEval dispatch 逻辑 / usage 字符串）
+   - internal/cli/eval_test.go（+TestTask493_AC0/AC1/AC2/AC3 四测试）
+3. **commit 列表**：
+   - `7712cca` test(cli): task-49.3 RED — TestTask493 strict flag + dispatch 三路径测试
+   - `7064b7f` feat(cli): task-49.3 GREEN — eval dispatch + --strict flag
+4. **§9 Verification 结果**：
+   - lint: ✅（gofmt clean / go vet ✅）
+   - typecheck: N/A
+   - unit-test: 4 passed / 0 failed（TestTask493_AC0/AC1/AC2/AC3 全 PASS）+ full cli package no-regression ✅
+5. **剩余风险**：dispatch 降级路径在 ValidateDataset 失败时多一次 ValidateGoldenSemantic 调用（微秒级，性能可忽略）；error message 含两套 validator 的失败原因便于用户诊断
 6. **下游影响**：task-49.4（spike 依赖 CLI 能跑 golden 文件验证 wiring）
