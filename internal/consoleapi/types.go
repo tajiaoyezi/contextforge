@@ -28,6 +28,7 @@ import (
 // degraded mode UI (gRPC unreachable + CONSOLE_API_FALLBACK_INMEM unset).
 var (
 	ErrNotFound             = errors.New("not found")
+	ErrConflict             = errors.New("conflict")
 	ErrJobTerminal          = errors.New("job already terminal")
 	ErrInvalidRequest       = errors.New("invalid request")
 	ErrDataPlaneUnavailable = errors.New("data plane unavailable")
@@ -151,6 +152,23 @@ type HealthClient interface {
 	GetDetailed() (contractv1.CoreHealth, error)
 }
 
+// UserClient backs POST /v1/users + GET /v1/users (task-50.3 / ADR-051):
+// per-user identity registration + bearer-token → verified-user resolution.
+// May be nil in degraded/inmem-fallback mode — handlers return 503 then.
+type UserClient interface {
+	Create(id, name, token string) (User, error)
+	GetByToken(token string) (User, error) // zero-value User + nil err when not found
+	List() ([]User, error)
+}
+
+// User is the wire shape for /v1/users (task-50.3 / ADR-051 D1).
+type User struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Token         string `json:"token"`
+	CreatedAtUnix int64  `json:"created_at_unix"`
+}
+
 // Deps bundles all four backends + the bearer auth token for NewRouter.
 // AuthToken == "" means "trusted-network" (no Authorization header required —
 // aligns with Console CONSOLE_API_CORE_AUTH_MODE=trusted-network default).
@@ -172,7 +190,12 @@ type Deps struct {
 	// task-15.6 (Phase 15 P2 #7): optional HealthClient for ?detailed=true.
 	// May be nil — handleHealth falls back to a synthetic 5-component
 	// response if so (preserves v0.7 contract).
-	Health      HealthClient
+	Health HealthClient
+	// task-50.3 (Phase 50 / ADR-051): optional UserClient for per-user identity
+	// registration + bearer-token verified-user resolution. May be nil —
+	// user endpoints return 503 + bearer middleware skips user-token resolution
+	// (falls back to the legacy shared-token path, byte-equivalent).
+	User        UserClient
 	AuthToken   string
 	BackendKind string
 }

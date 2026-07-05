@@ -50,6 +50,8 @@ type Client struct {
 	eval      consoleapi.EvalClient
 	// task-15.6 (Phase 15 P2 #7 / ADR-020): detailed health probes.
 	health consoleapi.HealthClient
+	// task-50.2 (Phase 50 / ADR-051): per-user identity foundation.
+	user consoleapi.UserClient
 }
 
 // New dials the Rust data plane gRPC server (default 127.0.0.1:50551) and
@@ -79,6 +81,7 @@ func New(ctx context.Context, addr string, opts ...grpc.DialOption) (*Client, er
 		memory:    &memoryClient{c: pb.NewMemoryServiceClient(conn)},
 		eval:      &evalClient{c: pb.NewEvalServiceClient(conn)},
 		health:    &healthClient{c: pb.NewHealthServiceClient(conn)},
+		user:      &userClient{c: pb.NewUserServiceClient(conn)},
 	}, nil
 }
 
@@ -118,6 +121,9 @@ func (c *Client) Eval() consoleapi.EvalClient { return c.eval }
 // Health returns the consoleapi.HealthClient wrapper (task-15.6 / Phase 15 P2 #7).
 func (c *Client) Health() consoleapi.HealthClient { return c.health }
 
+// User returns the consoleapi.UserClient wrapper (task-50.2 / ADR-051).
+func (c *Client) User() consoleapi.UserClient { return c.user }
+
 // =====================================================================
 // Health wrapper (task-15.6 / Phase 15 P2 #7 / ADR-020).
 // =====================================================================
@@ -152,6 +158,55 @@ func (h *healthClient) GetDetailed() (contractv1.CoreHealth, error) {
 	}, nil
 }
 
+// =====================================================================
+// User wrapper (task-50.2 / Phase 50 / ADR-051).
+// =====================================================================
+
+type userClient struct{ c pb.UserServiceClient }
+
+func (u *userClient) Create(id, name, token string) (consoleapi.User, error) {
+	resp, err := u.c.Create(context.Background(), &pb.CreateUserRequest{
+		Id: id, Name: name, Token: token,
+	})
+	if err != nil {
+		return consoleapi.User{}, mapGrpcErr(err)
+	}
+	return pbUserToWire(resp), nil
+}
+
+func (u *userClient) GetByToken(token string) (consoleapi.User, error) {
+	resp, err := u.c.GetByToken(context.Background(), &pb.GetUserByTokenRequest{Token: token})
+	if err != nil {
+		// not_found → zero-value User + nil err (matches the interface contract).
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			return consoleapi.User{}, nil
+		}
+		return consoleapi.User{}, mapGrpcErr(err)
+	}
+	return pbUserToWire(resp), nil
+}
+
+func (u *userClient) List() ([]consoleapi.User, error) {
+	resp, err := u.c.List(context.Background(), &pb.ListUsersRequest{})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]consoleapi.User, 0, len(resp.GetUsers()))
+	for _, pu := range resp.GetUsers() {
+		out = append(out, pbUserToWire(pu))
+	}
+	return out, nil
+}
+
+func pbUserToWire(u *pb.User) consoleapi.User {
+	return consoleapi.User{
+		ID:            u.GetId(),
+		Name:          u.GetName(),
+		Token:         u.GetToken(),
+		CreatedAtUnix: u.GetCreatedAtUnix(),
+	}
+}
+
 // Ping issues a lightweight RPC to verify the data plane is reachable.
 // Used by console-api-serve startup health-check.
 func (c *Client) Ping(ctx context.Context) error {
@@ -172,6 +227,9 @@ func mapGrpcErr(err error) error {
 	switch st.Code() {
 	case codes.NotFound:
 		return consoleapi.ErrNotFound
+	case codes.AlreadyExists:
+		// task-50.3 (Phase 50 / ADR-051): UserService.Create dup id/token → 409 Conflict.
+		return fmt.Errorf("%w: %s", consoleapi.ErrConflict, st.Message())
 	case codes.FailedPrecondition:
 		return consoleapi.ErrJobTerminal
 	case codes.Unavailable:

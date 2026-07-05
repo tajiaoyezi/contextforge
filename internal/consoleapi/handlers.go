@@ -554,9 +554,12 @@ func handleMemoryPin(deps Deps) http.HandlerFunc {
 		}
 		// task-40.1 / ADR-045 D1: propagate the calling actor from the X-Actor header (empty when
 		// absent → server falls back to "console-api", byte-equivalent default). The lenient body
-		// contract above (ADR-022 D2) is unchanged. Authenticated identity (verifying the header
-		// against an auth subject) is [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
-		actor := r.Header.Get("X-Actor")
+		// contract above (ADR-022 D2) is unchanged. task-50.3 (ADR-051): when the bearer middleware
+		// resolved a verified user identity (per-user token), override the caller-declared X-Actor
+		// with the verified user id — closing [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
+		// When no verified identity is present (trusted-network / legacy shared token), X-Actor stays
+		// caller-declared (byte-equivalent v1.x).
+		actor := verifiedActor(r, r.Header.Get("X-Actor"))
 		if err := deps.Memory.Pin(id, pin, actor); err != nil {
 			mapStorageError(w, err)
 			return
@@ -622,7 +625,9 @@ func handleMemoryUnpin(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
 			return
 		}
-		actor := r.Header.Get("X-Actor")
+		// task-44.1 + task-50.3: verified actor (override X-Actor when a per-user token
+		// resolved a verified identity; byte-equivalent fallback otherwise).
+		actor := verifiedActor(r, r.Header.Get("X-Actor"))
 		if err := deps.Memory.Unpin(id, actor); err != nil {
 			mapStorageError(w, err)
 			return
