@@ -34,7 +34,7 @@ fn setup_workspace(label: &str) -> (PathBuf, Arc<dyn JobStore>) {
         .to_string_lossy()
         .into_owned();
     ws_store
-        .create(&WorkspaceCreate {
+        .create(&WorkspaceCreate { owner_id: None,
             workspace_id: "demo".to_string(),
             name: "demo".to_string(),
             root_path,

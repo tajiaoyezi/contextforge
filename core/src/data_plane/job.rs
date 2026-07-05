@@ -235,7 +235,7 @@ mod tests {
         let dir = temp_data_dir(&format!("base-{seq}"));
         let ws = Arc::new(SqliteWorkspaceStore::open(&dir).unwrap());
         // seed a workspace so enqueue can pass the FK check
-        ws.create(&WorkspaceCreate {
+        ws.create(&WorkspaceCreate { owner_id: None,
             workspace_id: "ws-job-test".into(),
             name: "job test".into(),
             root_path: std::env::temp_dir().join("cf-job-fix").to_string_lossy().to_string(),

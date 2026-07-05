@@ -27,7 +27,7 @@ fn workspace_smoke_create_to_delete() {
     let store = SqliteWorkspaceStore::open(&data_dir).expect("open store");
 
     let root_path = unique_dir("root").to_string_lossy().into_owned();
-    let req = WorkspaceCreate {
+    let req = WorkspaceCreate { owner_id: None,
         workspace_id: "smoke-ws-1".to_string(),
         name: "smoke ws 1".to_string(),
         root_path: root_path.clone(),

@@ -52,7 +52,7 @@ cargo test -p contextforge-core # no-regression
    - `cargo test -p contextforge-core --lib workspace` → 20 passed; 0 failed（含新增 test_51_1_1 / test_51_1_2）
    - `cargo test -p contextforge-core --lib`（no-regression）→ 241 passed; 0 failed
 5. **剩余风险**：
-   - owner_id 非 FK（user 删除时悬空，留 Phase 52 RBAC 处理）
+   - owner_id 非 FK（user 删除时悬空，`[SPEC-DEFER:phase-future.rbac-roles-permissions]` 留 Phase 52 RBAC 处理）
    - NULL = unowned 对任何 verified user 可见（过渡期；多租户需 Phase 52 收敛）
    - create_owned/create 双路径并存（短期 API surface 增大；proto/Go task-51.2/51.3 接入后收敛）
 6. **下游影响**：task-51.2（proto WorkspaceService 调 create_owned/list_owned/get_if_owned）/ task-51.3（Go handler 传 verified owner → WorkspaceCreate.owner_id）
