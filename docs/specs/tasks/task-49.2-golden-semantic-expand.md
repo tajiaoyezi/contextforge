@@ -1,6 +1,6 @@
 # Task `49.2`: `golden-semantic-expand — golden-semantic.jsonl 扩展（code-symbol + cjk 16→~80 题）`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 49 (eval-hardening)
@@ -34,16 +34,16 @@
 - **不跑 recall**：本 task 只产数据，CJK recall delta 由 task-49.4 spike 实测
 
 ## 6. AC
-- [ ] **AC1**: golden-semantic.jsonl ~80 题（~40 code-symbol + ~40 cjk）→ `ValidateGoldenSemantic` 通过 — verified by **TEST-49.2.1**
-- [ ] **AC2**: CJK 扩展覆盖新维度（多词短语 / CJK+ASCII 混合 / 自然语言长句 / code-CJK 标识符，每维度 ≥3 题）— verified by **TEST-49.2.2**
-- [ ] **AC3**: 无 dup query；每题 expected_file_path 真实存在 — verified by **TEST-49.2.3**
+- [x] **AC1**: golden-semantic.jsonl ~80 题（~40 code-symbol + ~40 cjk）→ `ValidateGoldenSemantic` 通过 — verified by **TEST-49.2.1**
+- [x] **AC2**: CJK 扩展覆盖新维度（多词短语 / CJK+ASCII 混合 / 自然语言长句 / code-CJK 标识符，每维度 ≥3 题）— verified by **TEST-49.2.2**
+- [x] **AC3**: 无 dup query；每题 expected_file_path 真实存在 — verified by **TEST-49.2.3**
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-49.2.1 | golden-semantic.jsonl ~80 题过 ValidateGoldenSemantic | go test | Not Started |
-| TEST-49.2.2 | CJK 新维度覆盖（多词/混合/长句/标识符 各≥3） | go test | Not Started |
-| TEST-49.2.3 | 无 dup + expected_file_path 真实存在 | go test + grep | Not Started |
+| TEST-49.2.1 | golden-semantic.jsonl ~80 题过 ValidateGoldenSemantic | go test | Done |
+| TEST-49.2.2 | CJK 新维度覆盖（多词/混合/长句/标识符 各≥3） | go test | Done |
+| TEST-49.2.3 | 无 dup + expected_file_path 真实存在 | go test + grep | Done |
 
 ## 9. Verification
 ```bash
@@ -52,11 +52,18 @@ go vet ./internal/eval/ && gofmt -l internal/eval/
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
 
-1. **完成日期**：<TBD-after-impl>
-2. **改动文件**：<TBD-after-impl>
-3. **commit 列表**：<TBD-after-impl>
-4. **§9 Verification 结果**：<TBD-after-impl>
-5. **剩余风险**：<TBD-after-impl>
+1. **完成日期**：2026-07-05
+2. **改动文件**：
+   - test/fixtures/eval/golden-semantic.jsonl（扩展 16→76 题）
+   - internal/eval/eval_test.go（+TestTask492_AC1/AC2/AC3 三测试 + strings import）
+3. **commit 列表**：
+   - `f350ed2` test(eval): task-49.2 RED — TestTask492_AC1/AC2/AC3
+   - <GREEN> feat(eval): task-49.2 GREEN — golden-semantic.jsonl 扩展 76 题（code-symbol 35 + cjk 41）
+4. **§9 Verification 结果**：
+   - lint: ✅（gofmt clean on eval_test.go）
+   - typecheck: N/A（go vet ✅）
+   - unit-test: 3 passed / 0 failed（TestTask492_AC1/AC2/AC3 全 PASS）+ full eval package no-regression ✅
+5. **剩余风险**：CJK 扩展覆盖 4 新维度（multi-word 5 / cjk-ascii-mix 7 / natural-lang 4 / code-cjk-id 4），但 recall delta 实测在 task-49.4；若 bigram vs true-seg 在大语料仍 delta=0 说明 bigram 默认正确
 6. **下游影响**：task-49.4（CJK spike 读此文件对比 bigram vs true-seg）
