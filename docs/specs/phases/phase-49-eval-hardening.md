@@ -48,7 +48,7 @@ v1.0 的所有 recall 数字都在 ≤30 题作者策展 golden 上测的（phas
 ### 49.5 closeout（🟢 文档）
 README/RELEASE_NOTES recall 声明据 task-49.4 实测更新；redeem/继续 defer SPEC-DEFER；phase closeout + smoke gate。
 
-**不在本 phase 范围**：标准公共 benchmark（BEIR/MS MARCO/MTEB，留 v1.2/v2.0）/ gate 做 CI 硬门（保持软门）/ CJK 跨语言日韩（留 v1.2/v2.0）/ Rust-native eval runner（继续 defer）/ NDCG 新指标（聚焦 recall@K）/ multi-user/auth（v2.0 B1）。
+**不在本 phase 范围**（诚实 OOS 清单，均已登记 SPEC-DEFER）：标准公共 benchmark（BEIR/MS MARCO/MTEB `[SPEC-DEFER:phase-future.embedding-large-corpus-recall]` 部分 / `[SPEC-DEFER:phase-future.reranker-large-corpus-quality]`，本 phase 用自建语料不接标准基准）/ gate 做 CI 硬门（用户定保持软门，ADR-013）/ CJK 跨语言日韩（`[SPEC-DEFER:phase-future.cross-lingual-golden]` + `[SPEC-DEFER:phase-future.multilang-segmenter]`，本 phase 仅扩中文）/ Rust-native eval runner（`[SPEC-DEFER:phase-future.rust-native-eval-runner]` 继续 defer，Go 为 source of truth）/ NDCG 新指标（本 phase 聚焦 recall@K + top-1/MRR）/ multi-user/auth（v2.0 B1，本 phase 无关）。
 
 ## 3. 涉及模块
 
