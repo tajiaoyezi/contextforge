@@ -1,6 +1,6 @@
 # Task `49.1`: `golden-retrieval-jsonl — 大语料 retrieval golden（6 cats × ~20 题 ≈120 题）`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 49 (eval-hardening)
@@ -27,16 +27,16 @@
 - **不伪造 recall**：本 task 只产 golden 数据，不跑 recall（task-49.4 跑）。expected 是 ground-truth 不是预测 recall
 
 ## 6. AC
-- [ ] **AC1**: golden-retrieval.jsonl ≥120 题 / 6 categories / 每类 ≥5 → `ValidateDataset` 通过 — verified by **TEST-49.1.1**
-- [ ] **AC2**: 所有 category ∈ knownCategories（config-location/error-reproduction/historical-decision/log-troubleshooting/agent-memory-rule/code-location）— verified by **TEST-49.1.2**
-- [ ] **AC3**: 无 duplicate query；每题 expected_file_path 非空且文件真实存在 — verified by **TEST-49.1.3**
+- [x] **AC1**: golden-retrieval.jsonl ≥120 题 / 6 categories / 每类 ≥5 → `ValidateDataset` 通过 — verified by **TEST-49.1.1**
+- [x] **AC2**: 所有 category ∈ knownCategories（config-location/error-reproduction/historical-decision/log-troubleshooting/agent-memory-rule/code-location）— verified by **TEST-49.1.2**
+- [x] **AC3**: 无 duplicate query；每题 expected_file_path 非空且文件真实存在 — verified by **TEST-49.1.3**
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-49.1.1 | golden-retrieval.jsonl 过 ValidateDataset（≥120/6cat/≥5） | go test | Not Started |
-| TEST-49.1.2 | category ∈ knownCategories（6 builtin） | go test | Not Started |
-| TEST-49.1.3 | 无 dup query + expected_file_path 真实存在 | go test + grep | Not Started |
+| TEST-49.1.1 | golden-retrieval.jsonl 过 ValidateDataset（≥120/6cat/≥5） | go test | Done |
+| TEST-49.1.2 | category ∈ knownCategories（6 builtin） | go test | Done |
+| TEST-49.1.3 | 无 dup query + expected_file_path 真实存在 | go test + grep | Done |
 
 ## 9. Verification
 ```bash
@@ -51,11 +51,18 @@ go vet ./internal/eval/ && gofmt -l internal/eval/
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
+**Status**: Done
 
-1. **完成日期**：<TBD-after-impl>
-2. **改动文件**：<TBD-after-impl>
-3. **commit 列表**：<TBD-after-impl>
-4. **§9 Verification 结果**：<TBD-after-impl>
-5. **剩余风险**：<TBD-after-impl>
-6. **下游影响**：task-49.3（CLI dispatch 用此文件测降级路径反向）/ task-49.4（spike 读此文件）
+1. **完成日期**：2026-07-05
+2. **改动文件**：
+   - test/fixtures/eval/golden-retrieval.jsonl（新增，121 题）
+   - internal/eval/eval_test.go（+TestTask491_AC1/AC2/AC3 三测试）
+3. **commit 列表**：
+   - `a5043d6` test(eval): task-49.1 RED — TestTask491_AC1/AC2/AC3 (golden-retrieval.jsonl validator)
+   - `744980c` feat(eval): task-49.1 GREEN — golden-retrieval.jsonl 121 题/6 cat 过 ValidateDataset
+4. **§9 Verification 结果**：
+   - lint: ✅（gofmt clean on eval_test.go；eval.go CRLF 是 master 预存非本 task 引入）
+   - typecheck: N/A（Go 无独立 typecheck，go vet ✅）
+   - unit-test: 3 passed / 0 failed（TestTask491_AC1/AC2/AC3 全 PASS）+ full eval package no-regression ✅
+5. **剩余风险**：查询 expected_file_path 基于真实源码 tree 设计（os.Stat 验证全过），但 recall 实测在 task-49.4；若某 expected_file_path 在未来源码重构中移动，需同步更新本文件
+6. **下游影响**：task-49.3（CLI dispatch 用此文件测 strict-pass 路径）/ task-49.4（spike 读此文件跑大语料 recall）
