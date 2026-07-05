@@ -6,7 +6,7 @@ This directory holds ContextForge's Architecture Decision Records (ADRs) — imm
 >
 > **Status values**: `Proposed` (draft, not yet ratified) → `Accepted` (ratified, in force) → `Deprecated` / `Superseded`. Several ADRs carry add-only Amendments from later phases (noted inline); the ADR's own Status reflects its latest ratification.
 
-49 ADRs total (001–050; adr-019 was skipped). Grouped by category below.
+50 ADRs total (001–051; adr-019 was skipped). Grouped by category below.
 
 ---
 
@@ -58,6 +58,7 @@ This directory holds ContextForge's Architecture Decision Records (ADRs) — imm
 | [007](adr-007-minimal-tarball-distribution.md) | minimal-tarball-distribution | Accepted | v0.1 minimal distribution: GitHub Release tarball + source self-host + Docker Compose. (Amended by ADR-050: v1.0 narrowed to pragmatic closure; GitHub Release object added Phase 46.) |
 | [033](adr-033-release-ci-hardening.md) | release-ci-hardening | Accepted | Multi-arch manifest + anonymous-pull guard + keyless supply-chain attestation (cosign/SBOM) + strict lint. |
 | [050](adr-050-v1.0-definition.md) | v1.0-definition | Accepted (full D1/D2/D3/D4) | v1.0.0 = capability maturity + API/CLI freeze + docs alignment + GitHub Release process; explicit known-limitations list. |
+| [051](adr-051-identity-foundation.md) | identity-foundation | Accepted | v2.0 第一步: per-user token → SQLite users 表 → Go 覆写 actor (verified). 关闭 memory-actor-authenticated-identity SPEC-DEFER. 不做 RBAC/Postgres/OIDC (Phase 51-54+). byte-equivalent 默认. |
 
 ## Governance & Process
 
