@@ -414,3 +414,77 @@ func TestTask242_AC4_GateThresholdsUnchanged(t *testing.T) {
 		t.Fatalf("gate thresholds changed: %v / %v / %v", GateTop5StrongMin, GateTop10StrongMin, GateSemanticRecall10Min)
 	}
 }
+
+// TEST-49.1.1 / AC1: golden-retrieval.jsonl ~120 题 / 6 categories / 每类 ≥5 → 过 ValidateDataset
+func TestTask491_AC1_GoldenRetrievalPassesValidateDataset(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-retrieval.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	if len(qs) < 120 {
+		t.Fatalf("golden-retrieval.jsonl len=%d want >=120", len(qs))
+	}
+	if err := ValidateDataset(qs); err != nil {
+		t.Fatalf("golden-retrieval should pass ValidateDataset: %v", err)
+	}
+}
+
+// TEST-49.1.2 / AC2: 所有 category ∈ knownCategories（6 builtin）
+func TestTask491_AC2_CategoriesInKnownSet(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-retrieval.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	wantCats := map[string]bool{
+		"config-location":     true,
+		"error-reproduction":  true,
+		"historical-decision": true,
+		"log-troubleshooting": true,
+		"agent-memory-rule":   true,
+		"code-location":       true,
+	}
+	seen := map[string]int{}
+	for _, q := range qs {
+		if !wantCats[q.Category] {
+			t.Fatalf("category %q not in 6 builtin known set (query %q)", q.Category, q.Query)
+		}
+		seen[q.Category]++
+	}
+	if len(seen) != 6 {
+		t.Fatalf("want 6 distinct categories, got %d: %v", len(seen), seen)
+	}
+	for cat, n := range seen {
+		if n < 5 {
+			t.Fatalf("category %q has %d questions, want >=5", cat, n)
+		}
+	}
+}
+
+// TEST-49.1.3 / AC3: 无 duplicate query + expected_file_path 真实存在
+func TestTask491_AC3_NoDupQueriesAndFilesExist(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-retrieval.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	seen := map[string]int{}
+	for i, q := range qs {
+		if q.Query == "" {
+			t.Fatalf("question %d has empty query", i)
+		}
+		if q.ExpectedFilePath == "" {
+			t.Fatalf("question %d (%q) has empty expected_file_path", i, q.Query)
+		}
+		if prev, ok := seen[q.Query]; ok {
+			t.Fatalf("duplicate query %q (questions %d and %d)", q.Query, prev, i)
+		}
+		seen[q.Query] = i
+		// expected_file_path must be a real file in the repo (grounded, ADR-013)
+		p := filepath.Join("../..", q.ExpectedFilePath)
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected_file_path %q does not exist (query %q): %v", q.ExpectedFilePath, q.Query, err)
+		}
+	}
+}
