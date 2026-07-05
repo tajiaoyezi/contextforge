@@ -93,6 +93,14 @@ func handleCreateWorkspace(deps Deps) http.HandlerFunc {
 			mapStorageError(w, err)
 			return
 		}
+		// task-52.4 (Phase 52 / ADR-053 D2): workspace owner auto-gets admin membership.
+		// This binds the owner_id (Phase 51) to the RBAC membership layer (Phase 52) so
+		// the admin-gate recognizes the owner as admin without a separate add-member call.
+		// Best-effort: if Membership is nil (inmem-fallback/degraded) or AddMember fails,
+		// the workspace is still created — membership is a post-create enrichment.
+		if verifiedUser != "" && ws.WorkspaceID != "" && deps.Membership != nil {
+			_ = deps.Membership.AddMember(ws.WorkspaceID, verifiedUser, "admin")
+		}
 		writeJSON(w, http.StatusOK, ws)
 	}
 }

@@ -1,5 +1,52 @@
 # ContextForge Release Notes
 
+## v2.0.0-alpha.3 (2026-07-05) — v2.0-rbac-roles-permissions (B1 第三步：完整 AuthZ 层——3-role 扇平 admin/member/viewer + workspace_members 多 user 共享 + admin-gate destructive/workspace-config + workspace create auto-admin。ADR-053 D1-D4。migration 0022 workspace_members 表 + proto MembershipService + Go REST membership endpoints + roleMiddleware/admin-gate + workspace create auto-admin。byte-equivalent 默认。全 RPC enforcement/sharing-transfer UI/OAuth-OIDC 仍延后 Phase 52.x/53+。0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep。ADR-014 第四十四次激活)
+
+### What shipped (Phase 52, task 52.1-52.4)
+
+**task-52.1 ADR-053 + migration 0022 + MembershipStore**：
+- `core/migrations/0022_workspace_members.sql`：workspace_members 表（PK(workspace_id, user_id) + role CHECK admin/member/viewer）
+- MembershipStore（add/remove/list/get_role，同 UserStore pattern）
+
+**task-52.2 proto add-only MembershipService + Rust handler**：
+- MembershipService（AddMember/RemoveMember/ListMembers/GetMyRole）+ messages（0 现有字段变更，ADR-015 FROZEN）
+
+**task-52.3 Go REST membership + admin-gate**：
+- POST/GET/DELETE /v1/workspaces/{id}/members（membership CRUD）
+- requireAdmin helper（workspace-scoped gate：trusted-network → admin byte-equiv）
+- PATCH workspace/config admin-gate（非 admin → 403）
+- memory destructive + user mgmt：fail-open with TODO（无 workspace_id 上下文）
+
+**task-52.4 workspace create auto-admin + closeout**：
+- workspace create：owner 自动 AddMember(role=admin)
+- redeem `[SPEC-DEFER:phase-future.rbac-roles-permissions]`
+
+### 核心角色权限
+
+| Role | 权限 |
+|---|---|
+| admin | 全权（含 destructive + config + membership CRUD + user mgmt fail-open） |
+| member | 读写 workspace 数据；destructive → 403 |
+| viewer | 只读；POST/PATCH/DELETE → 403 |
+| trusted-network | 视为 admin（byte-equiv） |
+
+### 诚实声明（ADR-013）
+
+**v2.0 进行中**：
+- ✅ 身份验证基础（Phase 50）
+- ✅ workspace ownership（Phase 51）
+- ✅ RBAC 3-role + membership（Phase 52）
+- 🔶 全 RPC ownership enforcement 仍延后 `[SPEC-DEFER:phase-future.full-rpc-ownership-enforcement]` Phase 52.x（admin-gate 仅覆盖有 workspace_id 的端点；memory/user 无 workspace 上下文 → fail-open）
+- 🔶 workspace sharing/transfer UI 仍延后 `[SPEC-DEFER:phase-future.workspace-sharing-transfer]` Phase 53+
+- 🔶 token hash / OAuth-OIDC 仍延后 Phase 51+/53+
+
+### Contract / ADR
+
+- **Contract**：0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep / 0 breaking API change（membership routes add-only）。
+- **ADR**：ADR-053 Accepted（D1-D4）；ADR-014 第四十四次激活；redeem `[SPEC-DEFER:phase-future.rbac-roles-permissions]`（fulfilled by task-52.3/52.4）。
+
+---
+
 ## v2.0.0-alpha.2 (2026-07-05) — v2.0-workspace-isolation (B1 第二步：per-user workspace ownership——verified user 只能访问自己 own 的 + unowned 的 workspace；SearchService.Query thin gate。ADR-052 D1-D4。migration 0021 加 owner_id 列 + proto WorkspaceService owner 字段 + Go REST workspace handler 用 verified identity + SearchService thin gate。byte-equivalent 默认。RBAC/全 RPC enforcement/OAuth-OIDC 仍延后 Phase 52-54+。0 现有 proto 字段变更（add-only）/ 1 新 migration（guarded ALTER）/ 0 新 dep。ADR-014 第四十三次激活)
 
 ### What shipped (Phase 51, task 51.1-51.4)
