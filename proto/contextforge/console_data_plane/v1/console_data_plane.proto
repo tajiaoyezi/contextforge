@@ -36,6 +36,10 @@ message Workspace {
   repeated string denylist = 7;
   int64 created_at_unix = 8;
   int64 updated_at_unix = 9;
+  // task-51.2 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only per-user ownership
+  // provenance. Empty = unowned (legacy/backfill behavior). Existing clients that omit
+  // this field see no change (default empty string).
+  string owner_id = 10;
 }
 
 message CreateWorkspaceRequest {
@@ -44,6 +48,10 @@ message CreateWorkspaceRequest {
   string root_path = 3;
   repeated string allowlist = 4;
   repeated string denylist = 5;
+  // task-51.2 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only owner on create.
+  // Empty → create unowned (NULL owner_id); non-empty → create_owned writes it.
+  // Existing callers omitting the field stay byte-equivalent (owner NULL).
+  string owner_id = 6;
 }
 
 message GetWorkspaceRequest {
@@ -56,6 +64,18 @@ message ListWorkspacesRequest {
 
 message ListWorkspacesResponse {
   repeated Workspace items = 1;
+}
+
+// task-51.2 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only owner-scoped RPCs.
+// Keep existing List/Get byte-equivalent; these new RPCs expose WorkspaceStore owner
+// methods (create_owned / list_owned / get_if_owned from task-51.1).
+message ListOwnedWorkspacesRequest {
+  string owner_id = 1;  // verified user id (console-api resolves from bearer token)
+}
+
+message GetIfOwnedWorkspaceRequest {
+  string workspace_id = 1;
+  string owner_id = 2;  // verified user id
 }
 
 message DeleteWorkspaceRequest {
@@ -81,6 +101,9 @@ service WorkspaceService {
   rpc List(ListWorkspacesRequest) returns (ListWorkspacesResponse);
   rpc Delete(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
   rpc UpdateConfig(UpdateWorkspaceConfigRequest) returns (Workspace);
+  // task-51.2 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only owner-scoped RPCs.
+  rpc ListOwned(ListOwnedWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc GetIfOwned(GetIfOwnedWorkspaceRequest) returns (Workspace);
 }
 
 // =====================================================================

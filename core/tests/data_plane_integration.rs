@@ -98,6 +98,7 @@ async fn test_workspace_crud_via_grpc() {
             root_path: std::env::temp_dir().to_string_lossy().to_string(),
             allowlist: vec!["src/".into()],
             denylist: vec![".git/".into()],
+            owner_id: String::new(),
         })
         .await
         .expect("create ok");
@@ -170,6 +171,7 @@ async fn test_job_enqueue_get_cancel() {
         root_path: std::env::temp_dir().to_string_lossy().to_string(),
         allowlist: vec![],
         denylist: vec![],
+        owner_id: String::new(),
     })
     .await
     .expect("seed workspace");

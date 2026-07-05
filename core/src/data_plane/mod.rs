@@ -333,6 +333,7 @@ mod tests {
             denylist: vec![],
             created_at_unix: 0,
             updated_at_unix: 0,
+            owner_id: String::new(),
         };
         assert_eq!(w.workspace_id, "ws");
 
