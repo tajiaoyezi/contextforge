@@ -47,6 +47,7 @@ minor/alpha release，无 breaking change。byte-equivalent 默认（trusted-net
 
 - **Contract**：0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep / 0 breaking API change。
 - **ADR**：ADR-052 Accepted（D1-D4）；ADR-014 第四十三次激活；redeem `[SPEC-DEFER:phase-future.workspace-user-isolation]`（thin gate fulfilled by task-51.4；full RPC enforcement `[SPEC-DEFER:phase-future.full-rpc-ownership-enforcement]` 延后）。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `3f6373b` / tag object `v2.0.0-alpha.2` / release run `28733073902` (success) / ghcr digest `sha256:4725e0cec37a6c0e06898488033427f2d165841d997b7912d6331db80f58e0f9` / cosign tlog `2077849409` (sign) · `2077851783` (attest/SBOM) / GitHub Release URL `https://github.com/tajiaoyezi/contextforge/releases/tag/v2.0.0-alpha.2`。
 
 ---
 
