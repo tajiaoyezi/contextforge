@@ -70,7 +70,7 @@ SearchService.Query thin gate（verified user 非 own workspace → 403）+ rede
 ## 8. Risks
 - **ALTER TABLE 幂等**：guarded by PRAGMA table_info（同 0017 pattern，已验证）
 - **现有数据 backfill**：NULL owner = unowned（transitional）；不破坏现有部署
-- **SearchService thin gate 范围**：仅 Query；全 RPC enforcement 留 Phase 51.x
+- **SearchService thin gate 范围**：仅 Query；全 RPC enforcement `[SPEC-DEFER:phase-future.full-rpc-ownership-enforcement]` 留 Phase 51.x
 - **双 DB join**：app-level（workspaces.db + users.db 分离）；owner_id 是 string 非 FK
 
 ## 9. Phase smoke gate
