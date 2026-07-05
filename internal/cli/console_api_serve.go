@@ -147,6 +147,7 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 		Memory:       cli.Memory(),
 		Eval:         cli.Eval(),
 		Health:       cli.Health(), // task-15.6 (Phase 15 P2 #7)
+		User:         cli.User(),   // task-50.3 (Phase 50 / ADR-051): per-user identity
 	}, "grpc", func() { _ = cli.Close() }
 }
 

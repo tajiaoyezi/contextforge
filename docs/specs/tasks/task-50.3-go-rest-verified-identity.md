@@ -1,6 +1,6 @@
 # Task `50.3`: `go-rest-verified-identity — Go REST 注册 + bearer 解析 verified identity + actor 覆写`
 
-**Status**: Ready
+**Status**: Done
 **Priority**: P1
 **Owner**: 主 agent（ADR-012 自治）
 **Related Phase**: Phase 50 (identity-foundation)
@@ -29,16 +29,16 @@
 - **POST /v1/users**：trusted-network 或 admin token 可注册；普通 user token 不可（防止任意 user 创建）—— 初始实现：trusted-network 或任何有效 token 都可注册（简化；admin 分级 `[SPEC-DEFER:phase-future.rbac-roles-permissions]` 留 Phase 52 RBAC）
 
 ## 6. AC
-- [ ] **AC1**: POST /v1/users 注册 → 返 token → 用该 token 调 pin → actor=verified userID — verified by **TEST-50.3.1**
-- [ ] **AC2**: trusted-network（空 token）byte-equivalent（actor 仍 `"console-api"` 回落）— verified by **TEST-50.3.2**
-- [ ] **AC3**: 旧 shared token（CONTEXTFORGE_CONSOLEAPI_AUTH_TOKEN）仍工作（actor=X-Actor 声明值，旧行为）— verified by **TEST-50.3.3**
+- [x] **AC1**: POST /v1/users 注册 → 返 token → 用该 token 调 pin → actor=verified userID — verified by **TEST-50.3.1**
+- [x] **AC2**: trusted-network（空 token）byte-equivalent（actor 仍 `"console-api"` 回落）— verified by **TEST-50.3.2**
+- [x] **AC3**: 旧 shared token（CONTEXTFORGE_CONSOLEAPI_AUTH_TOKEN）仍工作（actor=X-Actor 声明值，旧行为）— verified by **TEST-50.3.3**
 
 ## 7. 追踪表
 | TEST-ID | 描述 | 落地 | Status |
 |---|---|---|---|
-| TEST-50.3.1 | 注册→token→pin actor=verified userID | go test | Not Started |
-| TEST-50.3.2 | trusted-network byte-equivalent | go test | Not Started |
-| TEST-50.3.3 | 旧 shared token 向后兼容 | go test | Not Started |
+| TEST-50.3.1 | 注册→token→pin actor=verified userID | go test | Done |
+| TEST-50.3.2 | trusted-network byte-equivalent | go test | Done |
+| TEST-50.3.3 | 旧 shared token 向后兼容 | go test | Done |
 
 ## 9. Verification
 ```bash
@@ -47,10 +47,20 @@ go test ./internal/cli/ # no-regression
 ```
 
 ## 10. Completion Notes
-**Status**: Ready
-1. **完成日期**：<TBD-after-impl>
-2. **改动文件**：<TBD-after-impl>
-3. **commit 列表**：<TBD-after-impl>
-4. **§9 Verification 结果**：<TBD-after-impl>
-5. **剩余风险**：<TBD-after-impl>
-6. **下游影响**：task-50.4（redeem marker 据本 task 实测 verified actor 贯穿）
+**Status**: Done
+1. **完成日期**：2026-07-05
+2. **改动文件**：
+   - internal/consoleapi/types.go（+UserClient interface +User struct +ErrConflict +Deps.User field）
+   - internal/consoleapi/user_handlers.go（新增，handleCreateUser/handleListUsers + verifiedActor helper）
+   - internal/consoleapi/router.go（+/v1/users 路由 + bearerAuthMiddleware 加 UserClient 参数 + verifiedUserIDKey context + verified identity 解析逻辑 + context import）
+   - internal/consoleapi/handlers.go（pin/unpin actor 用 verifiedActor 覆写 X-Actor）
+   - internal/consoleapi/grpcclient/grpcclient.go（+userClient impl + Client.user field + New wiring + User() accessor + AlreadyExists→ErrConflict mapping + codes/status import 已有）
+   - internal/cli/console_api_serve.go（Deps.User wiring from grpcclient）
+   - internal/consoleapi/user_identity_test.go（新增，TestTask503_AC1/AC2/AC3）
+3. **commit 列表**：
+   - <GREEN> feat(identity): task-50.3 Go REST 注册 + bearer verified identity + actor 覆写
+4. **§9 Verification 结果**：
+   - go test: 3 passed / 0 failed（TestTask503_AC1 verified-actor-override + AC2 byte-equiv + AC3 legacy-compat）+ full consoleapi package no-regression ✅ + full cli ✅
+   - go vet ✅ / gofmt clean
+5. **剩余风险**：bearer middleware 对 per-user token 多一次 GetByToken gRPC 调用（低 QPS 可接受；高 QPS 可加 token cache）；trusted-network + 旧 shared token byte-equivalent 验证通过（AC2/AC3）
+6. **下游影响**：task-50.4（redeem marker 据本 task 实测 verified actor 贯穿；本 task AC1 证明 X-Actor 被覆写）

@@ -1,6 +1,7 @@
 package consoleapi
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -56,7 +57,11 @@ func NewRouter(deps Deps) http.Handler {
 	// task-15.4 (Phase 15 P1 #4): list eval runs for "最近评测" panel.
 	// Non-destructive read; ?workspace_id= ?status= ?limit= optional.
 	mux.HandleFunc("GET /v1/eval-runs", handleListEvalRuns(deps))
-	return bearerAuthMiddleware(mux, deps.AuthToken)
+	// task-50.3 (Phase 50 / ADR-051): per-user identity registration endpoints.
+	// Add-only new routes; existing 22-endpoint Console Contract untouched (ADR-015).
+	mux.HandleFunc("POST /v1/users", handleCreateUser(deps))
+	mux.HandleFunc("GET /v1/users", handleListUsers(deps))
+	return bearerAuthMiddleware(mux, deps.AuthToken, deps.User)
 }
 
 // confirmMiddleware enforces ADR-017 D2 server-side bottom defense for
@@ -77,21 +82,47 @@ func confirmMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// verifiedUserIDKey is the context.Context key for the per-user verified identity
+// resolved by bearerAuthMiddleware (task-50.3 / ADR-051). When present, handlers
+// override the caller-declared X-Actor header value with this verified id.
+type verifiedUserIDKey struct{}
+
 // bearerAuthMiddleware enforces `Authorization: Bearer <token>` when
 // `token != ""`. Empty token = trusted-network mode (no header required).
-// Constant-time compare avoids timing-side-channel leaks.
-func bearerAuthMiddleware(inner http.Handler, token string) http.Handler {
+//
+// task-50.3 (Phase 50 / ADR-051): when `userClient != nil` and the presented token
+// is NOT the legacy shared token, the middleware resolves the token to a verified
+// user via UserService.GetByToken and injects the user id into the request context
+// (key `verifiedUserIDKey{}`). Handlers read this to override X-Actor with the
+// verified identity. When the token matches the legacy shared token (or
+// userClient is nil / token is empty), no identity is injected → byte-equivalent
+// with v1.x (X-Actor stays caller-declared).
+func bearerAuthMiddleware(inner http.Handler, token string, userClient UserClient) http.Handler {
 	if token == "" {
+		// trusted-network: no auth, no verified identity (byte-equivalent v1.x).
 		return inner
 	}
 	expected := "Bearer " + token
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("Authorization")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
-			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid bearer token")
+		// 1. Legacy shared token (constant-time compare, byte-equivalent v1.x path).
+		if subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1 {
+			inner.ServeHTTP(w, r)
 			return
 		}
-		inner.ServeHTTP(w, r)
+		// 2. Per-user token (task-50.3): resolve via UserService when available.
+		if userClient != nil && strings.HasPrefix(got, "Bearer ") {
+			presented := strings.TrimPrefix(got, "Bearer ")
+			user, err := userClient.GetByToken(presented)
+			if err == nil && user.ID != "" {
+				// Verified identity — inject into context. Handlers override X-Actor.
+				ctx := context.WithValue(r.Context(), verifiedUserIDKey{}, user.ID)
+				inner.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+		}
+		// 3. Neither matched → 401.
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid bearer token")
 	})
 }
 
