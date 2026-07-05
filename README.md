@@ -1,6 +1,6 @@
 # ContextForge
 
-**Status:** **v1.0.0** (current stable) — 功能成熟度收口（hybrid recall@5/@10=1.0 超 PRD 北极星 75%/85% on author-curated golden）+ API/CLI 冻结（proto FROZEN + daemon REST 清 501 + CLI version/--help）+ 文档对齐（README/CHANGELOG/ADR 索引）+ GitHub Release 流程（自动创建 Release 对象）全交付（ADR-050 D1-D4 完整 ratify Accepted）。不含 multi-user/认证/自动更新/arm64 native（推 v2.0，列已知限制）。详 [ADR-050](docs/decisions/adr-050-v1.0-definition.md)。
+**Status:** **v1.1.0** (current stable) — eval 硬化（大语料 recall 实测验证 v1.0 小语料 recall@1.0 是过拟合上界：121-question 大语料 BM25 baseline recall@10=0.74，hybrid 小语料仍达 1.0，hybrid/reranked 大语料数据延后）+ golden 扩展（retrieval 121 题 / semantic 76 题）+ eval CLI dispatch（`--dataset` ValidateDataset 失败降级 ValidateGoldenSemantic）+ `--strict` flag。承 v1.0.0（API/CLI 冻结 + GitHub Release 流程，ADR-050 D1-D4 Accepted）。不含 multi-user/认证/自动更新/arm64 native（推 v2.0，列已知限制）。详 [ADR-050](docs/decisions/adr-050-v1.0-definition.md)。
 
 ContextForge is a local-first context indexing and retrieval tool for agent memory, rules, source files, logs, and project notes.
 
@@ -25,7 +25,8 @@ ContextForge indexes your project's knowledge sources and retrieves them with a 
 - **Reranker** (cross-encoder) — opt-in second-stage re-rank; remote providers (SiliconFlow `Qwen3-VL-Reranker-8B` verified) via env (ADR-026/043).
 
 **Recall quality (real-measured, ADR-013)**
-- **Hybrid** (BM25+vector RRF) recall@5/@10 = **1.0** over the 16-question author-curated golden (exceeds PRD north-star 75%/85%). This is the hybrid path (`contextforge eval run --hybrid`); BM25-only recall is lower by design — the vector/hybrid paths are where the recall uplift lives (ADR-025). Large-corpus / standard-benchmark quality stays deferred (`[SPEC-DEFER]`, listed in v1.0 known limitations).
+- **Hybrid** (BM25+vector RRF) recall@5/@10 = **1.0** over the 16-question author-curated golden (exceeds PRD north-star 75%/85%). This is the hybrid path (`contextforge eval run --hybrid`); BM25-only recall is lower by design — the vector/hybrid paths are where the recall uplift lives (ADR-025).
+- **Large-corpus BM25 baseline** (Phase 49, 121 questions / 58 files): recall@10 = **0.7438** — lower than the small-golden hybrid number, confirming the small author-curated golden overfits BM25 recall. Hybrid/reranked large-corpus data stays deferred (needs ONNX model run). See `docs/spikes/phase49-large-corpus-recall.md` for the honest per-category breakdown + caveat.
 - Code/CJK-aware tokenizer (`code_cjk`) is the **production default** for new collections (ADR-046): camelCase/snake_case/dotted.path subword split + CJK bigram; existing collections unaffected (opt-out `CONTEXTFORGE_TOKENIZER=default`).
 - `source_type` filter (code/doc/config/other, derived from file extension — Phase 42).
 

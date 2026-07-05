@@ -1,5 +1,54 @@
 # ContextForge Release Notes
 
+## v1.1.0 (2026-07-05) — v1.1.0-eval-hardening (B4：大语料 eval 硬化——验证 v1.0 宣称的 hybrid recall@5/@10=1.0 是真本事还是 16-30 题小语料过拟合。**核心诚实发现（ADR-013）：大语料 BM25 baseline recall 显著退化**（121 题/58 文件 recall@10=0.74 vs phase-21 小语料 30 题 0.97），确认小语料 golden 过拟合；README recall 声明据实降级。golden 扩展（retrieval 121 题 + semantic 76 题）+ eval CLI dispatch + --strict flag。0 dep（feature-gated fastembed 已存在）/ 0 proto / 0 migration / gate 仍软门。ADR-014 第四十一次激活)
+
+### What shipped (Phase 49, task 49.1-49.5)
+
+**task-49.1 golden-retrieval.jsonl**（121 题 / 6 builtin categories）：
+- 新增大语料 retrieval golden，过 `ValidateDataset`（≥30/≥6cat/≥5每cat），CLI 可跑
+- 查询基于真实 contextforge 源码（internal/ + core/src/ + docs/decisions/），expected_file_path 全部 os.Stat 验证真实
+
+**task-49.2 golden-semantic.jsonl 扩展**（16→76 题）：
+- code-symbol 6→35（snake_case/PascalCase/dotted.path/kebab-case/camelCase 全模式）
+- cjk 10→41（保留原 adversarial + 加 4 新维度：multi-word 5 / cjk-ascii-mix 7 / natural-lang 4 / code-cjk-id 4 + 11 普通 CJK 短语）
+
+**task-49.3 CLI dispatch + --strict flag**：
+- `internal/cli/eval.go`：`--dataset` ValidateDataset 失败降级 ValidateGoldenSemantic（honest error 含两套 validator 失败原因）
+- 新增 `--strict` flag 强制 ValidateDataset（CI/benchmark 场景）
+- → `golden-semantic.jsonl`（2 cat）现在 CLI 可跑（之前 fail ≥6cat 检查）
+
+**task-49.4 large-corpus recall spike**（诚实实测）：
+- `core/examples/phase49_large_corpus_recall.rs`：fixture-driven（读 golden-retrieval.jsonl）+ production Retriever + code_cjk tokenizer
+- **BM25 baseline 实测**（corpus 58 files / 121 queries）：recall@5=0.6364 / recall@10=**0.7438** / top1=0.2479 / gate@10(≥0.85)=**FAIL**
+- vs phase-21 小语料（30q）：recall@10 **0.9667→0.7438（-0.22 退化）**
+- hybrid/reranked 诚实延后（本环境无 ONNX model，不伪造）
+- 详 `docs/spikes/phase49-large-corpus-recall.md`
+
+**task-49.5 closeout**：README recall 声明据实测降级 + 本 RELEASE_NOTES 段 + defer marker 清理。
+
+### 诚实核心发现（ADR-013）
+
+**大语料 BM25 recall 显著退化**：v1.0 README 宣称的 recall@1.0 是 hybrid path 在 16-30 题小语料上的测量。Phase 49 用 121 题/58 文件大语料实测 BM25 baseline，recall@10=0.74（gate fail）。**结论**：
+1. 小语料 golden 过拟合确认（distractor 密度低 + expected 占比高 → 容易命中）
+2. hybrid/reranked 大语料数据仍延后（需 ONNX model 真跑，预期会改善 top-1/MRR 但 recall@10 可能仍 <1.0）
+3. README 声明从"recall@1.0 无 caveat"降级为"小语料 hybrid 1.0 + 大语料 BM25 0.74 + hybrid 大语料延后"
+
+### Upgrade path
+
+minor release，无 breaking change。新增 `--strict` flag（add-only）；golden 文件是 test fixture 不影响运行时；CLI dispatch 是降级路径（ValidateDataset 失败时多一次 ValidateGoldenSemantic 调用，微秒级）。
+
+### Rollback path
+
+N/A（eval 硬化 + 诚实声明更新；无运行时行为变更。如需回退 README recall 声明，revert 本 commit，但不建议——降级是消除虚标风险）。
+
+### Contract / ADR / 凭据
+
+- **Contract**：0 proto / 0 schema / 0 API breaking change（CLI +add-only `--strict` flag）/ 0 dep（feature-gated fastembed 已存在）。
+- **ADR**：ADR-014 第四十一次激活（D5 不溯改正文）；redeem `cjk-golden-corpus-expansion`（task-49.2 扩 CJK golden 兑现）；部分 redeem `embedding-large-corpus-recall`（BM25 baseline 大语料数据有了，hybrid/reranked 仍延后）；不 redeem `cross-lingual-golden`（日韩）/ `reranker-large-corpus-quality`（NDCG 标准基准）。
+- **SPEC-DEFER 状态**：详 `docs/roadmap.md` §4 + `docs/spikes/phase49-large-corpus-recall.md` §不 Redeem。
+
+---
+
 ## v1.0.2 (2026-07-03) — v1.0.2-governance (A 类治理清理：LICENSE OSI 化 + ADR-018 状态推进 + 索引/标记漂移修正。全面 v2.0 前遗留审查发现 4 项文档/治理残留，全部修复。0 功能变更 / 0 proto / 0 dep / 0 migration。ADR-014 第四十次激活)
 
 ### What shipped

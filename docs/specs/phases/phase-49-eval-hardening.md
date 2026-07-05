@@ -1,6 +1,6 @@
 # Phase 49 · eval-hardening (B4 v1.1)
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v2.0 前的 eval 硬化**——用更大语料（~500-1000 chunks）+ 更多 golden questions（~120 retrieval + ~80 semantic）实测，确认 v1.0 宣称的 hybrid recall@5/@10=1.0 是真本事还是 16-30 题小语料过拟合，并把 CJK golden 从 10 题扩到 ~40 题（验证 bigram vs true-segmenter 在更大语料是否仍 delta=0）。
 >
@@ -82,12 +82,12 @@ README/RELEASE_NOTES recall 声明据 task-49.4 实测更新；redeem/继续 def
 - gate 仍软门（runEval exit 0 不变；ADR-013）
 
 ## 6. AC（Phase 级，每个 task §6 细化）
-- [ ] AC1: golden-retrieval.jsonl ~120 题 / 6 cat / 过 ValidateDataset — verified by task-49.1 §6
-- [ ] AC2: golden-semantic.jsonl ~80 题 / 过 ValidateGoldenSemantic — verified by task-49.2 §6
-- [ ] AC3: CLI dispatch + --strict flag 三路径覆盖 — verified by task-49.3 §6
-- [ ] AC4: 大语料 recall spike 诚实报告（实测数字 + caveat）— verified by task-49.4 §6
-- [ ] AC5: README/RELEASE_NOTES recall 声明与实测一致 + defer marker 清理 — verified by task-49.5 §6
-- [ ] AC6: ADR-014 D1-D5（第四十一次激活）全通过
+- [x] AC1: golden-retrieval.jsonl ~120 题 / 6 cat / 过 ValidateDataset — verified by task-49.1 §6
+- [x] AC2: golden-semantic.jsonl ~80 题 / 过 ValidateGoldenSemantic — verified by task-49.2 §6
+- [x] AC3: CLI dispatch + --strict flag 三路径覆盖 — verified by task-49.3 §6
+- [x] AC4: 大语料 recall spike 诚实报告（实测数字 + caveat）— verified by task-49.4 §6
+- [x] AC5: README/RELEASE_NOTES recall 声明与实测一致 + defer marker 清理 — verified by task-49.5 §6
+- [x] AC6: ADR-014 D1-D5（第四十一次激活）全通过
 
 ## 8. Risks
 - **recall<1.0（预期价值）**：大语料实测可能退化 → task-49.5 据实更新 README，不伪造
