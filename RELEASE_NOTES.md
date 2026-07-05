@@ -46,6 +46,7 @@ N/A（eval 硬化 + 诚实声明更新；无运行时行为变更。如需回退
 - **Contract**：0 proto / 0 schema / 0 API breaking change（CLI +add-only `--strict` flag）/ 0 dep（feature-gated fastembed 已存在）。
 - **ADR**：ADR-014 第四十一次激活（D5 不溯改正文）；redeem `cjk-golden-corpus-expansion`（task-49.2 扩 CJK golden 兑现）；部分 redeem `embedding-large-corpus-recall`（BM25 baseline 大语料数据有了，hybrid/reranked 仍延后）；不 redeem `cross-lingual-golden`（日韩）/ `reranker-large-corpus-quality`（NDCG 标准基准）。
 - **SPEC-DEFER 状态**：详 `docs/roadmap.md` §4 + `docs/spikes/phase49-large-corpus-recall.md` §不 Redeem。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `06644c8` / tag object `v1.1.0` / release run `28725393905` (success) / ghcr digest `sha256:c7adacddc5bfe932bf6754b49dd056304832fa6797a4a3a0fea01e266546383f` / cosign tlog `2074125833` (sign) · `2074128661` (attest/SBOM) / GitHub Release URL `https://github.com/tajiaoyezi/contextforge/releases/tag/v1.1.0`。
 
 ---
 
