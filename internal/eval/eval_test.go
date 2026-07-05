@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -482,6 +483,87 @@ func TestTask491_AC3_NoDupQueriesAndFilesExist(t *testing.T) {
 		}
 		seen[q.Query] = i
 		// expected_file_path must be a real file in the repo (grounded, ADR-013)
+		p := filepath.Join("../..", q.ExpectedFilePath)
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected_file_path %q does not exist (query %q): %v", q.ExpectedFilePath, q.Query, err)
+		}
+	}
+}
+
+// TEST-49.2.1 / AC1: golden-semantic.jsonl ~80 题（~40 code-symbol + ~40 cjk）→ 过 ValidateGoldenSemantic
+func TestTask492_AC1_GoldenSemanticExpandedPassesValidateGoldenSemantic(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-semantic.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	if len(qs) < 70 {
+		t.Fatalf("golden-semantic.jsonl expanded len=%d want >=70 (target ~80)", len(qs))
+	}
+	if err := ValidateGoldenSemantic(qs); err != nil {
+		t.Fatalf("expanded golden-semantic should pass ValidateGoldenSemantic: %v", err)
+	}
+	cats := map[string]int{}
+	for _, q := range qs {
+		cats[q.Category]++
+	}
+	if cats["code-symbol"] < 30 {
+		t.Fatalf("code-symbol count=%d want >=30 (target ~40)", cats["code-symbol"])
+	}
+	if cats["cjk"] < 30 {
+		t.Fatalf("cjk count=%d want >=30 (target ~40)", cats["cjk"])
+	}
+}
+
+// TEST-49.2.2 / AC2: CJK 扩展覆盖新维度（多词短语 / CJK+ASCII 混合 / 自然语言长句 / code-CJK 标识符）
+func TestTask492_AC2_CJKNewDimensionsCovered(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-semantic.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	dims := map[string]int{"multi-word": 0, "cjk-ascii-mix": 0, "natural-lang": 0, "code-cjk-id": 0}
+	for _, q := range qs {
+		if q.Category != "cjk" {
+			continue
+		}
+		switch {
+		case strings.Contains(q.Notes, "multi-word") || strings.Contains(q.Notes, "多词"):
+			dims["multi-word"]++
+		case strings.Contains(q.Notes, "cjk-ascii-mix") || strings.Contains(q.Notes, "混合"):
+			dims["cjk-ascii-mix"]++
+		case strings.Contains(q.Notes, "natural-lang") || strings.Contains(q.Notes, "自然语言"):
+			dims["natural-lang"]++
+		case strings.Contains(q.Notes, "code-cjk-id") || strings.Contains(q.Notes, "标识符"):
+			dims["code-cjk-id"]++
+		}
+	}
+	for dim, n := range dims {
+		if n < 3 {
+			t.Fatalf("CJK dimension %q has %d cases, want >=3 (dims=%v)", dim, n, dims)
+		}
+	}
+}
+
+// TEST-49.2.3 / AC3: 无 dup query + expected_file_path 真实存在
+func TestTask492_AC3_NoDupQueriesAndFilesExist(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-semantic.jsonl"
+	qs, err := LoadJSONL(fixture)
+	if err != nil {
+		t.Fatalf("LoadJSONL(%s): %v", fixture, err)
+	}
+	seen := map[string]int{}
+	for i, q := range qs {
+		if q.Query == "" {
+			t.Fatalf("question %d has empty query", i)
+		}
+		if q.ExpectedFilePath == "" {
+			t.Fatalf("question %d (%q) has empty expected_file_path", i, q.Query)
+		}
+		if prev, ok := seen[q.Query]; ok {
+			t.Fatalf("duplicate query %q (questions %d and %d)", q.Query, prev, i)
+		}
+		seen[q.Query] = i
 		p := filepath.Join("../..", q.ExpectedFilePath)
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("expected_file_path %q does not exist (query %q): %v", q.ExpectedFilePath, q.Query, err)
