@@ -54,7 +54,7 @@ cargo test -p contextforge-core --lib # no-regression
    - `cargo test -p contextforge-core --lib` → 244 passed; 0 failed（242 基线 + 2 新增，无回归）
    - `cargo clippy -p contextforge-core --tests -- -D warnings` → clean
 5. **剩余风险**：
-   - role 存 TEXT（非 FK），user/workspace 删除时 membership 行悬空（留 Phase 52.x 一致性清理）
+   - role 存 TEXT（非 FK），user/workspace 删除时 membership 行悬空（[SPEC-DEFER:phase-future.membership-orphan-cleanup] 留 Phase 52.x 一致性清理）
    - owner_id（ADR-052）与 membership 并存冗余，task-52.4 auto-admin 收敛一致性
    - admin-gate 范围（D3）仅定义，落地在 task-52.3 Go roleMiddleware
 6. **下游影响**：task-52.2（proto MembershipService 调 store）/ task-52.3（Go roleMiddleware 调 get_role）/ task-52.4（workspace create auto-admin）
