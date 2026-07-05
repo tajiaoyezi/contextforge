@@ -20,11 +20,12 @@ type evalRunOpts struct {
 	Semantic    bool
 	Hybrid      bool
 	Rerank      bool
+	Strict      bool
 }
 
 func runEval(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "run" {
-		fmt.Fprintln(stderr, "contextforge eval: usage: contextforge eval run [--dataset=golden.jsonl] [--collection=default] [--top-k=10] [--export-jsonl=path] [--semantic] [--hybrid] [--rerank]")
+		fmt.Fprintln(stderr, "contextforge eval: usage: contextforge eval run [--dataset=golden.jsonl] [--collection=default] [--top-k=10] [--export-jsonl=path] [--semantic] [--hybrid] [--rerank] [--strict]")
 		return 2
 	}
 	opts, err := parseEvalRunOpts(args[1:], stderr)
@@ -39,9 +40,20 @@ func runEval(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
+	// task-49.3: dispatch validation. --strict forces ValidateDataset (>=30/>=6cat/>=5each, the
+	// builtin-shape contract for CI/benchmark). Default (soft) tries ValidateDataset first, then
+	// falls back to ValidateGoldenSemantic (count-agnostic, for the smaller code-symbol/cjk golden)
+	// so `--dataset=golden-semantic.jsonl` is CLI-runnable. Both must pass schema well-formedness.
 	if err := evalpkg.ValidateDataset(questions); err != nil {
-		fmt.Fprintf(stderr, "contextforge eval run: invalid dataset: %v\n", err)
-		return 1
+		if opts.Strict {
+			fmt.Fprintf(stderr, "contextforge eval run: invalid dataset (--strict: ValidateDataset required): %v\n", err)
+			return 1
+		}
+		// soft fallback: try the count-agnostic validator
+		if err2 := evalpkg.ValidateGoldenSemantic(questions); err2 != nil {
+			fmt.Fprintf(stderr, "contextforge eval run: invalid dataset (failed both ValidateDataset and ValidateGoldenSemantic):\n  ValidateDataset: %v\n  ValidateGoldenSemantic: %v\n", err, err2)
+			return 1
+		}
 	}
 	if opts.ExportJSONL != "" {
 		if err := evalpkg.WriteJSONL(opts.ExportJSONL, questions); err != nil {
@@ -204,6 +216,7 @@ func parseEvalRunOpts(args []string, stderr io.Writer) (*evalRunOpts, error) {
 	semantic := fs.Bool("semantic", false, "also run the semantic (vector) retrieval path and report SemanticRecall@K + recall gate")
 	hybrid := fs.Bool("hybrid", false, "also run the hybrid (RRF BM25+vector fusion) path and report HybridRecall@K + recall gate")
 	rerank := fs.Bool("rerank", false, "also run a reranked pass (deterministic IdentityReranker over the best base pass) and report RerankedRecall@K + recall gate")
+	strict := fs.Bool("strict", false, "force ValidateDataset (>=30 questions / >=6 categories / >=5 per category); without this flag, ValidateDataset failure falls back to ValidateGoldenSemantic")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -219,5 +232,6 @@ func parseEvalRunOpts(args []string, stderr io.Writer) (*evalRunOpts, error) {
 		Semantic:    *semantic,
 		Hybrid:      *hybrid,
 		Rerank:      *rerank,
+		Strict:      *strict,
 	}, nil
 }
