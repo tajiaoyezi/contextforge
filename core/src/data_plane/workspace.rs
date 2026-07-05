@@ -13,7 +13,8 @@ use tonic::{Request, Response, Status};
 
 use crate::pb_console::workspace_service_server::WorkspaceService;
 use crate::pb_console::{
-    CreateWorkspaceRequest, DeleteWorkspaceRequest, DeleteWorkspaceResponse, GetWorkspaceRequest,
+    CreateWorkspaceRequest, DeleteWorkspaceRequest, DeleteWorkspaceResponse,
+    GetIfOwnedWorkspaceRequest, GetWorkspaceRequest, ListOwnedWorkspacesRequest,
     ListWorkspacesRequest, ListWorkspacesResponse, UpdateWorkspaceConfigRequest,
     Workspace as PbWorkspace,
 };
@@ -32,6 +33,10 @@ impl WorkspaceServer {
 }
 
 fn workspace_to_pb(w: RustWorkspace) -> PbWorkspace {
+    // task-51.2 (ADR-052 D3): owner_id Option<String> → proto string. None (unowned /
+    // legacy backfill) serializes as the proto3 default empty string; Some(id) passes
+    // straight through. Round-trip-safe (empty string ⇄ None at the wire boundary).
+    let owner_id = w.owner_id.unwrap_or_default();
     PbWorkspace {
         workspace_id: w.workspace_id,
         name: w.name,
@@ -42,6 +47,7 @@ fn workspace_to_pb(w: RustWorkspace) -> PbWorkspace {
         denylist: w.denylist,
         created_at_unix: w.created_at_unix,
         updated_at_unix: w.updated_at_unix,
+        owner_id,
     }
 }
 
@@ -61,20 +67,27 @@ impl WorkspaceService for WorkspaceServer {
         req: Request<CreateWorkspaceRequest>,
     ) -> Result<Response<PbWorkspace>, Status> {
         let req = req.into_inner();
+        // task-51.2 (ADR-052 D3): read the add-only owner_id from the request. Empty
+        // string → None (unowned / byte-equivalent with task-51.1 create() path); non-empty
+        // → Some(id). create_owned writes owner_id (None → NULL) so a single code path
+        // covers both owned + unowned creates — and the store-side owner_id stays the SSOT.
+        let owner_id = if req.owner_id.is_empty() {
+            None
+        } else {
+            Some(req.owner_id.clone())
+        };
         let create_req = WorkspaceCreate {
             workspace_id: req.workspace_id,
             name: req.name,
             root_path: req.root_path,
             allowlist: req.allowlist,
             denylist: req.denylist,
-            // task-51.1 (ADR-052 D3): byte-equivalent — proto WorkspaceService owner
-            // 透传留 task-51.2；此处仍走 create()（owner_id None）。
-            owner_id: None,
+            owner_id,
         };
         let ws = self
             .stores
             .workspace_store
-            .create(&create_req)
+            .create_owned(&create_req)
             .map_err(ws_err_to_status)?;
         Ok(Response::new(workspace_to_pb(ws)))
     }
@@ -129,6 +142,44 @@ impl WorkspaceService for WorkspaceServer {
             .map_err(ws_err_to_status)?;
         Ok(Response::new(workspace_to_pb(ws)))
     }
+
+    // task-51.2 (ADR-052 D3): owner-scoped add-only RPCs backed by WorkspaceStore
+    // owner methods (task-51.1). list_owned returns owned-by-user ∪ unowned (status !=
+    // deleted); get_if_owned returns the workspace iff it belongs to owner or is unowned,
+    // else NotFound (not the raw None — maps to a gRPC not_found sentinel).
+    async fn list_owned(
+        &self,
+        req: Request<ListOwnedWorkspacesRequest>,
+    ) -> Result<Response<ListWorkspacesResponse>, Status> {
+        let owner_id = req.into_inner().owner_id;
+        let items = self
+            .stores
+            .workspace_store
+            .list_owned(&owner_id)
+            .map_err(ws_err_to_status)?;
+        Ok(Response::new(ListWorkspacesResponse {
+            items: items.into_iter().map(workspace_to_pb).collect(),
+        }))
+    }
+
+    async fn get_if_owned(
+        &self,
+        req: Request<GetIfOwnedWorkspaceRequest>,
+    ) -> Result<Response<PbWorkspace>, Status> {
+        let req = req.into_inner();
+        match self
+            .stores
+            .workspace_store
+            .get_if_owned(&req.workspace_id, &req.owner_id)
+        {
+            Ok(Some(ws)) => Ok(Response::new(workspace_to_pb(ws))),
+            Ok(None) => Err(Status::not_found(format!(
+                "workspace not found or not owned by {}: {}",
+                req.owner_id, req.workspace_id
+            ))),
+            Err(e) => Err(ws_err_to_status(e)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -174,6 +225,7 @@ mod tests {
                 root_path: std::env::temp_dir().to_string_lossy().to_string(),
                 allowlist: vec![],
                 denylist: vec![],
+                owner_id: String::new(),
             }))
             .await
             .expect("create ok");
@@ -206,6 +258,7 @@ mod tests {
                 root_path: std::env::temp_dir().to_string_lossy().to_string(),
                 allowlist: vec!["src/**".into()],
                 denylist: vec![],
+                owner_id: String::new(),
             }))
             .await
             .unwrap()
@@ -265,6 +318,7 @@ mod tests {
                 root_path: std::env::temp_dir().join("a").to_string_lossy().to_string(),
                 allowlist: vec![],
                 denylist: vec![],
+                owner_id: String::new(),
             }))
             .await
             .unwrap();
@@ -275,6 +329,7 @@ mod tests {
                 root_path: std::env::temp_dir().join("b").to_string_lossy().to_string(),
                 allowlist: vec![],
                 denylist: vec![],
+                owner_id: String::new(),
             }))
             .await
             .unwrap();
@@ -284,5 +339,89 @@ mod tests {
         let ids: Vec<_> = items.iter().map(|w| w.workspace_id.clone()).collect();
         assert!(ids.contains(&"ws-list-a".to_string()));
         assert!(ids.contains(&"ws-list-b".to_string()));
+    }
+
+    /// task-51.2 (AC2 / TEST-51.2.2): owner round-trip via the gRPC WorkspaceService.
+    /// Create with owner_id → ListOwned(owner_id) returns it → GetIfOwned(id, owner_id)
+    /// returns it → GetIfOwned(id, other_owner) returns NotFound (non-owner blocked).
+    #[tokio::test]
+    async fn test_51_2_2_create_with_owner_list_owned_get_if_owned_roundtrip() {
+        let server = fresh_server();
+
+        // Create a workspace owned by "user-alice" (new add-only owner_id field).
+        let created = server
+            .create(Request::new(CreateWorkspaceRequest {
+                workspace_id: "ws-owner-alice".into(),
+                name: "alice ws".into(),
+                root_path: std::env::temp_dir().to_string_lossy().to_string(),
+                allowlist: vec![],
+                denylist: vec![],
+                owner_id: "user-alice".into(),
+            }))
+            .await
+            .expect("create ok")
+            .into_inner();
+        assert_eq!(created.workspace_id, "ws-owner-alice");
+        // owner_id round-trips on the response (Some(id) → non-empty proto string).
+        assert_eq!(created.owner_id, "user-alice");
+
+        // Create a second workspace owned by a different user (bob).
+        server
+            .create(Request::new(CreateWorkspaceRequest {
+                workspace_id: "ws-owner-bob".into(),
+                name: "bob ws".into(),
+                root_path: std::env::temp_dir().to_string_lossy().to_string(),
+                allowlist: vec![],
+                denylist: vec![],
+                owner_id: "user-bob".into(),
+            }))
+            .await
+            .expect("create bob ok");
+
+        // ListOwned(user-alice): returns alice's workspace, NOT bob's.
+        let listed = server
+            .list_owned(Request::new(ListOwnedWorkspacesRequest {
+                owner_id: "user-alice".into(),
+            }))
+            .await
+            .expect("list_owned ok")
+            .into_inner();
+        let alice_ids: Vec<String> =
+            listed.items.iter().map(|w| w.workspace_id.clone()).collect();
+        assert!(
+            alice_ids.contains(&"ws-owner-alice".to_string()),
+            "list_owned(alice) must include alice's workspace"
+        );
+        assert!(
+            !alice_ids.contains(&"ws-owner-bob".to_string()),
+            "list_owned(alice) must NOT include bob's workspace"
+        );
+
+        // GetIfOwned(ws-owner-alice, user-alice): returns the workspace.
+        let got = server
+            .get_if_owned(Request::new(GetIfOwnedWorkspaceRequest {
+                workspace_id: "ws-owner-alice".into(),
+                owner_id: "user-alice".into(),
+            }))
+            .await
+            .expect("get_if_owned owner ok")
+            .into_inner();
+        assert_eq!(got.workspace_id, "ws-owner-alice");
+        assert_eq!(got.owner_id, "user-alice");
+
+        // GetIfOwned(ws-owner-alice, user-bob): NotFound — alice's workspace is not
+        // visible to bob (non-owner, non-unowned).
+        let blocked = server
+            .get_if_owned(Request::new(GetIfOwnedWorkspaceRequest {
+                workspace_id: "ws-owner-alice".into(),
+                owner_id: "user-bob".into(),
+            }))
+            .await;
+        assert!(blocked.is_err(), "non-owner must not see another's workspace");
+        assert_eq!(
+            blocked.unwrap_err().code(),
+            tonic::Code::NotFound,
+            "get_if_owned for non-owner maps to not_found"
+        );
     }
 }

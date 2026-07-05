@@ -42,6 +42,8 @@ const (
 	WorkspaceService_List_FullMethodName         = "/contextforge.console_data_plane.v1.WorkspaceService/List"
 	WorkspaceService_Delete_FullMethodName       = "/contextforge.console_data_plane.v1.WorkspaceService/Delete"
 	WorkspaceService_UpdateConfig_FullMethodName = "/contextforge.console_data_plane.v1.WorkspaceService/UpdateConfig"
+	WorkspaceService_ListOwned_FullMethodName    = "/contextforge.console_data_plane.v1.WorkspaceService/ListOwned"
+	WorkspaceService_GetIfOwned_FullMethodName   = "/contextforge.console_data_plane.v1.WorkspaceService/GetIfOwned"
 )
 
 // WorkspaceServiceClient is the client API for WorkspaceService service.
@@ -53,6 +55,9 @@ type WorkspaceServiceClient interface {
 	List(ctx context.Context, in *ListWorkspacesRequest, opts ...grpc.CallOption) (*ListWorkspacesResponse, error)
 	Delete(ctx context.Context, in *DeleteWorkspaceRequest, opts ...grpc.CallOption) (*DeleteWorkspaceResponse, error)
 	UpdateConfig(ctx context.Context, in *UpdateWorkspaceConfigRequest, opts ...grpc.CallOption) (*Workspace, error)
+	// task-51.2 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only owner-scoped RPCs.
+	ListOwned(ctx context.Context, in *ListOwnedWorkspacesRequest, opts ...grpc.CallOption) (*ListWorkspacesResponse, error)
+	GetIfOwned(ctx context.Context, in *GetIfOwnedWorkspaceRequest, opts ...grpc.CallOption) (*Workspace, error)
 }
 
 type workspaceServiceClient struct {
@@ -113,6 +118,26 @@ func (c *workspaceServiceClient) UpdateConfig(ctx context.Context, in *UpdateWor
 	return out, nil
 }
 
+func (c *workspaceServiceClient) ListOwned(ctx context.Context, in *ListOwnedWorkspacesRequest, opts ...grpc.CallOption) (*ListWorkspacesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListWorkspacesResponse)
+	err := c.cc.Invoke(ctx, WorkspaceService_ListOwned_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workspaceServiceClient) GetIfOwned(ctx context.Context, in *GetIfOwnedWorkspaceRequest, opts ...grpc.CallOption) (*Workspace, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Workspace)
+	err := c.cc.Invoke(ctx, WorkspaceService_GetIfOwned_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkspaceServiceServer is the server API for WorkspaceService service.
 // All implementations must embed UnimplementedWorkspaceServiceServer
 // for forward compatibility.
@@ -122,6 +147,9 @@ type WorkspaceServiceServer interface {
 	List(context.Context, *ListWorkspacesRequest) (*ListWorkspacesResponse, error)
 	Delete(context.Context, *DeleteWorkspaceRequest) (*DeleteWorkspaceResponse, error)
 	UpdateConfig(context.Context, *UpdateWorkspaceConfigRequest) (*Workspace, error)
+	// task-51.2 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only owner-scoped RPCs.
+	ListOwned(context.Context, *ListOwnedWorkspacesRequest) (*ListWorkspacesResponse, error)
+	GetIfOwned(context.Context, *GetIfOwnedWorkspaceRequest) (*Workspace, error)
 	mustEmbedUnimplementedWorkspaceServiceServer()
 }
 
@@ -146,6 +174,12 @@ func (UnimplementedWorkspaceServiceServer) Delete(context.Context, *DeleteWorksp
 }
 func (UnimplementedWorkspaceServiceServer) UpdateConfig(context.Context, *UpdateWorkspaceConfigRequest) (*Workspace, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateConfig not implemented")
+}
+func (UnimplementedWorkspaceServiceServer) ListOwned(context.Context, *ListOwnedWorkspacesRequest) (*ListWorkspacesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListOwned not implemented")
+}
+func (UnimplementedWorkspaceServiceServer) GetIfOwned(context.Context, *GetIfOwnedWorkspaceRequest) (*Workspace, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetIfOwned not implemented")
 }
 func (UnimplementedWorkspaceServiceServer) mustEmbedUnimplementedWorkspaceServiceServer() {}
 func (UnimplementedWorkspaceServiceServer) testEmbeddedByValue()                          {}
@@ -258,6 +292,42 @@ func _WorkspaceService_UpdateConfig_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkspaceService_ListOwned_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOwnedWorkspacesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceServiceServer).ListOwned(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkspaceService_ListOwned_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceServiceServer).ListOwned(ctx, req.(*ListOwnedWorkspacesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkspaceService_GetIfOwned_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIfOwnedWorkspaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceServiceServer).GetIfOwned(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkspaceService_GetIfOwned_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceServiceServer).GetIfOwned(ctx, req.(*GetIfOwnedWorkspaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkspaceService_ServiceDesc is the grpc.ServiceDesc for WorkspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -284,6 +354,14 @@ var WorkspaceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateConfig",
 			Handler:    _WorkspaceService_UpdateConfig_Handler,
+		},
+		{
+			MethodName: "ListOwned",
+			Handler:    _WorkspaceService_ListOwned_Handler,
+		},
+		{
+			MethodName: "GetIfOwned",
+			Handler:    _WorkspaceService_GetIfOwned_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

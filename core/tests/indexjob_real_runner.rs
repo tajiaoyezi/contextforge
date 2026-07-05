@@ -342,6 +342,7 @@ async fn create_workspace_via_grpc(
             root_path: root.to_string_lossy().to_string(),
             allowlist: vec![],
             denylist: vec![],
+            owner_id: String::new(),
         })
         .await
         .expect("create");
