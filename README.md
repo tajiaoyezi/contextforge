@@ -1,6 +1,6 @@
 # ContextForge
 
-**Status:** **v2.0.0-alpha** (current) — v2.0 身份验证基础（per-user token → verified identity；actor 从 declared 变 verified，关闭冒充风险；ADR-051）+ 承 v1.1.0 eval 硬化 + v1.0.0 API/CLI 冻结。**v2.0 进行中**：身份基础已交付（POST /v1/users + bearer verified identity + actor 覆写），但 RBAC / workspace isolation / OAuth-OIDC 仍延后（Phase 51-54+）。byte-equivalent 默认（trusted-network + 旧 shared token 不变）。详 [ADR-051](docs/decisions/adr-051-identity-foundation.md)。
+**Status:** **v2.0.0-alpha.2** (current) — v2.0 workspace ownership（per-user workspace access control；verified user 只能访问自己 own 的 + unowned 的；SearchService.Query thin gate；ADR-052）+ 承 v2.0.0-alpha 身份验证基础 + v1.1.0 eval 硬化 + v1.0.0 API/CLI 冻结。**v2.0 进行中**：身份基础 + workspace ownership 已交付，但 RBAC / 全 RPC enforcement / OAuth-OIDC 仍延后（Phase 52-54+）。byte-equivalent 默认（trusted-network + 旧 shared token 不变）。详 [ADR-052](docs/decisions/adr-052-workspace-ownership.md)。
 
 ContextForge is a local-first context indexing and retrieval tool for agent memory, rules, source files, logs, and project notes.
 

@@ -517,6 +517,21 @@ func handleSearch(deps Deps) http.HandlerFunc {
 		if qst := r.URL.Query()["source_type"]; len(qst) > 0 {
 			body.SourceType = append(body.SourceType, qst...)
 		}
+		// task-51.4 (Phase 51 / ADR-052 D2): workspace ownership thin gate. When a verified
+		// user is present (per-user token) AND the search targets a specific workspace_id,
+		// verify the user owns (or the workspace is unowned) before forwarding to the search
+		// backend. Trusted-network / legacy shared token → no gate (byte-equivalent).
+		if verifiedUser, _ := r.Context().Value(verifiedUserIDKey{}).(string); verifiedUser != "" && body.WorkspaceID != "" {
+			if deps.Workspace != nil {
+				owned, err := deps.Workspace.GetIfOwned(body.WorkspaceID, verifiedUser)
+				if err == nil && owned == nil {
+					writeError(w, http.StatusForbidden, "FORBIDDEN",
+						"workspace not owned by verified user (Phase 51 workspace isolation)")
+					return
+				}
+				// err != nil (data plane unavailable) or owned != nil → proceed (fail-open on errors)
+			}
+		}
 		result, trace, err := deps.Search.Search(body)
 		if err != nil {
 			mapStorageError(w, err)

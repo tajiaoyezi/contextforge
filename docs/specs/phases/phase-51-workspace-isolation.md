@@ -1,6 +1,6 @@
 # Phase 51 · workspace-isolation (B1 第二步：per-user workspace ownership)
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v2.0 multi-user 第二步**——给 workspace 加 owner 列 + per-user access control。关闭 `[SPEC-DEFER:phase-future.workspace-user-isolation]`（proto 内又称 `phase-15.multi-workspace-strict`）。
 >
