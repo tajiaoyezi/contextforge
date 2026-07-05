@@ -203,3 +203,106 @@ func TestTask213_AC1_RunEvalHybridRerankMultiPath(t *testing.T) {
 		t.Fatalf("BM25-only output must not include hybrid/reranked lines:\n%s", stdout.String())
 	}
 }
+
+// TEST-49.3.0 / AC1 precondition: parseEvalRunOpts parses --strict (default false, given → true).
+func TestTask493_AC0_ParseStrictFlag(t *testing.T) {
+	var stderr bytes.Buffer
+	def, err := parseEvalRunOpts([]string{"--collection=default"}, &stderr)
+	if err != nil {
+		t.Fatalf("parse without --strict: %v (stderr=%q)", err, stderr.String())
+	}
+	if def.Strict {
+		t.Fatalf("Strict should default to false, got true")
+	}
+	on, err := parseEvalRunOpts([]string{"--collection=default", "--strict"}, &stderr)
+	if err != nil {
+		t.Fatalf("parse with --strict: %v (stderr=%q)", err, stderr.String())
+	}
+	if !on.Strict {
+		t.Fatalf("--strict should set Strict=true, got false")
+	}
+}
+
+// TEST-49.3.1 / AC1: golden-semantic.jsonl (76 q, 2 cat) runs without --strict — ValidateDataset
+// fails (only 2 categories) but the soft fallback to ValidateGoldenSemantic succeeds, so runEval
+// proceeds past validation (reaches the "search backend not wired" check, exit 1 from there, NOT
+// from validation failure).
+func TestTask493_AC1_GoldenSemanticSoftFallbackPassesValidation(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-semantic.jsonl"
+	// Ensure fetchSearchResults is nil so runEval stops at "search backend not wired" (exit 1),
+	// which proves validation PASSED (otherwise it would exit 1 with "invalid dataset" instead).
+	orig := fetchSearchResults
+	defer func() { fetchSearchResults = orig }()
+	fetchSearchResults = nil
+
+	var stdout, stderr bytes.Buffer
+	code := runEval([]string{"run", "--dataset=" + fixture, "--collection=default"}, &stdout, &stderr)
+	// exit 1 is expected (search backend not wired), but the stderr must say "search backend not
+	// wired", NOT "invalid dataset" — that proves the soft fallback let validation pass.
+	if code != 1 {
+		t.Fatalf("expected exit 1 (search backend not wired), got %d", code)
+	}
+	if strings.Contains(stderr.String(), "invalid dataset") {
+		t.Fatalf("validation should have passed via soft fallback, but got invalid dataset:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "search backend not wired") {
+		t.Fatalf("expected 'search backend not wired' (proving validation passed), got:\n%s", stderr.String())
+	}
+}
+
+// TEST-49.3.2 / AC2: golden-semantic.jsonl + --strict fails (forces ValidateDataset, which rejects
+// 2-category datasets). Exit 1 with "invalid dataset" + "--strict" in stderr.
+func TestTask493_AC2_GoldenSemanticStrictFailsValidation(t *testing.T) {
+	const fixture = "../../test/fixtures/eval/golden-semantic.jsonl"
+	var stdout, stderr bytes.Buffer
+	code := runEval([]string{"run", "--dataset=" + fixture, "--collection=default", "--strict"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("--strict on 2-cat golden should exit 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "invalid dataset") {
+		t.Fatalf("expected 'invalid dataset' with --strict, got:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--strict") {
+		t.Fatalf("expected error message to mention --strict, got:\n%s", stderr.String())
+	}
+}
+
+// TEST-49.3.3 / AC3: dispatch three paths covered.
+//
+//	(a) strict-pass: golden-retrieval.jsonl (121 q, 6 cat) + --strict → passes validation (reaches
+//	    search-backend-not-wired, exit 1 from there not validation).
+//	(b) both-fail: a malformed dataset fails both validators → exit 1 with "failed both" message.
+func TestTask493_AC3_DispatchStrictPassAndBothFail(t *testing.T) {
+	orig := fetchSearchResults
+	defer func() { fetchSearchResults = orig }()
+	fetchSearchResults = nil
+
+	// (a) strict-pass: golden-retrieval.jsonl + --strict passes ValidateDataset
+	const retrievalFixture = "../../test/fixtures/eval/golden-retrieval.jsonl"
+	var stdout, stderr bytes.Buffer
+	code := runEval([]string{"run", "--dataset=" + retrievalFixture, "--collection=default", "--strict"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("(a) strict-pass: expected exit 1 (search backend not wired), got %d", code)
+	}
+	if strings.Contains(stderr.String(), "invalid dataset") {
+		t.Fatalf("(a) strict-pass: validation should pass with --strict on 6-cat golden, got invalid dataset:\n%s", stderr.String())
+	}
+
+	// (b) both-fail: write a malformed dataset (empty query) that fails both validators
+	badFixture := filepath.Join(t.TempDir(), "bad.jsonl")
+	if err := os.WriteFile(badFixture, []byte(`{"query":"","expected_file_path":"x","category":"cjk"}`+"\n"), 0644); err != nil {
+		t.Fatalf("write bad fixture: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = runEval([]string{"run", "--dataset=" + badFixture, "--collection=default"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("(b) both-fail: expected exit 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "invalid dataset") {
+		t.Fatalf("(b) both-fail: expected 'invalid dataset', got:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "failed both") {
+		t.Fatalf("(b) both-fail: expected 'failed both' message, got:\n%s", stderr.String())
+	}
+}
