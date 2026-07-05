@@ -1,5 +1,57 @@
 # ContextForge Release Notes
 
+## v2.0.0-alpha (2026-07-05) — v2.0-identity-foundation (B1 第一步：per-user 身份验证基础——actor 从 declared 变 verified，关闭冒充风险。ADR-051 D1-D5。SQLite users 表 + proto UserService + Go REST 注册 + bearer verified identity + actor 覆写。byte-equivalent 默认。RBAC/workspace/OAuth-OIDC 仍延后 Phase 51-54+。0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep。ADR-014 第四十二次激活)
+
+### What shipped (Phase 50, task 50.1-50.4)
+
+**task-50.1 ADR-051 + SQLite users migration + Rust UserStore**：
+- `core/migrations/0020_users.sql`：users 表（id PK / name / token UNIQUE / created_at_unix + token index）
+- `core/src/identity/{mod,store}.rs`：SqliteUserStore（open/create/get-by-token/list）
+- ADR-051 Accepted（D1 per-user token / D2 SQLite local-first / D3 Go 覆写 / D4 不做 RBAC-Postgres-OIDC / D5 byte-equivalent）
+
+**task-50.2 proto add-only UserService + Rust gRPC handler**：
+- proto add-only UserService（Create/GetByToken/List）+ messages（0 现有字段变更，ADR-015 FROZEN）
+- `core/src/data_plane/user.rs`：UserServer handler（3 RPC, lazy-open SqliteUserStore）
+
+**task-50.3 Go REST 注册 + bearer verified identity + actor 覆写**（核心安全保证）：
+- bearerAuthMiddleware 扩展：token ∈ users.token → GetByToken 解析 verified userID → 注入 context
+- verifiedActor helper：context 有 verified userID → 覆写 X-Actor（关闭冒充风险）
+- POST /v1/users 注册 + GET /v1/users list（add-only 路由）
+- byte-equivalent：trusted-network + 旧 shared token 不变（AC2/AC3 验证）
+
+**task-50.4 closeout**：redeem SPEC-DEFER marker + README/RELEASE_NOTES + phase closeout。
+
+### 核心安全保证（ADR-051 D3）
+
+**actor 从 declared 变 verified**：
+- v1.x：X-Actor 是 caller 自填未验证——任何调用方能冒充任意 actor
+- v2.0.0-alpha：per-user token → bearer 解析 verified userID → 覆写 X-Actor（caller 不能伪造身份）
+- TEST-50.3.1 实测：caller 填 X-Actor: mallory，但用 alice 的 token → actor 被覆写为 user-alice
+
+### 诚实声明（ADR-013）
+
+**v2.0 进行中，非完整 multi-user**：
+- ✅ 身份验证基础（verified identity）
+- 🔶 RBAC / roles / permissions 仍延后 `[SPEC-DEFER:phase-future.rbac-roles-permissions]` Phase 52+
+- 🔶 workspace owner / per-user access control 仍延后 `[SPEC-DEFER:phase-future.workspace-user-isolation]` Phase 51+
+- 🔶 token hash 存仍延后 `[SPEC-DEFER:phase-future.token-hash-storage]` Phase 51+（当前明文存，local-first 妥协）
+- 🔶 OAuth/OIDC 外部 IdP 仍延后 `[SPEC-DEFER:phase-future.oauth-oidc-idp]` Phase 53+
+
+### Upgrade path
+
+minor/alpha release，无 breaking change。新增 `POST /v1/users` + `GET /v1/users`（add-only 路由）；bearer middleware 加 verified identity 解析（byte-equivalent：旧 shared token + trusted-network 不变）。SQLite migration 0020 幂等。
+
+### Rollback path
+
+N/A（身份基础 + add-only；无运行时行为变更。如不需 per-user 身份，不注册 user 即可——旧 shared token / trusted-network 行为不变）。
+
+### Contract / ADR / 凭据
+
+- **Contract**：0 现有 proto 字段变更（add-only 新 UserService + 3 RPC）/ 1 新 SQLite migration / 0 新 dep / 0 breaking API change（POST/GET /v1/users add-only 路由）。
+- **ADR**：ADR-051 Accepted（per-D ratify，task-50.1-50.4 真实交付）；ADR-014 第四十二次激活（D5 不溯改正文）；redeem `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`（fulfilled by task-50.3）。
+
+---
+
 ## v1.1.0 (2026-07-05) — v1.1.0-eval-hardening (B4：大语料 eval 硬化——验证 v1.0 宣称的 hybrid recall@5/@10=1.0 是真本事还是 16-30 题小语料过拟合。**核心诚实发现（ADR-013）：大语料 BM25 baseline recall 显著退化**（121 题/58 文件 recall@10=0.74 vs phase-21 小语料 30 题 0.97），确认小语料 golden 过拟合；README recall 声明据实降级。golden 扩展（retrieval 121 题 + semantic 76 题）+ eval CLI dispatch + --strict flag。0 dep（feature-gated fastembed 已存在）/ 0 proto / 0 migration / gate 仍软门。ADR-014 第四十一次激活)
 
 ### What shipped (Phase 49, task 49.1-49.5)
