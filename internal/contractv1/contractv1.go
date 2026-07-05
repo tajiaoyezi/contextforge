@@ -85,6 +85,11 @@ type Workspace struct {
 	CreatedAt      time.Time         `json:"created_at"`
 	UpdatedAt      time.Time         `json:"updated_at"`
 	Availability   FieldAvailability `json:"field_availability"`
+	// task-51.3 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only per-user ownership
+	// provenance. Empty = unowned (legacy/backfill behavior); existing clients that
+	// omit the field see no change. omitempty so the JSON shape stays byte-equivalent
+	// with v1.x for unowned workspaces.
+	OwnerID string `json:"owner_id,omitempty"`
 }
 
 // IndexJob — PRD must-have: job_id/workspace_id/trigger_source/status/stage/

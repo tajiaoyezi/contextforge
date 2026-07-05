@@ -67,13 +67,28 @@ func handleHealth(deps Deps) http.HandlerFunc {
 }
 
 // handleCreateWorkspace — POST /v1/workspaces.
+//
+// task-51.3 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): when the bearer middleware
+// injected a verified user id (per-user token path), the workspace is created
+// owner-scoped (owner_id = verified userID via CreateOwned). When no verified
+// identity is present (trusted-network empty token / legacy shared token), the
+// legacy Create path runs byte-equivalent with v1.x (owner_id = "" / unowned).
 func handleCreateWorkspace(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body contractv1.WorkspaceCreate
 		if !readJSONBody(w, r, &body) {
 			return
 		}
-		ws, err := deps.Workspace.Create(body)
+		verifiedUser, _ := r.Context().Value(verifiedUserIDKey{}).(string)
+		var (
+			ws  contractv1.Workspace
+			err error
+		)
+		if verifiedUser != "" {
+			ws, err = deps.Workspace.CreateOwned(body, verifiedUser)
+		} else {
+			ws, err = deps.Workspace.Create(body)
+		}
 		if err != nil {
 			mapStorageError(w, err)
 			return
@@ -83,9 +98,22 @@ func handleCreateWorkspace(deps Deps) http.HandlerFunc {
 }
 
 // handleListWorkspaces — GET /v1/workspaces.
+//
+// task-51.3 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): with a verified user id,
+// list owner-scoped (own workspaces + unowned via ListOwned). Without a verified
+// identity, the legacy List path runs byte-equivalent with v1.x (all workspaces).
 func handleListWorkspaces(deps Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		list, err := deps.Workspace.List()
+	return func(w http.ResponseWriter, r *http.Request) {
+		verifiedUser, _ := r.Context().Value(verifiedUserIDKey{}).(string)
+		var (
+			list []contractv1.Workspace
+			err  error
+		)
+		if verifiedUser != "" {
+			list, err = deps.Workspace.ListOwned(verifiedUser)
+		} else {
+			list, err = deps.Workspace.List()
+		}
 		if err != nil {
 			mapStorageError(w, err)
 			return
@@ -98,6 +126,12 @@ func handleListWorkspaces(deps Deps) http.HandlerFunc {
 }
 
 // handleGetWorkspace — GET /v1/workspaces/{id}.
+//
+// task-51.3 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): with a verified user id,
+// GetIfOwned enforces ownership server-side — returns 403 Forbidden when the
+// workspace exists but is owned by a different user (nil from the store maps to
+// "not found OR not owned"). Without a verified identity, the legacy Get path
+// runs byte-equivalent with v1.x (any workspace visible).
 func handleGetWorkspace(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := trimID(r)
@@ -105,14 +139,33 @@ func handleGetWorkspace(deps Deps) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
 			return
 		}
-		ws, err := deps.Workspace.Get(id)
-		if err != nil {
-			mapStorageError(w, err)
-			return
-		}
-		if ws == nil {
-			writeError(w, http.StatusNotFound, "NOT_FOUND", "workspace not found: "+id)
-			return
+		verifiedUser, _ := r.Context().Value(verifiedUserIDKey{}).(string)
+		var (
+			ws  *contractv1.Workspace
+			err error
+		)
+		if verifiedUser != "" {
+			ws, err = deps.Workspace.GetIfOwned(id, verifiedUser)
+			if err != nil {
+				mapStorageError(w, err)
+				return
+			}
+			if ws == nil {
+				// not found OR not owned → 403 (verified user lacks ownership).
+				writeError(w, http.StatusForbidden, "FORBIDDEN",
+					"workspace not owned by verified user: "+id)
+				return
+			}
+		} else {
+			ws, err = deps.Workspace.Get(id)
+			if err != nil {
+				mapStorageError(w, err)
+				return
+			}
+			if ws == nil {
+				writeError(w, http.StatusNotFound, "NOT_FOUND", "workspace not found: "+id)
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, *ws)
 	}

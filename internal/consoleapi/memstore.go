@@ -172,6 +172,23 @@ func (a WorkspaceAdapter) Update(id string, allowlist, denylist []string) (contr
 	return a.S.UpdateWorkspaceConfig(id, allowlist, denylist)
 }
 
+// task-51.3 (Phase 51 / ADR-052 D3): owner-scoped methods on the in-memory
+// fallback store. The MemStore fallback does NOT track owner_id (single-user
+// local-first demo per ADR-016 §D4), so these delegate to the byte-equivalent
+// non-owner methods — the real ownership enforcement lives in the Rust
+// WorkspaceStore (task-51.1) reached via the grpcclient path. The fallback
+// stays permissive (shows/creates all workspaces unowned) so the Console UI
+// demo + conformance tests remain functional when the daemon is unreachable.
+func (a WorkspaceAdapter) CreateOwned(req contractv1.WorkspaceCreate, _ string) (contractv1.Workspace, error) {
+	return a.S.CreateWorkspace(req)
+}
+func (a WorkspaceAdapter) ListOwned(_ string) ([]contractv1.Workspace, error) {
+	return a.S.ListWorkspaces()
+}
+func (a WorkspaceAdapter) GetIfOwned(id, _ string) (*contractv1.Workspace, error) {
+	return a.S.GetWorkspace(id)
+}
+
 // JobAdapter wraps MemStore for JobClient interface.
 type JobAdapter struct{ S *MemStore }
 

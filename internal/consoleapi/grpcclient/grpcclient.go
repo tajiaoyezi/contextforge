@@ -261,6 +261,59 @@ func (w *workspaceClient) Create(req contractv1.WorkspaceCreate) (contractv1.Wor
 	return protoToWorkspace(resp), nil
 }
 
+// CreateOwned (task-51.3 / ADR-052 D3): owner-scoped create. Sets OwnerId on the
+// proto request; the Rust WorkspaceStore.create_owned writes it (non-empty) /
+// create unowned (empty). The Rust side is the authority (ADR-016 D3 thin proxy).
+func (w *workspaceClient) CreateOwned(req contractv1.WorkspaceCreate, ownerID string) (contractv1.Workspace, error) {
+	resp, err := w.c.Create(context.Background(), &pb.CreateWorkspaceRequest{
+		WorkspaceId: req.Name,
+		Name:        req.Name,
+		RootPath:    req.RootPath,
+		Allowlist:   req.Allowlist,
+		Denylist:    req.Denylist,
+		OwnerId:     ownerID,
+	})
+	if err != nil {
+		return contractv1.Workspace{}, mapGrpcErr(err)
+	}
+	return protoToWorkspace(resp), nil
+}
+
+// ListOwned (task-51.3 / ADR-052 D3): owner-scoped list. The Rust list_owned
+// returns workspaces owned by ownerID PLUS unowned workspaces (owner_id = ""),
+// so a verified user sees their own + the legacy backfill set (byte-equivalent
+// visibility for pre-existing data). Go side does not post-filter.
+func (w *workspaceClient) ListOwned(ownerID string) ([]contractv1.Workspace, error) {
+	resp, err := w.c.ListOwned(context.Background(), &pb.ListOwnedWorkspacesRequest{OwnerId: ownerID})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]contractv1.Workspace, 0, len(resp.Items))
+	for _, item := range resp.Items {
+		out = append(out, protoToWorkspace(item))
+	}
+	return out, nil
+}
+
+// GetIfOwned (task-51.3 / ADR-052 D3): owner-scoped get. The Rust get_if_owned
+// returns NotFound when the workspace is missing OR owned by a different user;
+// we map NotFound → (nil, nil) to match the Get() contract (nil = not visible).
+func (w *workspaceClient) GetIfOwned(workspaceID, ownerID string) (*contractv1.Workspace, error) {
+	resp, err := w.c.GetIfOwned(context.Background(), &pb.GetIfOwnedWorkspaceRequest{
+		WorkspaceId: workspaceID,
+		OwnerId:     ownerID,
+	})
+	if err != nil {
+		mapped := mapGrpcErr(err)
+		if errors.Is(mapped, consoleapi.ErrNotFound) {
+			return nil, nil // not found OR not owned → nil + nil (handler turns into 403)
+		}
+		return nil, mapped
+	}
+	ws := protoToWorkspace(resp)
+	return &ws, nil
+}
+
 func (w *workspaceClient) List() ([]contractv1.Workspace, error) {
 	resp, err := w.c.List(context.Background(), &pb.ListWorkspacesRequest{})
 	if err != nil {
@@ -632,6 +685,7 @@ func protoToWorkspace(p *pb.Workspace) contractv1.Workspace {
 		CreatedAt:      time.Unix(p.CreatedAtUnix, 0).UTC(),
 		UpdatedAt:      time.Unix(p.UpdatedAtUnix, 0).UTC(),
 		Availability:   contractv1.FieldAvailability{Object: "Workspace"},
+		OwnerID:        p.OwnerId, // task-51.3: carry owner provenance (empty = unowned, byte-equiv)
 	}
 }
 
