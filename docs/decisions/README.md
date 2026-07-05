@@ -6,7 +6,7 @@ This directory holds ContextForge's Architecture Decision Records (ADRs) — imm
 >
 > **Status values**: `Proposed` (draft, not yet ratified) → `Accepted` (ratified, in force) → `Deprecated` / `Superseded`. Several ADRs carry add-only Amendments from later phases (noted inline); the ADR's own Status reflects its latest ratification.
 
-51 ADRs total (001–052; adr-019 was skipped). Grouped by category below.
+52 ADRs total (001–053; adr-019 was skipped). Grouped by category below.
 
 ---
 
@@ -44,6 +44,7 @@ This directory holds ContextForge's Architecture Decision Records (ADRs) — imm
 | # | Title | Status | Summary |
 |---|---|---|---|
 | [052](adr-052-workspace-ownership.md) | workspace-ownership | Accepted | v2.0 Phase 51: workspaces.owner_id 列 (migration 0021 guarded ALTER) + WorkspaceStore create_owned/list_owned/get_if_owned (owned ∪ unowned 边界). 单 owner 模型, NULL=unowned. 不做 RBAC/ACL/共享 (Phase 52-53+). byte-equivalent 默认. |
+| [053](adr-053-rbac-roles-permissions.md) | rbac-roles-permissions | Accepted | v2.0 Phase 52: 3-role 扁平 RBAC (admin/member/viewer) + workspace_members 表 (migration 0022, PK + CHECK) + MembershipStore (add/remove/list/get_role). admin-gate 限 4 destructive + user mgmt (6 端点). trusted-network → admin (byte-equivalent). 不做 custom role / 全 28 路由细粒度 gate (Phase 52.x+). |
 
 ## Interfaces (CLI / REST / MCP / gRPC)
 

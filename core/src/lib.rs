@@ -52,6 +52,9 @@ pub mod memory;
 // task-50.1 (Phase 50, ADR-051): per-user identity foundation — verified actor storage.
 pub mod identity;
 
+// task-52.1 (Phase 52, ADR-053): workspace membership storage — 3-role RBAC foundation.
+pub mod membership;
+
 // task-14.1 (Phase 14, ADR-017 D1 Wave 4): Eval persistence + orchestration.
 pub mod eval;
 
