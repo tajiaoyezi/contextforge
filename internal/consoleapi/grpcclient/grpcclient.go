@@ -52,6 +52,8 @@ type Client struct {
 	health consoleapi.HealthClient
 	// task-50.2 (Phase 50 / ADR-051): per-user identity foundation.
 	user consoleapi.UserClient
+	// task-52.3 (Phase 52 / ADR-053): membership management + admin-gate role lookup.
+	membership consoleapi.MembershipClient
 }
 
 // New dials the Rust data plane gRPC server (default 127.0.0.1:50551) and
@@ -73,15 +75,16 @@ func New(ctx context.Context, addr string, opts ...grpc.DialOption) (*Client, er
 		return nil, fmt.Errorf("grpcclient.New(%s): %w", addr, err)
 	}
 	return &Client{
-		conn:      conn,
-		workspace: &workspaceClient{c: pb.NewWorkspaceServiceClient(conn)},
-		job:       &jobClient{c: pb.NewJobServiceClient(conn)},
-		search:    &searchClient{c: pb.NewSearchServiceClient(conn)},
-		events:    &eventsClient{c: pb.NewEventsServiceClient(conn)},
-		memory:    &memoryClient{c: pb.NewMemoryServiceClient(conn)},
-		eval:      &evalClient{c: pb.NewEvalServiceClient(conn)},
-		health:    &healthClient{c: pb.NewHealthServiceClient(conn)},
-		user:      &userClient{c: pb.NewUserServiceClient(conn)},
+		conn:       conn,
+		workspace:  &workspaceClient{c: pb.NewWorkspaceServiceClient(conn)},
+		job:        &jobClient{c: pb.NewJobServiceClient(conn)},
+		search:     &searchClient{c: pb.NewSearchServiceClient(conn)},
+		events:     &eventsClient{c: pb.NewEventsServiceClient(conn)},
+		memory:     &memoryClient{c: pb.NewMemoryServiceClient(conn)},
+		eval:       &evalClient{c: pb.NewEvalServiceClient(conn)},
+		health:     &healthClient{c: pb.NewHealthServiceClient(conn)},
+		user:       &userClient{c: pb.NewUserServiceClient(conn)},
+		membership: &membershipClient{c: pb.NewMembershipServiceClient(conn)},
 	}, nil
 }
 
@@ -123,6 +126,9 @@ func (c *Client) Health() consoleapi.HealthClient { return c.health }
 
 // User returns the consoleapi.UserClient wrapper (task-50.2 / ADR-051).
 func (c *Client) User() consoleapi.UserClient { return c.user }
+
+// Membership returns the consoleapi.MembershipClient wrapper (task-52.3 / ADR-053).
+func (c *Client) Membership() consoleapi.MembershipClient { return c.membership }
 
 // =====================================================================
 // Health wrapper (task-15.6 / Phase 15 P2 #7 / ADR-020).
@@ -204,6 +210,70 @@ func pbUserToWire(u *pb.User) consoleapi.User {
 		Name:          u.GetName(),
 		Token:         u.GetToken(),
 		CreatedAtUnix: u.GetCreatedAtUnix(),
+	}
+}
+
+// =====================================================================
+// Membership wrapper (task-52.3 / Phase 52 / ADR-053).
+// =====================================================================
+
+type membershipClient struct{ c pb.MembershipServiceClient }
+
+func (m *membershipClient) AddMember(workspaceID, userID, role string) error {
+	_, err := m.c.AddMember(context.Background(), &pb.AddMemberRequest{
+		WorkspaceId: workspaceID,
+		UserId:      userID,
+		Role:        role,
+	})
+	return mapGrpcErr(err)
+}
+
+func (m *membershipClient) RemoveMember(workspaceID, userID string) error {
+	_, err := m.c.RemoveMember(context.Background(), &pb.RemoveMemberRequest{
+		WorkspaceId: workspaceID,
+		UserId:      userID,
+	})
+	return mapGrpcErr(err)
+}
+
+func (m *membershipClient) ListMembers(workspaceID string) ([]consoleapi.Member, error) {
+	resp, err := m.c.ListMembers(context.Background(), &pb.ListMembersRequest{
+		WorkspaceId: workspaceID,
+	})
+	if err != nil {
+		return nil, mapGrpcErr(err)
+	}
+	out := make([]consoleapi.Member, 0, len(resp.GetMembers()))
+	for _, p := range resp.GetMembers() {
+		out = append(out, pbMemberToWire(p))
+	}
+	return out, nil
+}
+
+// GetMyRole returns the verified user's role on the workspace ("" when not a
+// member). NotFound maps to ("" + nil) to match the interface contract.
+func (m *membershipClient) GetMyRole(workspaceID, userID string) (string, error) {
+	resp, err := m.c.GetMyRole(context.Background(), &pb.GetMyRoleRequest{
+		WorkspaceId: workspaceID,
+		UserId:      userID,
+	})
+	if err != nil {
+		mapped := mapGrpcErr(err)
+		// not a member → "" role + nil err (fail-open in requireAdmin treats "" as non-admin).
+		if errors.Is(mapped, consoleapi.ErrNotFound) {
+			return "", nil
+		}
+		return "", mapped
+	}
+	return resp.GetRole(), nil
+}
+
+func pbMemberToWire(p *pb.Member) consoleapi.Member {
+	return consoleapi.Member{
+		WorkspaceID:   p.GetWorkspaceId(),
+		UserID:        p.GetUserId(),
+		Role:          p.GetRole(),
+		CreatedAtUnix: p.GetCreatedAtUnix(),
 	}
 }
 
