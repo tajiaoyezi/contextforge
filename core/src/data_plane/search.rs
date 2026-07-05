@@ -1244,7 +1244,6 @@ mod tests {
             root_path: src.to_string_lossy().to_string(),
             allowlist: vec![],
             denylist: vec![],
-            ..Default::default()
         })
         .expect("create ws");
         let js = Arc::new(SqliteJobStore::open(&data).unwrap());

@@ -369,7 +369,6 @@ mod tests {
             root_path: fixture_dir().to_string_lossy().to_string(),
             allowlist: vec![],
             denylist: vec![],
-            ..Default::default()
         })
         .expect("create ws");
         let js = SqliteJobStore::open(data_dir)?;
