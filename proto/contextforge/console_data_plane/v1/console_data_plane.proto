@@ -583,3 +583,53 @@ service UserService {
   rpc GetByToken(GetUserByTokenRequest) returns (User);
   rpc List(ListUsersRequest) returns (ListUsersResponse);
 }
+
+// ============================================================================
+// task-52.2 (Phase 52 / ADR-053): MembershipService — 3-role RBAC membership management.
+// Add-only; does NOT touch existing field numbers (ADR-015 FROZEN).
+// Backs the 4 MembershipService RPCs with `SqliteMembershipStore` (task-52.1).
+// ============================================================================
+
+message Member {
+  string workspace_id = 1;
+  string user_id = 2;
+  string role = 3;              // "admin" | "member" | "viewer"
+  int64 created_at_unix = 4;
+}
+
+message AddMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  string role = 3;
+}
+
+message RemoveMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+}
+
+message RemoveMemberResponse {}
+
+message ListMembersRequest {
+  string workspace_id = 1;
+}
+
+message ListMembersResponse {
+  repeated Member members = 1;
+}
+
+message GetMyRoleRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+}
+
+message GetMyRoleResponse {
+  string role = 1;              // "" when no membership (not a member)
+}
+
+service MembershipService {
+  rpc AddMember(AddMemberRequest) returns (Member);
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  rpc GetMyRole(GetMyRoleRequest) returns (GetMyRoleResponse);
+}
