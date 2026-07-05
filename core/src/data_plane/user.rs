@@ -31,6 +31,7 @@ impl UserServer {
     /// (CREATE TABLE IF NOT EXISTS is idempotent on warm boot) and sidesteps the
     /// non-Clone `SqliteUserStore` lifetime issue. When `data_dir` is empty
     /// (task-11.1 baseline / unit tests), returns `failed_precondition`.
+    #[allow(clippy::result_large_err)]
     fn with_store<F, R>(&self, f: F) -> Result<R, Status>
     where
         F: FnOnce(&SqliteUserStore) -> Result<R, Status>,
@@ -63,6 +64,7 @@ fn map_store_err(err: UserStoreError) -> Status {
 }
 
 #[tonic::async_trait]
+#[allow(clippy::result_large_err)]
 impl UserService for UserServer {
     async fn create(&self, req: Request<CreateUserRequest>) -> Result<Response<User>, Status> {
         let req = req.into_inner();
