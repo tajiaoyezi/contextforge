@@ -243,8 +243,11 @@ impl MemoryService for MemoryServer {
         // task-40.1 (ADR-045 D1): the calling actor is now propagated from console-api
         // (X-Actor header → PinMemoryRequest.actor → here). Empty actor falls back to
         // "console-api" (byte-equivalent default for callers that send no header, ADR-004).
-        // Caller-supplied actor is a *declared* identity; verifying it against an
-        // authenticated subject is [SPEC-DEFER:phase-future.memory-actor-authenticated-identity].
+        // task-50.3 (ADR-051): console-api now overrides the declared X-Actor with the verified
+        // user id when a per-user token resolves (Go-side bearer middleware). The actor received
+        // here is therefore verified at the REST layer — fulfilled by task-50.3 (closes
+        // [SPEC-DEFER:phase-future.memory-actor-authenticated-identity]). Rust trusts Go's assertion
+        // (ADR-016 D3 thin proxy); loopback gRPC stays trusted (ADR-016 D2).
         let actor = if req.actor.is_empty() {
             "console-api"
         } else {

@@ -1,6 +1,6 @@
 # ContextForge
 
-**Status:** **v1.1.0** (current stable) — eval 硬化（大语料 recall 实测验证 v1.0 小语料 recall@1.0 是过拟合上界：121-question 大语料 BM25 baseline recall@10=0.74，hybrid 小语料仍达 1.0，hybrid/reranked 大语料数据延后）+ golden 扩展（retrieval 121 题 / semantic 76 题）+ eval CLI dispatch（`--dataset` ValidateDataset 失败降级 ValidateGoldenSemantic）+ `--strict` flag。承 v1.0.0（API/CLI 冻结 + GitHub Release 流程，ADR-050 D1-D4 Accepted）。不含 multi-user/认证/自动更新/arm64 native（推 v2.0，列已知限制）。详 [ADR-050](docs/decisions/adr-050-v1.0-definition.md)。
+**Status:** **v2.0.0-alpha** (current) — v2.0 身份验证基础（per-user token → verified identity；actor 从 declared 变 verified，关闭冒充风险；ADR-051）+ 承 v1.1.0 eval 硬化 + v1.0.0 API/CLI 冻结。**v2.0 进行中**：身份基础已交付（POST /v1/users + bearer verified identity + actor 覆写），但 RBAC / workspace isolation / OAuth-OIDC 仍延后（Phase 51-54+）。byte-equivalent 默认（trusted-network + 旧 shared token 不变）。详 [ADR-051](docs/decisions/adr-051-identity-foundation.md)。
 
 ContextForge is a local-first context indexing and retrieval tool for agent memory, rules, source files, logs, and project notes.
 

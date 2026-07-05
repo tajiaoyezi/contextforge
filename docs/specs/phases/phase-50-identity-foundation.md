@@ -1,6 +1,6 @@
 # Phase 50 · identity-foundation (B1 v2.0 第一步)
 
-**Status**: Ready
+**Status**: Done
 
 > Phase Spec（s2v full-standard §8.2）。本 phase 是 **v2.0 multi-user/auth 的第一步**——per-user 身份验证基础。关闭 `[SPEC-DEFER:phase-future.memory-actor-authenticated-identity]`（actor 从 declared 变 verified），为 Phase 51+（workspace isolation）和 Phase 52+（RBAC）打地基。
 >
@@ -61,11 +61,11 @@ redeem SPEC-DEFER marker + README/RELEASE_NOTES + smoke gate。
 - gate 仍软门（ADR-013）
 
 ## 6. AC（Phase 级）
-- [ ] AC1: ADR-051 + migration 0020 + UserStore 单测 — verified by task-50.1 §6
-- [ ] AC2: proto add-only UserService + Rust gRPC 单测 — verified by task-50.2 §6
-- [ ] AC3: Go REST 注册 + bearer verified identity + actor 覆写 + byte-equivalent — verified by task-50.3 §6
-- [ ] AC4: SPEC-DEFER redeemed + README/RELEASE_NOTES + smoke + closeout — verified by task-50.4 §6
-- [ ] AC5: ADR-014 D1-D5（第四十二次激活）全通过
+- [x] AC1: ADR-051 + migration 0020 + UserStore 单测 — verified by task-50.1 §6
+- [x] AC2: proto add-only UserService + Rust gRPC 单测 — verified by task-50.2 §6
+- [x] AC3: Go REST 注册 + bearer verified identity + actor 覆写 + byte-equivalent — verified by task-50.3 §6
+- [x] AC4: SPEC-DEFER redeemed + README/RELEASE_NOTES + smoke + closeout — verified by task-50.4 §6
+- [x] AC5: ADR-014 D1-D5（第四十二次激活）全通过
 
 ## 8. Risks
 - **byte-equivalent 破坏**：trusted-network + 旧 shared token 必须字节等价（AC 强制）——破坏则 BLOCK
