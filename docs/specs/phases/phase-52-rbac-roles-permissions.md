@@ -62,7 +62,7 @@
 ## 8. Risks
 - **roleMiddleware 性能**：每请求 GetMyRole gRPC → 可加 cache（Phase 52.x）
 - **byte-equiv**：trusted-network → admin（AC 强制验证）
-- **enforcement 不全**：admin-gate 仅 6 端点；member/viewer 细粒度 gate 留 Phase 52.x
+- **enforcement 不全**：admin-gate 仅 6 端点；member/viewer 细粒度 gate `[SPEC-DEFER:phase-future.full-rpc-ownership-enforcement]` 留 Phase 52.x
 - **owner_id + membership 冗余**：并存（owner_id fallback，membership primary；向后兼容）
 
 ## 9. Phase smoke gate
