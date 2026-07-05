@@ -26,7 +26,7 @@
 - **token ∈ users.token**：middleware 注入 userID context；handler actor=userID
 - **token = 旧 shared-token（CONTEXTFORGE_CONSOLEAPI_AUTH_TOKEN）**：不注入 context；handler actor=X-Actor 声明值（旧行为）
 - **空 token（trusted-network）**：不注入 context；handler actor=X-Actor 或回落 `"console-api"`（byte-equivalent）
-- **POST /v1/users**：trusted-network 或 admin token 可注册；普通 user token 不可（防止任意 user 创建）—— 初始实现：trusted-network 或任何有效 token 都可注册（简化；admin 分级留 Phase 52 RBAC）
+- **POST /v1/users**：trusted-network 或 admin token 可注册；普通 user token 不可（防止任意 user 创建）—— 初始实现：trusted-network 或任何有效 token 都可注册（简化；admin 分级 `[SPEC-DEFER:phase-future.rbac-roles-permissions]` 留 Phase 52 RBAC）
 
 ## 6. AC
 - [ ] **AC1**: POST /v1/users 注册 → 返 token → 用该 token 调 pin → actor=verified userID — verified by **TEST-50.3.1**
