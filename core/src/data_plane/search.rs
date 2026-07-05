@@ -1238,7 +1238,7 @@ mod tests {
 
         let ws = Arc::new(SqliteWorkspaceStore::open(&data).unwrap());
         // Register ws-iso-a so the empty-workspace aggregate probe (workspace_store.list()) sees it.
-        ws.create(&WorkspaceCreate {
+        ws.create(&WorkspaceCreate { owner_id: None,
             workspace_id: coll.clone(),
             name: "iso-a".into(),
             root_path: src.to_string_lossy().to_string(),

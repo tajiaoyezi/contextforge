@@ -56,7 +56,7 @@ async fn spawn_full(
 
     let workspace_id = format!("ws-{label}");
     ws_store
-        .create(&WorkspaceCreate {
+        .create(&WorkspaceCreate { owner_id: None,
             workspace_id: workspace_id.clone(),
             name: label.into(),
             root_path: fixture_dir().to_string_lossy().to_string(),

@@ -67,6 +67,9 @@ impl WorkspaceService for WorkspaceServer {
             root_path: req.root_path,
             allowlist: req.allowlist,
             denylist: req.denylist,
+            // task-51.1 (ADR-052 D3): byte-equivalent — proto WorkspaceService owner
+            // 透传留 task-51.2；此处仍走 create()（owner_id None）。
+            owner_id: None,
         };
         let ws = self
             .stores

@@ -19,6 +19,9 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MIGRATION_SQL: &str = include_str!("../../migrations/0010_workspaces.sql");
+// task-51.1 (ADR-052): guarded ALTER TABLE adding owner_id (同 ensure_pin_actor_columns
+// pattern — 0021 仅在 PRAGMA table_info 显示缺 owner_id 时执行).
+const MIGRATION_OWNER_SQL: &str = include_str!("../../migrations/0021_workspaces_owner.sql");
 
 const WORKSPACE_ID_MAX_LEN: usize = 64;
 
@@ -42,6 +45,8 @@ pub struct Workspace {
     pub denylist: Vec<String>,
     pub created_at_unix: i64,
     pub updated_at_unix: i64,
+    // task-51.1 (ADR-052 D1): per-user ownership; NULL = unowned (backfill 旧行为 None).
+    pub owner_id: Option<String>,
 }
 
 /// Workspace 创建入参 (Console Contract v1 WorkspaceCreate 镜像 + workspace_id
@@ -53,6 +58,8 @@ pub struct WorkspaceCreate {
     pub root_path: String,
     pub allowlist: Vec<String>,
     pub denylist: Vec<String>,
+    // task-51.1 (ADR-052 D1): create_owned 写此列；None → NULL（unowned）.
+    pub owner_id: Option<String>,
 }
 
 /// WorkspaceStore trait — CRUD 抽象 + soft-delete.
@@ -67,6 +74,18 @@ pub trait WorkspaceStore: Send + Sync {
         denylist: Vec<String>,
     ) -> Result<Workspace, WorkspaceError>;
     fn soft_delete(&self, workspace_id: &str) -> Result<(), WorkspaceError>;
+
+    // task-51.1 (ADR-052 D2): per-user ownership 访问边界方法。
+    /// create_owned: 同 create，但写 req.owner_id（None → NULL unowned）。
+    fn create_owned(&self, req: &WorkspaceCreate) -> Result<Workspace, WorkspaceError>;
+    /// list_owned(owner_id): owned-by-user ∪ unowned（NULL owner），status != deleted。
+    fn list_owned(&self, owner_id: &str) -> Result<Vec<Workspace>, WorkspaceError>;
+    /// get_if_owned(id, owner_id): 仅当 workspace 归 owner 或 unowned 才返回；否则 None。
+    fn get_if_owned(
+        &self,
+        workspace_id: &str,
+        owner_id: &str,
+    ) -> Result<Option<Workspace>, WorkspaceError>;
 }
 
 /// SQLite 实现 — Mutex<Connection> 包装 (rusqlite Connection 非 Send).
@@ -84,6 +103,9 @@ impl SqliteWorkspaceStore {
         let db_path = data_dir.join("workspaces.db");
         let conn = Connection::open(&db_path)?;
         conn.execute_batch(MIGRATION_SQL)?;
+        // task-51.1 (ADR-052 D1): idempotent guarded ALTER for owner_id（同
+        // ensure_pin_actor_columns pattern — 0021 仅在缺列时执行）。
+        ensure_owner_column(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
             data_dir: data_dir.to_path_buf(),
@@ -152,6 +174,8 @@ impl SqliteWorkspaceStore {
             denylist,
             created_at_unix: row.get("created_at_unix")?,
             updated_at_unix: row.get("updated_at_unix")?,
+            // task-51.1 (ADR-052 D1): owner_id NULL → None（unowned / 旧数据 backfill）。
+            owner_id: row.get("owner_id")?,
         })
     }
 }
@@ -206,13 +230,16 @@ impl WorkspaceStore for SqliteWorkspaceStore {
             denylist: req.denylist.clone(),
             created_at_unix: now,
             updated_at_unix: now,
+            // task-51.1 (ADR-052 D3): create() 保持 byte-equivalent（不写 owner_id，
+            // 返回 None）；create_owned 才写 owner_id。
+            owner_id: None,
         })
     }
 
     fn list(&self) -> Result<Vec<Workspace>, WorkspaceError> {
         let conn = self.conn.lock().expect("workspace conn mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix
+            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix, owner_id
              FROM workspaces WHERE status != 'deleted' ORDER BY created_at_unix",
         )?;
         let rows = stmt.query_map([], Self::row_to_workspace)?;
@@ -227,7 +254,7 @@ impl WorkspaceStore for SqliteWorkspaceStore {
         Self::validate_id(workspace_id)?;
         let conn = self.conn.lock().expect("workspace conn mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix
+            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix, owner_id
              FROM workspaces WHERE workspace_id = ?1",
         )?;
         let mut rows = stmt.query(params![workspace_id])?;
@@ -260,7 +287,7 @@ impl WorkspaceStore for SqliteWorkspaceStore {
             )));
         }
         let mut stmt = conn.prepare(
-            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix
+            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix, owner_id
              FROM workspaces WHERE workspace_id = ?1",
         )?;
         let mut rows = stmt.query(params![workspace_id])?;
@@ -285,6 +312,97 @@ impl WorkspaceStore for SqliteWorkspaceStore {
         }
         Ok(())
     }
+
+    // task-51.1 (ADR-052 D2): per-user ownership 方法。
+    fn create_owned(&self, req: &WorkspaceCreate) -> Result<Workspace, WorkspaceError> {
+        Self::validate_create(req)?;
+        let conn = self.conn.lock().expect("workspace conn mutex poisoned");
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT workspace_id FROM workspaces WHERE workspace_id = ?1",
+                params![req.workspace_id],
+                |r| r.get(0),
+            )
+            .ok();
+        if existing.is_some() {
+            return Err(WorkspaceError::Invalid(format!(
+                "workspace_id already exists: {}",
+                req.workspace_id
+            )));
+        }
+        let now = now_unix();
+        let allowlist_json = serde_json::to_string(&req.allowlist)?;
+        let denylist_json = serde_json::to_string(&req.denylist)?;
+        let config_snapshot = "{}".to_string();
+        conn.execute(
+            "INSERT INTO workspaces (workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix, owner_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                req.workspace_id,
+                req.name,
+                req.root_path,
+                "ready",
+                config_snapshot,
+                allowlist_json,
+                denylist_json,
+                now,
+                now,
+                req.owner_id,
+            ],
+        )?;
+        drop(conn);
+        // create physical collection dir (1:1 mapping per ADR-015 §D2)
+        let collection_dir = self.collection_dir(&req.workspace_id);
+        std::fs::create_dir_all(&collection_dir)?;
+        Ok(Workspace {
+            workspace_id: req.workspace_id.clone(),
+            name: req.name.clone(),
+            root_path: req.root_path.clone(),
+            status: "ready".to_string(),
+            config_snapshot: "{}".to_string(),
+            allowlist: req.allowlist.clone(),
+            denylist: req.denylist.clone(),
+            created_at_unix: now,
+            updated_at_unix: now,
+            owner_id: req.owner_id.clone(),
+        })
+    }
+
+    fn list_owned(&self, owner_id: &str) -> Result<Vec<Workspace>, WorkspaceError> {
+        let conn = self.conn.lock().expect("workspace conn mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix, owner_id
+             FROM workspaces
+             WHERE status != 'deleted' AND (owner_id = ?1 OR owner_id IS NULL)
+             ORDER BY created_at_unix",
+        )?;
+        let rows = stmt.query_map(params![owner_id], Self::row_to_workspace)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    fn get_if_owned(
+        &self,
+        workspace_id: &str,
+        owner_id: &str,
+    ) -> Result<Option<Workspace>, WorkspaceError> {
+        Self::validate_id(workspace_id)?;
+        let conn = self.conn.lock().expect("workspace conn mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT workspace_id, name, root_path, status, config_snapshot, allowlist, denylist, created_at_unix, updated_at_unix, owner_id
+             FROM workspaces
+             WHERE workspace_id = ?1 AND (owner_id = ?2 OR owner_id IS NULL)",
+        )?;
+        let mut rows = stmt.query(params![workspace_id, owner_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(Self::row_to_workspace(row)?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -297,6 +415,29 @@ pub enum WorkspaceError {
     Io(#[from] std::io::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
+}
+
+/// task-51.1 (ADR-052 D1): idempotently add the owner_id column to an existing
+/// `workspaces` table. ALTER ADD COLUMN is not IF-NOT-EXISTS-able, so check
+/// `PRAGMA table_info` first and only run the 0021 migration when the column is
+/// absent (same pattern as ensure_pin_actor_columns in memory/store.rs; fresh DBs
+/// created by the 0010 CREATE TABLE also go through here — they lack owner_id).
+fn ensure_owner_column(conn: &Connection) -> Result<(), WorkspaceError> {
+    let mut has_owner_id = false;
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(workspaces)")?;
+        let cols = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for c in cols {
+            if c? == "owner_id" {
+                has_owner_id = true;
+                break;
+            }
+        }
+    }
+    if !has_owner_id {
+        conn.execute_batch(MIGRATION_OWNER_SQL)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -340,6 +481,7 @@ mod tests {
             root_path: abs_root_for_test("demo"),
             allowlist: vec![],
             denylist: vec![],
+            ..Default::default()
         };
         let w = store.create(&req).expect("create");
         assert_eq!(w.workspace_id, "demo");
@@ -372,6 +514,7 @@ mod tests {
             root_path: abs_root_for_test("alpha"),
             allowlist: vec!["*.md".to_string()],
             denylist: vec![".env".to_string()],
+            ..Default::default()
         };
         let created = store.create(&req).expect("create");
         assert_eq!(created.allowlist, vec!["*.md"]);
@@ -458,6 +601,111 @@ mod tests {
         store.soft_delete("t").expect("delete");
         let w3 = store.get("t").expect("get").expect("present");
         assert_eq!(w3.status, "deleted");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// task-51.1 (AC1 / TEST-51.1.1): migration 0021 guarded 幂等 — open() 两次不报错，
+    /// 且 owner_id 列确实存在于 workspaces schema。
+    #[test]
+    fn test_51_1_1_migration_0021_idempotent_and_owner_column_exists() {
+        let unique = format!(
+            "cfg-ws-mig-{}-{}",
+            std::process::id(),
+            now_unix_nano()
+        );
+        let dir = env::temp_dir().join(unique);
+        let _ = fs::remove_dir_all(&dir);
+
+        // 第一次 open：0010 CREATE + 0021 guarded ALTER（缺 owner_id → 执行）。
+        let store = SqliteWorkspaceStore::open(&dir).expect("open #1");
+        // 第二次 open（同一 DB 文件）：owner_id 已存在 → 跳过 ALTER（幂等）。
+        drop(store);
+        let _store2 = SqliteWorkspaceStore::open(&dir).expect("open #2 (idempotent)");
+
+        // 直接查 PRAGMA table_info 确认 owner_id 列存在。
+        let db_path = dir.join("workspaces.db");
+        let conn = Connection::open(&db_path).expect("open raw conn");
+        let mut has_owner_id = false;
+        {
+            let mut stmt = conn
+                .prepare("PRAGMA table_info(workspaces)")
+                .expect("prepare pragma");
+            let cols = stmt
+                .query_map([], |r| r.get::<_, String>(1))
+                .expect("query_map");
+            for c in cols {
+                if c.expect("col name") == "owner_id" {
+                    has_owner_id = true;
+                    break;
+                }
+            }
+        }
+        assert!(has_owner_id, "owner_id column must exist after migration 0021");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// task-51.1 (AC2 / TEST-51.1.2): create_owned → list_owned → get_if_owned
+    /// round-trip。验证：owned filter、NULL owner（unowned）可见、非 owner 不可见。
+    #[test]
+    fn test_51_1_2_create_owned_list_owned_get_if_owned_roundtrip() {
+        let (dir, store) = fresh_store();
+
+        // (a) create_owned 写入 owner_id。
+        let req_alice = WorkspaceCreate {
+            workspace_id: "alice-ws".to_string(),
+            name: "alice".to_string(),
+            root_path: abs_root_for_test("alice-ws"),
+            owner_id: Some("user-alice".to_string()),
+            ..Default::default()
+        };
+        let created = store.create_owned(&req_alice).expect("create_owned alice");
+        assert_eq!(created.owner_id.as_deref(), Some("user-alice"));
+
+        // (b) 一个 unowned workspace（owner_id None / NULL）。
+        let req_unowned = WorkspaceCreate {
+            workspace_id: "legacy-ws".to_string(),
+            name: "legacy".to_string(),
+            root_path: abs_root_for_test("legacy-ws"),
+            owner_id: None,
+            ..Default::default()
+        };
+        store.create_owned(&req_unowned).expect("create_owned unowned");
+
+        // (c) 另一个 owner 的 workspace（bob 私有）。
+        let req_bob = WorkspaceCreate {
+            workspace_id: "bob-ws".to_string(),
+            name: "bob".to_string(),
+            root_path: abs_root_for_test("bob-ws"),
+            owner_id: Some("user-bob".to_string()),
+            ..Default::default()
+        };
+        store.create_owned(&req_bob).expect("create_owned bob");
+
+        // list_owned(alice)：应包含 alice-ws（owned）+ legacy-ws（unowned），不含 bob-ws。
+        let alice_list = store.list_owned("user-alice").expect("list_owned alice");
+        let mut alice_ids: Vec<String> = alice_list.iter().map(|w| w.workspace_id.clone()).collect();
+        alice_ids.sort();
+        assert_eq!(alice_ids, vec!["alice-ws".to_string(), "legacy-ws".to_string()],
+            "list_owned must include owned-by-user + unowned, exclude other owners");
+
+        // get_if_owned(alice-ws, alice)：可见。
+        let got = store.get_if_owned("alice-ws", "user-alice").expect("get_if_owned alice");
+        assert!(got.is_some(), "owner can get own workspace");
+        assert_eq!(got.unwrap().owner_id.as_deref(), Some("user-alice"));
+
+        // get_if_owned(unowned legacy-ws, alice)：可见（unowned 对任何 verified user 开放）。
+        let got_unowned = store.get_if_owned("legacy-ws", "user-alice").expect("get_if_owned unowned");
+        assert!(got_unowned.is_some(), "unowned workspace visible to any verified user");
+
+        // get_if_owned(bob-ws, alice)：None（非 owner，非 unowned）。
+        let got_blocked = store.get_if_owned("bob-ws", "user-alice").expect("get_if_owned bob-as-alice");
+        assert!(got_blocked.is_none(), "non-owner must not see other's private workspace");
+
+        // get_if_owned(不存在, alice)：None。
+        let got_missing = store.get_if_owned("nope", "user-alice").expect("get_if_owned missing");
+        assert!(got_missing.is_none(), "missing workspace → None");
+
         let _ = fs::remove_dir_all(&dir);
     }
 }

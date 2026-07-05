@@ -363,7 +363,7 @@ mod tests {
         workspace_id: &str,
     ) -> Result<(SqliteWorkspaceStore, SqliteJobStore), JobError> {
         let ws = SqliteWorkspaceStore::open(data_dir).expect("ws open");
-        ws.create(&WorkspaceCreate {
+        ws.create(&WorkspaceCreate { owner_id: None,
             workspace_id: workspace_id.to_string(),
             name: "fixture".into(),
             root_path: fixture_dir().to_string_lossy().to_string(),

@@ -199,7 +199,7 @@ async fn test_orphan_job_reaper() {
     let data_dir = temp_dir("reaper");
     let ws_store = SqliteWorkspaceStore::open(&data_dir).expect("ws");
     ws_store
-        .create(&WorkspaceCreate {
+        .create(&WorkspaceCreate { owner_id: None,
             workspace_id: "ws-reaper".into(),
             name: "reaper".into(),
             root_path: fixture_dir().to_string_lossy().to_string(),
@@ -294,7 +294,7 @@ async fn spawn_server_simple(
 
     let workspace_id = format!("ws-{label}");
     ws_store
-        .create(&WorkspaceCreate {
+        .create(&WorkspaceCreate { owner_id: None,
             workspace_id: workspace_id.clone(),
             name: label.into(),
             root_path: fixture_dir().to_string_lossy().to_string(),
