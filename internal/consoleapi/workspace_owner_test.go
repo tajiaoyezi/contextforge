@@ -276,3 +276,70 @@ func TestTask513_5_PerUserTokenGetNotOwnedReturns403(t *testing.T) {
 		t.Errorf("legacy Get must NOT be called with a per-user token; got %d", ws.getCalls)
 	}
 }
+
+// searchCallCounter wraps a MemStore (full SearchClient) and counts Search calls so the
+// workspace ownership gate (task-51.4) test can assert the gate blocks BEFORE forwarding.
+type searchCallCounter struct {
+	*MemStore
+	calls int
+}
+
+func (s *searchCallCounter) Search(req contractv1.SearchRequest) (contractv1.SearchResult, contractv1.RetrievalTrace, error) {
+	s.calls++
+	return s.MemStore.Search(req)
+}
+
+// TEST-51.4.2 / AC2: SearchService.Query thin gate — verified user searching a workspace
+// they DON'T own → 403 + Search backend NOT called (gate blocks before forwarding).
+func TestTask514_2_SearchGateBlocksNonOwnedWorkspace(t *testing.T) {
+	ws := &ownerCapturingWorkspace{got: nil} // GetIfOwned returns nil → not owned
+	users := newFakeUserClient()
+	users.users["alice-secret"] = User{ID: "user-alice", Name: "Alice", Token: "alice-secret"}
+	search := &searchCallCounter{MemStore: NewMemStore()}
+	deps := Deps{
+		Workspace: ws,
+		User:      users,
+		Search:    search,
+		AuthToken: "shared-legacy-token",
+	}
+	router := NewRouter(deps)
+
+	body := `{"query":"test","workspace_id":"ws-bobs"}`
+	req := httptest.NewRequest("POST", "/v1/search", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer alice-secret")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 (not owned); got %d body=%s", w.Code, w.Body.String())
+	}
+	if search.calls != 0 {
+		t.Errorf("Search backend must NOT be called when gate blocks; got %d calls", search.calls)
+	}
+}
+
+// TEST-51.4.2b: trusted-network search → no gate (byte-equivalent, search proceeds).
+func TestTask514_2b_SearchGateTrustedNetworkByteEquivalent(t *testing.T) {
+	ws := &ownerCapturingWorkspace{got: nil}
+	search := &searchCallCounter{MemStore: NewMemStore()}
+	deps := Deps{
+		Workspace: ws,
+		Search:    search,
+		AuthToken: "", // trusted-network
+	}
+	router := NewRouter(deps)
+
+	body := `{"query":"test","workspace_id":"ws-any"}`
+	req := httptest.NewRequest("POST", "/v1/search", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("trusted-network search: expected 200 (no gate); got %d body=%s", w.Code, w.Body.String())
+	}
+	if search.calls != 1 {
+		t.Errorf("trusted-network search: expected 1 Search call (no gate); got %d", search.calls)
+	}
+}

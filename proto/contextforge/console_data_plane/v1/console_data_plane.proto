@@ -261,8 +261,10 @@ message SearchResponse {
 
 // task-12.2 (ADR-017 D1 Wave 2): chunk-by-id lookup driving REST
 // GET /v1/source-chunks/{id}. workspace_id is optional (Phase 12 v1.0 assumes
-// chunk_id is global-unique per SqliteChunkStore schema); future multi-workspace
-// strict isolation [SPEC-DEFER:phase-15.multi-workspace-strict] would require it.
+// chunk_id is global-unique per SqliteChunkStore schema); task-51.4 (ADR-052)
+// added the first per-user ownership gate on SearchService.Query (Go REST layer);
+// full per-RPC ownership enforcement on this + other endpoints is
+// [SPEC-DEFER:phase-future.full-rpc-ownership-enforcement] (Phase 51.x follow-on).
 message GetSourceChunkRequest {
   string chunk_id = 1;
   string workspace_id = 2;  // optional in v1

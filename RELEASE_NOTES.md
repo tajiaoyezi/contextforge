@@ -1,5 +1,55 @@
 # ContextForge Release Notes
 
+## v2.0.0-alpha.2 (2026-07-05) — v2.0-workspace-isolation (B1 第二步：per-user workspace ownership——verified user 只能访问自己 own 的 + unowned 的 workspace；SearchService.Query thin gate。ADR-052 D1-D4。migration 0021 加 owner_id 列 + proto WorkspaceService owner 字段 + Go REST workspace handler 用 verified identity + SearchService thin gate。byte-equivalent 默认。RBAC/全 RPC enforcement/OAuth-OIDC 仍延后 Phase 52-54+。0 现有 proto 字段变更（add-only）/ 1 新 migration（guarded ALTER）/ 0 新 dep。ADR-014 第四十三次激活)
+
+### What shipped (Phase 51, task 51.1-51.4)
+
+**task-51.1 ADR-052 + migration 0021 + WorkspaceStore owner 支持**：
+- `core/migrations/0021_workspaces_owner.sql`：guarded ALTER 加 `owner_id TEXT`（同 0017 PRAGMA pattern）
+- WorkspaceStore：create_owned / list_owned(userID) / get_if_owned(id, userID)
+- NULL owner = unowned（transitional，任何 verified user 可见）
+
+**task-51.2 proto add-only owner 字段 + Rust WorkspaceService handler**：
+- Workspace.owner_id + CreateWorkspaceRequest.owner_id + ListOwned/GetIfOwned RPC（0 现有字段变更，ADR-015 FROZEN）
+
+**task-51.3 Go REST workspace handler 用 verified identity**：
+- POST /v1/workspaces：verified user → owner_id = userID
+- GET /v1/workspaces：verified user → 仅自己 own + unowned
+- GET /v1/workspaces/{id}：非 own → 403 Forbidden
+
+**task-51.4 SearchService.Query thin gate + closeout**：
+- POST /v1/search：verified user + 非 own workspace_id → 403（gate blocks before forwarding to backend）
+- trusted-network → no gate（byte-equivalent）
+
+### 核心数据访问边界（ADR-052 D2）
+
+| 场景 | workspace 可见性 |
+|---|---|
+| trusted-network（空 token） | all（byte-equiv） |
+| 旧 shared token | all（byte-equiv） |
+| per-user token | 自己 own 的 + unowned（NULL owner） |
+| per-user token + 非 own workspace_id | 403 Forbidden（POST /v1/search thin gate） |
+
+### 诚实声明（ADR-013）
+
+**v2.0 进行中**：
+- ✅ 身份验证基础（Phase 50 verified identity）
+- ✅ workspace ownership（Phase 51 owner_id + thin gate）
+- 🔶 RBAC / roles / permissions 仍延后 `[SPEC-DEFER:phase-future.rbac-roles-permissions]` Phase 52
+- 🔶 全 RPC ownership enforcement 仍延后 `[SPEC-DEFER:phase-future.full-rpc-ownership-enforcement]` Phase 51.x（仅 Query 有 thin gate；GetSourceChunk/ListQueries/memory/eval 的 ownership 留 follow-on）
+- 🔶 token hash 存 / OAuth-OIDC 仍延后 Phase 51+/53+
+
+### Upgrade path
+
+minor/alpha release，无 breaking change。byte-equivalent 默认（trusted-network + 旧 shared token → all visible，owner_id=NULL）。migration 0021 guarded 幂等。
+
+### Contract / ADR
+
+- **Contract**：0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep / 0 breaking API change。
+- **ADR**：ADR-052 Accepted（D1-D4）；ADR-014 第四十三次激活；redeem `[SPEC-DEFER:phase-future.workspace-user-isolation]`（thin gate fulfilled by task-51.4；full RPC enforcement `[SPEC-DEFER:phase-future.full-rpc-ownership-enforcement]` 延后）。
+
+---
+
 ## v2.0.0-alpha (2026-07-05) — v2.0-identity-foundation (B1 第一步：per-user 身份验证基础——actor 从 declared 变 verified，关闭冒充风险。ADR-051 D1-D5。SQLite users 表 + proto UserService + Go REST 注册 + bearer verified identity + actor 覆写。byte-equivalent 默认。RBAC/workspace/OAuth-OIDC 仍延后 Phase 51-54+。0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep。ADR-014 第四十二次激活)
 
 ### What shipped (Phase 50, task 50.1-50.4)
