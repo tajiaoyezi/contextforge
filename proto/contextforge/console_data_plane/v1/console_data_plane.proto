@@ -522,3 +522,39 @@ message SubscribeEventsRequest {
 service EventsService {
   rpc Subscribe(SubscribeEventsRequest) returns (stream ObservabilityEvent);
 }
+
+// ============================================================================
+// task-50.2 (Phase 50 / ADR-051): UserService — per-user identity foundation.
+// Add-only new service; does NOT touch any existing field numbers (ADR-015 FROZEN).
+// Closes [SPEC-DEFER:phase-future.memory-actor-authenticated-identity] (task-50.3
+// redeems the actor-override once Go bearer resolution lands).
+// ============================================================================
+
+message User {
+  string id = 1;              // stable user identifier (caller-generated UUID/slug)
+  string name = 2;            // human-readable label (not unique; display only)
+  string token = 3;           // bearer token (plaintext; hash storage deferred Phase 51+)
+  int64 created_at_unix = 4;  // insertion time (seconds since epoch; 0 if unset)
+}
+
+message CreateUserRequest {
+  string id = 1;              // caller-supplied; must be unique
+  string name = 2;
+  string token = 3;           // caller-supplied; must be unique
+}
+
+message GetUserByTokenRequest {
+  string token = 1;
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+service UserService {
+  rpc Create(CreateUserRequest) returns (User);
+  rpc GetByToken(GetUserByTokenRequest) returns (User);
+  rpc List(ListUsersRequest) returns (ListUsersResponse);
+}

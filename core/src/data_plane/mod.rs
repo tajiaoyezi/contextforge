@@ -24,6 +24,7 @@ pub mod job;
 pub mod memory;
 pub mod search;
 pub mod search_persist;
+pub mod user;
 pub mod workspace;
 
 use crate::pb_console::eval_service_server::EvalServiceServer;
@@ -32,6 +33,7 @@ use crate::pb_console::health_service_server::HealthServiceServer;
 use crate::pb_console::job_service_server::JobServiceServer;
 use crate::pb_console::memory_service_server::MemoryServiceServer;
 use crate::pb_console::search_service_server::SearchServiceServer;
+use crate::pb_console::user_service_server::UserServiceServer;
 use crate::pb_console::workspace_service_server::WorkspaceServiceServer;
 use std::sync::{Arc, Mutex};
 
@@ -243,6 +245,7 @@ pub fn register_services(
         .add_service(HealthServiceServer::new(health::HealthCheckServer::new(
             stores.clone(),
         )))
+        .add_service(UserServiceServer::new(user::UserServer::new(stores.data_dir.clone())))
 }
 
 /// Add 6 services to a fresh `Server::builder()` (no other services).
@@ -266,6 +269,9 @@ pub fn server_with_services(
             stores.clone(),
         )))
         .add_service(EvalServiceServer::new(eval::EvalServer::new(stores.clone())))
+        .add_service(UserServiceServer::new(user::UserServer::new(
+            stores.data_dir.clone(),
+        )))
         .add_service(HealthServiceServer::new(health::HealthCheckServer::new(
             stores,
         )))
