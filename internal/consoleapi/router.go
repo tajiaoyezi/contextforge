@@ -61,6 +61,12 @@ func NewRouter(deps Deps) http.Handler {
 	// Add-only new routes; existing 22-endpoint Console Contract untouched (ADR-015).
 	mux.HandleFunc("POST /v1/users", handleCreateUser(deps))
 	mux.HandleFunc("GET /v1/users", handleListUsers(deps))
+	// task-52.3 (Phase 52 / ADR-053): workspace membership management endpoints.
+	// Add-only new routes; existing 22-endpoint Console Contract untouched (ADR-015).
+	// POST + DELETE are admin-gated inside the handlers (requireAdmin); GET is read-only.
+	mux.HandleFunc("POST /v1/workspaces/{id}/members", handleAddMember(deps))
+	mux.HandleFunc("GET /v1/workspaces/{id}/members", handleListMembers(deps))
+	mux.HandleFunc("DELETE /v1/workspaces/{id}/members/{user_id}", handleRemoveMember(deps))
 	return bearerAuthMiddleware(mux, deps.AuthToken, deps.User)
 }
 

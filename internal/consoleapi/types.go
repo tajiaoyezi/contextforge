@@ -169,6 +169,28 @@ type UserClient interface {
 	List() ([]User, error)
 }
 
+// Member is the wire shape for /v1/workspaces/{id}/members (task-52.3 / ADR-053).
+// Mirrors the proto MembershipService.Member message 1:1 (ADR-016 D3 thin proxy).
+type Member struct {
+	WorkspaceID   string `json:"workspace_id"`
+	UserID        string `json:"user_id"`
+	Role          string `json:"role"` // "admin" | "member" | "viewer"
+	CreatedAtUnix int64  `json:"created_at_unix"`
+}
+
+// MembershipClient backs POST/GET/DELETE /v1/workspaces/{id}/members (task-52.3 /
+// ADR-053) + the requireAdmin admin-gate (GetMyRole). May be nil in
+// degraded/inmem-fallback mode — membership handlers return 503 then, and
+// requireAdmin fail-opens (admin-gate cannot check → allows, documented).
+type MembershipClient interface {
+	AddMember(workspaceID, userID, role string) error
+	RemoveMember(workspaceID, userID string) error
+	ListMembers(workspaceID string) ([]Member, error)
+	// GetMyRole returns the verified user's role on the workspace ("" when not a
+	// member). Drives the admin-gate: role=="admin" → destructive op allowed.
+	GetMyRole(workspaceID, userID string) (string, error)
+}
+
 // User is the wire shape for /v1/users (task-50.3 / ADR-051 D1).
 type User struct {
 	ID            string `json:"id"`
@@ -203,7 +225,12 @@ type Deps struct {
 	// registration + bearer-token verified-user resolution. May be nil —
 	// user endpoints return 503 + bearer middleware skips user-token resolution
 	// (falls back to the legacy shared-token path, byte-equivalent).
-	User        UserClient
+	User UserClient
+	// task-52.3 (Phase 52 / ADR-053): optional MembershipClient for the
+	// /v1/workspaces/{id}/members REST surface + the requireAdmin admin-gate.
+	// May be nil (inmem-fallback / degraded) — membership endpoints return 503
+	// then, and requireAdmin fail-opens (cannot check → allows, documented).
+	Membership  MembershipClient
 	AuthToken   string
 	BackendKind string
 }

@@ -146,8 +146,9 @@ func buildDeps(grpcAddr string, fallbackInmem bool, _ string, stdout, stderr io.
 		EventsStream: cli.EventsStream(), // task-26.2 (ADR-031 D3): SSE push
 		Memory:       cli.Memory(),
 		Eval:         cli.Eval(),
-		Health:       cli.Health(), // task-15.6 (Phase 15 P2 #7)
-		User:         cli.User(),   // task-50.3 (Phase 50 / ADR-051): per-user identity
+		Health:       cli.Health(),     // task-15.6 (Phase 15 P2 #7)
+		User:         cli.User(),       // task-50.3 (Phase 50 / ADR-051): per-user identity
+		Membership:   cli.Membership(), // task-52.3 (Phase 52 / ADR-053): RBAC membership + admin-gate
 	}, "grpc", func() { _ = cli.Close() }
 }
 

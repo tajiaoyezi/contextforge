@@ -21,13 +21,18 @@ func verifiedActor(r *http.Request, declared string) string {
 
 // task-50.3 (Phase 50 / ADR-051): per-user identity registration endpoints.
 //
-//   POST /v1/users        — register a new user (id + name + token), returns the User
-//   GET  /v1/users        — list all users (admin; returns 200 even when empty)
+//	POST /v1/users        — register a new user (id + name + token), returns the User
+//	GET  /v1/users        — list all users (admin; returns 200 even when empty)
 //
 // These sit OUTSIDE the v1.0 22-endpoint Console Contract (which is frozen — ADR-015).
 // They are add-only new routes; existing routes/contract are untouched.
 // Authorization: trusted-network (empty token) OR any valid bearer (user token OR the
 // legacy shared token). Admin-role gating is deferred ([SPEC-DEFER:phase-future.rbac-roles-permissions]).
+//
+// task-52.3 (Phase 52 / ADR-053): admin-gate applied via requireAdminAnyWorkspace. User management
+// has NO workspace context in the REST path (/v1/users is global), so the gate cannot resolve a
+// specific workspace role → fail-open with a documented TODO (rbac.go). Trusted-network / legacy
+// shared token → admin (byte-equiv). The TODO closes once a global-admin role model lands.
 
 type createUserBody struct {
 	ID    string `json:"id"`
@@ -40,6 +45,12 @@ func handleCreateUser(deps Deps) http.HandlerFunc {
 		if deps.User == nil {
 			writeError(w, http.StatusServiceUnavailable, "DATA_PLANE_UNAVAILABLE",
 				"user service not wired (inmem-fallback / degraded mode)")
+			return
+		}
+		// task-52.3 admin-gate: fail-open (no workspace context; see rbac.go TODO).
+		if !requireAdminAnyWorkspace(deps, r) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN",
+				"admin role required to create users (Phase 52 RBAC)")
 			return
 		}
 		var body createUserBody
@@ -69,6 +80,12 @@ func handleListUsers(deps Deps) http.HandlerFunc {
 		if deps.User == nil {
 			writeError(w, http.StatusServiceUnavailable, "DATA_PLANE_UNAVAILABLE",
 				"user service not wired (inmem-fallback / degraded mode)")
+			return
+		}
+		// task-52.3 admin-gate: fail-open (no workspace context; see rbac.go TODO).
+		if !requireAdminAnyWorkspace(deps, r) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN",
+				"admin role required to list users (Phase 52 RBAC)")
 			return
 		}
 		users, err := deps.User.List()

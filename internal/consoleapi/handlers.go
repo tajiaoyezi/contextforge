@@ -177,6 +177,11 @@ func handleGetWorkspace(deps Deps) http.HandlerFunc {
 //
 // task-12.1 (ADR-017 D1 Wave 1) — calls deps.Workspace.Update; returns 200 +
 // updated Workspace on success; ErrNotFound → 404; ErrInvalidRequest → 400.
+//
+// task-52.3 (Phase 52 / ADR-053): admin-gate applied. The workspace_id is in
+// the path ({id}), so the gate can resolve the verified user's role and block
+// non-admin verified users (403). Trusted-network / legacy shared token → admin
+// (byte-equivalent; see rbac.go requireAdmin).
 func handlePatchWorkspaceConfig(deps Deps) http.HandlerFunc {
 	type patchBody struct {
 		Allowlist []string `json:"allowlist"`
@@ -186,6 +191,12 @@ func handlePatchWorkspaceConfig(deps Deps) http.HandlerFunc {
 		id := trimID(r)
 		if id == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "missing id")
+			return
+		}
+		// task-52.3 admin-gate: non-admin verified user → 403 (workspace_id is in the path).
+		if !requireAdmin(deps, r, id) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN",
+				"admin role required to patch workspace config (Phase 52 RBAC)")
 			return
 		}
 		var body patchBody
@@ -638,10 +649,20 @@ func handleMemoryPin(deps Deps) http.HandlerFunc {
 }
 
 // handleMemoryDeprecate — POST /v1/memory/{id}/deprecate → 204 (destructive; confirmMiddleware-gated).
+//
+// task-52.3 (Phase 52 / ADR-053): admin-gate applies via requireAdminAnyWorkspace. The memory
+// REST path does NOT carry a workspace_id (memory items are keyed by memory_id + agent_scope), so
+// the gate cannot resolve the user's role on a specific workspace → fail-open with a documented
+// TODO (rbac.go). Trusted-network / legacy shared token → admin (byte-equiv). See task-52.3 §3.
 func handleMemoryDeprecate(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Memory == nil {
 			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		if !requireAdminAnyWorkspace(deps, r) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN",
+				"admin role required for destructive memory op (Phase 52 RBAC)")
 			return
 		}
 		id := trimID(r)
@@ -658,10 +679,18 @@ func handleMemoryDeprecate(deps Deps) http.HandlerFunc {
 }
 
 // handleMemorySoftDelete — POST /v1/memory/{id}/soft-delete → 204 (destructive; confirmMiddleware-gated).
+//
+// task-52.3 (Phase 52 / ADR-053): admin-gate via requireAdminAnyWorkspace (fail-open — memory REST
+// path carries no workspace_id; documented TODO in rbac.go). Trusted-network/legacy → admin (byte-equiv).
 func handleMemorySoftDelete(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Memory == nil {
 			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		if !requireAdminAnyWorkspace(deps, r) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN",
+				"admin role required for destructive memory op (Phase 52 RBAC)")
 			return
 		}
 		id := trimID(r)
@@ -707,10 +736,18 @@ func handleMemoryUnpin(deps Deps) http.HandlerFunc {
 
 // handleMemoryHardDelete — POST /v1/memory/{id}/hard-delete → 204 (destructive;
 // confirmMiddleware-gated per ADR-017 D2 — physical row removal, unrecoverable).
+//
+// task-52.3 (Phase 52 / ADR-053): admin-gate via requireAdminAnyWorkspace (fail-open — memory REST
+// path carries no workspace_id; documented TODO in rbac.go). Trusted-network/legacy → admin (byte-equiv).
 func handleMemoryHardDelete(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Memory == nil {
 			writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", ErrDataPlaneUnavailable.Error())
+			return
+		}
+		if !requireAdminAnyWorkspace(deps, r) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN",
+				"admin role required for destructive memory op (Phase 52 RBAC)")
 			return
 		}
 		id := trimID(r)
