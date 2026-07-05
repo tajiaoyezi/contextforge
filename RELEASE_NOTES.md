@@ -44,6 +44,7 @@
 
 - **Contract**：0 现有 proto 字段变更（add-only）/ 1 新 migration / 0 新 dep / 0 breaking API change（membership routes add-only）。
 - **ADR**：ADR-053 Accepted（D1-D4）；ADR-014 第四十四次激活；redeem `[SPEC-DEFER:phase-future.rbac-roles-permissions]`（fulfilled by task-52.3/52.4）。
+- 发版凭据（post-tag-push backfill，ADR-013）：tag commit `cec0a68` / tag object `v2.0.0-alpha.3` / release run `28735486784` (success) / ghcr digest `sha256:92b5650e59384850500555c0374789e8e1a61c491dc88c29b5e2db250ba55c7a` / cosign tlog `2078988826` (sign) · `2078991424` (attest/SBOM) / GitHub Release URL `https://github.com/tajiaoyezi/contextforge/releases/tag/v2.0.0-alpha.3`。
 
 ---
 
