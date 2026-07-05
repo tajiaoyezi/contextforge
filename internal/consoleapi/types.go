@@ -47,6 +47,14 @@ type WorkspaceClient interface {
 	// task-12.1: Update overwrites allowlist + denylist, bumps updated_at.
 	// Returns ErrNotFound when workspace missing.
 	Update(workspaceID string, allowlist, denylist []string) (contractv1.Workspace, error)
+
+	// task-51.3 (Phase 51 / ADR-052 D3 / ADR-015 FROZEN): add-only owner-scoped
+	// methods. Handlers call these ONLY when the bearer middleware injected a
+	// verified user id (per-user token); the legacy Create/List/Get above stay
+	// byte-equivalent for trusted-network (empty token) + legacy shared token.
+	CreateOwned(req contractv1.WorkspaceCreate, ownerID string) (contractv1.Workspace, error)
+	ListOwned(ownerID string) ([]contractv1.Workspace, error)
+	GetIfOwned(workspaceID, ownerID string) (*contractv1.Workspace, error) // nil if not found OR not owned
 }
 
 // JobClient backs the /v1/index-jobs[*] handlers.

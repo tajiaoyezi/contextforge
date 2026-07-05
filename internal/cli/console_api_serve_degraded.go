@@ -31,6 +31,18 @@ func (degradedWorkspace) Update(_ string, _, _ []string) (contractv1.Workspace, 
 	return contractv1.Workspace{}, consoleapi.ErrDataPlaneUnavailable
 }
 
+// task-51.3 (Phase 51 / ADR-052 D3): owner-scoped methods return 503 in
+// degraded mode — same byte-equivalent error path as the other RPCs above.
+func (degradedWorkspace) CreateOwned(_ contractv1.WorkspaceCreate, _ string) (contractv1.Workspace, error) {
+	return contractv1.Workspace{}, consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedWorkspace) ListOwned(_ string) ([]contractv1.Workspace, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
+}
+func (degradedWorkspace) GetIfOwned(_, _ string) (*contractv1.Workspace, error) {
+	return nil, consoleapi.ErrDataPlaneUnavailable
+}
+
 type degradedJob struct{}
 
 func (degradedJob) Enqueue(_, _ string) (contractv1.IndexJob, error) {
