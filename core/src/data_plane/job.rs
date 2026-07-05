@@ -241,6 +241,7 @@ mod tests {
             root_path: std::env::temp_dir().join("cf-job-fix").to_string_lossy().to_string(),
             allowlist: vec![],
             denylist: vec![],
+            ..Default::default()
         })
         .unwrap();
         let js = Arc::new(SqliteJobStore::open(&dir).unwrap());
