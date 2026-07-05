@@ -1812,3 +1812,219 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "contextforge/console_data_plane/v1/console_data_plane.proto",
 }
+
+const (
+	MembershipService_AddMember_FullMethodName    = "/contextforge.console_data_plane.v1.MembershipService/AddMember"
+	MembershipService_RemoveMember_FullMethodName = "/contextforge.console_data_plane.v1.MembershipService/RemoveMember"
+	MembershipService_ListMembers_FullMethodName  = "/contextforge.console_data_plane.v1.MembershipService/ListMembers"
+	MembershipService_GetMyRole_FullMethodName    = "/contextforge.console_data_plane.v1.MembershipService/GetMyRole"
+)
+
+// MembershipServiceClient is the client API for MembershipService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type MembershipServiceClient interface {
+	AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*Member, error)
+	RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error)
+	ListMembers(ctx context.Context, in *ListMembersRequest, opts ...grpc.CallOption) (*ListMembersResponse, error)
+	GetMyRole(ctx context.Context, in *GetMyRoleRequest, opts ...grpc.CallOption) (*GetMyRoleResponse, error)
+}
+
+type membershipServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewMembershipServiceClient(cc grpc.ClientConnInterface) MembershipServiceClient {
+	return &membershipServiceClient{cc}
+}
+
+func (c *membershipServiceClient) AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*Member, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Member)
+	err := c.cc.Invoke(ctx, MembershipService_AddMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *membershipServiceClient) RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveMemberResponse)
+	err := c.cc.Invoke(ctx, MembershipService_RemoveMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *membershipServiceClient) ListMembers(ctx context.Context, in *ListMembersRequest, opts ...grpc.CallOption) (*ListMembersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMembersResponse)
+	err := c.cc.Invoke(ctx, MembershipService_ListMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *membershipServiceClient) GetMyRole(ctx context.Context, in *GetMyRoleRequest, opts ...grpc.CallOption) (*GetMyRoleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMyRoleResponse)
+	err := c.cc.Invoke(ctx, MembershipService_GetMyRole_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// MembershipServiceServer is the server API for MembershipService service.
+// All implementations must embed UnimplementedMembershipServiceServer
+// for forward compatibility.
+type MembershipServiceServer interface {
+	AddMember(context.Context, *AddMemberRequest) (*Member, error)
+	RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error)
+	ListMembers(context.Context, *ListMembersRequest) (*ListMembersResponse, error)
+	GetMyRole(context.Context, *GetMyRoleRequest) (*GetMyRoleResponse, error)
+	mustEmbedUnimplementedMembershipServiceServer()
+}
+
+// UnimplementedMembershipServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedMembershipServiceServer struct{}
+
+func (UnimplementedMembershipServiceServer) AddMember(context.Context, *AddMemberRequest) (*Member, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddMember not implemented")
+}
+func (UnimplementedMembershipServiceServer) RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveMember not implemented")
+}
+func (UnimplementedMembershipServiceServer) ListMembers(context.Context, *ListMembersRequest) (*ListMembersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListMembers not implemented")
+}
+func (UnimplementedMembershipServiceServer) GetMyRole(context.Context, *GetMyRoleRequest) (*GetMyRoleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMyRole not implemented")
+}
+func (UnimplementedMembershipServiceServer) mustEmbedUnimplementedMembershipServiceServer() {}
+func (UnimplementedMembershipServiceServer) testEmbeddedByValue()                           {}
+
+// UnsafeMembershipServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to MembershipServiceServer will
+// result in compilation errors.
+type UnsafeMembershipServiceServer interface {
+	mustEmbedUnimplementedMembershipServiceServer()
+}
+
+func RegisterMembershipServiceServer(s grpc.ServiceRegistrar, srv MembershipServiceServer) {
+	// If the following call pancis, it indicates UnimplementedMembershipServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&MembershipService_ServiceDesc, srv)
+}
+
+func _MembershipService_AddMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MembershipServiceServer).AddMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MembershipService_AddMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MembershipServiceServer).AddMember(ctx, req.(*AddMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MembershipService_RemoveMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MembershipServiceServer).RemoveMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MembershipService_RemoveMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MembershipServiceServer).RemoveMember(ctx, req.(*RemoveMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MembershipService_ListMembers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMembersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MembershipServiceServer).ListMembers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MembershipService_ListMembers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MembershipServiceServer).ListMembers(ctx, req.(*ListMembersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MembershipService_GetMyRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMyRoleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MembershipServiceServer).GetMyRole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MembershipService_GetMyRole_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MembershipServiceServer).GetMyRole(ctx, req.(*GetMyRoleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// MembershipService_ServiceDesc is the grpc.ServiceDesc for MembershipService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var MembershipService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "contextforge.console_data_plane.v1.MembershipService",
+	HandlerType: (*MembershipServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AddMember",
+			Handler:    _MembershipService_AddMember_Handler,
+		},
+		{
+			MethodName: "RemoveMember",
+			Handler:    _MembershipService_RemoveMember_Handler,
+		},
+		{
+			MethodName: "ListMembers",
+			Handler:    _MembershipService_ListMembers_Handler,
+		},
+		{
+			MethodName: "GetMyRole",
+			Handler:    _MembershipService_GetMyRole_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "contextforge/console_data_plane/v1/console_data_plane.proto",
+}
